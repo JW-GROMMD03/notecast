@@ -1,14 +1,5 @@
-// Cookie-based API client. There is deliberately no token stored anywhere
-// JS can read (no localStorage, no sessionStorage) — the session lives in
-// the httpOnly cookies the backend sets on /auth/login, and every fetch
-// here just needs `credentials: "include"` for the browser to attach them
-// automatically. A small amount of non-sensitive display info (name,
-// email) is cached in sessionStorage purely so the UI doesn't flash empty
-// while /auth/me loads — losing it just means a brief blank state, never
-// a security issue, since it's not a credential.
-
-// FIXED: Dynamically match window.location so localhost talks to localhost, and 127.0.0.1 talks to 127.0.0.1
-export const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000`;
+// Point directly to the production Render backend
+export const API_BASE = "https://notecast-53sj.onrender.com";
 
 function readCookie(name) {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));

@@ -8,9 +8,9 @@ const COMMON_PASSWORDS = new Set([
 ]);
 
 /** Returns {score: 0-4, label, hint}. Deliberately simple (length +
- * character-class variety + a small denylist) rather than a full
- * zxcvbn-style model — good enough to nudge students toward a decent
- * password without shipping a large JS dependency for it. */
+- character-class variety + a small denylist) rather than a full
+- zxcvbn-style model — good enough to nudge students toward a decent
+- password without shipping a large JS dependency for it. */
 export function scorePassword(pw) {
   if (!pw) return { score: 0, label: "", hint: "" };
   if (COMMON_PASSWORDS.has(pw.toLowerCase())) {
@@ -37,7 +37,7 @@ export function scorePassword(pw) {
 }
 
 /** Wires a password <input>, a meter <div> (containing a .bar child),
- * and a label <span> to update live as the user types. */
+- and a label <span> to update live as the user types. */
 export function wireStrengthMeter(inputEl, barEl, labelEl) {
   const update = () => {
     const { score, label } = scorePassword(inputEl.value);
@@ -61,7 +61,7 @@ export function wireVisibilityToggle(inputEl, toggleEl) {
 }
 
 /** Wires live "passwords match" validation between a password input and
- * a confirm-password input, showing/hiding an error element. */
+- a confirm-password input, showing/hiding an error element. */
 export function wireConfirmMatch(pwEl, confirmEl, errorEl) {
   const update = () => {
     const mismatch = confirmEl.value.length > 0 && confirmEl.value !== pwEl.value;

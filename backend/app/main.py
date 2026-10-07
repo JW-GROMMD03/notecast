@@ -34,10 +34,12 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     logging.getLogger("notecast").exception("Unhandled error on %s %s", request.method, request.url.path)
     return JSONResponse(status_code=500, content={"detail": "Something went wrong on our end. Please try again."})
 
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list,  # must be explicit hosts, not "*" — required for allow_credentials
+    allow_origins=[
+        "https://jw-grommd03.github.io",  # GitHub Pages Web Frontend
+        "chrome-extension://<YOUR_CHROME_EXTENSION_ID_HERE>" # Update this when publishing to the store
+    ] + settings.cors_origin_list, 
     allow_credentials=True,  # lets the browser send/receive the httpOnly session cookies
     allow_methods=["*"],
     allow_headers=["*"],
