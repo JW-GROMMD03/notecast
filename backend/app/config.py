@@ -22,14 +22,16 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------------
     # Sessions / cookies and CORS
     # ---------------------------------------------------------------
-    COOKIE_SECURE: bool = False          
+    COOKIE_SECURE: bool = True          
     COOKIE_DOMAIN: str = ""              
     ACCESS_COOKIE_NAME: str = "nc_access"
     REFRESH_COOKIE_NAME: str = "nc_refresh"
     CSRF_COOKIE_NAME: str = "nc_csrf"
     CSRF_HEADER_NAME: str = "X-CSRF-Token"
 
-    CORS_ORIGINS: str = "http://localhost:5500,http://127.0.0.1:5500,http://localhost:5501,http://127.0.0.1:5501,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000"
+    # Default fallback origin string — actual production overrides 
+    # should happen via Environment Variables in Render.
+    CORS_ORIGINS: str = "https://notecast-web.onrender.com"
 
     # ---------------------------------------------------------------
     # Rate limiting
