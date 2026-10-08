@@ -1,10 +1,10 @@
 import logging
 import json
 import re
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session as DbSession
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from .. import models, schemas, auth
 from ..database import get_db
 from ..services import providers
@@ -12,10 +12,8 @@ from ..services import providers
 router = APIRouter(prefix="/diagrams", tags=["diagrams"])
 logger = logging.getLogger("notecast_diagrams")
 
-
 class GenerateSimIn(BaseModel):
-    topic: str
-
+    topic: str = Field(..., description="The subject to generate a visual simulation for")
 
 @router.post("/generate-sim/")
 async def generate_simulation_schema(
@@ -24,7 +22,7 @@ async def generate_simulation_schema(
 ):
     """
     Instructs the LLM pipeline to generate a complete, self-contained, 
-    stunning interactive HTML/CSS/JS simulation application tailored to the topic.
+    stunning interactive HTML/CSS/JS simulation application tailored to ANY topic.
     """
     system_prompt = (
         "You are an elite senior frontend engineer and visual academic educator. "
@@ -34,15 +32,19 @@ async def generate_simulation_schema(
         '  "title": "Topic Title",\n'
         '  "description": "Short subtitle description",\n'
         '  "detailed_lecture": "Extremely detailed, degree-level academic lecture text explaining the topic. Use HTML tags like <strong> and <br> for professional formatting.",\n'
-        '  "html_code": "<!DOCTYPE html><html><head><style>/* Gorgeous dark-mode UI, flexbox, glowing nodes, animations, responsive layout */</style></head><body><!-- Fully interactive visualizer with buttons, animated SVG/Canvas, live counters, and click actions --> <script>/* Robust interactive JS animation logic and state controls */</script></body></html>"\n'
-        "}\n"
-        "Rules:\n"
-        "- The 'html_code' field MUST contain a 100% valid, self-contained HTML document with embedded CSS and JavaScript.\n"
-        "- Design it with a professional dark theme (#030712 background), glowing SVG connection lines, animated pulses, interactive control buttons (like Start, Pause, Restart, Scale Out, or Trigger Pulse), and real-time metric counters.\n"
-        "- Ensure it visually represents the actual real-world architecture, biological system, chemical reaction, or physical process with high fidelity."
+        '  "html_code": "<!DOCTYPE html><html><head><style>/* Gorgeous dark-mode UI, flexbox, glowing SVG nodes, animations, responsive layout */</style></head><body><!-- Fully interactive visualizer with buttons, animated SVG/Canvas, and click actions --> <script>/* Robust interactive JS animation logic */</script></body></html>"\n'
+        "}\n\n"
+        "CRITICAL RULES:\n"
+        "1. The 'html_code' field MUST contain a 100% valid, self-contained HTML document with embedded CSS and JavaScript.\n"
+        "2. Design it with a professional dark theme (#030712 background), glowing SVG connection lines, animated pulses, and interactive control buttons (e.g., Start, Pause, Scale Out, Trigger Process).\n"
+        "3. Ensure it visually represents the actual real-world architecture, biological system, chemical reaction, or physical process with high fidelity (e.g., draw servers/load balancers for IT, draw cells/organs for biology).\n"
+        "4. ADVANCED METRICS COMMUNICATION: Inside your generated JavaScript, use the postMessage API to send real-time metrics back to the parent window whenever the simulation state changes. Example:\n"
+        "   window.parent.postMessage({ type: 'UPDATE_METRIC', title: 'Throughput', value: '500 req/s' }, '*');\n"
+        "   window.parent.postMessage({ type: 'UPDATE_METRIC', title: 'Active Nodes', value: '4' }, '*');\n"
     )
 
     try:
+        logger.info(f"Initiating dynamic simulation generation for topic: {body.topic}")
         response = await providers.llm_chat_completion(
             capability="text",
             messages=[
@@ -53,17 +55,19 @@ async def generate_simulation_schema(
         
         content = response.get("content", {})
         if isinstance(content, str):
+            # Strip out markdown code blocks to ensure pure JSON parsing
             clean_str = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.IGNORECASE)
             content = json.loads(clean_str)
             
         return content
 
     except Exception as e:
-        logger.error(f"LLM Provider Failed. Utilizing Rich HTML Fallback: {e}")
+        logger.error(f"LLM Provider Failed. Utilizing Dynamic HTML Fallback for {body.topic}: {e}")
+        # Dynamic fallback based entirely on the requested topic if the AI times out
         return {
-            "title": f"{body.topic} — Interactive Visualizer",
+            "title": f"{body.topic.title()} — Interactive Visualizer",
             "description": f"Custom interactive visual model for {body.topic}.",
-            "detailed_lecture": f"<strong>Degree-Level Analysis: {body.topic}</strong><br><br>This system operates through coordinated component interactions and state transitions. Use the interactive controls within the visualizer to test throughput, scaling, and operational workflows in real time.",
+            "detailed_lecture": f"<strong>Degree-Level Analysis: {body.topic.title()}</strong><br><br>This system operates through coordinated component interactions and state transitions. The visualizer relies on state-driven rendering to emulate real-world behavior. Use the interactive controls within the visualizer to test throughput, scaling, and operational workflows in real time.",
             "html_code": f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -71,34 +75,43 @@ async def generate_simulation_schema(
 <style>
   body {{ margin: 0; background: #030712; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }}
   .card {{ background: #0f172a; border: 1px solid #1e293b; padding: 35px; border-radius: 16px; text-align: center; box-shadow: 0 15px 35px rgba(0,0,0,0.6); max-width: 480px; width: 90%; }}
-  h2 {{ color: #3b82f6; margin-top: 0; font-size: 1.4rem; }}
+  h2 {{ color: #3b82f6; margin-top: 0; font-size: 1.4rem; text-transform: capitalize; }}
   p {{ color: #94a3b8; font-size: 0.9rem; line-height: 1.5; }}
-  .metric {{ font-size: 2.2rem; font-weight: 800; color: #10b981; margin: 20px 0; font-family: monospace; }}
-  .btn-group {{ display: flex; gap: 10px; justify-content: center; margin-top: 15px; }}
-  button {{ background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; }}
+  .sim-view {{ margin: 20px auto; width: 100px; height: 100px; border-radius: 50%; background: radial-gradient(circle, #3b82f6 0%, #1e293b 80%); box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); transition: transform 0.2s ease; }}
+  .btn-group {{ display: flex; gap: 10px; justify-content: center; margin-top: 25px; }}
+  button {{ background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; }}
   button:hover {{ background: #2563eb; transform: translateY(-1px); }}
 </style>
 </head>
 <body>
   <div class="card">
     <h2>{body.topic}</h2>
-    <p>Interactive simulation environment initialized successfully.</p>
-    <div class="metric" id="counter">Cycles: 0</div>
+    <p>Interactive simulation environment initialized successfully. Commencing execution loop.</p>
+    <div class="sim-view" id="simObject"></div>
     <div class="btn-group">
-      <button onclick="runSim()">Trigger Pulse</button>
+      <button onclick="runPulse()">Trigger State Pulse</button>
       <button onclick="resetSim()" style="background: #1e293b; color: #cbd5e1;">Reset</button>
     </div>
   </div>
   <script>
     let count = 0;
-    function runSim() {{
+    function runPulse() {{
       count++;
-      document.getElementById('counter').textContent = 'Cycles: ' + count;
+      const obj = document.getElementById('simObject');
+      obj.style.transform = 'scale(1.2)';
+      setTimeout(() => obj.style.transform = 'scale(1)', 200);
+      
+      // Communicate back to the parent window
+      window.parent.postMessage({{ type: 'UPDATE_METRIC', title: 'Execution Cycles', value: count }}, '*');
+      window.parent.postMessage({{ type: 'UPDATE_METRIC', title: 'System Status', value: 'Active' }}, '*');
     }}
     function resetSim() {{
       count = 0;
-      document.getElementById('counter').textContent = 'Cycles: ' + count;
+      window.parent.postMessage({{ type: 'UPDATE_METRIC', title: 'Execution Cycles', value: count }}, '*');
+      window.parent.postMessage({{ type: 'UPDATE_METRIC', title: 'System Status', value: 'Standby' }}, '*');
     }}
+    // Initialize default metrics
+    resetSim();
   </script>
 </body>
 </html>"""
