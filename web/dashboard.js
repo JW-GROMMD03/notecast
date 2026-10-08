@@ -10,7 +10,14 @@ const STATUS_LABEL = {
 
 async function init() {
   const user = await requireAuth(); // redirects to login.html if not signed in
+  
+  // Populate user profile info
   document.getElementById("userName").textContent = user.display_name || user.email;
+  
+  const planBadge = document.getElementById("userPlanBadge");
+  if (planBadge) {
+    planBadge.textContent = `Plan: ${user.plan || 'Free'}`;
+  }
 
   document.getElementById("logoutBtn").addEventListener("click", async () => {
     await logout();
