@@ -169,7 +169,7 @@ class GroqProvider:
             
         resp = self._client.chat.completions.create(
             model=settings.GROQ_TEXT_MODEL,
-            response_format={"type": "json_object"},
+            # Removed strict response_format to prevent 400 Bad Request errors on minor Llama formatting mistakes.
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=max_tokens,
         )
@@ -204,7 +204,6 @@ class GroqProvider:
         start = time.time()
         resp = self._client.chat.completions.create(
             model=settings.GROQ_VISION_MODEL,
-            response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": system},
                 {
@@ -276,7 +275,7 @@ class OpenRouterProvider:
             
         resp = self._client.chat.completions.create(
             model="meta-llama/llama-3.3-70b-instruct:free",
-            response_format={"type": "json_object"},
+            # Removed strict response_format to prevent 400 Bad Request errors.
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=max_tokens,
             extra_headers={
@@ -387,15 +386,21 @@ def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dic
             log.warning("unknown provider %r in order list, skipping", name)
             continue
         provider = _get(name)
+        
+        # Skip if the provider lacks an API key in the environment variables
         if not getattr(provider, "configured", False):
             continue  
+            
         method = getattr(provider, method_name, None)
         if method is None:
             continue  
+            
         tried.append(name)
         try:
+            # Executes the API call. If successful, it immediately returns the data and stops.
             return method(*args, **kwargs)
         except Exception as e:  
+            # If ANY error occurs (Quota, Bad Request, Payment Required), it logs it and continues the loop.
             log.warning("%s.%s failed (%s), falling over to next provider", name, method_name, e)
             continue
 
