@@ -10,6 +10,7 @@ from .routers import auth as auth_router
 from .routers import videos as videos_router
 from .routers import notes as notes_router
 from .routers import ws as ws_router
+from .routers import payments as payments_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -53,6 +54,7 @@ app.include_router(auth_router.router)
 app.include_router(videos_router.router)
 app.include_router(notes_router.router)
 app.include_router(ws_router.router)
+app.include_router(payments_router.router)
 
 
 @app.get("/health")

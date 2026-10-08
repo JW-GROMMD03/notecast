@@ -56,6 +56,16 @@ class UserOut(BaseModel):
         from_attributes = True
 
 
+class PaymentRequest(BaseModel):
+    phone_number: str
+    plan_name: str
+    amount: int
+
+
+class PaymentStatusOut(BaseModel):
+    status: str
+
+
 class VideoCreateIn(BaseModel):
     youtube_id: str
     title: str

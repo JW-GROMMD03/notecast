@@ -29,6 +29,19 @@ class User(Base):
     created_at = Column(DateTime, default=now)
 
     videos = relationship("Video", back_populates="user", cascade="all, delete-orphan")
+    transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan")
+
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+    id = Column(String, primary_key=True, index=True) # Internal tx_id or M-Pesa receipt
+    user_id = Column(String, ForeignKey("users.id"))
+    amount = Column(Integer)
+    plan_name = Column(String)
+    status = Column(String, default="pending") # pending, completed, failed
+    created_at = Column(DateTime, default=now)
+
+    user = relationship("User", back_populates="transactions")
 
 
 class ConsentLog(Base):

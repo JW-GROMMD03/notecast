@@ -5,6 +5,13 @@ const el = (id) => document.getElementById(id);
 
 wireVisibilityToggle(el("password"), el("toggleBtn"));
 
+// Determine where to send the user after a successful login
+function getRedirectUrl() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const redirect = urlParams.get("redirect");
+  return redirect ? redirect : "dashboard.html";
+}
+
 // Helper function to process tokens and send to backend
 async function handleOAuthTokens(accessToken, refreshToken, expiresIn) {
   const submitBtn = el("submitBtn");
@@ -23,7 +30,9 @@ async function handleOAuthTokens(accessToken, refreshToken, expiresIn) {
       })
     });
     cacheUser({ display_name: data.display_name, email: data.email });
-    window.location.href = "dashboard.html";
+    
+    // Redirect based on URL parameter or default to dashboard
+    window.location.href = getRedirectUrl();
   } catch (err) {
     console.error("OAuth callback error:", err);
     el("formError").textContent = "Google sign-in failed to sync session. Please try again.";
@@ -45,8 +54,9 @@ async function checkAuthOnLoad() {
   const expiresIn = hashParams.get("expires_in") || queryParams.get("expires_in") || 3600;
 
   if (accessToken && refreshToken) {
-    // Clear URL parameters immediately so tokens aren't exposed in the browser bar
-    window.history.replaceState(null, "", window.location.pathname);
+    // Clear URL hash parameters immediately so tokens aren't exposed in the browser bar
+    // We preserve the search parameters (?redirect=...) so we still know where to go
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
     await handleOAuthTokens(accessToken, refreshToken, expiresIn);
     return;
   } 
@@ -74,7 +84,8 @@ async function checkAuthOnLoad() {
   try {
     const user = await apiFetch("/auth/me");
     cacheUser(user);
-    window.location.href = "dashboard.html";
+    // If already logged in, send them straight to their destination
+    window.location.href = getRedirectUrl();
   } catch {
     /* not signed in — show the form as normal */
   }
@@ -83,11 +94,13 @@ async function checkAuthOnLoad() {
 // Execute the check when the script loads
 checkAuthOnLoad();
 
-
 // 2. Google Sign In Initialization
 el("googleBtn").addEventListener("click", async () => {
   try {
-    const redirectUrl = encodeURIComponent(window.location.origin + "/login.html");
+    // Pass the current redirect hint along to Google so it survives the OAuth trip
+    const currentParams = window.location.search;
+    const redirectUrl = encodeURIComponent(window.location.origin + "/login.html" + currentParams);
+    
     const data = await apiFetch(`/auth/google-url?redirect_to=${redirectUrl}`);
     window.location.href = data.url;
   } catch (err) {
@@ -109,7 +122,9 @@ el("loginForm").addEventListener("submit", async (e) => {
     const body = { email: el("email").value.trim(), password: el("password").value };
     const data = await apiFetch("/auth/login", { method: "POST", body: JSON.stringify(body) });
     cacheUser({ display_name: data.display_name, email: data.email });
-    window.location.href = "dashboard.html";
+    
+    // Redirect based on URL parameter or default to dashboard
+    window.location.href = getRedirectUrl();
   } catch (err) {
     errorEl.textContent = err.status === 429
       ? "Too many attempts — please wait a few minutes and try again."
