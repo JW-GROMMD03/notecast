@@ -1,4 +1,4 @@
-import { authedFetch, requireAuth, logout, apiFetch } from "./api.js";
+import { authedFetch, requireAuth, logout } from "./api.js";
 
 let user;
 let dueFlashcards = [];
@@ -69,7 +69,7 @@ async function init() {
     });
   });
 
-  // 2. Wire Dynamic Simulation Generator (with credentials: 'include')
+  // 2. Wire Dynamic Simulation Generator (Upgraded to authedFetch)
   const generateSimBtn = document.getElementById("generateSimBtn");
   if (generateSimBtn) {
     generateSimBtn.addEventListener("click", async () => {
@@ -79,15 +79,14 @@ async function init() {
       generateSimBtn.disabled = true;
       generateSimBtn.textContent = "AI Synthesizing 3D Env...";
       try {
-        const schema = await apiFetch("/diagrams/generate-sim/", {
+        const schema = await authedFetch("/diagrams/generate-sim/", {
           method: "POST",
-          credentials: "include", // Ensures HttpOnly cookies (nc_access) are transmitted
           body: JSON.stringify({ topic })
         });
         sessionStorage.setItem("active_sim_schema", JSON.stringify(schema));
         window.location.href = `simulator.html?topic=${encodeURIComponent(topic)}`;
       } catch (err) {
-        alert("Failed to generate simulation. Please check your session or provider keys.");
+        alert("Failed to generate simulation. Please check your provider keys.");
       } finally {
         generateSimBtn.disabled = false;
         generateSimBtn.textContent = "Generate Live Simulation";
@@ -206,7 +205,7 @@ async function init() {
     });
   }
 
-  // 6. Wire PDF Upload
+  // 6. Wire PDF Upload (Upgraded to authedFetch)
   const uploadPdfBtn = document.getElementById("uploadPdfBtn");
   if (uploadPdfBtn) {
     uploadPdfBtn.addEventListener("click", async () => {
@@ -221,14 +220,10 @@ async function init() {
       formData.append("file", fileInput.files[0]);
 
       try {
-        const res = await fetch("/api/documents/upload/", {
+        const newDoc = await authedFetch("/documents/upload/", {
           method: "POST",
-          credentials: "include", 
           body: formData
         });
-        
-        if (!res.ok) throw new Error("Upload failed");
-        const newDoc = await res.json();
         
         alert("Document uploaded successfully! Loading viewer...");
         
@@ -247,7 +242,7 @@ async function init() {
     });
   }
 
-  // 7. Flashcard Actions
+  // 7. Flashcard Actions (Upgraded to authedFetch)
   const fcShowBtn = document.getElementById("fcShowBtn");
   if (fcShowBtn) {
     fcShowBtn.addEventListener("click", () => {
@@ -262,9 +257,8 @@ async function init() {
       const quality = parseInt(e.target.getAttribute("data-q"));
       const cardId = dueFlashcards[currentFcIndex].id;
       try {
-        await apiFetch(`/flashcards/review/${cardId}/`, {
+        await authedFetch(`/flashcards/review/${cardId}/`, {
           method: "POST",
-          credentials: "include",
           body: JSON.stringify({ quality })
         });
       } catch (err) {
@@ -361,6 +355,7 @@ async function loadDocuments() {
         fileNameEl.textContent = currentSelectedDoc.filename || currentSelectedDoc.title;
         
         if (viewer) {
+          // Fallback to storage_key or document id so it never resolves to undefined
           const fileKey = currentSelectedDoc.storage_key || currentSelectedDoc.id;
           viewer.innerHTML = `<iframe src="/api/documents/media/${fileKey}/" style="width:100%; height:100%; border:none; background:#ffffff;"></iframe>`;
         }

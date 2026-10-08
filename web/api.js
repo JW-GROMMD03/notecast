@@ -28,22 +28,31 @@ export function clearCachedUser() {
 }
 
 /** Core fetch wrapper. Always sends cookies; attaches the CSRF header on
-- any state-changing method (GET/HEAD are exempt — they can't mutate
-- anything, so there's nothing for CSRF to protect there). */
+ * any state-changing method (GET/HEAD are exempt). 
+ * Intelligently handles FormData (file uploads) without breaking Content-Type boundaries. */
 export async function apiFetch(path, options = {}) {
   const method = (options.method || "GET").toUpperCase();
   const needsCsrf = !["GET", "HEAD"].includes(method);
+  
+  const headers = {
+    ...(needsCsrf ? csrfHeaders() : {}),
+    ...(options.headers || {}),
+  };
+
+  // Only set application/json automatically if we are NOT sending FormData (like file uploads)
+  if (options.body && !(options.body instanceof FormData) && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+
   const resp = await fetch(`${API_BASE}${path}`, {
     ...options,
-    credentials: "include", // This is what tells the browser to attach the cookies
-    headers: {
-      "Content-Type": "application/json",
-      ...(needsCsrf ? csrfHeaders() : {}),
-      ...(options.headers || {}),
-    },
+    credentials: "include", // Ensures cookies are transmitted
+    headers,
   });
+  
   const ct = resp.headers.get("content-type") || "";
   const body = ct.includes("application/json") ? await resp.json().catch(() => ({})) : null;
+  
   if (!resp.ok) {
     const err = new Error((body && body.detail) || `Request failed (${resp.status})`);
     err.status = resp.status;
@@ -53,9 +62,8 @@ export async function apiFetch(path, options = {}) {
 }
 
 /** Tries a normal authenticated request; on a 401 (expired access token)
-- attempts one silent refresh via the httpOnly refresh cookie, then
-- retries once. This is what lets a session survive past the short
-- access-token lifetime without the user noticing. */
+ * attempts one silent refresh via the httpOnly refresh cookie, then
+ * retries once. This allows sessions to survive access-token expiration seamlessly. */
 export async function authedFetch(path, options = {}) {
   try {
     return await apiFetch(path, options);
@@ -68,14 +76,11 @@ export async function authedFetch(path, options = {}) {
       window.location.href = "login.html";
       throw err;
     }
-    return apiFetch(path, options); // retry once with the refreshed cookie
+    return apiFetch(path, options); // Retry once with the newly minted access cookie
   }
 }
 
-/** Call at the top of any page that requires a signed-in user. Verifies
-- with the server (never trusts a merely-cached display name) and
-- redirects to login if there's no valid session even after a refresh
-- attempt. Returns the verified user so the page can render it. */
+/** Call at the top of any page that requires a signed-in user. */
 export async function requireAuth() {
   try {
     const user = await authedFetch("/auth/me");
