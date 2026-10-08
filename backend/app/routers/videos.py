@@ -11,7 +11,8 @@ from ..services import llm
 from ..workers import pipeline
 from ..config import settings
 
-router = APIRouter(tags=["videos"])
+# Added prefix="/videos" so all routes automatically start with /videos
+router = APIRouter(prefix="/videos", tags=["videos"])
 
 
 def get_real_image_path(storage_key):
@@ -78,7 +79,8 @@ def get_pptx_safe_image_path(real_path):
         return real_path
 
 
-@router.get("/videos", response_model=List[schemas.VideoOut])
+@router.get("", response_model=List[schemas.VideoOut])
+@router.get("/", response_model=List[schemas.VideoOut])
 def list_videos(user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
     return (
         db.query(models.Video)
@@ -88,7 +90,8 @@ def list_videos(user: models.User = Depends(auth.get_current_user), db: DbSessio
     )
 
 
-@router.get("/videos/{video_id}", response_model=schemas.VideoOut)
+@router.get("/{video_id}", response_model=schemas.VideoOut)
+@router.get("/{video_id}/", response_model=schemas.VideoOut)
 def get_video(video_id: str, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
     video = db.query(models.Video).filter(models.Video.id == video_id, models.Video.user_id == user.id).first()
     if not video:
@@ -96,11 +99,12 @@ def get_video(video_id: str, user: models.User = Depends(auth.get_current_user),
     return video
 
 
-@router.post("/videos", response_model=schemas.VideoOut)
+@router.post("", response_model=schemas.VideoOut)
+@router.post("/", response_model=schemas.VideoOut)
 def create_video(body: schemas.VideoCreateIn, request: Request, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
     """Step 0.3: extension sends scraped YouTube metadata; we create (or
     reuse) the video row. Actual capture starts once /sessions is called."""
-    auth.verify_csrf(request)  # no-op for Bearer (extension) callers; enforced for cookie-mode web callers
+    auth.verify_csrf(request)
     existing = (
         db.query(models.Video)
         .filter(models.Video.user_id == user.id, models.Video.youtube_id == body.youtube_id, models.Video.status != "completed")
@@ -122,7 +126,8 @@ def create_video(body: schemas.VideoCreateIn, request: Request, user: models.Use
     return video
 
 
-@router.post("/videos/{video_id}/consent")
+@router.post("/{video_id}/consent", response_model=dict)
+@router.post("/{video_id}/consent/", response_model=dict)
 def give_consent(video_id: str, body: schemas.ConsentIn, request: Request, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
     """Step 0.2: DPIA consent gate — required before a session can start."""
     auth.verify_csrf(request)
@@ -134,10 +139,10 @@ def give_consent(video_id: str, body: schemas.ConsentIn, request: Request, user:
     return {"ok": True}
 
 
-@router.post("/videos/{video_id}/sessions", response_model=schemas.SessionOut)
+@router.post("/{video_id}/sessions", response_model=schemas.SessionOut)
+@router.post("/{video_id}/sessions/", response_model=schemas.SessionOut)
 def start_session(video_id: str, request: Request, seed_transcript: str = "", user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
-    """Step 0.4-0.5: build the topic model and open a capture session.
-    Requires a prior consent record for this video."""
+    """Step 0.4-0.5: build the topic model and open a capture session."""
     auth.verify_csrf(request)
     video = db.query(models.Video).filter(models.Video.id == video_id, models.Video.user_id == user.id).first()
     if not video:
@@ -158,7 +163,8 @@ def start_session(video_id: str, request: Request, seed_transcript: str = "", us
     return session
 
 
-@router.post("/videos/{video_id}/finalize")
+@router.post("/{video_id}/finalize", response_model=dict)
+@router.post("/{video_id}/finalize/", response_model=dict)
 def finalize(video_id: str, request: Request, background_tasks: BackgroundTasks, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
     """Step 4.0: video playback ended — kick off reorganize/enrich/verify/export."""
     auth.verify_csrf(request)
@@ -172,7 +178,8 @@ def finalize(video_id: str, request: Request, background_tasks: BackgroundTasks,
     return {"ok": True, "status": "processing"}
 
 
-@router.get("/videos/{video_id}/download-pdf")
+@router.get("/{video_id}/download-pdf")
+@router.get("/{video_id}/download-pdf/")
 def download_pdf(video_id: str, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
     """Download all visual captures and slides as a magnificent, professionally formatted PDF document."""
     video = db.query(models.Video).filter(models.Video.id == video_id, models.Video.user_id == user.id).first()
@@ -292,7 +299,8 @@ def download_pdf(video_id: str, user: models.User = Depends(auth.get_current_use
         raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
 
 
-@router.get("/videos/{video_id}/download-ppt")
+@router.get("/{video_id}/download-ppt")
+@router.get("/{video_id}/download-ppt/")
 def download_ppt(video_id: str, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
     """Download all visual captures and slides as a modern, professionally designed PowerPoint presentation (.pptx)."""
     video = db.query(models.Video).filter(models.Video.id == video_id, models.Video.user_id == user.id).first()
