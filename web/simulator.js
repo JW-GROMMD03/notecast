@@ -1,32 +1,53 @@
 // ============================================================================
-// NOTECAST AI 3D KNOWLEDGE SIMULATOR ENGINE (THREE.JS)
+// NOTECAST AI 3D KNOWLEDGE SIMULATOR ENGINE (THREE.JS - PRODUCTION GRADE)
 // Domain-Agnostic: Renders Biology, Physics, Tech, Anatomy, and Chemistry in True 3D
 // ============================================================================
 
-const canvas = document.getElementById('simCanvas');
-const container = document.getElementById('canvasContainer');
-const labelsContainer = document.getElementById('labelsContainer');
-const controlsContainer = document.getElementById('controlsContainer');
-const cycleMetric = document.getElementById('cycleMetric');
-const explanationText = document.getElementById('explanationText');
-const voiceSelect = document.getElementById('voiceSelect');
-const speakBtn = document.getElementById('speakBtn');
-const stopSpeakBtn = document.getElementById('stopSpeakBtn');
+"use strict";
 
-let width = container.clientWidth;
-let height = container.clientHeight;
+const CONFIG = {
+  clearColor: 0x030712,
+  cameraFov: 55,
+  nearClip: 0.1,
+  farClip: 1000,
+  dampingFactor: 0.05,
+  particleBaseSpeed: 0.003
+};
+
+// DOM Element References
+const DOM = {
+  canvas: document.getElementById('simCanvas'),
+  container: document.getElementById('canvasContainer'),
+  labelsContainer: document.getElementById('labelsContainer'),
+  controlsContainer: document.getElementById('controlsContainer'),
+  cycleMetric: document.getElementById('cycleMetric'),
+  explanationText: document.getElementById('explanationText'),
+  voiceSelect: document.getElementById('voiceSelect'),
+  speakBtn: document.getElementById('speakBtn'),
+  stopSpeakBtn: document.getElementById('stopSpeakBtn'),
+  headerTitle: document.getElementById('headerTitle'),
+  simHeading: document.getElementById('simHeading'),
+  simDesc: document.getElementById('simDesc')
+};
+
+let width = DOM.container.clientWidth;
+let height = DOM.container.clientHeight;
 
 // ============================================================================
 // 1. DATA SCHEMA INGESTION & ROBUST ACADEMIC FALLBACK
 // ============================================================================
 let schema = null;
 try {
-  schema = JSON.parse(sessionStorage.getItem("active_sim_schema"));
-} catch (e) {
-  console.warn("No active schema found in session storage. Loading default 3D environment.");
+  const storedSchema = sessionStorage.getItem("active_sim_schema");
+  if (storedSchema) {
+    schema = JSON.parse(storedSchema);
+    console.info("📥 Successfully ingested dynamic simulation schema from session storage.");
+  }
+} catch (err) {
+  console.warn("⚠️ Failed to parse active_sim_schema from sessionStorage. Falling back to default environment.", err);
 }
 
-// Comprehensive default fallback schema if the user directly navigates to the page
+// Comprehensive default fallback schema if accessed directly
 if (!schema || !schema.nodes) {
   schema = {
     title: "Human Digestive Process (Advanced 3D)",
@@ -51,27 +72,33 @@ if (!schema || !schema.nodes) {
   };
 }
 
-// Populate UI Headers & Lecture Content
-document.getElementById('headerTitle').textContent = schema.title;
-document.getElementById('simHeading').textContent = "Conditions & Factors";
-document.getElementById('simDesc').textContent = schema.description;
-explanationText.innerHTML = schema.detailed_lecture || "Detailed academic lecture generating...";
+// Initialize UI Metadata Headers
+DOM.headerTitle.textContent = schema.title;
+DOM.simHeading.textContent = "Conditions & Factors";
+DOM.simDesc.textContent = schema.description;
+DOM.explanationText.innerHTML = schema.detailed_lecture || "Synthesizing academic lecture breakdown...";
 
 // ============================================================================
-// 2. TEXT-TO-SPEECH (WEB SPEECH API) ENGINE
+// 2. TEXT-TO-SPEECH (WEB SPEECH API) ENGINE WITH ERROR HANDLING
 // ============================================================================
 let voices = [];
 function populateVoices() {
   if (!window.speechSynthesis) return;
-  voices = window.speechSynthesis.getVoices();
-  voiceSelect.innerHTML = "";
-  voices.forEach((v, index) => {
-    const option = document.createElement('option');
-    option.value = index;
-    option.textContent = `${v.name} (${v.lang})`;
-    if (v.default || v.lang.includes('en-GB') || v.lang.includes('en-US')) option.selected = true;
-    voiceSelect.appendChild(option);
-  });
+  try {
+    voices = window.speechSynthesis.getVoices();
+    DOM.voiceSelect.innerHTML = "";
+    voices.forEach((v, index) => {
+      const option = document.createElement('option');
+      option.value = index;
+      option.textContent = `${v.name} (${v.lang})`;
+      if (v.default || v.lang.includes('en-GB') || v.lang.includes('en-US')) {
+        option.selected = true;
+      }
+      DOM.voiceSelect.appendChild(option);
+    });
+  } catch (err) {
+    console.error("❌ Error populating speech synthesis voices:", err);
+  }
 }
 
 if (window.speechSynthesis) {
@@ -79,29 +106,41 @@ if (window.speechSynthesis) {
   window.speechSynthesis.onvoiceschanged = populateVoices;
 }
 
-speakBtn.addEventListener('click', () => {
-  if (!window.speechSynthesis) return alert("Text-to-speech not supported in this browser.");
+DOM.speakBtn.addEventListener('click', () => {
+  if (!window.speechSynthesis) {
+    alert("Text-to-speech is not supported in your browser.");
+    return;
+  }
   window.speechSynthesis.cancel();
   
-  const cleanText = explanationText.innerHTML.replace(/<[^>]*>?/gm, ''); 
-  const utterance = new SpeechSynthesisUtterance(cleanText);
-  if (voices[voiceSelect.value]) utterance.voice = voices[voiceSelect.value];
-  utterance.rate = 0.95;
-  utterance.pitch = 1.0;
-  window.speechSynthesis.speak(utterance);
+  try {
+    const cleanText = DOM.explanationText.innerHTML.replace(/<[^>]*>?/gm, ''); 
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    const selectedVoiceIndex = parseInt(DOM.voiceSelect.value, 10);
+    if (!isNaN(selectedVoiceIndex) && voices[selectedVoiceIndex]) {
+      utterance.voice = voices[selectedVoiceIndex];
+    }
+    utterance.rate = 0.95;
+    utterance.pitch = 1.0;
+    window.speechSynthesis.speak(utterance);
+  } catch (err) {
+    console.error("❌ Speech synthesis execution failed:", err);
+  }
 });
 
-stopSpeakBtn.addEventListener('click', () => {
-  if (window.speechSynthesis) window.speechSynthesis.cancel();
+DOM.stopSpeakBtn.addEventListener('click', () => {
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
 });
 
 // ============================================================================
-// 3. DYNAMIC UNLIMITED CONDITIONS & PARAMETERS UI (PLAY/PAUSE & CONTROLS)
+// 3. DYNAMIC UNLIMITED CONDITIONS & PARAMETERS UI
 // ============================================================================
 const runtimeParams = {};
 let isSimulationPaused = false;
 
-// Add Simulation Play/Pause Toggle to Control Pane
+// Append Playback Control Group
 const playbackGroup = document.createElement('div');
 playbackGroup.className = 'control-group';
 playbackGroup.innerHTML = `
@@ -111,7 +150,7 @@ playbackGroup.innerHTML = `
     <button id="resetCyclesBtn" class="btn-outline" style="flex:1; font-size: 0.8rem;">🔄 Reset Clock</button>
   </div>
 `;
-controlsContainer.appendChild(playbackGroup);
+DOM.controlsContainer.appendChild(playbackGroup);
 
 document.getElementById('pauseSimBtn').addEventListener('click', (e) => {
   isSimulationPaused = !isSimulationPaused;
@@ -121,11 +160,11 @@ document.getElementById('pauseSimBtn').addEventListener('click', (e) => {
 
 document.getElementById('resetCyclesBtn').addEventListener('click', () => {
   cycles = 0;
-  cycleMetric.textContent = cycles;
+  DOM.cycleMetric.textContent = cycles;
 });
 
-// Build dynamic parameters from schema
-if (schema.parameters && schema.parameters.length > 0) {
+// Build dynamic parameters from schema definition
+if (schema.parameters && Array.isArray(schema.parameters)) {
   schema.parameters.forEach(param => {
     runtimeParams[param.id] = param.default;
     const group = document.createElement('div');
@@ -155,160 +194,181 @@ if (schema.parameters && schema.parameters.length > 0) {
       label.innerHTML = `${param.label} <span id="val_${param.id}" style="color: #fff;">${param.default}</span>`;
       const slider = document.createElement('input');
       slider.type = 'range';
-      slider.min = param.min || 1;
-      slider.max = param.max || 10;
-      slider.step = (param.max - param.min) > 20 ? "1" : "0.1";
+      slider.min = param.min !== undefined ? param.min : 1;
+      slider.max = param.max !== undefined ? param.max : 10;
+      slider.step = (slider.max - slider.min) > 20 ? "1" : "0.1";
       slider.value = param.default;
       
       slider.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
         runtimeParams[param.id] = val;
-        document.getElementById(`val_${param.id}`).textContent = val;
+        const valSpan = document.getElementById(`val_${param.id}`);
+        if (valSpan) valSpan.textContent = val;
       });
       
       group.appendChild(label);
       group.appendChild(slider);
     }
-    controlsContainer.appendChild(group);
+    DOM.controlsContainer.appendChild(group);
   });
 }
 
 // ============================================================================
-// 4. THREE.JS 3D SCENE & ENGINE SETUP
+// 4. THREE.JS 3D SCENE, CAMERA, & LIGHTING SETUP
 // ============================================================================
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#030712');
+scene.background = new THREE.Color(CONFIG.clearColor);
 
-const camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1000);
-camera.position.set(0, 0, 15);
+const camera = new THREE.PerspectiveCamera(CONFIG.cameraFov, width / height, CONFIG.nearClip, CONFIG.farClip);
+camera.position.set(0, 0, 16);
 
-const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false });
+const renderer = new THREE.WebGLRenderer({ canvas: DOM.canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
 renderer.setSize(width, height);
-renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-// Lighting Suite
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+// Professional Lighting Suite
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
 scene.add(ambientLight);
 
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1.4);
 directionalLight.position.set(15, 25, 20);
+directionalLight.castShadow = true;
 scene.add(directionalLight);
 
-const backLight = new THREE.PointLight(0x3b82f6, 2, 60);
-backLight.position.set(-15, -15, -15);
-scene.add(backLight);
+const pointLight = new THREE.PointLight(0x3b82f6, 2.0, 60);
+pointLight.position.set(-15, -15, -15);
+scene.add(pointLight);
 
+// Orbit Controls Configuration
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.dampingFactor = 0.05;
+controls.dampingFactor = CONFIG.dampingFactor;
 controls.minDistance = 2;
 controls.maxDistance = 60;
 
+// Debounced Window Resize Listener
+let resizeTimeout;
 window.addEventListener('resize', () => {
-  width = container.clientWidth;
-  height = container.clientHeight;
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
-  renderer.setSize(width, height);
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(() => {
+    width = DOM.container.clientWidth;
+    height = DOM.container.clientHeight;
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    renderer.setSize(width, height);
+  }, 100);
 });
 
 // ============================================================================
-// 5. DOMAIN-AGNOSTIC 3D SHAPE BUILDER
+// 5. ENHANCED PROCEDURAL 3D SHAPE & MESH BUILDER
 // ============================================================================
 const nodeObjects = {};
 const labels = [];
 const nodeMeshesArray = [];
 
-schema.nodes.forEach(n => {
-  let geometry;
-  const shape = (n.shape_3d || 'sphere').toLowerCase();
-  
-  if (shape === 'organic' || shape === 'stomach') {
-    geometry = new THREE.SphereGeometry(1.4, 32, 32);
-    const positions = geometry.attributes.position;
-    for (let i = 0; i < positions.count; i++) {
-      let y = positions.getY(i);
-      let x = positions.getX(i);
-      let z = positions.getZ(i);
-      positions.setX(i, x * (1 + y * 0.25)); 
-      positions.setY(i, y * 1.15);         
-      positions.setZ(i, z * 0.85);         
+if (schema.nodes && Array.isArray(schema.nodes)) {
+  schema.nodes.forEach(n => {
+    let geometry;
+    const shape = (n.shape_3d || 'sphere').toLowerCase();
+    
+    if (shape === 'organic' || shape === 'stomach') {
+      geometry = new THREE.SphereGeometry(1.4, 32, 32);
+      const positions = geometry.attributes.position;
+      for (let i = 0; i < positions.count; i++) {
+        let y = positions.getY(i);
+        let x = positions.getX(i);
+        let z = positions.getZ(i);
+        positions.setX(i, x * (1 + y * 0.25)); 
+        positions.setY(i, y * 1.15);         
+        positions.setZ(i, z * 0.85);         
+      }
+      geometry.computeVertexNormals();
+    } else if (shape === 'tube' || shape === 'intestine') {
+      geometry = new THREE.TorusGeometry(1.3, 0.5, 16, 64, Math.PI * 1.6);
+    } else if (shape === 'cube' || shape === 'server') {
+      geometry = new THREE.BoxGeometry(1.8, 1.8, 1.8);
+    } else {
+      geometry = new THREE.SphereGeometry(1.3, 64, 64);
     }
-    geometry.computeVertexNormals();
-  } else if (shape === 'tube' || shape === 'intestine') {
-    geometry = new THREE.TorusGeometry(1.3, 0.5, 16, 64, Math.PI * 1.6);
-  } else if (shape === 'cube' || shape === 'server') {
-    geometry = new THREE.BoxGeometry(1.8, 1.8, 1.8);
-  } else {
-    geometry = new THREE.SphereGeometry(1.3, 64, 64);
-  }
 
-  const material = new THREE.MeshStandardMaterial({ 
-    color: n.color || '#3b82f6', 
-    roughness: 0.22,
-    metalness: 0.25,
-    emissive: new THREE.Color(n.color || '#3b82f6').multiplyScalar(0.15)
+    const material = new THREE.MeshStandardMaterial({ 
+      color: n.color || '#3b82f6', 
+      roughness: 0.22,
+      metalness: 0.25,
+      emissive: new THREE.Color(n.color || '#3b82f6').multiplyScalar(0.18)
+    });
+    
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(
+      n.x !== undefined ? n.x : (Math.random() * 8 - 4), 
+      n.y !== undefined ? n.y : (Math.random() * 8 - 4), 
+      n.z !== undefined ? n.z : (Math.random() * 4 - 2)
+    );
+    
+    mesh.userData = { 
+      id: n.id, 
+      label: n.label, 
+      description: n.description || schema.description, 
+      color: n.color 
+    };
+    
+    scene.add(mesh);
+    nodeObjects[n.id] = mesh;
+    nodeMeshesArray.push(mesh);
+
+    // HTML Overlay Label
+    const label = document.createElement('div');
+    label.className = 'node-label';
+    label.textContent = n.label;
+    DOM.labelsContainer.appendChild(label);
+    labels.push({ element: label, mesh: mesh });
   });
-  
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.position.set(n.x || (Math.random()*8-4), n.y || (Math.random()*8-4), n.z || (Math.random()*4-2));
-  
-  mesh.userData = { id: n.id, label: n.label, description: n.description || schema.description, color: n.color };
-  
-  scene.add(mesh);
-  nodeObjects[n.id] = mesh;
-  nodeMeshesArray.push(mesh);
-
-  // HTML Overlay Label
-  const label = document.createElement('div');
-  label.className = 'node-label';
-  label.textContent = n.label;
-  labelsContainer.appendChild(label);
-  labels.push({ element: label, mesh: mesh });
-});
+}
 
 // ============================================================================
 // 6. 3D BEZIER CURVES FOR EDGES & CONNECTORS
 // ============================================================================
 const curves = [];
-schema.edges.forEach(e => {
-  const fromMesh = nodeObjects[e.from];
-  const toMesh = nodeObjects[e.to];
-  
-  if (fromMesh && toMesh) {
-    const start = fromMesh.position;
-    const end = toMesh.position;
+if (schema.edges && Array.isArray(schema.edges)) {
+  schema.edges.forEach(e => {
+    const fromMesh = nodeObjects[e.from];
+    const toMesh = nodeObjects[e.to];
     
-    const midPoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
-    midPoint.y += 1.8; 
-    midPoint.z += 1.8;
+    if (fromMesh && toMesh) {
+      const start = fromMesh.position;
+      const end = toMesh.position;
+      
+      const midPoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+      midPoint.y += 1.8; 
+      midPoint.z += 1.8;
 
-    const curve = new THREE.QuadraticBezierCurve3(start, midPoint, end);
-    curves.push({ curve: curve, edge: e });
+      const curve = new THREE.QuadraticBezierCurve3(start, midPoint, end);
+      curves.push({ curve: curve, edge: e });
 
-    const points = curve.getPoints(60);
-    const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0x334155, linewidth: 2, transparent: true, opacity: 0.55 });
-    const splineObject = new THREE.Line(lineGeo, lineMat);
-    scene.add(splineObject);
-  }
-});
+      const points = curve.getPoints(60);
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x334155, linewidth: 2, transparent: true, opacity: 0.6 });
+      const splineObject = new THREE.Line(lineGeo, lineMat);
+      scene.add(splineObject);
+    }
+  });
+}
 
 // ============================================================================
-// 7. INTERACTIVE RAYCASTER & NODE INSPECTION MODAL
+// 7. INTERACTIVE RAYCASTER & NODE INSPECTION CARD
 // ============================================================================
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
-// Create inspection card overlay in bottom right of canvas
 const infoCard = document.createElement('div');
-infoCard.style.cssText = "position:absolute; bottom:24px; right:24px; background:rgba(15,23,42,0.92); border:1px solid #3b82f6; padding:16px; border-radius:12px; color:#fff; max-width:280px; display:none; backdrop-filter:blur(8px); z-index:10; box-shadow:0 10px 25px rgba(0,0,0,0.6);";
-infoCard.innerHTML = `<h4 id="cardTitle" style="margin:0 0 6px 0; color:#60a5fa; font-size:0.95rem;"></h4><p id="cardDesc" style="margin:0; font-size:0.82rem; color:#cbd5e1; line-height:1.5;"></p>`;
-container.appendChild(infoCard);
+infoCard.style.cssText = "position:absolute; bottom:24px; right:24px; background:rgba(15,23,42,0.95); border:1px solid #3b82f6; padding:18px; border-radius:12px; color:#fff; max-width:300px; display:none; backdrop-filter:blur(10px); z-index:10; box-shadow:0 12px 30px rgba(0,0,0,0.7);";
+infoCard.innerHTML = `<h4 id="cardTitle" style="margin:0 0 8px 0; color:#60a5fa; font-size:1rem;"></h4><p id="cardDesc" style="margin:0; font-size:0.85rem; color:#cbd5e1; line-height:1.6;"></p>`;
+DOM.container.appendChild(infoCard);
 
-container.addEventListener('click', (event) => {
-  const rect = container.getBoundingClientRect();
+DOM.container.addEventListener('click', (event) => {
+  const rect = DOM.container.getBoundingClientRect();
   mouse.x = ((event.clientX - rect.left) / width) * 2 - 1;
   mouse.y = -((event.clientY - rect.top) / height) * 2 + 1;
 
@@ -318,11 +378,11 @@ container.addEventListener('click', (event) => {
   if (intersects.length > 0) {
     const clickedMesh = intersects[0].object;
     
-    // Scale bump feedback
+    // Scale bump feedback animation
     clickedMesh.scale.set(1.25, 1.25, 1.25);
     setTimeout(() => { clickedMesh.scale.set(1, 1, 1); }, 250);
     
-    // Show inspection card
+    // Display inspection card content
     document.getElementById('cardTitle').textContent = clickedMesh.userData.label;
     document.getElementById('cardDesc').textContent = clickedMesh.userData.description;
     infoCard.style.display = "block";
@@ -365,7 +425,7 @@ function animate(time) {
         mesh: pMesh,
         curve: randomCurveObj.curve,
         progress: 0,
-        speed: 0.003 + (speedMod * 0.0009)
+        speed: CONFIG.particleBaseSpeed + (speedMod * 0.0009)
       });
       lastSpawnTime = time;
     }
@@ -379,7 +439,7 @@ function animate(time) {
         scene.remove(p.mesh);
         particles.splice(i, 1);
         cycles++;
-        cycleMetric.textContent = cycles;
+        DOM.cycleMetric.textContent = cycles;
       } else {
         const point = p.curve.getPointAt(p.progress);
         p.mesh.position.copy(point);
