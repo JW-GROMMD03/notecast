@@ -11,6 +11,7 @@ logger = logging.getLogger("notecast_flashcards")
 
 
 @router.get("/due", response_model=List[schemas.FlashcardOut])
+@router.get("/due/", response_model=List[schemas.FlashcardOut])
 def get_due_flashcards(
     db: DbSession = Depends(get_db),
     user: models.User = Depends(auth.get_current_user)
@@ -24,6 +25,7 @@ def get_due_flashcards(
 
 
 @router.post("/review/{card_id}", response_model=schemas.FlashcardOut)
+@router.post("/review/{card_id}/", response_model=schemas.FlashcardOut)
 def review_flashcard(
     card_id: str,
     body: schemas.FlashcardReviewIn,
@@ -43,7 +45,6 @@ def review_flashcard(
     q = body.quality
     
     # Calculate Ease Factor (EF)
-    # EF' = EF + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02))
     new_ef = card.ease_factor + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02))
     card.ease_factor = max(1.3, new_ef) # Minimum EF threshold
 

@@ -13,6 +13,7 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 logger = logging.getLogger("notecast_documents")
 
 
+@router.post("/upload", response_model=schemas.DocumentOut, status_code=status.HTTP_201_CREATED)
 @router.post("/upload/", response_model=schemas.DocumentOut, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     background_tasks: BackgroundTasks,
@@ -24,11 +25,13 @@ async def upload_document(
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF documents are supported currently.")
 
-    os.makedirs(settings.storage_path, exist_ok=True)
+    storage_dir = getattr(settings, "storage_path", "media")
+    os.makedirs(storage_dir, exist_ok=True)
+    
     doc_id = f"doc_{uuid.uuid4().hex[:12]}"
     file_ext = os.path.splitext(file.filename)[1]
     storage_filename = f"{doc_id}{file_ext}"
-    file_path = os.path.join(settings.storage_path, storage_filename)
+    file_path = os.path.join(storage_dir, storage_filename)
 
     try:
         contents = await file.read()
@@ -53,6 +56,7 @@ async def upload_document(
     return new_doc
 
 
+@router.get("", response_model=List[schemas.DocumentOut])
 @router.get("/", response_model=List[schemas.DocumentOut])
 def list_documents(
     db: DbSession = Depends(get_db),
@@ -62,28 +66,50 @@ def list_documents(
     return db.query(models.Document).filter(models.Document.user_id == user.id).all()
 
 
-@router.get("/media/{storage_key}/")
+@router.get("/media/{storage_key}", response_class=FileResponse)
+@router.get("/media/{storage_key}/", response_class=FileResponse)
 def get_document_media(
     storage_key: str,
     db: DbSession = Depends(get_db),
     user: models.User = Depends(auth.get_current_user)
 ):
-    """Directly streams the PDF binary for the frontend document viewer iframe."""
+    """Directly streams the PDF binary for the frontend document viewer iframe with robust path fallback."""
+    clean_key = storage_key.strip("/\\")
+    
+    # Query document matching storage key or ID
     doc = db.query(models.Document).filter(
-        models.Document.storage_key == storage_key,
+        models.Document.storage_key == clean_key,
         models.Document.user_id == user.id
     ).first()
     
     if not doc:
+        doc = db.query(models.Document).filter(
+            models.Document.id == clean_key,
+            models.Document.user_id == user.id
+        ).first()
+        
+    if not doc:
         raise HTTPException(status_code=404, detail="Document file not found or unauthorized.")
         
-    file_path = os.path.join(settings.storage_path, storage_key)
+    # Robust path resolution across storage configurations
+    base_dir = getattr(settings, "storage_path", "media")
+    file_path = os.path.join(base_dir, doc.storage_key)
+    
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Physical file missing on server storage.")
+        file_path = os.path.abspath(file_path)
+    if not os.path.exists(file_path):
+        file_path = os.path.join(os.getcwd(), doc.storage_key)
+    if not os.path.exists(file_path):
+        file_path = os.path.join(os.getcwd(), "media", doc.storage_key)
+
+    if not os.path.exists(file_path) or not os.path.isfile(file_path):
+        logger.error(f"Physical file missing on server storage for key: {doc.storage_key} at path: {file_path}")
+        raise HTTPException(status_code=404, detail=f"Physical PDF file missing on server storage.")
         
     return FileResponse(file_path, media_type="application/pdf", filename=doc.filename)
 
 
+@router.get("/{doc_id}", response_model=schemas.DocumentOut)
 @router.get("/{doc_id}/", response_model=schemas.DocumentOut)
 def get_document(
     doc_id: str,
@@ -100,7 +126,8 @@ def get_document(
     return doc
 
 
-@router.get("/{doc_id}/pages/{page_number}/")
+@router.get("/{doc_id}/pages/{page_number}", response_model=dict)
+@router.get("/{doc_id}/pages/{page_number}/", response_model=dict)
 def get_document_page_cache(
     doc_id: str,
     page_number: int,
