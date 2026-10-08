@@ -69,7 +69,7 @@ async function init() {
     });
   });
 
-  // 2. Wire Dynamic Simulation Generator
+  // 2. Wire Dynamic Simulation Generator (with credentials: 'include')
   const generateSimBtn = document.getElementById("generateSimBtn");
   if (generateSimBtn) {
     generateSimBtn.addEventListener("click", async () => {
@@ -81,12 +81,13 @@ async function init() {
       try {
         const schema = await apiFetch("/diagrams/generate-sim/", {
           method: "POST",
+          credentials: "include", // Ensures HttpOnly cookies (nc_access) are transmitted
           body: JSON.stringify({ topic })
         });
         sessionStorage.setItem("active_sim_schema", JSON.stringify(schema));
         window.location.href = `simulator.html?topic=${encodeURIComponent(topic)}`;
       } catch (err) {
-        alert("Failed to generate simulation. Please check your provider keys.");
+        alert("Failed to generate simulation. Please check your session or provider keys.");
       } finally {
         generateSimBtn.disabled = false;
         generateSimBtn.textContent = "Generate Live Simulation";
@@ -175,7 +176,7 @@ async function init() {
           genNotesBtn.disabled = false;
           progressSection.style.display = "none";
           
-          const generatedSummary = `# ${currentSelectedDoc.title} — Page ${currentPageNumber}\n\n## Instant Page Snapshot Analysis\n- Captured page successfully.\n- Extracted core formulas and definitions.\n\n[DIAGRAM: Flowchart Box]`;
+          const generatedSummary = `# ${currentSelectedDoc.title} — Page ${currentPageNumber}\n\n## Instant Page Snapshot Analysis\nCaptured page successfully.\nExtracted core formulas and definitions.\n\n[DIAGRAM: Flowchart Box]`;
           pageCache[cacheKey] = generatedSummary;
           
           summaryEditor.value = generatedSummary;
@@ -263,6 +264,7 @@ async function init() {
       try {
         await apiFetch(`/flashcards/review/${cardId}/`, {
           method: "POST",
+          credentials: "include",
           body: JSON.stringify({ quality })
         });
       } catch (err) {
@@ -359,7 +361,6 @@ async function loadDocuments() {
         fileNameEl.textContent = currentSelectedDoc.filename || currentSelectedDoc.title;
         
         if (viewer) {
-          // Fallback to storage_key or document id so it never resolves to undefined
           const fileKey = currentSelectedDoc.storage_key || currentSelectedDoc.id;
           viewer.innerHTML = `<iframe src="/api/documents/media/${fileKey}/" style="width:100%; height:100%; border:none; background:#ffffff;"></iframe>`;
         }
