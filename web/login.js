@@ -35,22 +35,23 @@ async function handleOAuthTokens(accessToken, refreshToken, expiresIn) {
   }
 }
 
-// 1. Intercept OAuth Redirects (Check both Hash and Query parameters)
-const hashParams = new URLSearchParams(window.location.hash.substring(1));
-const queryParams = new URLSearchParams(window.location.search);
+// 1. Initialization logic wrapped in a function (fixes the illegal return error)
+async function checkAuthOnLoad() {
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  const queryParams = new URLSearchParams(window.location.search);
 
-const accessToken = hashParams.get("access_token") || queryParams.get("access_token");
-const refreshToken = hashParams.get("refresh_token") || queryParams.get("refresh_token");
-const expiresIn = hashParams.get("expires_in") || queryParams.get("expires_in") || 3600;
+  const accessToken = hashParams.get("access_token") || queryParams.get("access_token");
+  const refreshToken = hashParams.get("refresh_token") || queryParams.get("refresh_token");
+  const expiresIn = hashParams.get("expires_in") || queryParams.get("expires_in") || 3600;
 
-if (accessToken && refreshToken) {
-  // Clear URL parameters/hash immediately so tokens aren't exposed in the browser bar
-  window.history.replaceState(null, "", window.location.pathname);
-  handleOAuthTokens(accessToken, refreshToken, expiresIn);
-} 
-else {
-  // Check if Supabase stored a session client-side that we can push to the backend
-  // (In case Supabase handled the initial redirect automatically)
+  if (accessToken && refreshToken) {
+    // Clear URL parameters immediately so tokens aren't exposed in the browser bar
+    window.history.replaceState(null, "", window.location.pathname);
+    await handleOAuthTokens(accessToken, refreshToken, expiresIn);
+    return;
+  } 
+
+  // Check if Supabase stored a session client-side
   const supabaseSessionKey = Object.keys(localStorage).find(key => key.includes("supabase.auth.token"));
   
   if (supabaseSessionKey) {
@@ -60,29 +61,30 @@ else {
       const refresh = sessionData?.refresh_token;
       
       if (token && refresh) {
-        // Clean up local storage so we don't loop
         localStorage.removeItem(supabaseSessionKey);
-        handleOAuthTokens(token, refresh, 3600);
+        await handleOAuthTokens(token, refresh, 3600);
         return;
       }
     } catch (e) {
-      // Ignore parse errors and fall through to standard check
+      // Ignore parse errors
     }
   }
 
-  // 2. Standard Session Check (Only run if we aren't handling an OAuth redirect)
-  (async () => {
-    try {
-      const user = await apiFetch("/auth/me");
-      cacheUser(user);
-      window.location.href = "dashboard.html";
-    } catch {
-      /* not signed in — show the form as normal */
-    }
-  })();
+  // Standard Session Check 
+  try {
+    const user = await apiFetch("/auth/me");
+    cacheUser(user);
+    window.location.href = "dashboard.html";
+  } catch {
+    /* not signed in — show the form as normal */
+  }
 }
 
-// 3. Google Sign In Initialization
+// Execute the check when the script loads
+checkAuthOnLoad();
+
+
+// 2. Google Sign In Initialization
 el("googleBtn").addEventListener("click", async () => {
   try {
     const redirectUrl = encodeURIComponent(window.location.origin + "/login.html");
@@ -94,7 +96,7 @@ el("googleBtn").addEventListener("click", async () => {
   }
 });
 
-// 4. Standard Email/Password Login
+// 3. Standard Email/Password Login
 el("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const errorEl = el("formError");
