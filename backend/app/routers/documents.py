@@ -49,9 +49,6 @@ async def upload_document(
     db.commit()
     db.refresh(new_doc)
 
-    # Queue background task to render pages and summarize via Gemini/Groq
-    # background_tasks.add_task(process_pdf_document, new_doc.id)
-
     return new_doc
 
 
@@ -78,3 +75,34 @@ def get_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
     return doc
+
+
+@router.get("/{doc_id}/pages/{page_number}")
+def get_document_page_cache(
+    doc_id: str,
+    page_number: int,
+    db: DbSession = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user)
+):
+    """Checks if a specific page snapshot and summary are cached in the database."""
+    doc = db.query(models.Document).filter(
+        models.Document.id == doc_id,
+        models.Document.user_id == user.id
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    
+    page = db.query(models.DocumentPage).filter(
+        models.DocumentPage.document_id == doc_id,
+        models.DocumentPage.page_number == page_number
+    ).first()
+    
+    if not page:
+        return {"cached": False, "page_number": page_number}
+    
+    return {
+        "cached": True,
+        "page_number": page_number,
+        "ai_analysis": page.ai_analysis,
+        "ocr_text": page.ocr_text
+    }

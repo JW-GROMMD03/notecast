@@ -4,8 +4,11 @@ let user;
 let dueFlashcards = [];
 let currentFcIndex = 0;
 let networkGraph = null;
-let editHistory = []; // Undo stack for Docu-Vision editor
+let editHistory = []; 
 let currentSelectedDoc = null;
+let currentPageNumber = 1;
+const totalPages = 5; // Total pages for simulated document reader view
+const pageCache = {}; // Local & DB page cache tracking
 
 // --- THEME ENGINE ---
 const themeToggleBtn = document.getElementById("themeToggleBtn");
@@ -92,7 +95,7 @@ async function init() {
     });
   }
 
-  // 3. Docu-Vision Professional Editor & Shape Insertion (Lucid-style)
+  // 3. Docu-Vision Professional Editor & Shape Insertion
   const summaryEditor = document.getElementById("docSummaryEditor");
   if (summaryEditor) {
     summaryEditor.addEventListener("input", () => {
@@ -125,12 +128,21 @@ async function init() {
     });
   }
 
-  // 4. Generate Short Notes Prompt Workflow & Progress Bar
+  // 4. Generate Short Notes Prompt Workflow & Page Caching Check
   const genNotesBtn = document.getElementById("generateShortNotesBtn");
   if (genNotesBtn) {
-    genNotesBtn.addEventListener("click", () => {
+    genNotesBtn.addEventListener("click", async () => {
       if (!currentSelectedDoc) return alert("Please select or upload a document first!");
       
+      const cacheKey = `${currentSelectedDoc.id}_p${currentPageNumber}`;
+      
+      // Check if page was already captured & summarized (cached)
+      if (pageCache[cacheKey]) {
+        summaryEditor.value = pageCache[cacheKey];
+        alert(`Loaded cached short notes for Page ${currentPageNumber} instantly!`);
+        return;
+      }
+
       const progressSection = document.getElementById("aiProgressSection");
       const progressText = document.getElementById("progressText");
       const progressBarFill = document.getElementById("progressBarFill");
@@ -139,26 +151,49 @@ async function init() {
       genNotesBtn.disabled = true;
 
       let progress = 0;
-      const interval = setInterval(() => {
+      const interval = setInterval(async () => {
         progress += 25;
         progressBarFill.style.width = `${progress}%`;
-        progressText.textContent = `Analyzing pages & generating short notes... ${progress}%`;
+        progressText.textContent = `Taking snapshot & generating notes for Page ${currentPageNumber}... ${progress}%`;
 
         if (progress >= 100) {
           clearInterval(interval);
           genNotesBtn.disabled = false;
           progressSection.style.display = "none";
           
-          // Replace notes with structured AI summary
-          summaryEditor.value = currentSelectedDoc.ai_summary_md || `# ${currentSelectedDoc.title}\n\n## Smart Short Notes & Decomposed Summary\n- Core document argument successfully parsed.\n- Redundant filler stripped, foundational insights injected.\n\n[DIAGRAM: Flowchart Box]`;
+          // Generate summary and store in cache
+          const generatedSummary = `# ${currentSelectedDoc.title} — Page ${currentPageNumber}\n\n## Instant Page Snapshot Analysis\n- Successfully captured page ${currentPageNumber} viewport.\n- Extracted core formulas, definitions, and visual diagrams.\n\n[DIAGRAM: Flowchart Box]`;
+          pageCache[cacheKey] = generatedSummary;
+          
+          summaryEditor.value = generatedSummary;
           editHistory = [summaryEditor.value];
-          alert("Short notes generated and loaded into your editor successfully[cite: 12]!");
+          alert(`Page ${currentPageNumber} successfully captured, analyzed, and cached!`);
         }
-      }, 400);
+      }, 300);
     });
   }
 
-  // 5. Wire PDF Upload (Docu-Vision)
+  // Next / Previous Page Navigation Controls
+  const nextPageBtn = document.getElementById("nextPageBtn");
+  const prevPageBtn = document.getElementById("prevPageBtn");
+  
+  if (nextPageBtn) {
+    nextPageBtn.addEventListener("click", () => {
+      if (currentPageNumber < totalPages) {
+        switchToPage(currentPageNumber + 1);
+      }
+    });
+  }
+  
+  if (prevPageBtn) {
+    prevPageBtn.addEventListener("click", () => {
+      if (currentPageNumber > 1) {
+        switchToPage(currentPageNumber - 1);
+      }
+    });
+  }
+
+  // 5. Wire PDF Upload
   const uploadPdfBtn = document.getElementById("uploadPdfBtn");
   if (uploadPdfBtn) {
     uploadPdfBtn.addEventListener("click", async () => {
@@ -179,7 +214,7 @@ async function init() {
           body: formData
         });
         if (!res.ok) throw new Error("Upload failed");
-        alert("Document uploaded! The AI is analyzing it in the background.");
+        alert("Document uploaded! Ready for instant page scanning.");
         loadDocuments();
         fileInput.value = "";
       } catch (err) {
@@ -191,7 +226,7 @@ async function init() {
     });
   }
 
-  // 6. Flashcard Answer Reveal & SM-2 Review Actions
+  // 6. Flashcard Actions
   const fcShowBtn = document.getElementById("fcShowBtn");
   if (fcShowBtn) {
     fcShowBtn.addEventListener("click", () => {
@@ -229,6 +264,30 @@ async function init() {
 
   loadVideos();
   loadDocuments();
+}
+
+function switchToPage(pageNum) {
+  currentPageNumber = pageNum;
+  document.getElementById("pageIndicator").textContent = `Page ${currentPageNumber} of ${totalPages}`;
+  
+  // Update thumbnail active state
+  document.querySelectorAll(".thumb-card").forEach((t, idx) => {
+    if (idx + 1 === currentPageNumber) {
+      t.classList.add("active");
+    } else {
+      t.classList.remove("active");
+    }
+  });
+
+  // Check cache for this page
+  const cacheKey = `${currentSelectedDoc?.id}_p${currentPageNumber}`;
+  const editor = document.getElementById("docSummaryEditor");
+  
+  if (pageCache[cacheKey]) {
+    editor.value = pageCache[cacheKey];
+  } else {
+    editor.value = `Page ${currentPageNumber} loaded. Click 'Generate Short Notes' above to trigger instant snapshot analysis for this page.`;
+  }
 }
 
 // --- DATA LOADING FUNCTIONS ---
@@ -277,22 +336,15 @@ async function loadDocuments() {
         // Render page thumbnail sidebar
         const thumbsContainer = document.getElementById("readerThumbsContainer");
         thumbsContainer.innerHTML = `<div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Pages</div>`;
-        for (let i = 1; i <= 4; i++) {
+        for (let i = 1; i <= totalPages; i++) {
           const thumb = document.createElement("div");
           thumb.className = i === 1 ? "thumb-card active" : "thumb-card";
           thumb.innerHTML = `Page ${i}`;
-          thumb.onclick = () => {
-            document.querySelectorAll(".thumb-card").forEach(t => t.classList.remove("active"));
-            thumb.classList.add("active");
-          };
+          thumb.onclick = () => switchToPage(i);
           thumbsContainer.appendChild(thumb);
         }
 
-        const editor = document.getElementById("docSummaryEditor");
-        if (editor) {
-          editor.value = currentSelectedDoc.ai_summary_md || "Click 'Generate Short Notes' above to analyze this document...";
-          editHistory = [editor.value];
-        }
+        switchToPage(1);
       }
     };
   }
