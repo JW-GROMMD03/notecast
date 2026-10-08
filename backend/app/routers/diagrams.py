@@ -34,10 +34,10 @@ async def generate_simulation_schema(
         "  \"detailed_lecture\": \"Extremely detailed, degree-level academic lecture text explaining the topic. Use HTML tags like <strong> and <br> for professional formatting.\",\n"
         "  \"html_code\": \"<!DOCTYPE html><html><head><style>/* CSS styles */</style></head><body><!-- Use SINGLE QUOTES for HTML attributes --> <script>/* JavaScript logic */</script></body></html>\"\n"
         "}\n\n"
-        "CRITICAL JSON ESCAPING RULES:\n"
-        "1. You MUST use SINGLE QUOTES ('') for all HTML attributes and JavaScript strings inside `html_code` (e.g., `<div id='app' class='container'>`). NEVER use double quotes inside the HTML/JS string.\n"
-        "2. Do NOT use literal raw newlines inside the `html_code` JSON string values. Keep the HTML code compressed on single lines or use escaped `\\n`.\n"
-        "3. ADVANCED METRICS: Inside your generated JavaScript, use window.parent.postMessage({ type: 'UPDATE_METRIC', title: 'Metric Name', value: 'Value' }, '*'); to send real-time stats to the UI."
+        "CRITICAL ESCAPING RULES:\n"
+        "1. You MUST use SINGLE QUOTES ('') for all HTML attributes and JavaScript strings inside `html_code`. NEVER use double quotes inside the HTML/JS string.\n"
+        "2. Do NOT use literal raw newlines inside JSON string values. Keep code compressed or use escaped \\n.\n"
+        "3. Inside your JavaScript, use window.parent.postMessage({ type: 'UPDATE_METRIC', title: 'Metric', value: 'Val' }, '*'); to send real-time stats."
     )
 
     try:
@@ -51,15 +51,37 @@ async def generate_simulation_schema(
         )
         
         content = response.get("content", {})
+        
+        # If content is a dict already (returned by provider), validate keys
+        if isinstance(content, dict) and "html_code" in content:
+            return content
+
+        # If content is a string, parse it defensively
         if isinstance(content, str):
             clean_str = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.IGNORECASE)
-            # strict=False allows the parser to tolerate minor whitespace/newline formatting issues from the LLM
-            content = json.loads(clean_str, strict=False)
-            
-        return content
+            try:
+                return json.loads(clean_str, strict=False)
+            except json.JSONDecodeError:
+                # Fallback parser using Regex extraction if JSON formatting is slightly broken by LLM
+                logger.warning("Standard JSON parse failed. Extracting fields via regex fallback.")
+                title_match = re.search(r'"title"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
+                desc_match = re.search(r'"description"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
+                lecture_match = re.search(r'"detailed_lecture"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
+                html_match = re.search(r'"html_code"\s*:\s*"(.*)"\s*\}?\s*$', clean_str, re.DOTALL)
+                
+                if html_match:
+                    return {
+                        "title": title_match.group(1) if title_match else body.topic.title(),
+                        "description": desc_match.group(1) if desc_match else f"Interactive model for {body.topic}",
+                        "detailed_lecture": lecture_match.group(1) if lecture_match else "Detailed lecture analysis unavailable.",
+                        "html_code": html_match.group(1).encode().decode('unicode-escape')
+                    }
+                raise
+
+        raise ValueError("Invalid content structure returned from LLM pipeline.")
 
     except Exception as e:
-        logger.error(f"LLM Provider Failed. Utilizing Dynamic HTML Fallback for {body.topic}: {e}")
+        logger.error(f"LLM Parsing Failed. Utilizing Dynamic HTML Fallback for {body.topic}: {e}")
         safe_topic = body.topic.title().replace('"', '').replace("'", "")
         return {
             "title": f"{safe_topic} — Interactive Visualizer",
@@ -83,7 +105,7 @@ async def generate_simulation_schema(
 <body>
   <div class='card'>
     <h2>{safe_topic}</h2>
-    <p>AI generation rate-limited. Loaded robust local fallback loop.</p>
+    <p>Loaded robust local simulation loop.</p>
     <div class='sim-view' id='simObject'></div>
     <div class='btn-group'>
       <button onclick='runPulse()'>Trigger State Pulse</button>

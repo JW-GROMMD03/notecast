@@ -22,7 +22,7 @@ from openai import OpenAI
 
 from ..config import settings
 
-log = logging.ностях("notecast.providers") if hasattr(logging, "ностях") else logging.getLogger("notecast.providers")
+log = logging.getLogger("notecast.providers")
 
 try:
     import google.generativeai as genai
@@ -261,7 +261,6 @@ class OpenRouterProvider:
     name = "openrouter"
 
     def __init__(self):
-        # Checks for OPENROUTER_API_KEY in settings or environment
         key = getattr(settings, "OPENROUTER_API_KEY", None)
         self.configured = bool(key)
         self._client = OpenAI(
@@ -421,10 +420,12 @@ async def llm_chat_completion(capability: str, messages: list, temperature: floa
         elif m.get("role") == "user":
             user = m.get("content", "")
 
+    fallback_order = "gemini,groq,openrouter,deepseek"
+
     try:
-        res = call_with_fallback("gemini,groq,openrouter,deepseek", "chat_json", system, user)
+        res = call_with_fallback(fallback_order, "chat_json", system, user)
         return {"content": res.get("data", {})}
     except Exception as e:
         log.warning(f"chat_json fallback failed in llm_chat_completion, trying chat_text: {e}")
-        res = call_with_fallback("gemini,groq,openrouter,deepseek", "chat_text", system, user)
+        res = call_with_fallback(fallback_order, "chat_text", system, user)
         return {"content": res.get("text", "")}
