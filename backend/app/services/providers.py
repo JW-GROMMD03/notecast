@@ -9,14 +9,11 @@ Three providers, in priority order per capability, all free or near-free:
 
 `call_with_fallback()` tries each configured provider in order for a given
 capability and moves to the next on any error (auth failure, rate limit,
-timeout, model not found, etc.) — this is the "circuit breaker" behavior
-from the original design doc, just implemented across free-tier providers
-instead of a single paid one with a fallback SKU.
+timeout, model not found, etc.).
 
 Every method returns a plain dict shaped the same way regardless of which
 provider served it: {"data"|"text"|"embeddings": ..., "provider": str,
-"model": str, "latency_ms": int}. Callers in services/llm.py, asr.py and
-vision.py never need to know which provider actually answered.
+"model": str, "latency_ms": int}.
 """
 import base64
 import io
@@ -32,7 +29,7 @@ log = logging.getLogger("notecast.providers")
 
 try:
     import google.generativeai as genai
-except ImportError:  # allows the app to boot even if the package isn't installed yet
+except ImportError:  
     genai = None
 
 
@@ -45,8 +42,6 @@ def safe_parse_json(raw_text: str) -> dict:
         return {}
     
     text = raw_text.strip()
-    
-    # Strip markdown code block formatting if present
     match = re.search(r'```(?:json)?\s*(.*?)\s*```', text, re.DOTALL)
     if match:
         text = match.group(1).strip()
@@ -55,7 +50,6 @@ def safe_parse_json(raw_text: str) -> dict:
         return json.loads(text)
     except json.JSONDecodeError as e:
         log.warning(f"JSON decode failed, attempting recovery: {e} | Raw content: {text[:100]}...")
-        # Fallback: Try extracting content between the first '{' and last '}'
         start = text.find('{')
         end = text.rfind('}')
         if start != -1 and end != -1 and end > start:
@@ -63,8 +57,6 @@ def safe_parse_json(raw_text: str) -> dict:
                 return json.loads(text[start:end+1])
             except Exception:
                 pass
-                
-        # Fallback default dict to prevent crashing the caller pipeline
         return {"heading": "Note Section", "body_md": text}
 
 
@@ -145,7 +137,7 @@ class GeminiProvider:
         text = (resp.text or "").strip()
         return {
             "text": text,
-            "confidence": 0.85 if text else 0.0,  # Gemini doesn't return a confidence score
+            "confidence": 0.85 if text else 0.0,
             "provider": self.name,
             "model": settings.GEMINI_ASR_MODEL,
             "latency_ms": int((time.time() - start) * 1000),
@@ -171,12 +163,10 @@ class GroqProvider:
 
     def __init__(self):
         self.configured = bool(settings.GROQ_API_KEY)
-        # CRITICAL FIX: Add max_retries=0 to prevent the 21-second freeze on rate limits
         self._client = OpenAI(api_key=settings.GROQ_API_KEY, base_url="https://api.groq.com/openai/v1", max_retries=0) if self.configured else None
 
     def chat_json(self, system: str, user: str, max_tokens: int = 1500) -> dict:
         start = time.time()
-        
         if "json" not in system.lower():
             system += "\nImportant: You must respond exclusively in valid JSON format."
             
@@ -275,7 +265,6 @@ class DeepSeekProvider:
 
     def __init__(self):
         self.configured = bool(settings.DEEPSEEK_API_KEY)
-        # CRITICAL FIX: Add max_retries=0 to fail fast here as well
         self._client = OpenAI(api_key=settings.DEEPSEEK_API_KEY, base_url="https://api.deepseek.com", max_retries=0) if self.configured else None
 
     def chat_json(self, system: str, user: str, max_tokens: int = 1500) -> dict:
@@ -356,3 +345,25 @@ def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dic
             f"{', '.join(settings.order(order_csv))} (see .env.example)."
         )
     raise RuntimeError(f"All configured providers failed for {method_name}: tried {tried}")
+
+
+async def llm_chat_completion(capability: str, messages: list, temperature: float = 0.7) -> dict:
+    """
+    Compatibility wrapper matching routers.diagrams expectations.
+    Routes through call_with_fallback using gemini, groq, deepseek.
+    """
+    system = ""
+    user = ""
+    for m in messages:
+        if m.get("role") == "system":
+            system = m.get("content", "")
+        elif m.get("role") == "user":
+            user = m.get("content", "")
+
+    try:
+        res = call_with_fallback("gemini,groq,deepseek", "chat_json", system, user)
+        return {"content": res.get("data", {})}
+    except Exception as e:
+        log.warning(f"chat_json fallback failed in llm_chat_completion, trying chat_text: {e}")
+        res = call_with_fallback("gemini,groq,deepseek", "chat_text", system, user)
+        return {"content": res.get("text", "")}
