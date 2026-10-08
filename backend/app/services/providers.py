@@ -1,19 +1,16 @@
 """
 Unified AI provider layer.
 
-Three providers, in priority order per capability, all free or near-free:
+Four providers, in priority order per capability:
 
-  1. Gemini  (Google AI Studio free tier)   — text, vision, audio transcription, embeddings
-  2. Groq    (free tier)                     — text (Llama), vision (Llama vision), audio (Whisper-large-v3)
-  3. DeepSeek (near-free pay-as-you-go)      — text only
+1. Gemini     (Google AI Studio free tier)   — text, vision, audio transcription, embeddings
+2. Groq       (free tier)                     — text (Llama), vision (Llama vision), audio (Whisper-large-v3)
+3. OpenRouter (free tier / flexible pool)     — text (Llama/Gemma free models)
+4. DeepSeek   (near-free pay-as-you-go)      — text only
 
 `call_with_fallback()` tries each configured provider in order for a given
 capability and moves to the next on any error (auth failure, rate limit,
 timeout, model not found, etc.).
-
-Every method returns a plain dict shaped the same way regardless of which
-provider served it: {"data"|"text"|"embeddings": ..., "provider": str,
-"model": str, "latency_ms": int}.
 """
 import base64
 import io
@@ -25,7 +22,7 @@ from openai import OpenAI
 
 from ..config import settings
 
-log = logging.getLogger("notecast.providers")
+log = logging.ностях("notecast.providers") if hasattr(logging, "ностях") else logging.getLogger("notecast.providers")
 
 try:
     import google.generativeai as genai
@@ -257,6 +254,69 @@ class GroqProvider:
 
 
 # ---------------------------------------------------------------------------
+# OpenRouter (New Free Failover Provider)
+# ---------------------------------------------------------------------------
+
+class OpenRouterProvider:
+    name = "openrouter"
+
+    def __init__(self):
+        # Checks for OPENROUTER_API_KEY in settings or environment
+        key = getattr(settings, "OPENROUTER_API_KEY", None)
+        self.configured = bool(key)
+        self._client = OpenAI(
+            api_key=key, 
+            base_url="https://openrouter.ai/api/v1", 
+            max_retries=0
+        ) if self.configured else None
+
+    def chat_json(self, system: str, user: str, max_tokens: int = 1500) -> dict:
+        start = time.time()
+        if "json" not in system.lower():
+            system += "\nImportant: You must respond exclusively in valid JSON format."
+            
+        resp = self._client.chat.completions.create(
+            model="meta-llama/llama-3.3-70b-instruct:free",
+            response_format={"type": "json_object"},
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            max_tokens=max_tokens,
+            extra_headers={
+                "HTTP-Referer": "https://notecast.app",
+                "X-Title": "NoteCast AI"
+            }
+        )
+        content = resp.choices[0].message.content
+        parsed_data = safe_parse_json(content)
+        return {
+            "data": parsed_data,
+            "provider": self.name,
+            "model": "meta-llama/llama-3.3-70b-instruct:free",
+            "latency_ms": int((time.time() - start) * 1000),
+            "tokens": getattr(resp.usage, "total_tokens", 0),
+        }
+
+    def chat_text(self, system: str, user: str, max_tokens: int = 2048) -> dict:
+        start = time.time()
+        resp = self._client.chat.completions.create(
+            model="meta-llama/llama-3.3-70b-instruct:free",
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            max_tokens=max_tokens,
+            extra_headers={
+                "HTTP-Referer": "https://notecast.app",
+                "X-Title": "NoteCast AI"
+            }
+        )
+        text = resp.choices[0].message.content or ""
+        return {
+            "text": text,
+            "provider": self.name,
+            "model": "meta-llama/llama-3.3-70b-instruct:free",
+            "latency_ms": int((time.time() - start) * 1000),
+            "tokens": getattr(resp.usage, "total_tokens", 0),
+        }
+
+
+# ---------------------------------------------------------------------------
 # DeepSeek
 # ---------------------------------------------------------------------------
 
@@ -309,6 +369,7 @@ class DeepSeekProvider:
 _REGISTRY = {
     "gemini": GeminiProvider,
     "groq": GroqProvider,
+    "openrouter": OpenRouterProvider,
     "deepseek": DeepSeekProvider,
 }
 _instances: dict[str, object] = {}
@@ -350,7 +411,7 @@ def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dic
 async def llm_chat_completion(capability: str, messages: list, temperature: float = 0.7) -> dict:
     """
     Compatibility wrapper matching routers.diagrams expectations.
-    Routes through call_with_fallback using gemini, groq, deepseek.
+    Routes through call_with_fallback using gemini, groq, openrouter, deepseek.
     """
     system = ""
     user = ""
@@ -361,9 +422,9 @@ async def llm_chat_completion(capability: str, messages: list, temperature: floa
             user = m.get("content", "")
 
     try:
-        res = call_with_fallback("gemini,groq,deepseek", "chat_json", system, user)
+        res = call_with_fallback("gemini,groq,openrouter,deepseek", "chat_json", system, user)
         return {"content": res.get("data", {})}
     except Exception as e:
         log.warning(f"chat_json fallback failed in llm_chat_completion, trying chat_text: {e}")
-        res = call_with_fallback("gemini,groq,deepseek", "chat_text", system, user)
+        res = call_with_fallback("gemini,groq,openrouter,deepseek", "chat_text", system, user)
         return {"content": res.get("text", "")}
