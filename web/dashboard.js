@@ -46,7 +46,7 @@ if (themeToggleBtn) {
 async function init() {
   user = await requireAuth();
   document.getElementById("userName").textContent = user.display_name || user.email;
-  document.getElementById("userPlanBadge", "plan").textContent = `Plan: ${user.plan || 'Free'}`;
+  document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan || 'Free'}`;
   
   const tierDisplay = document.getElementById("currentTierDisplay");
   if (tierDisplay) {
@@ -78,7 +78,7 @@ async function init() {
       if (!topic) return alert("Please enter a topic or unit name!");
 
       generateSimBtn.disabled = true;
-      generateSimBtn.textContent = "AI Synthesizing...";
+      generateSimBtn.textContent = "AI Synthesizing 3D Env...";
       try {
         const schema = await apiFetch("/diagrams/generate-sim", {
           method: "POST",
@@ -144,7 +144,7 @@ async function init() {
     });
   }
 
-  // 5. Generate Short Notes Prompt Workflow & Page Caching Check
+  // 5. Generate Short Notes Prompt Workflow
   const genNotesBtn = document.getElementById("generateShortNotesBtn");
   if (genNotesBtn) {
     genNotesBtn.addEventListener("click", async () => {
@@ -154,7 +154,7 @@ async function init() {
       
       if (pageCache[cacheKey]) {
         summaryEditor.value = pageCache[cacheKey];
-        alert(`Loaded cached short notes for Page ${currentPageNumber} instantly!`);
+        alert(`Loaded cached notes for Page ${currentPageNumber}`);
         return;
       }
 
@@ -176,18 +176,17 @@ async function init() {
           genNotesBtn.disabled = false;
           progressSection.style.display = "none";
           
-          const generatedSummary = `# ${currentSelectedDoc.title} — Page ${currentPageNumber}\n\n## Instant Page Snapshot Analysis\n- Captured page ${currentPageNumber} successfully.\n- Extracted core definitions and principles.\n\n[DIAGRAM: Flowchart Box]`;
+          const generatedSummary = `# ${currentSelectedDoc.title} — Page ${currentPageNumber}\n\n## Instant Page Snapshot Analysis\n- Captured page successfully.\n- Extracted core formulas and definitions.\n\n[DIAGRAM: Flowchart Box]`;
           pageCache[cacheKey] = generatedSummary;
           
           summaryEditor.value = generatedSummary;
           editHistory = [summaryEditor.value];
-          alert(`Page ${currentPageNumber} analyzed and cached successfully!`);
+          alert(`Page ${currentPageNumber} analyzed!`);
         }
       }, 300);
     });
   }
 
-  // Next / Previous Page Navigation Controls
   const nextPageBtn = document.getElementById("nextPageBtn");
   const prevPageBtn = document.getElementById("prevPageBtn");
   
@@ -207,7 +206,7 @@ async function init() {
     });
   }
 
-  // 6. Wire PDF Upload
+  // 6. FIX: Wire PDF Upload Properly (Local & Cloud Compatible)
   const uploadPdfBtn = document.getElementById("uploadPdfBtn");
   if (uploadPdfBtn) {
     uploadPdfBtn.addEventListener("click", async () => {
@@ -222,17 +221,28 @@ async function init() {
       formData.append("file", fileInput.files[0]);
 
       try {
-        const res = await fetch("https://notecast-web.onrender.com/api/documents/upload", {
+        // Use relative path so it automatically works on localhost or Render
+        const token = localStorage.getItem("token");
+        const res = await fetch("/api/documents/upload", {
           method: "POST",
-          credentials: "include", 
+          headers: { "Authorization": `Bearer ${token}` }, 
           body: formData
         });
+        
         if (!res.ok) throw new Error("Upload failed");
-        alert("Document uploaded! Ready for full-screen reading.");
-        loadDocuments();
+        const newDoc = await res.json();
+        
+        alert("Document uploaded! Loading reading view...");
+        
+        // Reload docs and automatically select the new one
+        await loadDocuments();
+        const dropdown = document.getElementById("docSelectDropdown");
+        dropdown.value = newDoc.id;
+        dropdown.dispatchEvent(new Event('change')); // Force the viewer to load it immediately
+        
         fileInput.value = "";
       } catch (err) {
-        alert("Error uploading document.");
+        alert("Error uploading document. Check backend logs.");
       } finally {
         btn.disabled = false;
         btn.textContent = "Upload & Process";
@@ -342,12 +352,12 @@ async function loadDocuments() {
         
         const viewer = document.getElementById("pdfViewerCanvas");
         if (viewer) {
-          viewer.innerHTML = `<iframe src="https://notecast-web.onrender.com/media/${currentSelectedDoc.storage_key}" style="width:100%; height:100%; border:none;"></iframe>`;
+          // Changed to relative /api/media to support both localhost and production
+          viewer.innerHTML = `<iframe src="/api/media/${currentSelectedDoc.storage_key}" style="width:100%; height:100%; border:none; background:#ffffff;"></iframe>`;
         }
 
-        // Render ultra-slim thumbnails strip
         const thumbsContainer = document.getElementById("readerThumbsContainer");
-        thumbsContainer.innerHTML = `<div style="font-size: 0.65rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Pg</div>`;
+        thumbsContainer.innerHTML = `<div style="font-size: 0.6rem; font-weight: 700; color: var(--text-muted);">Pg</div>`;
         for (let i = 1; i <= totalPages; i++) {
           const thumb = document.createElement("div");
           thumb.className = i === 1 ? "thumb-card active" : "thumb-card";
@@ -355,7 +365,6 @@ async function loadDocuments() {
           thumb.onclick = () => switchToPage(i);
           thumbsContainer.appendChild(thumb);
         }
-
         switchToPage(1);
       }
     };

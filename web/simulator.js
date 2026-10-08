@@ -1,6 +1,11 @@
+// ============================================================================
+// AI 3D KNOWLEDGE SIMULATOR ENGINE (THREE.JS)
+// Domain-Agnostic: Renders Biology, Physics, Tech, and Chemistry in True 3D
+// ============================================================================
+
 const canvas = document.getElementById('simCanvas');
-const ctx = canvas.getContext('2d');
 const container = document.getElementById('canvasContainer');
+const labelsContainer = document.getElementById('labelsContainer');
 const controlsContainer = document.getElementById('controlsContainer');
 const cycleMetric = document.getElementById('cycleMetric');
 const explanationText = document.getElementById('explanationText');
@@ -10,74 +15,51 @@ const stopSpeakBtn = document.getElementById('stopSpeakBtn');
 
 let width = container.clientWidth;
 let height = container.clientHeight;
-canvas.width = width;
-canvas.height = height;
 
-window.addEventListener('resize', () => {
-  width = container.clientWidth;
-  height = container.clientHeight;
-  canvas.width = width;
-  canvas.height = height;
-});
+// ============================================================================
+// 1. DATA SCHEMA INGESTION & FALLBACK
+// ============================================================================
+let schema = null;
+try {
+  schema = JSON.parse(sessionStorage.getItem("active_sim_schema"));
+} catch (e) {
+  console.warn("No active schema found in session storage. Loading default 3D environment.");
+}
 
-// 1. Load Dynamic Schema from sessionStorage (Supports ANY Subject: Biology, Astronomy, Physics, Software)
-let schema = JSON.parse(sessionStorage.getItem("active_sim_schema"));
-
+// Highly detailed fallback schema if the user directly navigates to the page
 if (!schema || !schema.nodes) {
   schema = {
-    title: "Dynamic Process Simulation",
-    description: "An adaptive interactive simulation visualizing step-by-step workflow and component interactions.",
+    title: "Human Digestive Process (3D)",
+    description: "Biomechanical and chemical breakdown of macromolecules into absorbable nutrients.",
     nodes: [
-      { id: "n1", label: "Initial State", x_pct: 20, y_pct: 50, color: "#3b82f6", shape: "pill" },
-      { id: "n2", label: "Transformation Phase", x_pct: 50, y_pct: 35, color: "#f59e0b", shape: "box" },
-      { id: "n3", label: "Final Outcome", x_pct: 80, y_pct: 65, color: "#10b981", shape: "circle" }
+      { id: "n1", label: "Oral Cavity", x: -4, y: 3, z: 0, color: "#fca5a5", shape_3d: "sphere" },
+      { id: "n2", label: "Stomach", x: 0, y: 0, z: 1, color: "#ef4444", shape_3d: "organic" },
+      { id: "n3", label: "Small Intestine", x: 3, y: -3, z: -1, color: "#10b981", shape_3d: "tube" },
+      { id: "n4", label: "Liver & Pancreas", x: 1.5, y: 1.5, z: -2, color: "#8b5cf6", shape_3d: "organic" }
     ],
     edges: [
-      { from: "n1", to: "n2", particle_color: "#a855f7", label: "Trigger / Input" },
-      { from: "n2", to: "n3", particle_color: "#34d399", label: "Resultant Flow" }
+      { from: "n1", to: "n2", particle_color: "#ffffff", label: "Bolus Transmit (Esophagus)" },
+      { from: "n4", to: "n2", particle_color: "#3b82f6", label: "Bile & Enzyme Secretion" },
+      { from: "n2", to: "n3", particle_color: "#fde047", label: "Chyme Release" }
     ],
     parameters: [
-      { id: "p1", label: "Process Velocity", min: 1, max: 25, default: 6 },
-      { id: "p2", label: "Energy / Rate", min: 1, max: 10, default: 5 }
-    ]
+      { id: "food_type", label: "Macronutrient Intake", type: "select", options: ["Carbohydrates", "Proteins", "Fats", "Mixed Diet"], default: "Carbohydrates" },
+      { id: "enzymes", label: "Enzyme Secretion Rate", type: "slider", min: 1, max: 10, default: 5 },
+      { id: "time_lapse", label: "Simulation Time Lapse", type: "slider", min: 1, max: 20, default: 4 }
+    ],
+    detailed_lecture: "<strong>Degree-Level Analysis: Human Digestion</strong><br><br>Digestion begins in the oral cavity where mechanical mastication and salivary amylase initiate the breakdown of starches. As the bolus descends via esophageal peristalsis, it enters the highly acidic gastric environment (pH ~1.5 - 3.5).<br><br>Here, parietal cells secrete HCl, activating pepsinogen into pepsin to cleave peptide bonds in proteins. The resulting semi-fluid 'chyme' is metered through the pyloric sphincter into the duodenum. Pancreatic lipases, proteases, and biliary emulsifiers further degrade macromolecules into monomers (glucose, amino acids, fatty acids) which are absorbed across the villi-lined epithelial border into the hepatic portal circulation. The entire system operates under strict autonomic and hormonal regulation."
   };
 }
 
+// Populate UI Headers
 document.getElementById('headerTitle').textContent = schema.title;
-document.getElementById('simHeading').textContent = schema.title;
+document.getElementById('simHeading').textContent = "Conditions & Factors";
 document.getElementById('simDesc').textContent = schema.description;
+explanationText.innerHTML = schema.detailed_lecture || "Detailed lecture notes generating...";
 
-// 2. Universal Dynamic Explanation Builder (Works for Biology, Astronomy, Software, Economics, etc.)
-function buildDynamicExplanation(s) {
-  let html = `<strong>Topic Analysis: ${s.title}</strong><br><br>`;
-  html += `<em>${s.description}</em><br><br>`;
-  html += `<strong>Sequential Process Stages:</strong><br>`;
-  
-  if (s.nodes && s.nodes.length > 0) {
-    s.nodes.forEach((n, idx) => {
-      let stageRole = "Acts as a critical transition or processing stage within the cycle.";
-      const lbl = n.label.toLowerCase();
-      
-      // Automatic semantic detection across different academic disciplines
-      if (idx === 0) stageRole = "Initial entry point, source input, or starting stimulus.";
-      else if (idx === s.nodes.length - 1) stageRole = "Terminal destination, output product, or final state.";
-      else if (lbl.includes("stomach") || lbl.includes("organ") || lbl.includes("cell")) stageRole = "Biological processing unit responsible for chemical or physical decomposition.";
-      else if (lbl.includes("sun") || lbl.includes("star") || lbl.includes("core")) stageRole = "Central gravitational or energetic anchor radiating mass/force.";
-      else if (lbl.includes("planet") || lbl.includes("orbit")) stageRole = "Revolving body maintaining trajectory via centripetal balance.";
-      else if (lbl.includes("gateway") || lbl.includes("router")) stageRole = "Routing hub directing communication pathways.";
-
-      html += `• <strong>Stage ${idx + 1}: ${n.label}</strong> — ${stageRole}<br>`;
-    });
-  }
-
-  html += `<br><strong>Interactive Dynamics:</strong><br>`;
-  html += `Moving particles represent active transfer of energy, data, matter, or signals along connectors. Use the sliders on the right to manipulate velocity and load parameters in real time.`;
-  return html;
-}
-
-explanationText.innerHTML = buildDynamicExplanation(schema);
-
-// 3. Web Speech API Voice Narrator Setup
+// ============================================================================
+// 2. TEXT-TO-SPEECH (WEB SPEECH API) ENGINE
+// ============================================================================
 let voices = [];
 function populateVoices() {
   if (!window.speechSynthesis) return;
@@ -87,22 +69,36 @@ function populateVoices() {
     const option = document.createElement('option');
     option.value = index;
     option.textContent = `${v.name} (${v.lang})`;
-    if (v.default || v.lang.includes('en')) option.selected = true;
+    // Prioritize high-quality English voices
+    if (v.default || v.lang === 'en-GB' || v.lang === 'en-US') option.selected = true;
     voiceSelect.appendChild(option);
   });
 }
+
 if (window.speechSynthesis) {
   populateVoices();
   window.speechSynthesis.onvoiceschanged = populateVoices;
 }
 
 speakBtn.addEventListener('click', () => {
-  if (!window.speechSynthesis) return alert("Text-to-speech not supported in this browser.");
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(explanationText.innerText);
+  if (!window.speechSynthesis) {
+    alert("Text-to-speech is not supported in this browser.");
+    return;
+  }
+  window.speechSynthesis.cancel(); // Stop current speech
+  
+  // Clean HTML tags to prevent the narrator from reading "strong" or "br"
+  const rawText = explanationText.innerHTML;
+  const cleanText = rawText.replace(/<[^>]*>?/gm, ''); 
+  
+  const utterance = new SpeechSynthesisUtterance(cleanText);
   const selectedVoiceIndex = voiceSelect.value;
-  if (voices[selectedVoiceIndex]) utterance.voice = voices[selectedVoiceIndex];
-  utterance.rate = 1.0;
+  if (voices[selectedVoiceIndex]) {
+    utterance.voice = voices[selectedVoiceIndex];
+  }
+  
+  utterance.rate = 0.95; // Slightly slower for academic comprehension
+  utterance.pitch = 1.0;
   window.speechSynthesis.speak(utterance);
 });
 
@@ -110,202 +106,298 @@ stopSpeakBtn.addEventListener('click', () => {
   if (window.speechSynthesis) window.speechSynthesis.cancel();
 });
 
-// 4. Generate Dynamic Sliders from AI Schema
+// ============================================================================
+// 3. DYNAMIC UNLIMITED CONDITIONS & PARAMETERS UI
+// ============================================================================
 const runtimeParams = {};
+
 if (schema.parameters && schema.parameters.length > 0) {
   schema.parameters.forEach(param => {
     runtimeParams[param.id] = param.default;
     const group = document.createElement('div');
     group.className = 'control-group';
-    const label = document.createElement('label');
-    label.innerHTML = `${param.label} <span id="val_${param.id}" style="color: #fff;">${param.default}</span>`;
-    const slider = document.createElement('input');
-    slider.type = 'range';
-    slider.min = param.min;
-    slider.max = param.max;
-    slider.value = param.default;
-    slider.addEventListener('input', (e) => {
-      const val = parseInt(e.target.value);
-      runtimeParams[param.id] = val;
-      document.getElementById(`val_${param.id}`).textContent = val;
-    });
-    group.appendChild(label);
-    group.appendChild(slider);
+    
+    if (param.type === "select") {
+      // Generate Dropdown Selectors
+      const label = document.createElement('label');
+      label.innerHTML = `${param.label}`;
+      const select = document.createElement('select');
+      
+      param.options.forEach(opt => {
+        const optionEl = document.createElement('option');
+        optionEl.value = opt;
+        optionEl.textContent = opt;
+        if (opt === param.default) optionEl.selected = true;
+        select.appendChild(optionEl);
+      });
+      
+      select.addEventListener('change', (e) => {
+        runtimeParams[param.id] = e.target.value;
+        console.log(`Condition updated: ${param.id} = ${e.target.value}`);
+      });
+      
+      group.appendChild(label);
+      group.appendChild(select);
+    } else {
+      // Generate Range Sliders
+      const label = document.createElement('label');
+      label.innerHTML = `${param.label} <span id="val_${param.id}" style="color: #fff;">${param.default}</span>`;
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = param.min || 1;
+      slider.max = param.max || 10;
+      slider.value = param.default;
+      
+      slider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        runtimeParams[param.id] = val;
+        document.getElementById(`val_${param.id}`).textContent = val;
+      });
+      
+      group.appendChild(label);
+      group.appendChild(slider);
+    }
     controlsContainer.appendChild(group);
   });
 }
 
-// 5. Helper Function for Rounded Rectangles
-function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + width - radius, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-  ctx.lineTo(x + width, y + height - radius);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-  ctx.lineTo(x + radius, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
-  ctx.closePath();
-  if (fill) ctx.fill();
-  if (stroke) ctx.stroke();
-}
+// ============================================================================
+// 4. THREE.JS 3D SCENE & ENGINE SETUP
+// ============================================================================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#030712'); // Deep space dark background
 
-// 6. Universal Domain-Agnostic Shape Renderer
-function drawNode(ctx, n, width, height) {
-  const x = (n.x_pct / 100) * width;
-  const y = (n.y_pct / 100) * height;
-  const w = 120;
-  const h = 56;
+const camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1000);
+camera.position.set(0, 0, 14);
 
-  ctx.save();
-  ctx.shadowBlur = 20;
-  ctx.shadowColor = n.color || '#3b82f6';
+const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false });
+renderer.setSize(width, height);
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
 
-  const shape = (n.shape || '').toLowerCase();
-  const labelLower = n.label.toLowerCase();
+// 3D Lighting Setup (Ambient + Directional for realistic shading)
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight);
 
-  if (shape.includes('sphere') || shape.includes('orbit') || labelLower.includes('sun') || labelLower.includes('planet') || labelLower.includes('moon')) {
-    // Astronomical Spherical Body
-    const radius = 28;
-    const gradient = ctx.createRadialGradient(x - 8, y - 8, 4, x, y, radius);
-    gradient.addColorStop(0, '#ffffff');
-    gradient.addColorStop(0.3, n.color || '#f59e0b');
-    gradient.addColorStop(1, '#070a14');
-    
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+directionalLight.position.set(10, 20, 15);
+scene.add(directionalLight);
 
-    ctx.strokeStyle = n.color || '#f59e0b';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  } else if (shape.includes('cylinder') || shape.includes('db') || labelLower.includes('database') || labelLower.includes('storage')) {
-    // Database / Cylindrical Container
-    ctx.fillStyle = n.color || '#10b981';
-    ctx.beginPath();
-    ctx.ellipse(x, y - 18, w/2, 14, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillRect(x - w/2, y - 18, w, 36);
-    ctx.beginPath();
-    ctx.ellipse(x, y + 18, w/2, 14, 0, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (shape.includes('pill') || shape.includes('organ') || labelLower.includes('stomach') || labelLower.includes('cell') || labelLower.includes('mouth')) {
-    // Organic Pill / Biological Node Shape
-    ctx.fillStyle = '#0f172a';
-    ctx.strokeStyle = n.color || '#ec4899';
-    ctx.lineWidth = 3;
-    roundRect(ctx, x - w/2, y - h/2, w, h, 28, true, true);
+const backLight = new THREE.PointLight(0x3b82f6, 1, 50);
+backLight.position.set(-10, -10, -10);
+scene.add(backLight);
+
+// Orbit Controls (360-degree rotation, zoom, and pan)
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.minDistance = 2;
+controls.maxDistance = 50;
+
+window.addEventListener('resize', () => {
+  width = container.clientWidth;
+  height = container.clientHeight;
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+  renderer.setSize(width, height);
+});
+
+// ============================================================================
+// 5. DOMAIN-AGNOSTIC 3D SHAPE BUILDER (Organic, Technical, Astronomical)
+// ============================================================================
+const nodeObjects = {};
+const labels = [];
+const nodeMeshesArray = []; // Used for Raycasting (clicking)
+
+schema.nodes.forEach(n => {
+  let geometry;
+  const shape = (n.shape_3d || 'sphere').toLowerCase();
+  
+  if (shape === 'organic' || shape === 'stomach') {
+    // Math distortion for a biological stomach/liver blob
+    geometry = new THREE.SphereGeometry(1.3, 32, 32);
+    const positions = geometry.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+      let y = positions.getY(i);
+      let x = positions.getX(i);
+      let z = positions.getZ(i);
+      positions.setX(i, x * (1 + y * 0.2)); 
+      positions.setY(i, y * 1.1);         
+      positions.setZ(i, z * 0.9);         
+    }
+    geometry.computeVertexNormals();
+  } else if (shape === 'tube' || shape === 'intestine') {
+    // Torus for intestines or pipelines
+    geometry = new THREE.TorusGeometry(1.2, 0.45, 16, 64, Math.PI * 1.5);
+  } else if (shape === 'cube' || shape === 'server') {
+    // Geometric cube for databases, software architectures, or tech nodes
+    geometry = new THREE.BoxGeometry(1.8, 1.8, 1.8);
   } else {
-    // Modern Rounded Rectangle Box (Default for generic steps, courses, and systems)
-    ctx.fillStyle = '#0f172a';
-    ctx.strokeStyle = n.color || '#3b82f6';
-    ctx.lineWidth = 2.5;
-    roundRect(ctx, x - w/2, y - h/2, w, h, 14, true, true);
+    // Standard Sphere for Planets, Cells, Atoms
+    geometry = new THREE.SphereGeometry(1.2, 64, 64);
   }
 
-  ctx.restore();
+  const material = new THREE.MeshStandardMaterial({ 
+    color: n.color || '#3b82f6', 
+    roughness: 0.2,
+    metalness: 0.3,
+    transparent: true,
+    opacity: 0.95
+  });
+  
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(n.x || (Math.random()*8-4), n.y || (Math.random()*8-4), n.z || (Math.random()*4-2));
+  
+  // Attach metadata for raycasting
+  mesh.userData = { id: n.id, label: n.label, color: n.color };
+  
+  scene.add(mesh);
+  nodeObjects[n.id] = mesh;
+  nodeMeshesArray.push(mesh);
 
-  // Typography / Label
-  ctx.fillStyle = 'white';
-  ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(n.label, x, y);
-}
+  // HTML Overlay Label Tracking
+  const label = document.createElement('div');
+  label.className = 'node-label';
+  label.textContent = n.label;
+  labelsContainer.appendChild(label);
+  labels.push({ element: label, mesh: mesh });
+});
 
-// 7. Physics Engine & Animation Loop
+// ============================================================================
+// 6. 3D BEZIER CURVES FOR EDGES & CONNECTORS
+// ============================================================================
+const curves = [];
+schema.edges.forEach(e => {
+  const fromMesh = nodeObjects[e.from];
+  const toMesh = nodeObjects[e.to];
+  
+  if (fromMesh && toMesh) {
+    const start = fromMesh.position;
+    const end = toMesh.position;
+    
+    // Create an arcing mid-point for the Bezier curve
+    const midPoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    midPoint.y += 1.5; 
+    midPoint.z += 1.5;
+
+    const curve = new THREE.QuadraticBezierCurve3(start, midPoint, end);
+    curves.push({ curve: curve, edge: e });
+
+    // Draw the visible connector line
+    const points = curve.getPoints(50);
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x334155, linewidth: 2, transparent: true, opacity: 0.5 });
+    const splineObject = new THREE.Line(lineGeo, lineMat);
+    scene.add(splineObject);
+  }
+});
+
+// ============================================================================
+// 7. RAYCASTER (CLICK INTERACTION ON 3D OBJECTS)
+// ============================================================================
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+container.addEventListener('click', (event) => {
+  const rect = container.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects(nodeMeshesArray);
+
+  if (intersects.length > 0) {
+    const clickedMesh = intersects[0].object;
+    // Visually bump the clicked node
+    clickedMesh.scale.set(1.2, 1.2, 1.2);
+    setTimeout(() => { clickedMesh.scale.set(1, 1, 1); }, 200);
+    
+    console.log(`User clicked 3D Node: ${clickedMesh.userData.label}`);
+  }
+});
+
+// ============================================================================
+// 8. 3D PARTICLE ANIMATION & RENDERING LOOP
+// ============================================================================
 let particles = [];
 let cycles = 0;
 let lastSpawnTime = 0;
 
-function animate(timestamp) {
-  ctx.clearRect(0, 0, width, height);
+function animate(time) {
+  requestAnimationFrame(animate);
+  controls.update();
 
-  const paramKeys = Object.keys(runtimeParams);
-  const spawnRateMod = paramKeys.length > 0 ? runtimeParams[paramKeys[0]] : 5; 
-  const speedMod = paramKeys.length > 1 ? runtimeParams[paramKeys[1]] : 5;
-
-  // Draw Connectors / Edges
-  if (schema.edges) {
-    schema.edges.forEach(e => {
-      const fromNode = schema.nodes.find(n => n.id === e.from);
-      const toNode = schema.nodes.find(n => n.id === e.to);
-      if (fromNode && toNode) {
-        const x1 = (fromNode.x_pct / 100) * width;
-        const y1 = (fromNode.y_pct / 100) * height;
-        const x2 = (toNode.x_pct / 100) * width;
-        const y2 = (toNode.y_pct / 100) * height;
-
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.strokeStyle = '#1e293b';
-        ctx.lineWidth = 3.5;
-        ctx.stroke();
-
-        if (e.label) {
-          ctx.fillStyle = '#94a3b8';
-          ctx.font = '11px -apple-system, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(e.label, (x1 + x2) / 2, ((y1 + y2) / 2) - 10);
-        }
-      }
-    });
-  }
-
-  // Draw Dynamic Nodes
-  if (schema.nodes) {
-    schema.nodes.forEach(n => drawNode(ctx, n, width, height));
-  }
-
-  // Particle Spawner
-  const spawnInterval = Math.max(100, 2000 - (spawnRateMod * 60)); 
-  if (timestamp - lastSpawnTime > spawnInterval && schema.edges) {
-    const edge = schema.edges[Math.floor(Math.random() * schema.edges.length)];
-    const fromNode = schema.nodes.find(n => n.id === edge.from);
-    const toNode = schema.nodes.find(n => n.id === edge.to);
-
-    if (fromNode && toNode) {
-      particles.push({
-        x: (fromNode.x_pct / 100) * width,
-        y: (fromNode.y_pct / 100) * height,
-        targetX: (toNode.x_pct / 100) * width,
-        targetY: (toNode.y_pct / 100) * height,
-        color: edge.particle_color || '#3b82f6',
-        speed: (2 + Math.random() * 2) * (speedMod / 5)
-      });
+  // Dynamic Parameter Extraction
+  // Find a slider that might represent speed/time (default to 5)
+  let speedMod = 5;
+  for (const key in runtimeParams) {
+    if (typeof runtimeParams[key] === 'number') {
+      speedMod = runtimeParams[key];
+      break; 
     }
-    lastSpawnTime = timestamp;
+  }
+  
+  // Dynamic Particle Spawning based on user-controlled speed
+  const spawnRate = Math.max(100, 1500 - (speedMod * 120));
+  
+  if (time - lastSpawnTime > spawnRate && curves.length > 0) {
+    // Pick a random edge to send data/matter through
+    const randomCurveObj = curves[Math.floor(Math.random() * curves.length)];
+    
+    // Create glowing 3D particle sphere
+    const pGeo = new THREE.SphereGeometry(0.18, 12, 12);
+    const pMat = new THREE.MeshBasicMaterial({ color: randomCurveObj.edge.particle_color || '#ffffff' });
+    const pMesh = new THREE.Mesh(pGeo, pMat);
+    scene.add(pMesh);
+    
+    particles.push({
+      mesh: pMesh,
+      curve: randomCurveObj.curve,
+      progress: 0,
+      speed: 0.003 + (speedMod * 0.001) // Particle velocity tied to slider
+    });
+    lastSpawnTime = time;
   }
 
-  // Update and Draw Data/Matter Flow Particles
+  // Animate Particles along the 3D Bezier Curves
   for (let i = particles.length - 1; i >= 0; i--) {
     let p = particles[i];
-    let dx = p.targetX - p.x;
-    let dy = p.targetY - p.y;
-    let dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (dist < p.speed) {
+    p.progress += p.speed;
+    
+    if (p.progress >= 1) {
+      // Particle reached destination
+      scene.remove(p.mesh);
+      particles.splice(i, 1);
       cycles++;
       cycleMetric.textContent = cycles;
-      particles.splice(i, 1);
     } else {
-      p.x += (dx / dist) * p.speed;
-      p.y += (dy / dist) * p.speed;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-      ctx.fillStyle = p.color;
-      ctx.shadowBlur = 14;
-      ctx.shadowColor = p.color;
-      ctx.fill();
-      ctx.shadowBlur = 0;
+      // Update physical position in 3D space
+      const point = p.curve.getPointAt(p.progress);
+      p.mesh.position.copy(point);
     }
   }
 
-  requestAnimationFrame(animate);
+  // Update 2D HTML Label Positions to match 3D Camera Projection
+  labels.forEach(l => {
+    const vector = l.mesh.position.clone();
+    vector.project(camera);
+    
+    const x = (vector.x * 0.5 + 0.5) * width;
+    const y = (vector.y * -0.5 + 0.5) * height;
+    
+    // Only display label if node is in front of the camera (z < 1)
+    if (vector.z < 1) { 
+      l.element.style.opacity = 1;
+      l.element.style.left = `${x}px`;
+      l.element.style.top = `${y - 45}px`; 
+    } else {
+      l.element.style.opacity = 0;
+    }
+  });
+
+  // Render Frame
+  renderer.render(scene, camera);
 }
 
-requestAnimationFrame(animate);
+// Boot the simulation
+animate(0);

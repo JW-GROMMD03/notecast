@@ -24,19 +24,31 @@ async def generate_simulation_schema(
 ):
     """
     Uses the multi-LLM pipeline (Gemini/Groq/DeepSeek) to generate a dynamic 
-    interactive simulation schema JSON for any academic unit, concept, or topic.
+    interactive 3D simulation schema JSON for any academic unit, concept, or topic.
     """
     system_prompt = (
-        "You are an expert educational visualizer and simulation engineer. "
-        "Create an interactive system simulation schema for the user's requested topic. "
-        "Output ONLY a raw JSON object with NO markdown formatting, no backticks. Structure:\n"
+        "You are an expert academic architectural engineer and educational visualizer. "
+        "Create a 3D simulation JSON schema for the requested topic. "
+        "Output ONLY valid JSON with NO markdown formatting. Format exactly like this:\n"
         "{\n"
-        '  "title": "Title",\n'
-        '  "description": "Short explanation",\n'
-        '  "nodes": [{"id": "n1", "label": "Node 1", "x_pct": 20, "y_pct": 50, "color": "#3b82f6"}],\n'
-        '  "edges": [{"from": "n1", "to": "n2", "particle_color": "#a855f7", "label": "Flow"}],\n'
-        '  "parameters": [{"id": "p1", "label": "Rate", "min": 1, "max": 30, "default": 5}]\n'
-        "}"
+        '  "title": "String",\n'
+        '  "description": "String",\n'
+        '  "detailed_lecture": "Extremely detailed, degree-level lecture text explaining every biological, physical, or technical process involved. Do not summarize. Use HTML tags like <strong> and <br> for formatting.",\n'
+        '  "nodes": [\n'
+        '    { "id": "n1", "label": "Name", "x": -4, "y": 0, "z": 0, "color": "#hex", "shape_3d": "organic|sphere|tube|cube" }\n'
+        '  ],\n'
+        '  "edges": [\n'
+        '    { "from": "n1", "to": "n2", "particle_color": "#hex", "label": "Process name" }\n'
+        '  ],\n'
+        '  "parameters": [\n'
+        '    { "id": "p1", "label": "Name", "type": "slider", "min": 1, "max": 10, "default": 5 },\n'
+        '    { "id": "p2", "label": "Condition Type", "type": "select", "options": ["Option A", "Option B", "Option C"], "default": "Option A" }\n'
+        '  ]\n'
+        "}\n"
+        "Rules:\n"
+        "- Nodes MUST include x, y, and z coordinates for 3D space placement (values between -5 and 5).\n"
+        "- `shape_3d` must be one of: 'organic' (for stomachs/cells/organs), 'tube' (for intestines/pipes), 'sphere' (for planets), or 'cube' (for servers/systems).\n"
+        "- Provide at least 3 parameters, mixing 'slider' and 'select' types to allow deep system control."
     )
 
     try:
@@ -44,7 +56,7 @@ async def generate_simulation_schema(
             capability="text",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Generate simulation for: {body.topic}"}
+                {"role": "user", "content": f"Generate detailed 3D simulation for: {body.topic}"}
             ]
         )
         
@@ -57,7 +69,7 @@ async def generate_simulation_schema(
         return content
     except Exception as e:
         logger.error(f"Failed to generate dynamic simulation schema: {e}")
-        raise HTTPException(status_code=500, detail="Could not generate simulation layout for this topic.")
+        raise HTTPException(status_code=500, detail="Could not generate 3D simulation layout for this topic.")
 
 
 @router.post("/", response_model=schemas.InteractiveDiagramOut, status_code=status.HTTP_201_CREATED)
