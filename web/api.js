@@ -1,5 +1,5 @@
-// Point directly to the production Render backend
-export const API_BASE = "https://notecast-53sj.onrender.com";
+// Point to the local relative path so Render's Rewrite rule handles the proxying
+export const API_BASE = "/api";
 
 function readCookie(name) {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
