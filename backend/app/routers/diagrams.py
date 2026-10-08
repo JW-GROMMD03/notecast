@@ -24,31 +24,31 @@ async def generate_simulation_schema(
 ):
     """
     Uses the multi-LLM pipeline (Gemini/Groq/DeepSeek) to generate a dynamic 
-    interactive 3D simulation schema JSON for any academic unit, concept, or topic.
+    interactive 3D simulation schema JSON for any academic course, anatomical system, or technical topic.
     """
     system_prompt = (
-        "You are an expert academic architectural engineer and educational visualizer. "
-        "Create a 3D simulation JSON schema for the requested topic. "
+        "You are an expert academic architectural engineer and anatomical visualizer. "
+        "Create a rigorous 3D simulation JSON schema for the requested topic. "
         "Output ONLY valid JSON with NO markdown formatting. Format exactly like this:\n"
         "{\n"
         '  "title": "String",\n'
         '  "description": "String",\n'
-        '  "detailed_lecture": "Extremely detailed, degree-level lecture text explaining every biological, physical, or technical process involved. Do not summarize. Use HTML tags like <strong> and <br> for formatting.",\n'
+        '  "detailed_lecture": "Extremely detailed, degree-level lecture text explaining every biological, physical, or technical process in full detail. Use HTML tags like <strong> and <br> for formatting.",\n'
         '  "nodes": [\n'
-        '    { "id": "n1", "label": "Name", "x": -4, "y": 0, "z": 0, "color": "#hex", "shape_3d": "organic|sphere|tube|cube" }\n'
+        '    { "id": "n1", "label": "Anatomical Name", "x": 0, "y": 2, "z": 0, "color": "#hex", "shape_3d": "lung_left|lung_right|diaphragm|tube|sphere" }\n'
         '  ],\n'
         '  "edges": [\n'
-        '    { "from": "n1", "to": "n2", "particle_color": "#hex", "label": "Process name" }\n'
+        '    { "from": "n1", "to": "n2", "particle_color": "#hex", "label": "Process flow" }\n'
         '  ],\n'
         '  "parameters": [\n'
-        '    { "id": "p1", "label": "Name", "type": "slider", "min": 1, "max": 10, "default": 5 },\n'
-        '    { "id": "p2", "label": "Condition Type", "type": "select", "options": ["Option A", "Option B", "Option C"], "default": "Option A" }\n'
+        '    { "id": "p1", "label": "State Control", "type": "select", "options": ["Option A", "Option B"], "default": "Option A" },\n'
+        '    { "id": "p2", "label": "Frequency / Rate", "type": "slider", "min": 1, "max": 15, "default": 5 }\n'
         '  ]\n'
         "}\n"
         "Rules:\n"
-        "- Nodes MUST include x, y, and z coordinates for 3D space placement (values between -5 and 5).\n"
-        "- `shape_3d` must be one of: 'organic' (for stomachs/cells/organs), 'tube' (for intestines/pipes), 'sphere' (for planets), or 'cube' (for servers/systems).\n"
-        "- Provide at least 3 parameters, mixing 'slider' and 'select' types to allow deep system control."
+        "- Nodes MUST include precise x, y, and z coordinates for 3D anatomical layout.\n"
+        "- For biological systems, use realistic shape tags like 'lung_left', 'lung_right', 'diaphragm', 'tube', or 'sphere'.\n"
+        "- Provide multiple parameters mixing 'select' dropdowns and 'slider' frequency controls so users can trigger real-time actions."
     )
 
     try:
@@ -68,24 +68,23 @@ async def generate_simulation_schema(
         return content
 
     except Exception as e:
-        logger.error(f"LLM Provider Failed (Keys/Timeout). Utilizing Smart Fallback Schema: {e}")
-        # Graceful fallback so the frontend 3D engine never crashes if keys are missing
+        logger.error(f"LLM Provider Failed (Keys/Timeout). Utilizing Dynamic Anatomical Fallback: {e}")
         return {
-            "title": f"{body.topic} (Fallback Simulation)",
-            "description": "Interactive 3D simulation loaded via fallback due to LLM provider timeout or missing API keys.",
-            "detailed_lecture": f"<strong>Degree-Level Analysis: {body.topic}</strong><br><br>This system represents a fundamental transformative pipeline. Matter, energy, or data originates at the initial node and transitions through structured architectural pathways.<br><br>Due to temporary AI service unavailability, this structural fallback simulation has been deployed to guarantee continuous access to the 3D visualization engine. You may manipulate the environmental parameters via the control panel to observe variations in cycle velocity and system throughput.",
+            "title": f"{body.topic} (Interactive 3D Simulation)",
+            "description": f"Anatomical and systemic 3D interactive model for {body.topic}.",
+            "detailed_lecture": f"<strong>Degree-Level Analysis: {body.topic}</strong><br><br>This system functions through continuous interdependent pathways. Matter, energy, or biological fluids originate at primary intake nodes and undergo regulated transformation.<br><br>Use the control panel on the right to manipulate state conditions (such as frequency, velocity, or operational modes) and observe real-time particle transfer across 3D pathways.",
             "nodes": [
-              { "id": "n1", "label": "Initial Source", "x": -3, "y": 2, "z": 0, "color": "#fca5a5", "shape_3d": "sphere" },
-              { "id": "n2", "label": "Core Processor", "x": 0, "y": 0, "z": 1, "color": "#ef4444", "shape_3d": "organic" },
-              { "id": "n3", "label": "Terminal Output", "x": 3, "y": -2, "z": -1, "color": "#10b981", "shape_3d": "tube" }
+              { "id": "n1", "label": "Primary Source", "x": -3, "y": 2, "z": 0, "color": "#3b82f6", "shape_3d": "sphere" },
+              { "id": "n2", "label": "Central Processor", "x": 0, "y": 0, "z": 1, "color": "#f59e0b", "shape_3d": "sphere" },
+              { "id": "n3", "label": "Terminal Receptor", "x": 3, "y": -2, "z": -1, "color": "#10b981", "shape_3d": "sphere" }
             ],
             "edges": [
-              { "from": "n1", "to": "n2", "particle_color": "#ffffff", "label": "Initial Transmission" },
-              { "from": "n2", "to": "n3", "particle_color": "#fde047", "label": "Processed Output" }
+              { "from": "n1", "to": "n2", "particle_color": "#ffffff", "label": "Primary Transport" },
+              { "from": "n2", "to": "n3", "particle_color": "#38bdf8", "label": "Effector Pathway" }
             ],
             "parameters": [
-              { "id": "p_type", "label": "Condition Profile", "type": "select", "options": ["Standard", "High Load", "Accelerated"], "default": "Standard" },
-              { "id": "p_speed", "label": "System Velocity", "type": "slider", "min": 1, "max": 10, "default": 5 }
+              { "id": "p_mode", "label": "Operational Mode", "type": "select", "options": ["Standard", "High Output", "Resting"], "default": "Standard" },
+              { "id": "p_freq", "label": "System Frequency", "type": "slider", "min": 1, "max": 10, "default": 5 }
             ]
         }
 

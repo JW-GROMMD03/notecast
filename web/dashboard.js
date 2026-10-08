@@ -308,7 +308,7 @@ function switchToPage(pageNum) {
   }
 }
 
-// --- DATA LOADING FUNCTIONS (STRICT TRAILING SLASHES ON ALL ROUTES) ---
+// --- DATA LOADING FUNCTIONS ---
 
 async function loadVideos() {
   const videos = await authedFetch("/videos/");
@@ -359,7 +359,9 @@ async function loadDocuments() {
         fileNameEl.textContent = currentSelectedDoc.filename || currentSelectedDoc.title;
         
         if (viewer) {
-          viewer.innerHTML = `<iframe src="/api/documents/media/${currentSelectedDoc.storage_key}/" style="width:100%; height:100%; border:none; background:#ffffff;"></iframe>`;
+          // Fallback to storage_key or document id so it never resolves to undefined
+          const fileKey = currentSelectedDoc.storage_key || currentSelectedDoc.id;
+          viewer.innerHTML = `<iframe src="/api/documents/media/${fileKey}/" style="width:100%; height:100%; border:none; background:#ffffff;"></iframe>`;
         }
 
         const thumbsContainer = document.getElementById("readerThumbsContainer");
