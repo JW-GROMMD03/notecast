@@ -69,7 +69,7 @@ async function init() {
     });
   });
 
-  // 2. Wire Dynamic Simulation Generator (With strict trailing slash)
+  // 2. Wire Dynamic Simulation Generator
   const generateSimBtn = document.getElementById("generateSimBtn");
   if (generateSimBtn) {
     generateSimBtn.addEventListener("click", async () => {
@@ -205,7 +205,7 @@ async function init() {
     });
   }
 
-  // 6. Wire PDF Upload (Strict trailing slash & credentials)
+  // 6. Wire PDF Upload
   const uploadPdfBtn = document.getElementById("uploadPdfBtn");
   if (uploadPdfBtn) {
     uploadPdfBtn.addEventListener("click", async () => {
@@ -308,7 +308,7 @@ function switchToPage(pageNum) {
   }
 }
 
-// --- DATA LOADING FUNCTIONS (ALL ENDPOINTS EQUIPPED WITH TRAILING SLASHES) ---
+// --- DATA LOADING FUNCTIONS (STRICT TRAILING SLASHES ON ALL ROUTES) ---
 
 async function loadVideos() {
   const videos = await authedFetch("/videos/");
