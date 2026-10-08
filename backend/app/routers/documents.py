@@ -3,6 +3,7 @@ import uuid
 import logging
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session as DbSession
 from .. import models, schemas, auth
 from ..database import get_db
@@ -12,18 +13,18 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 logger = logging.getLogger("notecast_documents")
 
 
-@router.post("/upload", response_model=schemas.DocumentOut, status_code=status.HTTP_201_CREATED)
+@router.post("/upload/", response_model=schemas.DocumentOut, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: DbSession = Depends(get_db),
     user: models.User = Depends(auth.get_current_user)
 ):
-    """Accepts PDF study files, saves them to disk, and queues multi-modal vision decomposition."""
+    """Accepts PDF study files, saves them to disk, and registers them in the database."""
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF documents are supported currently.")
 
-    # Save to storage directory
+    os.makedirs(settings.storage_path, exist_ok=True)
     doc_id = f"doc_{uuid.uuid4().hex[:12]}"
     file_ext = os.path.splitext(file.filename)[1]
     storage_filename = f"{doc_id}{file_ext}"
@@ -43,7 +44,7 @@ async def upload_document(
         title=os.path.splitext(file.filename)[0],
         filename=file.filename,
         storage_key=storage_filename,
-        status="processing"
+        status="ready"
     )
     db.add(new_doc)
     db.commit()
@@ -61,7 +62,29 @@ def list_documents(
     return db.query(models.Document).filter(models.Document.user_id == user.id).all()
 
 
-@router.get("/{doc_id}", response_model=schemas.DocumentOut)
+@router.get("/media/{storage_key}/")
+def get_document_media(
+    storage_key: str,
+    db: DbSession = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user)
+):
+    """Directly streams the PDF binary for the frontend document viewer iframe."""
+    doc = db.query(models.Document).filter(
+        models.Document.storage_key == storage_key,
+        models.Document.user_id == user.id
+    ).first()
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document file not found or unauthorized.")
+        
+    file_path = os.path.join(settings.storage_path, storage_key)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Physical file missing on server storage.")
+        
+    return FileResponse(file_path, media_type="application/pdf", filename=doc.filename)
+
+
+@router.get("/{doc_id}/", response_model=schemas.DocumentOut)
 def get_document(
     doc_id: str,
     db: DbSession = Depends(get_db),
@@ -77,7 +100,7 @@ def get_document(
     return doc
 
 
-@router.get("/{doc_id}/pages/{page_number}")
+@router.get("/{doc_id}/pages/{page_number}/")
 def get_document_page_cache(
     doc_id: str,
     page_number: int,

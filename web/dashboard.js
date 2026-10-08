@@ -42,7 +42,6 @@ if (themeToggleBtn) {
   });
 }
 
-
 async function init() {
   user = await requireAuth();
   document.getElementById("userName").textContent = user.display_name || user.email;
@@ -80,7 +79,7 @@ async function init() {
       generateSimBtn.disabled = true;
       generateSimBtn.textContent = "AI Synthesizing 3D Env...";
       try {
-        const schema = await apiFetch("/diagrams/generate-sim", {
+        const schema = await apiFetch("/diagrams/generate-sim/", {
           method: "POST",
           body: JSON.stringify({ topic })
         });
@@ -206,7 +205,7 @@ async function init() {
     });
   }
 
-  // 6. FIX: Wire PDF Upload Properly (Local & Cloud Compatible)
+  // 6. FIXED: Wire PDF Upload & Instant Binding
   const uploadPdfBtn = document.getElementById("uploadPdfBtn");
   if (uploadPdfBtn) {
     uploadPdfBtn.addEventListener("click", async () => {
@@ -221,24 +220,22 @@ async function init() {
       formData.append("file", fileInput.files[0]);
 
       try {
-        // Use relative path so it automatically works on localhost or Render
-        const token = localStorage.getItem("token");
-        const res = await fetch("/api/documents/upload", {
+        const res = await fetch("/api/documents/upload/", {
           method: "POST",
-          headers: { "Authorization": `Bearer ${token}` }, 
+          credentials: "include", 
           body: formData
         });
         
         if (!res.ok) throw new Error("Upload failed");
         const newDoc = await res.json();
         
-        alert("Document uploaded! Loading reading view...");
+        alert("Document uploaded successfully! Loading viewer...");
         
-        // Reload docs and automatically select the new one
+        // Refresh document list and select the newly uploaded file instantly
         await loadDocuments();
         const dropdown = document.getElementById("docSelectDropdown");
         dropdown.value = newDoc.id;
-        dropdown.dispatchEvent(new Event('change')); // Force the viewer to load it immediately
+        dropdown.dispatchEvent(new Event('change')); 
         
         fileInput.value = "";
       } catch (err) {
@@ -265,7 +262,7 @@ async function init() {
       const quality = parseInt(e.target.getAttribute("data-q"));
       const cardId = dueFlashcards[currentFcIndex].id;
       try {
-        await apiFetch(`/flashcards/review/${cardId}`, {
+        await apiFetch(`/flashcards/review/${cardId}/`, {
           method: "POST",
           body: JSON.stringify({ quality })
         });
@@ -315,7 +312,7 @@ function switchToPage(pageNum) {
 // --- DATA LOADING FUNCTIONS ---
 
 async function loadVideos() {
-  const videos = await authedFetch("/videos");
+  const videos = await authedFetch("/videos/");
   const list = document.getElementById("videoList");
   if (!videos || !videos.length) {
     const emptyState = document.getElementById("emptyState");
@@ -337,25 +334,38 @@ async function loadVideos() {
     </li>`).join("");
 }
 
+// Global variable cache to store fetched documents array securely
+let cachedDocuments = [];
+
 async function loadDocuments() {
-  const docs = await authedFetch("/documents");
+  try {
+    cachedDocuments = await authedFetch("/documents/");
+  } catch (err) {
+    console.error("Failed to load documents list", err);
+    cachedDocuments = [];
+  }
+
   const dropdown = document.getElementById("docSelectDropdown");
   if (dropdown) {
     dropdown.innerHTML = `<option value="">-- Select Document --</option>` + 
-      docs.map(d => `<option value="${d.id}">${d.title}</option>`).join("");
+      cachedDocuments.map(d => `<option value="${d.id}">${d.title || d.filename}</option>`).join("");
 
     dropdown.onchange = (e) => {
       const docId = e.target.value;
-      currentSelectedDoc = docs.find(d => d.id === docId);
+      currentSelectedDoc = cachedDocuments.find(d => d.id === docId);
+      
+      const viewer = document.getElementById("pdfViewerCanvas");
+      const fileNameEl = document.getElementById("currentFileName");
+
       if (currentSelectedDoc) {
-        document.getElementById("currentFileName").textContent = currentSelectedDoc.filename || currentSelectedDoc.title;
+        fileNameEl.textContent = currentSelectedDoc.filename || currentSelectedDoc.title;
         
-        const viewer = document.getElementById("pdfViewerCanvas");
         if (viewer) {
-          // Changed to relative /api/media to support both localhost and production
-          viewer.innerHTML = `<iframe src="/api/media/${currentSelectedDoc.storage_key}" style="width:100%; height:100%; border:none; background:#ffffff;"></iframe>`;
+          // Point iframe directly to the new media streaming endpoint
+          viewer.innerHTML = `<iframe src="/api/documents/media/${currentSelectedDoc.storage_key}" style="width:100%; height:100%; border:none; background:#ffffff;"></iframe>`;
         }
 
+        // Render page thumbnails strip
         const thumbsContainer = document.getElementById("readerThumbsContainer");
         thumbsContainer.innerHTML = `<div style="font-size: 0.6rem; font-weight: 700; color: var(--text-muted);">Pg</div>`;
         for (let i = 1; i <= totalPages; i++) {
@@ -366,6 +376,11 @@ async function loadDocuments() {
           thumbsContainer.appendChild(thumb);
         }
         switchToPage(1);
+      } else {
+        fileNameEl.textContent = "No file selected";
+        if (viewer) {
+          viewer.innerHTML = `<span style="color: #64748b; font-size: 0.85rem;">Upload or select a PDF to begin immersive reading</span>`;
+        }
       }
     };
   }
@@ -373,7 +388,7 @@ async function loadDocuments() {
 
 // --- FLASHCARD ENGINE (SM-2) ---
 async function loadFlashcards() {
-  dueFlashcards = await authedFetch("/flashcards/due");
+  dueFlashcards = await authedFetch("/flashcards/due/");
   currentFcIndex = 0;
   renderCurrentFlashcard();
 }
@@ -400,10 +415,9 @@ function renderCurrentFlashcard() {
   document.getElementById("fcShowBtn").style.display = "block";
 }
 
-
 // --- KNOWLEDGE GRAPH ENGINE ---
 async function loadGraph() {
-  const graphData = await authedFetch("/graph");
+  const graphData = await authedFetch("/graph/");
   
   const style = getComputedStyle(document.documentElement);
   const nodeBg = style.getPropertyValue('--graph-node-bg').trim();

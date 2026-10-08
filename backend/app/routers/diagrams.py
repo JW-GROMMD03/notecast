@@ -17,7 +17,7 @@ class GenerateSimIn(BaseModel):
     topic: str
 
 
-@router.post("/generate-sim")
+@router.post("/generate-sim/")
 async def generate_simulation_schema(
     body: GenerateSimIn,
     user: models.User = Depends(auth.get_current_user)
@@ -62,14 +62,32 @@ async def generate_simulation_schema(
         
         content = response.get("content", {})
         if isinstance(content, str):
-            # Clean up potential markdown code block artifacts from LLM outputs
             clean_str = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.IGNORECASE)
             content = json.loads(clean_str)
             
         return content
+
     except Exception as e:
-        logger.error(f"Failed to generate dynamic simulation schema: {e}")
-        raise HTTPException(status_code=500, detail="Could not generate 3D simulation layout for this topic.")
+        logger.error(f"LLM Provider Failed (Keys/Timeout). Utilizing Smart Fallback Schema: {e}")
+        # Graceful fallback so the frontend 3D engine never crashes if keys are missing
+        return {
+            "title": f"{body.topic} (Fallback Simulation)",
+            "description": "Interactive 3D simulation loaded via fallback due to LLM provider timeout or missing API keys.",
+            "detailed_lecture": f"<strong>Degree-Level Analysis: {body.topic}</strong><br><br>This system represents a fundamental transformative pipeline. Matter, energy, or data originates at the initial node and transitions through structured architectural pathways.<br><br>Due to temporary AI service unavailability, this structural fallback simulation has been deployed to guarantee continuous access to the 3D visualization engine. You may manipulate the environmental parameters via the control panel to observe variations in cycle velocity and system throughput.",
+            "nodes": [
+              { "id": "n1", "label": "Initial Source", "x": -3, "y": 2, "z": 0, "color": "#fca5a5", "shape_3d": "sphere" },
+              { "id": "n2", "label": "Core Processor", "x": 0, "y": 0, "z": 1, "color": "#ef4444", "shape_3d": "organic" },
+              { "id": "n3", "label": "Terminal Output", "x": 3, "y": -2, "z": -1, "color": "#10b981", "shape_3d": "tube" }
+            ],
+            "edges": [
+              { "from": "n1", "to": "n2", "particle_color": "#ffffff", "label": "Initial Transmission" },
+              { "from": "n2", "to": "n3", "particle_color": "#fde047", "label": "Processed Output" }
+            ],
+            "parameters": [
+              { "id": "p_type", "label": "Condition Profile", "type": "select", "options": ["Standard", "High Load", "Accelerated"], "default": "Standard" },
+              { "id": "p_speed", "label": "System Velocity", "type": "slider", "min": 1, "max": 10, "default": 5 }
+            ]
+        }
 
 
 @router.post("/", response_model=schemas.InteractiveDiagramOut, status_code=status.HTTP_201_CREATED)
@@ -106,7 +124,7 @@ def list_diagrams(
     return db.query(models.InteractiveDiagram).filter(models.InteractiveDiagram.user_id == user.id).all()
 
 
-@router.get("/{diagram_id}", response_model=schemas.InteractiveDiagramOut)
+@router.get("/{diagram_id}/", response_model=schemas.InteractiveDiagramOut)
 def get_diagram(
     diagram_id: str,
     db: DbSession = Depends(get_db),
@@ -122,7 +140,7 @@ def get_diagram(
     return diag
 
 
-@router.put("/{diagram_id}", response_model=schemas.InteractiveDiagramOut)
+@router.put("/{diagram_id}/", response_model=schemas.InteractiveDiagramOut)
 def update_diagram_state(
     diagram_id: str,
     body: schemas.InteractiveDiagramUpdateIn,
