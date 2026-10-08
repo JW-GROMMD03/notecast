@@ -23,13 +23,24 @@ class OAuthCallbackIn(BaseModel):
 # PRODUCTION THIRD-PARTY MAILER (Resend API)
 # =========================================================================
 def send_resend_email(to_email: str, link: str, email_type: str):
-    """Sends a professional HTML email via Resend's HTTP API."""
+    """Sends a professional HTML email via Resend's HTTP API, dynamically routing to Render static site."""
     api_key = getattr(settings, "RESEND_API_KEY", None)
     if not api_key:
         raise HTTPException(
             status_code=500, 
             detail="RESEND_API_KEY is missing in backend .env file."
         )
+
+    # Automatically swap Supabase's default localhost/hash redirect for your Render production frontend
+    if "localhost" in link or "127.0.0.1" in link:
+        if email_type == "signup":
+            link = link.replace("http://localhost:5500", "https://notecast-web.onrender.com")
+            link = link.replace("http://127.0.0.1:5500", "https://notecast-web.onrender.com")
+        elif email_type == "recovery":
+            # Convert hash token format to route cleanly to your reset-password page on Render
+            if "#access_token=" in link:
+                token_part = link.split("#access_token=")[1]
+                link = f"https://notecast-web.onrender.com/reset-password.html#type=recovery&access_token={token_part}"
 
     if email_type == "signup":
         subject = "Welcome to NoteCast — Verify your email"
