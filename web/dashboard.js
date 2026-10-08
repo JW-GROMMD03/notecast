@@ -69,7 +69,7 @@ async function init() {
     });
   });
 
-  // 2. Wire Dynamic Simulation Generator
+  // 2. Wire Dynamic Simulation Generator (With strict trailing slash)
   const generateSimBtn = document.getElementById("generateSimBtn");
   if (generateSimBtn) {
     generateSimBtn.addEventListener("click", async () => {
@@ -205,7 +205,7 @@ async function init() {
     });
   }
 
-  // 6. FIXED: Wire PDF Upload & Instant Binding
+  // 6. Wire PDF Upload (Strict trailing slash & credentials)
   const uploadPdfBtn = document.getElementById("uploadPdfBtn");
   if (uploadPdfBtn) {
     uploadPdfBtn.addEventListener("click", async () => {
@@ -231,7 +231,6 @@ async function init() {
         
         alert("Document uploaded successfully! Loading viewer...");
         
-        // Refresh document list and select the newly uploaded file instantly
         await loadDocuments();
         const dropdown = document.getElementById("docSelectDropdown");
         dropdown.value = newDoc.id;
@@ -309,7 +308,7 @@ function switchToPage(pageNum) {
   }
 }
 
-// --- DATA LOADING FUNCTIONS ---
+// --- DATA LOADING FUNCTIONS (ALL ENDPOINTS EQUIPPED WITH TRAILING SLASHES) ---
 
 async function loadVideos() {
   const videos = await authedFetch("/videos/");
@@ -334,7 +333,6 @@ async function loadVideos() {
     </li>`).join("");
 }
 
-// Global variable cache to store fetched documents array securely
 let cachedDocuments = [];
 
 async function loadDocuments() {
@@ -361,11 +359,9 @@ async function loadDocuments() {
         fileNameEl.textContent = currentSelectedDoc.filename || currentSelectedDoc.title;
         
         if (viewer) {
-          // Point iframe directly to the new media streaming endpoint
-          viewer.innerHTML = `<iframe src="/api/documents/media/${currentSelectedDoc.storage_key}" style="width:100%; height:100%; border:none; background:#ffffff;"></iframe>`;
+          viewer.innerHTML = `<iframe src="/api/documents/media/${currentSelectedDoc.storage_key}/" style="width:100%; height:100%; border:none; background:#ffffff;"></iframe>`;
         }
 
-        // Render page thumbnails strip
         const thumbsContainer = document.getElementById("readerThumbsContainer");
         thumbsContainer.innerHTML = `<div style="font-size: 0.6rem; font-weight: 700; color: var(--text-muted);">Pg</div>`;
         for (let i = 1; i <= totalPages; i++) {
