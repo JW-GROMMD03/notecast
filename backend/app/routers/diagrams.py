@@ -57,12 +57,13 @@ async def generate_simulation_schema(
             return content
 
         # If content is a string, parse it defensively
-        if isinstance(content, str):
+        if isinstance(content, str) and len(content.strip()) > 0:
             clean_str = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.IGNORECASE)
             try:
-                return json.loads(clean_str, strict=False)
+                parsed = json.loads(clean_str, strict=False)
+                if isinstance(parsed, dict) and "html_code" in parsed:
+                    return parsed
             except json.JSONDecodeError:
-                # Fallback parser using Regex extraction if JSON formatting is slightly broken by LLM
                 logger.warning("Standard JSON parse failed. Extracting fields via regex fallback.")
                 title_match = re.search(r'"title"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
                 desc_match = re.search(r'"description"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
@@ -76,12 +77,11 @@ async def generate_simulation_schema(
                         "detailed_lecture": lecture_match.group(1) if lecture_match else "Detailed lecture analysis unavailable.",
                         "html_code": html_match.group(1).encode().decode('unicode-escape')
                     }
-                raise
 
-        raise ValueError("Invalid content structure returned from LLM pipeline.")
+        raise ValueError("Invalid or empty content structure returned from LLM pipeline.")
 
     except Exception as e:
-        logger.error(f"LLM Parsing Failed. Utilizing Dynamic HTML Fallback for {body.topic}: {e}")
+        logger.warning(f"LLM Generation/Parsing encountered an issue ({e}). Serving robust dynamic fallback for: {body.topic}")
         safe_topic = body.topic.title().replace('"', '').replace("'", "")
         return {
             "title": f"{safe_topic} — Interactive Visualizer",
@@ -148,7 +148,7 @@ def list_diagrams(db: DbSession = Depends(get_db), user: models.User = Depends(a
 @router.get("/{diagram_id}/", response_model=schemas.InteractiveDiagramOut)
 def get_diagram(diagram_id: str, db: DbSession = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     diag = db.query(models.InteractiveDiagram).filter(models.InteractiveDiagram.id == diagram_id, models.InteractiveDiagram.user_id == user.id).first()
-    if not diag: raise HTTPException(status_code=404, detail="Session not found.")
+    if not diag: raise HTTPException(status_url=404, detail="Session not found.")
     return diag
 
 @router.put("/{diagram_id}/", response_model=schemas.InteractiveDiagramOut)
