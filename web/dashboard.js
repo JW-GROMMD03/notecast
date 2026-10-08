@@ -5,6 +5,39 @@ let dueFlashcards = [];
 let currentFcIndex = 0;
 let networkGraph = null;
 
+// --- THEME ENGINE ---
+const themeToggleBtn = document.getElementById("themeToggleBtn");
+const themeIcon = document.getElementById("themeIcon");
+const themeText = document.getElementById("themeText");
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("theme", theme);
+  
+  if (theme === "light") {
+    themeIcon.textContent = "🌙";
+    themeText.textContent = "Dark Mode";
+  } else {
+    themeIcon.textContent = "☀️";
+    themeText.textContent = "Light Mode";
+  }
+  
+  // If the Knowledge Graph is currently visible, redraw it to update the colors
+  if (networkGraph && document.getElementById("pane-graph").classList.contains("active")) {
+    loadGraph();
+  }
+}
+
+// Load saved theme or system preference
+const savedTheme = localStorage.getItem("theme") || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+applyTheme(savedTheme);
+
+themeToggleBtn.addEventListener("click", () => {
+  const currentTheme = document.documentElement.getAttribute("data-theme");
+  applyTheme(currentTheme === "light" ? "dark" : "light");
+});
+
+
 async function init() {
   user = await requireAuth();
   document.getElementById("userName").textContent = user.display_name || user.email;
@@ -66,10 +99,9 @@ async function init() {
     formData.append("file", fileInput.files[0]);
 
     try {
-      // Use raw fetch for FormData so the browser automatically sets the correct multipart boundaries
       const res = await fetch("https://notecast-web.onrender.com/api/documents/upload", {
         method: "POST",
-        credentials: "include", // Sends the secure httpOnly session cookies
+        credentials: "include", 
         body: formData
       });
       if (!res.ok) throw new Error("Upload failed");
@@ -106,10 +138,10 @@ async function loadVideos() {
   document.getElementById("emptyState").style.display = "none";
   list.innerHTML = videos.map(v => `
     <li>
-      <a class="video-row" href="video.html?id=${v.id}">
+      <a class="video-row" style="color: var(--text-main);" href="video.html?id=${v.id}">
         <div>
           <div class="video-row-title">${v.title}</div>
-          <div class="video-row-meta">${new Date(v.created_at).toLocaleDateString()}</div>
+          <div class="video-row-meta" style="color: var(--text-muted);">${new Date(v.created_at).toLocaleDateString()}</div>
         </div>
         <span class="status-chip ${v.status}">${v.status}</span>
       </a>
@@ -147,7 +179,6 @@ function renderCurrentFlashcard() {
   document.getElementById("fcFront").textContent = card.front_text;
   document.getElementById("fcBack").textContent = card.back_text;
   
-  // Reset UI state
   document.getElementById("fcBack").style.display = "none";
   document.getElementById("fcControls").style.display = "none";
   document.getElementById("fcShowBtn").style.display = "block";
@@ -163,14 +194,10 @@ document.querySelectorAll(".btn-fc").forEach(btn => {
   btn.addEventListener("click", async (e) => {
     const quality = parseInt(e.target.getAttribute("data-q"));
     const cardId = dueFlashcards[currentFcIndex].id;
-
-    // Send review to backend
     await apiFetch(`/flashcards/review/${cardId}`, {
       method: "POST",
       body: JSON.stringify({ quality })
     });
-
-    // Move to next card
     currentFcIndex++;
     renderCurrentFlashcard();
   });
@@ -181,21 +208,27 @@ document.querySelectorAll(".btn-fc").forEach(btn => {
 async function loadGraph() {
   const graphData = await authedFetch("/graph");
   
-  // Format data for Vis.js
+  // Pull colors dynamically from the CSS variables to match the current theme
+  const style = getComputedStyle(document.documentElement);
+  const nodeBg = style.getPropertyValue('--graph-node-bg').trim();
+  const nodeBorder = style.getPropertyValue('--graph-node-border').trim();
+  const edgeColor = style.getPropertyValue('--graph-edge').trim();
+  const textColor = style.getPropertyValue('--graph-text').trim();
+
   const nodes = new vis.DataSet(graphData.nodes.map(n => ({
     id: n.id,
     label: n.concept_name,
-    title: n.description_md, // Tooltip on hover
-    color: { background: '#0f172a', border: '#3b82f6' },
-    font: { color: '#ffffff' }
+    title: n.description_md,
+    color: { background: nodeBg, border: nodeBorder },
+    font: { color: textColor }
   })));
 
   const edges = new vis.DataSet(graphData.edges.map(e => ({
     from: e.source_node_id,
     to: e.target_node_id,
     label: e.relationship_type.replace("_", " "),
-    color: '#64748b',
-    font: { color: '#94a3b8', size: 10, align: 'middle' },
+    color: edgeColor,
+    font: { color: edgeColor, size: 10, align: 'middle' },
     arrows: 'to'
   })));
 
