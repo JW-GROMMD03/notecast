@@ -1,11 +1,11 @@
 # NoteCast
 
 Turns a YouTube video you're watching into a live transcript, captured diagrams/slides,
-and a verified, exportable PDF of study notes.
+and a verified, exportable PDF of study notes. Featuring built-in **M-Pesa STK Push** payment flows and cross-domain Supabase authentication.
 
 This is a working, self-hostable implementation of the NoteCast architecture: a Chrome
 extension for capture + a FastAPI backend for transcription, vision analysis, note
-generation, hallucination-checking and PDF export.
+generation, hallucination-checking, PDF export, and automated billing.
 
 ## What's different from the original cloud-native design
 
@@ -27,8 +27,8 @@ them on infrastructure that works out of the box:
 
 Every other phase from the design doc is implemented as specified: consent gate, topic
 model priming, two-tier ASR, frame salience gating, incremental 30s note drafting,
-post-video reorganize → enrich → verify passes, and PDF export with timestamped links
-back to the video.
+post-video reorganize → enrich → verify passes, PDF export with timestamped links
+back to the video, and M-Pesa STK Push subscription activations.
 
 ## AI providers — three, with automatic fallover
 
@@ -49,12 +49,6 @@ automatically. Reorder or drop providers per capability in `.env` via
 `TEXT_PROVIDER_ORDER` / `VISION_PROVIDER_ORDER` / `ASR_PROVIDER_ORDER` /
 `EMBED_PROVIDER_ORDER`.
 
-Note ChatGPT/OpenAI's API was deliberately left out of the default three — it has no
-free tier, so it didn't fit the "free models" brief. The `openai` Python package is
-still a dependency (Groq and DeepSeek both expose OpenAI-compatible endpoints, so the
-same client talks to all three), and OpenAI itself is a five-line addition to
-`providers.py` if you want it as a fourth, paid fallback later.
-
 ## Project layout
 
 ```text
@@ -67,17 +61,21 @@ notecast/
 │   └── app/
 │       ├── __init__.py
 │       ├── main.py             # FastAPI app entry point, CORS middleware, and router mounts
-│       ├── config.py           # Pydantic Settings configuration (reads .env, CORS, Resend/Supabase keys)
+│       ├── config.py           # Pydantic Settings configuration (reads .env, CORS)
 │       ├── database.py         # SQLAlchemy database session management
-│       ├── models.py           # SQLAlchemy database models (User table, etc.)
-│       ├── schemas.py          # Pydantic request/response validation models (Auth, Signup, Login, etc.)
-│       ├── auth.py             # JWT verification, session cookie management, and CSRF protection
+│       ├── models.py           # SQLAlchemy database models (User, Video, Transaction, etc.)
+│       ├── schemas.py          # Pydantic request/response validation models (Auth, Payments, Videos)
+│       ├── auth.py             # JWT verification, httpOnly cross-domain cookie management, and CSRF protection
 │       ├── routers/
 │       │   ├── __init__.py
-│       │   └── auth.py         # Authentication endpoints (/signup, /login, /logout, /forgot-password, /me) using Resend API
+│       │   ├── auth.py         # Authentication endpoints (/signup, /login, /oauth-callback, /me, /refresh, /logout)
+│       │   ├── payments.py     # M-Pesa Daraja STK push initiation, polling status, and webhooks
+│       │   ├── videos.py       # Video capture management routes
+│       │   ├── notes.py        # Study notes generation endpoints
+│       │   └── ws.py           # WebSocket connection handling for live capture
 │       ├── services/
 │       │   ├── __init__.py
-│       │   ├── supabase_auth.py # GoTrue REST client & Admin SDK link generation (signup/recovery links)
+│       │   ├── supabase_auth.py # GoTrue REST client & Admin SDK link generation
 │       │   ├── ratelimit.py    # IP and endpoint rate-limiting service
 │       │   ├── pdf.py          # PDF generation tools
 │       │   ├── providers.py    # Multi-LLM provider routing (Gemini, Groq, DeepSeek)
@@ -91,12 +89,11 @@ notecast/
 │   ├── offscreen.js      # Tab-audio capture (MV3 requires this to live outside the service worker)
 │   ├── content.js        # Reads video metadata, samples video frames
 │   └── sidepanel.html/js/css # The UI you interact with while watching
-└── web/                # Plain HTML/CSS/JS dashboard — sign in, browse notes, download PDFs
-    ├── signup.html
-    ├── login.html
-    ├── reset-password.html
-    ├── config.js
-    ├── content.js
-    ├── background.js
-    ├── manifest.json
-    └── offscreen.js
+└── web/                # Production web frontend (Render Static Site + Proxy Rewrites)
+    ├── index.html          # Landing page with dynamic pricing pass links
+    ├── login.html          # Login portal supporting URL redirects
+    ├── dashboard.html      # User library and active plan subscription view
+    ├── payments.html       # M-Pesa checkout terminal with real-time STK polling
+    ├── api.js              # Core fetch wrapper with automatic token refresh & CSRF handling
+    ├── password-utils.js   # UI utility scripts
+    └── styles.css          # Global design system
