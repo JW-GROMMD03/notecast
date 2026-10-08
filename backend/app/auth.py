@@ -98,11 +98,11 @@ def verify_csrf(request: Request) -> None:
 
 
 def set_session_cookies(response: Response, access_token: str, refresh_token: str, expires_in: int) -> None:
+    # Hardcoded for strict cross-domain functionality on Render
     common = dict(
         httponly=True,
-        secure=settings.COOKIE_SECURE, 
-        samesite="none" if settings.COOKIE_SECURE else "lax", 
-        domain=settings.COOKIE_DOMAIN or None,
+        secure=True,          # MUST be True for cross-domain
+        samesite="none",      # MUST be "none" for cross-domain
         path="/",
     )
     
@@ -113,17 +113,18 @@ def set_session_cookies(response: Response, access_token: str, refresh_token: st
     response.set_cookie(
         settings.CSRF_COOKIE_NAME, issue_csrf_token(),
         max_age=60 * 60 * 24 * 30, httponly=False,
-        secure=settings.COOKIE_SECURE, samesite="none" if settings.COOKIE_SECURE else "lax",
-        domain=settings.COOKIE_DOMAIN or None, path="/",
+        secure=True,          
+        samesite="none",      
+        path="/",
     )
 
 
 def clear_session_cookies(response: Response) -> None:
+    # Must match the setting attributes exactly to clear properly
     common = dict(
-        domain=settings.COOKIE_DOMAIN or None, 
         path="/",
-        samesite="none" if settings.COOKIE_SECURE else "lax",
-        secure=settings.COOKIE_SECURE
+        samesite="none",
+        secure=True
     )
     for name in (settings.ACCESS_COOKIE_NAME, settings.REFRESH_COOKIE_NAME, settings.CSRF_COOKIE_NAME):
         response.delete_cookie(name, **common)
