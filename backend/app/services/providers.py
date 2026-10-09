@@ -69,7 +69,7 @@ class GeminiProvider:
         if self.configured:
             genai.configure(api_key=settings.GEMINI_API_KEY)
 
-    def chat_json(self, system: str, user: str, max_tokens: int = 1500) -> dict:
+    def chat_json(self, system: str, user: str, max_tokens: int = 4000) -> dict:
         model = genai.GenerativeModel(settings.GEMINI_TEXT_MODEL, system_instruction=system)
         start = time.time()
         resp = model.generate_content(
@@ -87,7 +87,7 @@ class GeminiProvider:
             "tokens": getattr(resp.usage_metadata, "total_token_count", 0) if resp.usage_metadata else 0,
         }
 
-    def chat_text(self, system: str, user: str, max_tokens: int = 2048) -> dict:
+    def chat_text(self, system: str, user: str, max_tokens: int = 4000) -> dict:
         model = genai.GenerativeModel(settings.GEMINI_TEXT_MODEL, system_instruction=system)
         start = time.time()
         resp = model.generate_content(
@@ -105,7 +105,7 @@ class GeminiProvider:
             "tokens": getattr(resp.usage_metadata, "total_token_count", 0) if resp.usage_metadata else 0,
         }
 
-    def vision_json(self, system: str, user_text: str, image_bytes: bytes, mime: str = "image/webp", max_tokens: int = 400) -> dict:
+    def vision_json(self, system: str, user_text: str, image_bytes: bytes, mime: str = "image/webp", max_tokens: int = 1500) -> dict:
         model = genai.GenerativeModel(settings.GEMINI_VISION_MODEL, system_instruction=system)
         start = time.time()
         resp = model.generate_content(
@@ -162,7 +162,7 @@ class GroqProvider:
         self.configured = bool(settings.GROQ_API_KEY)
         self._client = OpenAI(api_key=settings.GROQ_API_KEY, base_url="https://api.groq.com/openai/v1", max_retries=0) if self.configured else None
 
-    def chat_json(self, system: str, user: str, max_tokens: int = 1500) -> dict:
+    def chat_json(self, system: str, user: str, max_tokens: int = 4000) -> dict:
         start = time.time()
         if "json" not in system.lower():
             system += "\nImportant: You must respond exclusively in valid JSON format."
@@ -182,7 +182,7 @@ class GroqProvider:
             "tokens": getattr(resp.usage, "total_tokens", 0),
         }
 
-    def chat_text(self, system: str, user: str, max_tokens: int = 2048) -> dict:
+    def chat_text(self, system: str, user: str, max_tokens: int = 4000) -> dict:
         start = time.time()
         resp = self._client.chat.completions.create(
             model=settings.GROQ_TEXT_MODEL,
@@ -198,7 +198,7 @@ class GroqProvider:
             "tokens": getattr(resp.usage, "total_tokens", 0),
         }
 
-    def vision_json(self, system: str, user_text: str, image_bytes: bytes, mime: str = "image/webp", max_tokens: int = 400) -> dict:
+    def vision_json(self, system: str, user_text: str, image_bytes: bytes, mime: str = "image/webp", max_tokens: int = 1500) -> dict:
         b64 = base64.b64encode(image_bytes).decode()
         start = time.time()
         resp = self._client.chat.completions.create(
@@ -267,9 +267,10 @@ class OpenRouterProvider:
             max_retries=0
         ) if self.configured else None
         
+        # Reads model dynamically from settings/env or defaults to free Llama 3.3
         self.model = getattr(settings, "OPENROUTER_TEXT_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
 
-    def chat_json(self, system: str, user: str, max_tokens: int = 1500) -> dict:
+    def chat_json(self, system: str, user: str, max_tokens: int = 4000) -> dict:
         start = time.time()
         if "json" not in system.lower():
             system += "\nImportant: You must respond exclusively in valid JSON format."
@@ -293,7 +294,7 @@ class OpenRouterProvider:
             "tokens": getattr(resp.usage, "total_tokens", 0),
         }
 
-    def chat_text(self, system: str, user: str, max_tokens: int = 2048) -> dict:
+    def chat_text(self, system: str, user: str, max_tokens: int = 4000) -> dict:
         start = time.time()
         resp = self._client.chat.completions.create(
             model=self.model,
@@ -325,7 +326,7 @@ class DeepSeekProvider:
         self.configured = bool(settings.DEEPSEEK_API_KEY)
         self._client = OpenAI(api_key=settings.DEEPSEEK_API_KEY, base_url="https://api.deepseek.com", max_retries=0) if self.configured else None
 
-    def chat_json(self, system: str, user: str, max_tokens: int = 1500) -> dict:
+    def chat_json(self, system: str, user: str, max_tokens: int = 4000) -> dict:
         start = time.time()
         resp = self._client.chat.completions.create(
             model=settings.DEEPSEEK_TEXT_MODEL,
@@ -343,7 +344,7 @@ class DeepSeekProvider:
             "tokens": getattr(resp.usage, "total_tokens", 0),
         }
 
-    def chat_text(self, system: str, user: str, max_tokens: int = 2048) -> dict:
+    def chat_text(self, system: str, user: str, max_tokens: int = 4000) -> dict:
         start = time.time()
         resp = self._client.chat.completions.create(
             model=settings.DEEPSEEK_TEXT_MODEL,
@@ -419,7 +420,7 @@ def call_with_fallback(order_csv: str, method_name: str, system: str, user: str,
 
 async def llm_chat_completion(capability: str, messages: list, temperature: float = 0.7, provider_overrides: dict = None) -> dict:
     """
-    Compatibility wrapper supporting dynamic provider-specific prompts.
+    Compatibility wrapper supporting dynamic provider-specific prompts and expanded max_tokens.
     """
     system = ""
     user = ""
@@ -432,9 +433,23 @@ async def llm_chat_completion(capability: str, messages: list, temperature: floa
     fallback_order = "gemini,groq,openrouter,deepseek"
 
     try:
-        res = call_with_fallback(fallback_order, "chat_json", system, user, provider_overrides=provider_overrides)
+        res = call_with_fallback(
+            fallback_order, 
+            "chat_json", 
+            system, 
+            user, 
+            provider_overrides=provider_overrides,
+            max_tokens=4000
+        )
         return {"content": res.get("data", {})}
     except Exception as e:
         log.warning(f"chat_json fallback failed in llm_chat_completion, trying chat_text: {e}")
-        res = call_with_fallback(fallback_order, "chat_text", system, user, provider_overrides=provider_overrides)
+        res = call_with_fallback(
+            fallback_order, 
+            "chat_text", 
+            system, 
+            user, 
+            provider_overrides=provider_overrides,
+            max_tokens=4000
+        )
         return {"content": res.get("text", "")}

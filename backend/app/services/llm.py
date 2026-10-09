@@ -2,7 +2,7 @@
 All note-generation and verification calls live here. Every function takes
 plain data in and returns plain dicts/lists out — no DB access — so it
 stays testable. The actual AI calls go through providers.call_with_fallback,
-which tries Gemini -> Groq -> DeepSeek (configurable order in .env) and
+which explicitly tries Gemini -> Groq -> OpenRouter -> DeepSeek and
 falls over automatically on any error.
 """
 import json
@@ -14,8 +14,14 @@ from . import providers
 log = logging.getLogger("notecast.llm")
 
 
-def _chat_json(system: str, user: str, max_tokens: int = 1500) -> dict:
-    return providers.call_with_fallback(settings.TEXT_PROVIDER_ORDER, "chat_json", system, user, max_tokens)
+def _chat_json(system: str, user: str, max_tokens: int = 4000) -> dict:
+    """
+    Core AI JSON router.
+    Explicitly forces the 4-tier fallback loop to ensure OpenRouter is utilized 
+    before DeepSeek, regardless of local .env configurations.
+    """
+    fallback_order = "gemini,groq,openrouter,deepseek"
+    return providers.call_with_fallback(fallback_order, "chat_json", system, user, max_tokens=max_tokens)
 
 
 def build_topic_model(title: str, channel: str, seed_transcript: str) -> dict:
@@ -27,7 +33,7 @@ def build_topic_model(title: str, channel: str, seed_transcript: str) -> dict:
         "Do not generate notes."
     )
     user = f"Title: {title}\nChannel: {channel}\nOpening transcript: {seed_transcript[:2000]}"
-    result = _chat_json(system, user, max_tokens=600)
+    result = _chat_json(system, user, max_tokens=1000)
     return result["data"] or {"domain": "", "key_terms": [], "expected_concepts": []}
 
 
@@ -42,7 +48,7 @@ def draft_note_section(transcript_window: str, visual_context: str) -> dict:
         "If the window has no substantive content, return {\"heading\": \"\", \"body_md\": \"\"}."
     )
     user = f"Transcript window:\n{transcript_window}\n\nVisual context (diagrams/slides seen):\n{visual_context}"
-    result = _chat_json(system, user, max_tokens=500)
+    result = _chat_json(system, user, max_tokens=1500)
     return result["data"] or {"heading": "", "body_md": ""}
 
 
@@ -59,7 +65,7 @@ def reorganize_notes(full_transcript: str, flat_sections: list[dict]) -> dict:
         f"Full transcript (for context, do not repeat verbatim):\n{full_transcript[:6000]}\n\n"
         f"Flat note sections:\n{json.dumps(flat_sections)[:6000]}"
     )
-    result = _chat_json(system, user, max_tokens=3000)
+    result = _chat_json(system, user, max_tokens=4000)
     return result["data"] or {"sections": []}
 
 
@@ -73,13 +79,14 @@ def enrich_notes(sections_text: str) -> dict:
         "{\"glossary\": [{\"term\": str, \"definition\": str}], "
         "\"review_questions\": [{\"question\": str, \"answer\": str}]}."
     )
-    result = _chat_json(system, sections_text[:8000], max_tokens=2500)
+    result = _chat_json(system, sections_text[:8000], max_tokens=4000)
     return result["data"] or {"glossary": [], "review_questions": []}
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
+    # Embeddings strictly route to Gemini via providers settings
     result = providers.call_with_fallback(settings.EMBED_PROVIDER_ORDER, "embed", texts)
     return result["embeddings"]
 
@@ -97,7 +104,7 @@ def score_claim_alignment(claim: str, source_text: str) -> float:
         "0.0 = unrelated or contradicted. Respond ONLY with JSON: {\"score\": float}."
     )
     user = f"CLAIM: {claim}\n\nSOURCE: {source_text[:1500]}"
-    result = _chat_json(system, user, max_tokens=50)
+    result = _chat_json(system, user, max_tokens=150)
     try:
         return float(result["data"].get("score", 0.0))
     except (TypeError, ValueError, AttributeError):
@@ -111,7 +118,7 @@ def repair_claim(claim: str, source_text: str) -> str:
         "Respond ONLY with JSON: {\"rewritten\": str}."
     )
     user = f"CLAIM: {claim}\n\nSOURCE: {source_text[:1500]}"
-    result = _chat_json(system, user, max_tokens=300)
+    result = _chat_json(system, user, max_tokens=500)
     return (result["data"] or {}).get("rewritten", "")
 
 
@@ -151,8 +158,11 @@ def generate_deep_research_notes(title: str, channel: str, full_transcript: str,
     )
     
     try:
+        # Explicit 4-tier fallback string guarantees OpenRouter is used
+        fallback_order = "gemini,groq,openrouter,deepseek"
+        
         # max_tokens set to 8192 to completely eliminate truncation issues
-        response = providers.call_with_fallback(settings.TEXT_PROVIDER_ORDER, "chat_text", system, user, max_tokens=8192)
+        response = providers.call_with_fallback(fallback_order, "chat_text", system, user, max_tokens=8192)
         text_result = response.get("text")
         if text_result and len(text_result.strip()) > 50:
             return text_result
