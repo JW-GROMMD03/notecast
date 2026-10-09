@@ -252,7 +252,7 @@ class GroqProvider:
 
 
 # ---------------------------------------------------------------------------
-# OpenRouter (New Free Failover Provider)
+# OpenRouter
 # ---------------------------------------------------------------------------
 
 class OpenRouterProvider:
@@ -267,7 +267,6 @@ class OpenRouterProvider:
             max_retries=0
         ) if self.configured else None
         
-        # Reads model dynamically from settings/env or defaults to free Llama 3.3
         self.model = getattr(settings, "OPENROUTER_TEXT_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
 
     def chat_json(self, system: str, user: str, max_tokens: int = 1500) -> dict:
@@ -380,10 +379,11 @@ def _get(name: str):
     return _instances[name]
 
 
-def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dict:
+def call_with_fallback(order_csv: str, method_name: str, system: str, user: str, provider_overrides: dict = None, **kwargs) -> dict:
+    """
+    Executes the fallback chain, allowing dynamic system prompt swaps per provider.
+    """
     tried = []
-    
-    # Resolves order list cleanly from settings helper or raw CSV
     provider_order = settings.order(order_csv) if hasattr(settings, "order") else [p.strip() for p in order_csv.split(",")]
     
     for name in provider_order:
@@ -392,7 +392,6 @@ def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dic
             continue
         provider = _get(name)
         
-        # Skips provider if it lacks an API key in environment variables
         if not getattr(provider, "configured", False):
             continue  
             
@@ -401,24 +400,26 @@ def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dic
             continue  
             
         tried.append(name)
+        
+        # Inject provider-specific system prompt overrides if they exist
+        current_system = system
+        if provider_overrides and name in provider_overrides:
+            current_system = provider_overrides[name]
+
         try:
-            return method(*args, **kwargs)
+            return method(current_system, user, **kwargs)
         except Exception as e:  
             log.warning("%s.%s failed (%s), falling over to next provider", name, method_name, e)
             continue
 
     if not tried:
-        raise RuntimeError(
-            f"No provider is configured for this capability. Set an API key for at least one of: "
-            f"{order_csv}."
-        )
+        raise RuntimeError(f"No provider configured for {method_name}.")
     raise RuntimeError(f"All configured providers failed for {method_name}: tried {tried}")
 
 
-async def llm_chat_completion(capability: str, messages: list, temperature: float = 0.7) -> dict:
+async def llm_chat_completion(capability: str, messages: list, temperature: float = 0.7, provider_overrides: dict = None) -> dict:
     """
-    Compatibility wrapper matching routers.diagrams expectations.
-    Routes through call_with_fallback using gemini, groq, openrouter, deepseek.
+    Compatibility wrapper supporting dynamic provider-specific prompts.
     """
     system = ""
     user = ""
@@ -431,9 +432,9 @@ async def llm_chat_completion(capability: str, messages: list, temperature: floa
     fallback_order = "gemini,groq,openrouter,deepseek"
 
     try:
-        res = call_with_fallback(fallback_order, "chat_json", system, user)
+        res = call_with_fallback(fallback_order, "chat_json", system, user, provider_overrides=provider_overrides)
         return {"content": res.get("data", {})}
     except Exception as e:
         log.warning(f"chat_json fallback failed in llm_chat_completion, trying chat_text: {e}")
-        res = call_with_fallback(fallback_order, "chat_text", system, user)
+        res = call_with_fallback(fallback_order, "chat_text", system, user, provider_overrides=provider_overrides)
         return {"content": res.get("text", "")}
