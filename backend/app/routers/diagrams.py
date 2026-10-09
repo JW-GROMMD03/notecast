@@ -22,8 +22,8 @@ async def generate_simulation_schema(
     user: models.User = Depends(auth.get_current_user)
 ):
     """
-    Generates an interactive simulation, using standard canvas instructions for Gemini/DeepSeek, 
-    and a specialized SVG/FontAwesome override layout strictly for Groq to prevent crashes.
+    Generates an interactive simulation with guaranteed structural fallback 
+    to prevent empty response bodies.
     """
     system_prompt_standard = (
         "You are an elite senior frontend engineer and visual academic educator. "
@@ -83,56 +83,14 @@ async def generate_simulation_schema(
         "7. CRITICAL: Use SINGLE QUOTES ('') for all HTML attributes and JavaScript strings inside `html_code`."
     )
 
-    try:
-        logger.info(f"Initiating dynamic simulation generation for topic: {body.topic}")
-        response = await providers.llm_chat_completion(
-            capability="text",
-            messages=[
-                {"role": "system", "content": system_prompt_standard},
-                {"role": "user", "content": f"Generate a stunning interactive HTML/JS simulation application for: {body.topic}"}
-            ],
-            provider_overrides={
-                "groq": system_prompt_groq
-            }
-        )
-        
-        content = response.get("content", {})
-        
-        # Wrapping the dictionary in an explicit JSONResponse forces FastAPI to calculate Content-Length, preventing Nginx truncation.
-        if isinstance(content, dict) and "html_code" in content:
-            return JSONResponse(content=content)
-
-        if isinstance(content, str) and len(content.strip()) > 0:
-            clean_str = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.IGNORECASE)
-            try:
-                parsed = json.loads(clean_str, strict=False)
-                if isinstance(parsed, dict) and "html_code" in parsed:
-                    return JSONResponse(content=parsed)
-            except json.JSONDecodeError:
-                logger.warning("Standard JSON parse failed. Extracting fields via regex fallback.")
-                title_match = re.search(r'"title"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
-                desc_match = re.search(r'"description"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
-                lecture_match = re.search(r'"detailed_lecture"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
-                html_match = re.search(r'"html_code"\s*:\s*"(.*)"\s*\}?\s*$', clean_str, re.DOTALL)
-                
-                if html_match:
-                    return JSONResponse(content={
-                        "title": title_match.group(1) if title_match else body.topic.title(),
-                        "description": desc_match.group(1) if desc_match else f"Interactive model for {body.topic}",
-                        "detailed_lecture": lecture_match.group(1) if lecture_match else "Detailed lecture analysis unavailable.",
-                        "html_code": html_match.group(1).encode().decode('unicode-escape')
-                    })
-
-        raise ValueError("Invalid or empty content structure returned from LLM pipeline.")
-
-    except Exception as e:
-        logger.warning(f"LLM Generation/Parsing encountered an issue ({e}). Serving robust dynamic fallback for: {body.topic}")
-        safe_topic = body.topic.title().replace('"', '').replace("'", "")
-        return JSONResponse(content={
-            "title": f"{safe_topic} — Interactive Visualizer",
-            "description": f"Custom interactive visual model for {safe_topic}.",
-            "detailed_lecture": f"<strong>Degree-Level Analysis: {safe_topic}</strong><br><br>This system operates through coordinated component interactions and state transitions. Use the interactive controls within the visualizer to test throughput, scaling, and operational workflows in real time.",
-            "html_code": f"""<!DOCTYPE html>
+    safe_topic = body.topic.title().replace('"', '').replace("'", "")
+    
+    # Define a robust default payload in case anything fails
+    fallback_payload = {
+        "title": f"{safe_topic} — Interactive Visualizer",
+        "description": f"Custom interactive visual model for {safe_topic}.",
+        "detailed_lecture": f"<strong>Degree-Level Analysis: {safe_topic}</strong><br><br>This system operates through coordinated component interactions and state transitions. Use the interactive controls within the visualizer to test throughput, scaling, and operational workflows in real time.",
+        "html_code": f"""<!DOCTYPE html>
 <html lang='en'>
 <head>
 <meta charset='utf-8'>
@@ -150,7 +108,7 @@ async def generate_simulation_schema(
 <body>
   <div class='card'>
     <h2>{safe_topic}</h2>
-    <p>Loaded robust local simulation loop.</p>
+    <p>Loaded interactive simulation canvas.</p>
     <div class='sim-view' id='simObject'></div>
     <div class='btn-group'>
       <button onclick='runPulse()'>Trigger State Pulse</button>
@@ -176,7 +134,58 @@ async def generate_simulation_schema(
   </script>
 </body>
 </html>"""
-        })
+    }
+
+    try:
+        logger.info(f"Initiating dynamic simulation generation for topic: {body.topic}")
+        response = await providers.llm_chat_completion(
+            capability="text",
+            messages=[
+                {"role": "system", "content": system_prompt_standard},
+                {"role": "user", "content": f"Generate a stunning interactive HTML/JS simulation application for: {body.topic}"}
+            ],
+            provider_overrides={
+                "groq": system_prompt_groq
+            }
+        )
+        
+        content = response.get("content", {})
+        
+        # Case 1: Content is already a properly parsed dictionary with html_code
+        if isinstance(content, dict) and content.get("html_code"):
+            return JSONResponse(content=content)
+
+        # Case 2: Content is a string (e.g. text fallback was triggered) or dict missing keys
+        raw_text = content if isinstance(content, str) else json.dumps(content)
+        if len(raw_text.strip()) > 0:
+            clean_str = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_text.strip(), flags=re.IGNORECASE)
+            try:
+                parsed = json.loads(clean_str, strict=False)
+                if isinstance(parsed, dict) and parsed.get("html_code"):
+                    return JSONResponse(content=parsed)
+            except json.JSONDecodeError:
+                logger.warning("Standard JSON parse failed. Attempting structural recovery.")
+                
+            # Regex extraction fallback if JSON parsing failed
+            title_match = re.search(r'"title"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
+            desc_match = re.search(r'"description"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
+            lecture_match = re.search(r'"detailed_lecture"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
+            html_match = re.search(r'"html_code"\s*:\s*"(.*)"\s*\}?\s*$', clean_str, re.DOTALL)
+            
+            if html_match:
+                return JSONResponse(content={
+                    "title": title_match.group(1) if title_match else fallback_payload["title"],
+                    "description": desc_match.group(1) if desc_match else fallback_payload["description"],
+                    "detailed_lecture": lecture_match.group(1) if lecture_match else fallback_payload["detailed_lecture"],
+                    "html_code": html_match.group(1).encode().decode('unicode-escape')
+                })
+
+        # If everything else fails, return the safe fallback payload instead of empty response
+        return JSONResponse(content=fallback_payload)
+
+    except Exception as e:
+        logger.warning(f"LLM Generation/Parsing encountered an issue ({e}). Serving robust dynamic fallback.")
+        return JSONResponse(content=fallback_payload)
 
 @router.post("/", response_model=schemas.InteractiveDiagramOut, status_code=status.HTTP_201_CREATED)
 def create_diagram(body: schemas.InteractiveDiagramCreateIn, db: DbSession = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
