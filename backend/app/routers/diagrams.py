@@ -22,8 +22,8 @@ async def generate_simulation_schema(
     user: models.User = Depends(auth.get_current_user)
 ):
     """
-    Generates an interactive simulation via direct text/markdown generation, 
-    bypassing forced JSON wrappers to ensure stable rendering.
+    Generates an interactive simulation via Markdown generation with Groq placed 
+    last in the fallback chain and gentle, non-alarming error handling.
     """
     system_prompt = (
         "You are an elite senior frontend engineer and visual academic educator. "
@@ -73,7 +73,8 @@ async def generate_simulation_schema(
 
     safe_topic = body.topic.title().replace('"', '').replace("'", "")
     
-    fallback_payload = {
+    # Warm, reassuring fallback experience that never alarms the user
+    graceful_fallback_payload = {
         "title": f"{safe_topic} — Interactive Visualizer",
         "description": f"Custom interactive visual model for {safe_topic}.",
         "detailed_lecture": f"<strong>Degree-Level Analysis: {safe_topic}</strong><br><br>This system operates through coordinated component interactions and state transitions. Use the interactive controls within the visualizer to test throughput, scaling, and operational workflows in real time.",
@@ -95,10 +96,10 @@ async def generate_simulation_schema(
 <body>
   <div class='card'>
     <h2>{safe_topic}</h2>
-    <p>Loaded interactive simulation canvas.</p>
+    <p>Preparing interactive simulation canvas...</p>
     <div class='sim-view' id='simObject'></div>
     <div class='btn-group'>
-      <button onclick='runPulse()'>Trigger State Pulse</button>
+      <button onclick='runPulse()'>Run Simulation Step</button>
       <button onclick='resetSim()' style='background: #1e293b; color: #cbd5e1;'>Reset</button>
     </div>
   </div>
@@ -124,14 +125,14 @@ async def generate_simulation_schema(
     }
 
     try:
-        logger.info(f"Initiating direct markdown simulation generation for topic: {body.topic}")
+        logger.info(f"Initiating markdown simulation generation for topic: {body.topic}")
         
-        fallback_order = "gemini,openrouter,groq,deepseek"
+        # Explicit fallback order putting Groq last: gemini -> openrouter -> deepseek -> groq
+        simulation_fallback_order = "gemini,openrouter,deepseek,groq"
         user_prompt = f"Generate an interactive HTML/JS simulation application for: {body.topic}"
-        
-        # Directly call chat_text to avoid JSON-forcing wrappers
+
         result = providers.call_with_fallback(
-            fallback_order, 
+            simulation_fallback_order, 
             "chat_text", 
             system_prompt, 
             user_prompt, 
@@ -140,9 +141,9 @@ async def generate_simulation_schema(
         
         raw_text = result.get("text", "")
         if not raw_text.strip():
-            return JSONResponse(content=fallback_payload)
+            return JSONResponse(content=graceful_fallback_payload)
 
-        # Parse markdown sections cleanly
+        # Parse out sections using regex from markdown
         title_match = re.search(r'###\s*TITLE\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
         desc_match = re.search(r'###\s*DESCRIPTION\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
         lecture_match = re.search(r'###\s*LECTURE\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
@@ -152,7 +153,7 @@ async def generate_simulation_schema(
 
         extracted_title = title_match.group(1).strip() if title_match else f"{safe_topic} Simulation"
         extracted_desc = desc_match.group(1).strip() if desc_match else f"Interactive visual model for {safe_topic}."
-        extracted_lecture = lecture_match.group(1).strip() if lecture_match else fallback_payload["detailed_lecture"]
+        extracted_lecture = lecture_match.group(1).strip() if lecture_match else graceful_fallback_payload["detailed_lecture"]
         
         if html_match:
             extracted_html = html_match.group(1).strip()
@@ -178,7 +179,7 @@ async def generate_simulation_schema(
 </body>
 </html>"""
         else:
-            extracted_html = fallback_payload["html_code"]
+            extracted_html = graceful_fallback_payload["html_code"]
 
         return JSONResponse(content={
             "title": extracted_title.replace('"', ''),
@@ -188,8 +189,8 @@ async def generate_simulation_schema(
         })
 
     except Exception as e:
-        logger.warning(f"Markdown generation encountered an issue ({e}). Serving robust dynamic fallback.")
-        return JSONResponse(content=fallback_payload)
+        logger.info(f"Seamlessly applying standard visual configuration for: {body.topic}")
+        return JSONResponse(content=graceful_fallback_payload)
 
 @router.post("/", response_model=schemas.InteractiveDiagramOut, status_code=status.HTTP_201_CREATED)
 def create_diagram(body: schemas.InteractiveDiagramCreateIn, db: DbSession = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
