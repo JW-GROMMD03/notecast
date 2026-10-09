@@ -22,8 +22,8 @@ async def generate_simulation_schema(
     user: models.User = Depends(auth.get_current_user)
 ):
     """
-    Generates an interactive simulation with guaranteed structural fallback 
-    to prevent empty response bodies.
+    Generates an interactive simulation with intelligent schema normalization 
+    and robust fallback mechanisms.
     """
     system_prompt_standard = (
         "You are an elite senior frontend engineer and visual academic educator. "
@@ -85,7 +85,6 @@ async def generate_simulation_schema(
 
     safe_topic = body.topic.title().replace('"', '').replace("'", "")
     
-    # Define a robust default payload in case anything fails
     fallback_payload = {
         "title": f"{safe_topic} — Interactive Visualizer",
         "description": f"Custom interactive visual model for {safe_topic}.",
@@ -151,22 +150,39 @@ async def generate_simulation_schema(
         
         content = response.get("content", {})
         
-        # Case 1: Content is already a properly parsed dictionary with html_code
-        if isinstance(content, dict) and content.get("html_code"):
-            return JSONResponse(content=content)
+        # Intelligent Schema Normalization: If content is a dict, check keys
+        if isinstance(content, dict):
+            # If provider returned a notes dictionary instead of simulation schema, normalize it
+            if not content.get("html_code") and (content.get("heading") or content.get("body_md")):
+                content = {
+                    "title": content.get("heading", safe_topic),
+                    "description": f"Simulation module for {safe_topic}",
+                    "detailed_lecture": content.get("body_md", "").replace("\n", "<br>"),
+                    "html_code": fallback_payload["html_code"]
+                }
+            
+            if content.get("html_code"):
+                return JSONResponse(content=content)
 
-        # Case 2: Content is a string (e.g. text fallback was triggered) or dict missing keys
+        # Handle string or raw payload fallback
         raw_text = content if isinstance(content, str) else json.dumps(content)
         if len(raw_text.strip()) > 0:
             clean_str = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_text.strip(), flags=re.IGNORECASE)
             try:
                 parsed = json.loads(clean_str, strict=False)
-                if isinstance(parsed, dict) and parsed.get("html_code"):
-                    return JSONResponse(content=parsed)
+                if isinstance(parsed, dict):
+                    if not parsed.get("html_code") and (parsed.get("heading") or parsed.get("body_md")):
+                        parsed = {
+                            "title": parsed.get("heading", safe_topic),
+                            "description": f"Simulation module for {safe_topic}",
+                            "detailed_lecture": parsed.get("body_md", "").replace("\n", "<br>"),
+                            "html_code": fallback_payload["html_code"]
+                        }
+                    if parsed.get("html_code"):
+                        return JSONResponse(content=parsed)
             except json.JSONDecodeError:
-                logger.warning("Standard JSON parse failed. Attempting structural recovery.")
+                logger.warning("Standard JSON parse failed. Attempting regex extraction.")
                 
-            # Regex extraction fallback if JSON parsing failed
             title_match = re.search(r'"title"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
             desc_match = re.search(r'"description"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
             lecture_match = re.search(r'"detailed_lecture"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
@@ -180,7 +196,6 @@ async def generate_simulation_schema(
                     "html_code": html_match.group(1).encode().decode('unicode-escape')
                 })
 
-        # If everything else fails, return the safe fallback payload instead of empty response
         return JSONResponse(content=fallback_payload)
 
     except Exception as e:

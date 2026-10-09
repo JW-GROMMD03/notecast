@@ -4,13 +4,9 @@ Unified AI provider layer.
 Four providers, in priority order per capability:
 
 1. Gemini     (Google AI Studio free tier)   — text, vision, audio transcription, embeddings
-2. Groq       (free tier)                     — text (Llama), vision (Llama vision), audio (Whisper-large-v3)
-3. OpenRouter (free tier / flexible pool)     — text (Llama/Gemma free models)
+2. OpenRouter (free tier / flexible pool)     — text (Llama/Gemma free models)
+3. Groq       (free tier)                     — text (Llama), vision (Llama vision), audio (Whisper-large-v3)
 4. DeepSeek   (near-free pay-as-you-go)      — text only
-
-`call_with_fallback()` tries each configured provider in order for a given
-capability and moves to the next on any error (auth failure, rate limit,
-timeout, model not found, etc.).
 """
 import base64
 import io
@@ -32,8 +28,8 @@ except ImportError:
 
 def safe_parse_json(raw_text: str) -> dict:
     """
-    Safely cleans markdown code blocks and handles malformed AI JSON strings 
-    without throwing a crash exception.
+    Safely cleans markdown code blocks, sanitizes unescaped control characters, 
+    and handles malformed AI JSON strings without throwing a crash exception.
     """
     if not isinstance(raw_text, str):
         return {}
@@ -43,17 +39,31 @@ def safe_parse_json(raw_text: str) -> dict:
     if match:
         text = match.group(1).strip()
         
+    # 1. Try direct JSON load
     try:
-        return json.loads(text)
+        return json.loads(text, strict=False)
     except json.JSONDecodeError as e:
-        log.warning(f"JSON decode failed, attempting recovery: {e} | Raw content: {text[:100]}...")
+        log.warning(f"JSON decode failed, attempting recovery: {e}")
+        
+        # 2. Sanitize unescaped control characters (newlines/tabs inside strings)
+        try:
+            # Replaces raw control characters with escaped equivalents or spaces
+            sanitized = re.sub(r'[\x00-\x1f\x7f-\x9f]', lambda m: '\\u%04x' % ord(m.group(0)), text)
+            return json.loads(sanitized, strict=False)
+        except Exception:
+            pass
+
+        # 3. Extract outermost braces substring
         start = text.find('{')
         end = text.rfind('}')
         if start != -1 and end != -1 and end > start:
             try:
-                return json.loads(text[start:end+1])
+                sub = text[start:end+1]
+                sanitized_sub = re.sub(r'[\x00-\x1f\x7f-\x9f]', lambda m: '\\u%04x' % ord(m.group(0)), sub)
+                return json.loads(sanitized_sub, strict=False)
             except Exception:
                 pass
+                
         return {"heading": "Note Section", "body_md": text}
 
 
@@ -267,7 +277,6 @@ class OpenRouterProvider:
             max_retries=0
         ) if self.configured else None
         
-        # Reads model dynamically from settings/env or defaults to free Llama 3.3
         self.model = getattr(settings, "OPENROUTER_TEXT_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
 
     def chat_json(self, system: str, user: str, max_tokens: int = 4000) -> dict:
@@ -381,9 +390,6 @@ def _get(name: str):
 
 
 def call_with_fallback(order_csv: str, method_name: str, system: str, user: str, provider_overrides: dict = None, **kwargs) -> dict:
-    """
-    Executes the fallback chain, allowing dynamic system prompt swaps per provider.
-    """
     tried = []
     provider_order = settings.order(order_csv) if hasattr(settings, "order") else [p.strip() for p in order_csv.split(",")]
     
@@ -402,7 +408,6 @@ def call_with_fallback(order_csv: str, method_name: str, system: str, user: str,
             
         tried.append(name)
         
-        # Inject provider-specific system prompt overrides if they exist
         current_system = system
         if provider_overrides and name in provider_overrides:
             current_system = provider_overrides[name]
@@ -419,9 +424,6 @@ def call_with_fallback(order_csv: str, method_name: str, system: str, user: str,
 
 
 async def llm_chat_completion(capability: str, messages: list, temperature: float = 0.7, provider_overrides: dict = None) -> dict:
-    """
-    Compatibility wrapper supporting dynamic provider-specific prompts and expanded max_tokens.
-    """
     system = ""
     user = ""
     for m in messages:
@@ -430,7 +432,7 @@ async def llm_chat_completion(capability: str, messages: list, temperature: floa
         elif m.get("role") == "user":
             user = m.get("content", "")
 
-    fallback_order = "gemini,groq,openrouter,deepseek"
+    fallback_order = "gemini,openrouter,groq,deepseek"
 
     try:
         res = call_with_fallback(
