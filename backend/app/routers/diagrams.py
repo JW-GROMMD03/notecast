@@ -22,65 +22,53 @@ async def generate_simulation_schema(
     user: models.User = Depends(auth.get_current_user)
 ):
     """
-    Generates an interactive simulation with intelligent schema normalization 
-    and robust fallback mechanisms.
+    Generates an interactive simulation via Markdown generation, translating 
+    markdown code blocks and structural diagrams into real visual components.
     """
-    system_prompt_standard = (
+    system_prompt = (
         "You are an elite senior frontend engineer and visual academic educator. "
-        "Create a complete, self-contained, stunning interactive HTML/CSS/JS animation and simulation application for the requested topic. "
-        "Output ONLY valid JSON with NO markdown formatting. Format exactly like this:\n"
-        "{\n"
-        "  \"title\": \"Topic Title\",\n"
-        "  \"description\": \"Short subtitle description\",\n"
-        "  \"detailed_lecture\": \"Extremely detailed, degree-level academic lecture text explaining the topic. Use HTML tags like <strong> and <br> for professional formatting.\",\n"
-        "  \"html_code\": \"<!DOCTYPE html><html><head><style>/* CSS styles */</style></head><body><!-- Use SINGLE QUOTES for HTML attributes --> <script>/* JavaScript logic */</script></body></html>\"\n"
-        "}\n\n"
-        "CRITICAL ESCAPING RULES:\n"
-        "1. You MUST use SINGLE QUOTES ('') for all HTML attributes and JavaScript strings inside `html_code`. NEVER use double quotes inside the HTML/JS string.\n"
-        "2. Do NOT use literal raw newlines inside JSON string values. Keep code compressed or use escaped \\n.\n"
-        "3. Inside your JavaScript, use window.parent.postMessage({ type: 'UPDATE_METRIC', title: 'Metric', value: 'Val' }, '*'); to send real-time stats."
-    )
-
-    system_prompt_groq = (
-        "You are an elite multi-disciplinary academic educator and visual simulation engineer. "
-        "Create a complete, self-contained interactive HTML/CSS/JS simulation for the requested topic. "
-        "Output ONLY valid JSON with NO markdown formatting. Format exactly like this:\n"
-        "{\n"
-        "  \"title\": \"Topic Title\",\n"
-        "  \"description\": \"Short visual subtitle\",\n"
-        "  \"detailed_lecture\": \"Degree-level academic lecture text using HTML tags like <strong> and <br>.\",\n"
-        "  \"html_code\": \"<!DOCTYPE html><html><head>"
-        "<link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'>"
-        "<style>"
-        "  body { margin: 0; background: #030712; color: #fff; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }"
-        "  .canvas-container { position: relative; width: 650px; height: 380px; background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; }"
-        "  .node { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: all 0.3s ease; z-index: 2; }"
-        "  .icon { font-size: 2.2rem; color: #3b82f6; filter: drop-shadow(0 0 8px rgba(59,130,246,0.6)); margin-bottom: 6px; }"
-        "  .label { font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-align: center; max-width: 90px; }"
-        "  .particle { position: absolute; width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 10px #10b981; pointer-events: none; opacity: 0; z-index: 1; }"
-        "  .controls { display: flex; gap: 10px; margin-top: 15px; }"
-        "  button { background: #3b82f6; color: white; border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 0.85rem; }"
-        "  button:hover { background: #2563eb; transform: translateY(-1px); }"
-        "  button.secondary { background: #1e293b; color: #cbd5e1; }"
-        "</style></head><body>"
-        "<div class='canvas-container' id='stage'>"
-        "  <!-- DYNAMIC DOMAIN NODES GO HERE -->"
-        "</div>"
-        "<div class='controls'>"
-        "  <!-- DYNAMIC INTERACTIVE BUTTONS GO HERE -->"
-        "</div>"
-        "<script>"
-        "  /* JS logic for node positioning, particle animation, state transitions, and postMessage telemetry */"
-        "</script></body></html>\"\n"
-        "}\n\n"
-        "SIMULATION GENERATION RULES:\n"
-        "1. Identify 3 to 6 primary visual entities/components for the topic.\n"
-        "2. Auto-select appropriate FontAwesome 6 icons matching the domain (e.g. fa-dna, fa-server, fa-coins, fa-flask).\n"
-        "3. Position the nodes logically inside the container.\n"
-        "4. Write JavaScript to animate particles moving between nodes to demonstrate the active process.\n"
-        "5. Add interactive buttons that trigger real actions (e.g., 'Step Forward', 'Simulate Bottleneck').\n"
-        "6. Emit telemetry on state changes via: window.parent.postMessage({ type: 'UPDATE_METRIC', title: 'Metric', value: 'Val' }, '*');\n"
-        "7. CRITICAL: Use SINGLE QUOTES ('') for all HTML attributes and JavaScript strings inside `html_code`."
+        "Create a complete, self-contained, stunning interactive HTML/CSS/JS animation and simulation application for the requested topic.\n\n"
+        "You MUST structure your response using clear headings and markdown code blocks like this:\n\n"
+        "### TITLE\n"
+        "Your Topic Title Here\n\n"
+        "### DESCRIPTION\n"
+        "Short subtitle description\n\n"
+        "### LECTURE\n"
+        "Extremely detailed, degree-level academic lecture text explaining the topic. Use HTML tags like <strong> and <br>.\n\n"
+        "### HTML_CODE\n"
+        "```html\n"
+        "<!DOCTYPE html>\n"
+        "<html>\n"
+        "<head>\n"
+        "  <link rel='stylesheet' href='[https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css](https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css)'>\n"
+        "  <style>\n"
+        "    body { margin: 0; background: #030712; color: #fff; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }\n"
+        "    .canvas-container { position: relative; width: 650px; height: 380px; background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; display: flex; align-items: center; justify-content: center; }\n"
+        "    .node { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: all 0.3s ease; }\n"
+        "    .icon { font-size: 2.5rem; color: #3b82f6; filter: drop-shadow(0 0 10px rgba(59,130,246,0.6)); margin-bottom: 8px; }\n"
+        "    .label { font-size: 0.8rem; font-weight: 600; color: #94a3b8; text-align: center; }\n"
+        "    .controls { display: flex; gap: 10px; margin-top: 15px; }\n"
+        "    button { background: #3b82f6; color: white; border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; }\n"
+        "    button:hover { background: #2563eb; transform: translateY(-1px); }\n"
+        "  </style>\n"
+        "</head>\n"
+        "<body>\n"
+        "  <div class='canvas-container' id='stage'>\n"
+        "    <!-- Interactive nodes and simulation elements -->\n"
+        "  </div>\n"
+        "  <div class='controls'>\n"
+        "    <button onclick='runStep()'>Run Simulation Step</button>\n"
+        "  </div>\n"
+        "  <script>\n"
+        "    let step = 0;\n"
+        "    function runStep() {\n"
+        "      step++;\n"
+        "      window.parent.postMessage({ type: 'UPDATE_METRIC', title: 'Execution Cycle', value: step }, '*');\n"
+        "    }\n"
+        "  </script>\n"
+        "</body>\n"
+        "</html>\n"
+        "```"
     )
 
     safe_topic = body.topic.title().replace('"', '').replace("'", "")
@@ -136,70 +124,75 @@ async def generate_simulation_schema(
     }
 
     try:
-        logger.info(f"Initiating dynamic simulation generation for topic: {body.topic}")
+        logger.info(f"Initiating markdown simulation generation for topic: {body.topic}")
+        
+        # Uses chat_text through the resilient 4-tier fallback loop
         response = await providers.llm_chat_completion(
             capability="text",
             messages=[
-                {"role": "system", "content": system_prompt_standard},
-                {"role": "user", "content": f"Generate a stunning interactive HTML/JS simulation application for: {body.topic}"}
-            ],
-            provider_overrides={
-                "groq": system_prompt_groq
-            }
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Generate an interactive HTML/JS simulation application for: {body.topic}"}
+            ]
         )
         
-        content = response.get("content", {})
-        
-        # Intelligent Schema Normalization: If content is a dict, check keys
+        content = response.get("content", "")
         if isinstance(content, dict):
-            # If provider returned a notes dictionary instead of simulation schema, normalize it
-            if not content.get("html_code") and (content.get("heading") or content.get("body_md")):
-                content = {
-                    "title": content.get("heading", safe_topic),
-                    "description": f"Simulation module for {safe_topic}",
-                    "detailed_lecture": content.get("body_md", "").replace("\n", "<br>"),
-                    "html_code": fallback_payload["html_code"]
-                }
-            
-            if content.get("html_code"):
-                return JSONResponse(content=content)
+            raw_text = content.get("body_md") or content.get("detailed_lecture") or json.dumps(content)
+        else:
+            raw_text = str(content)
 
-        # Handle string or raw payload fallback
-        raw_text = content if isinstance(content, str) else json.dumps(content)
-        if len(raw_text.strip()) > 0:
-            clean_str = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_text.strip(), flags=re.IGNORECASE)
-            try:
-                parsed = json.loads(clean_str, strict=False)
-                if isinstance(parsed, dict):
-                    if not parsed.get("html_code") and (parsed.get("heading") or parsed.get("body_md")):
-                        parsed = {
-                            "title": parsed.get("heading", safe_topic),
-                            "description": f"Simulation module for {safe_topic}",
-                            "detailed_lecture": parsed.get("body_md", "").replace("\n", "<br>"),
-                            "html_code": fallback_payload["html_code"]
-                        }
-                    if parsed.get("html_code"):
-                        return JSONResponse(content=parsed)
-            except json.JSONDecodeError:
-                logger.warning("Standard JSON parse failed. Attempting regex extraction.")
-                
-            title_match = re.search(r'"title"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
-            desc_match = re.search(r'"description"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
-            lecture_match = re.search(r'"detailed_lecture"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
-            html_match = re.search(r'"html_code"\s*:\s*"(.*)"\s*\}?\s*$', clean_str, re.DOTALL)
-            
-            if html_match:
-                return JSONResponse(content={
-                    "title": title_match.group(1) if title_match else fallback_payload["title"],
-                    "description": desc_match.group(1) if desc_match else fallback_payload["description"],
-                    "detailed_lecture": lecture_match.group(1) if lecture_match else fallback_payload["detailed_lecture"],
-                    "html_code": html_match.group(1).encode().decode('unicode-escape')
-                })
+        if not raw_text.strip():
+            return JSONResponse(content=fallback_payload)
 
-        return JSONResponse(content=fallback_payload)
+        # Parse out sections using regex from markdown
+        title_match = re.search(r'###\s*TITLE\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
+        desc_match = re.search(r'###\s*DESCRIPTION\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
+        lecture_match = re.search(r'###\s*LECTURE\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
+        
+        # Extract HTML code block or Mermaid diagram code block and translate into a real diagram view
+        html_match = re.search(r'```(?:html)?\s*(.*?)\s*```', raw_text, re.DOTALL | re.IGNORECASE)
+        mermaid_match = re.search(r'```(?:mermaid|diagram)?\s*(.*?)\s*```', raw_text, re.DOTALL | re.IGNORECASE)
+
+        extracted_title = title_match.group(1).strip() if title_match else f"{safe_topic} Simulation"
+        extracted_desc = desc_match.group(1).strip() if desc_match else f"Interactive visual model for {safe_topic}."
+        extracted_lecture = lecture_match.group(1).strip() if lecture_match else fallback_payload["detailed_lecture"]
+        
+        if html_match:
+            extracted_html = html_match.group(1).strip()
+        elif mermaid_match:
+            # Automatically translate Mermaid / structural diagram markdown into a rendered visual diagram canvas
+            mermaid_code = mermaid_match.group(1).strip()
+            extracted_html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <script src='https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js'></script>
+  <script>mermaid.initialize({{ startOnLoad: true, theme: 'dark' }});</script>
+  <style>
+    body {{ margin: 0; background: #030712; color: #fff; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }}
+    .mermaid {{ background: #0f172a; padding: 25px; border-radius: 12px; border: 1px solid #1e293b; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }}
+  </style>
+</head>
+<body>
+  <div class='mermaid'>
+    {mermaid_code}
+  </div>
+  <script>
+    window.parent.postMessage({{ type: 'UPDATE_METRIC', title: 'Diagram State', value: 'Rendered' }}, '*');
+  </script>
+</body>
+</html>"""
+        else:
+            extracted_html = fallback_payload["html_code"]
+
+        return JSONResponse(content={
+            "title": extracted_title.replace('"', ''),
+            "description": extracted_desc.replace('"', ''),
+            "detailed_lecture": extracted_lecture,
+            "html_code": extracted_html
+        })
 
     except Exception as e:
-        logger.warning(f"LLM Generation/Parsing encountered an issue ({e}). Serving robust dynamic fallback.")
+        logger.warning(f"Markdown generation encountered an issue ({e}). Serving robust dynamic fallback.")
         return JSONResponse(content=fallback_payload)
 
 @router.post("/", response_model=schemas.InteractiveDiagramOut, status_code=status.HTTP_201_CREATED)
