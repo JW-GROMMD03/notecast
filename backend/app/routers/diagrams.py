@@ -3,6 +3,7 @@ import json
 import re
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session as DbSession
 from pydantic import BaseModel, Field
 from .. import models, schemas, auth
@@ -24,7 +25,6 @@ async def generate_simulation_schema(
     Generates an interactive simulation, using standard canvas instructions for Gemini/DeepSeek, 
     and a specialized SVG/FontAwesome override layout strictly for Groq to prevent crashes.
     """
-    # 1. Standard Prompt (For Gemini, DeepSeek, OpenRouter) - Allows complex Canvas/CSS drawings
     system_prompt_standard = (
         "You are an elite senior frontend engineer and visual academic educator. "
         "Create a complete, self-contained, stunning interactive HTML/CSS/JS animation and simulation application for the requested topic. "
@@ -41,7 +41,6 @@ async def generate_simulation_schema(
         "3. Inside your JavaScript, use window.parent.postMessage({ type: 'UPDATE_METRIC', title: 'Metric', value: 'Val' }, '*'); to send real-time stats."
     )
 
-    # 2. Specialized Prompt (For Groq) - Forces FontAwesome components to prevent LLM drawing failures
     system_prompt_groq = (
         "You are an elite multi-disciplinary academic educator and visual simulation engineer. "
         "Create a complete, self-contained interactive HTML/CSS/JS simulation for the requested topic. "
@@ -92,7 +91,6 @@ async def generate_simulation_schema(
                 {"role": "system", "content": system_prompt_standard},
                 {"role": "user", "content": f"Generate a stunning interactive HTML/JS simulation application for: {body.topic}"}
             ],
-            # If the fallback loop hits Groq, it will instantly override the prompt with system_prompt_groq
             provider_overrides={
                 "groq": system_prompt_groq
             }
@@ -100,17 +98,16 @@ async def generate_simulation_schema(
         
         content = response.get("content", {})
         
-        # If content is a dict already (returned by provider), validate keys
+        # Wrapping the dictionary in an explicit JSONResponse forces FastAPI to calculate Content-Length, preventing Nginx truncation.
         if isinstance(content, dict) and "html_code" in content:
-            return content
+            return JSONResponse(content=content)
 
-        # If content is a string, parse it defensively
         if isinstance(content, str) and len(content.strip()) > 0:
             clean_str = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.IGNORECASE)
             try:
                 parsed = json.loads(clean_str, strict=False)
                 if isinstance(parsed, dict) and "html_code" in parsed:
-                    return parsed
+                    return JSONResponse(content=parsed)
             except json.JSONDecodeError:
                 logger.warning("Standard JSON parse failed. Extracting fields via regex fallback.")
                 title_match = re.search(r'"title"\s*:\s*"(.*?)"', clean_str, re.DOTALL)
@@ -119,19 +116,19 @@ async def generate_simulation_schema(
                 html_match = re.search(r'"html_code"\s*:\s*"(.*)"\s*\}?\s*$', clean_str, re.DOTALL)
                 
                 if html_match:
-                    return {
+                    return JSONResponse(content={
                         "title": title_match.group(1) if title_match else body.topic.title(),
                         "description": desc_match.group(1) if desc_match else f"Interactive model for {body.topic}",
                         "detailed_lecture": lecture_match.group(1) if lecture_match else "Detailed lecture analysis unavailable.",
                         "html_code": html_match.group(1).encode().decode('unicode-escape')
-                    }
+                    })
 
         raise ValueError("Invalid or empty content structure returned from LLM pipeline.")
 
     except Exception as e:
         logger.warning(f"LLM Generation/Parsing encountered an issue ({e}). Serving robust dynamic fallback for: {body.topic}")
         safe_topic = body.topic.title().replace('"', '').replace("'", "")
-        return {
+        return JSONResponse(content={
             "title": f"{safe_topic} — Interactive Visualizer",
             "description": f"Custom interactive visual model for {safe_topic}.",
             "detailed_lecture": f"<strong>Degree-Level Analysis: {safe_topic}</strong><br><br>This system operates through coordinated component interactions and state transitions. Use the interactive controls within the visualizer to test throughput, scaling, and operational workflows in real time.",
@@ -179,7 +176,7 @@ async def generate_simulation_schema(
   </script>
 </body>
 </html>"""
-        }
+        })
 
 @router.post("/", response_model=schemas.InteractiveDiagramOut, status_code=status.HTTP_201_CREATED)
 def create_diagram(body: schemas.InteractiveDiagramCreateIn, db: DbSession = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
