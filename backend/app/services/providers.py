@@ -169,7 +169,6 @@ class GroqProvider:
             
         resp = self._client.chat.completions.create(
             model=settings.GROQ_TEXT_MODEL,
-            # Removed strict response_format to prevent 400 Bad Request errors on minor Llama formatting mistakes.
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=max_tokens,
         )
@@ -267,6 +266,9 @@ class OpenRouterProvider:
             base_url="https://openrouter.ai/api/v1", 
             max_retries=0
         ) if self.configured else None
+        
+        # Reads model dynamically from settings/env or defaults to free Llama 3.3
+        self.model = getattr(settings, "OPENROUTER_TEXT_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
 
     def chat_json(self, system: str, user: str, max_tokens: int = 1500) -> dict:
         start = time.time()
@@ -274,8 +276,7 @@ class OpenRouterProvider:
             system += "\nImportant: You must respond exclusively in valid JSON format."
             
         resp = self._client.chat.completions.create(
-            model="meta-llama/llama-3.3-70b-instruct:free",
-            # Removed strict response_format to prevent 400 Bad Request errors.
+            model=self.model,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=max_tokens,
             extra_headers={
@@ -288,7 +289,7 @@ class OpenRouterProvider:
         return {
             "data": parsed_data,
             "provider": self.name,
-            "model": "meta-llama/llama-3.3-70b-instruct:free",
+            "model": self.model,
             "latency_ms": int((time.time() - start) * 1000),
             "tokens": getattr(resp.usage, "total_tokens", 0),
         }
@@ -296,7 +297,7 @@ class OpenRouterProvider:
     def chat_text(self, system: str, user: str, max_tokens: int = 2048) -> dict:
         start = time.time()
         resp = self._client.chat.completions.create(
-            model="meta-llama/llama-3.3-70b-instruct:free",
+            model=self.model,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=max_tokens,
             extra_headers={
@@ -308,7 +309,7 @@ class OpenRouterProvider:
         return {
             "text": text,
             "provider": self.name,
-            "model": "meta-llama/llama-3.3-70b-instruct:free",
+            "model": self.model,
             "latency_ms": int((time.time() - start) * 1000),
             "tokens": getattr(resp.usage, "total_tokens", 0),
         }
@@ -381,13 +382,17 @@ def _get(name: str):
 
 def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dict:
     tried = []
-    for name in settings.order(order_csv):
+    
+    # Resolves order list cleanly from settings helper or raw CSV
+    provider_order = settings.order(order_csv) if hasattr(settings, "order") else [p.strip() for p in order_csv.split(",")]
+    
+    for name in provider_order:
         if name not in _REGISTRY:
             log.warning("unknown provider %r in order list, skipping", name)
             continue
         provider = _get(name)
         
-        # Skip if the provider lacks an API key in the environment variables
+        # Skips provider if it lacks an API key in environment variables
         if not getattr(provider, "configured", False):
             continue  
             
@@ -397,17 +402,15 @@ def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dic
             
         tried.append(name)
         try:
-            # Executes the API call. If successful, it immediately returns the data and stops.
             return method(*args, **kwargs)
         except Exception as e:  
-            # If ANY error occurs (Quota, Bad Request, Payment Required), it logs it and continues the loop.
             log.warning("%s.%s failed (%s), falling over to next provider", name, method_name, e)
             continue
 
     if not tried:
         raise RuntimeError(
             f"No provider is configured for this capability. Set an API key for at least one of: "
-            f"{', '.join(settings.order(order_csv))} (see .env.example)."
+            f"{order_csv}."
         )
     raise RuntimeError(f"All configured providers failed for {method_name}: tried {tried}")
 
