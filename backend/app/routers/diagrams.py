@@ -22,8 +22,8 @@ async def generate_simulation_schema(
     user: models.User = Depends(auth.get_current_user)
 ):
     """
-    Generates an interactive simulation via Markdown generation, translating 
-    markdown code blocks and structural diagrams into real visual components.
+    Generates an interactive simulation via direct text/markdown generation, 
+    bypassing forced JSON wrappers to ensure stable rendering.
     """
     system_prompt = (
         "You are an elite senior frontend engineer and visual academic educator. "
@@ -124,32 +124,29 @@ async def generate_simulation_schema(
     }
 
     try:
-        logger.info(f"Initiating markdown simulation generation for topic: {body.topic}")
+        logger.info(f"Initiating direct markdown simulation generation for topic: {body.topic}")
         
-        # Uses chat_text through the resilient 4-tier fallback loop
-        response = await providers.llm_chat_completion(
-            capability="text",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Generate an interactive HTML/JS simulation application for: {body.topic}"}
-            ]
+        fallback_order = "gemini,openrouter,groq,deepseek"
+        user_prompt = f"Generate an interactive HTML/JS simulation application for: {body.topic}"
+        
+        # Directly call chat_text to avoid JSON-forcing wrappers
+        result = providers.call_with_fallback(
+            fallback_order, 
+            "chat_text", 
+            system_prompt, 
+            user_prompt, 
+            max_tokens=4000
         )
         
-        content = response.get("content", "")
-        if isinstance(content, dict):
-            raw_text = content.get("body_md") or content.get("detailed_lecture") or json.dumps(content)
-        else:
-            raw_text = str(content)
-
+        raw_text = result.get("text", "")
         if not raw_text.strip():
             return JSONResponse(content=fallback_payload)
 
-        # Parse out sections using regex from markdown
+        # Parse markdown sections cleanly
         title_match = re.search(r'###\s*TITLE\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
         desc_match = re.search(r'###\s*DESCRIPTION\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
         lecture_match = re.search(r'###\s*LECTURE\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
         
-        # Extract HTML code block or Mermaid diagram code block and translate into a real diagram view
         html_match = re.search(r'```(?:html)?\s*(.*?)\s*```', raw_text, re.DOTALL | re.IGNORECASE)
         mermaid_match = re.search(r'```(?:mermaid|diagram)?\s*(.*?)\s*```', raw_text, re.DOTALL | re.IGNORECASE)
 
@@ -160,7 +157,6 @@ async def generate_simulation_schema(
         if html_match:
             extracted_html = html_match.group(1).strip()
         elif mermaid_match:
-            # Automatically translate Mermaid / structural diagram markdown into a rendered visual diagram canvas
             mermaid_code = mermaid_match.group(1).strip()
             extracted_html = f"""<!DOCTYPE html>
 <html>
