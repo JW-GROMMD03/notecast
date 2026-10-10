@@ -1,6 +1,7 @@
 import logging
 import json
 import re
+import asyncio
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -22,138 +23,116 @@ async def generate_simulation_schema(
     user: models.User = Depends(auth.get_current_user)
 ):
     """
-    Generates an interactive simulation via Markdown generation with Groq placed 
-    last in the fallback chain and gentle, non-alarming error handling.
+    Generates a minimalist, geometric simulation to heavily reduce API tokens,
+    with an extended 90-second timeout to accommodate slow model fallback chains.
     """
+    safe_topic = body.topic.title().replace('"', '').replace("'", "")
+    
+    # Ultra-minimal fallback payload utilizing basic geometric shapes
+    fallback_payload = {
+        "title": f"{safe_topic} — Minimal Visualizer",
+        "description": f"Geometric state representation for {safe_topic}.",
+        "detailed_lecture": f"<strong>System Mechanics: {safe_topic}</strong><br><br>This system operates through simple sequential state changes. Trigger the execution step below to observe flow logic.",
+        "html_code": f"""<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8'>
+<style>
+  body {{ margin: 0; background: #030712; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }}
+  .sim-container {{ border: 2px solid #1e293b; border-radius: 8px; padding: 40px; display: flex; gap: 20px; align-items: center; background: #0f172a; }}
+  .circle {{ width: 60px; height: 60px; background: #3b82f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; transition: transform 0.3s, background 0.3s; }}
+  .rectangle {{ width: 100px; height: 60px; background: #10b981; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; transition: opacity 0.3s; }}
+  .line {{ width: 50px; height: 4px; background: #475569; }}
+  button {{ margin-top: 30px; background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; }}
+</style>
+</head>
+<body>
+  <div class='sim-container'>
+    <div class='circle' id='nodeA'>A</div>
+    <div class='line'></div>
+    <div class='rectangle' id='nodeB'>State</div>
+  </div>
+  <button onclick='triggerStep()'>Advance Step</button>
+  <script>
+    let active = false;
+    function triggerStep() {{
+      active = !active;
+      document.getElementById('nodeA').style.transform = active ? 'scale(1.2)' : 'scale(1)';
+      document.getElementById('nodeB').style.background = active ? '#eab308' : '#10b981';
+      window.parent.postMessage({{ type: 'UPDATE_METRIC', title: 'State', value: active ? 'Running' : 'Idle' }}, '*');
+    }}
+  </script>
+</body>
+</html>"""
+    }
+
+    # Highly restrictive prompt commanding extreme brevity and basic shapes
     system_prompt = (
-        "You are an elite senior frontend engineer and visual academic educator. "
-        "Create a complete, self-contained, stunning interactive HTML/CSS/JS animation and simulation application for the requested topic.\n\n"
-        "You MUST structure your response using clear headings and markdown code blocks like this:\n\n"
+        "You are a minimalist computer science educator. Create a highly concise, interactive HTML/JS simulation for the requested topic.\n\n"
+        "CRITICAL INSTRUCTIONS TO MINIMIZE TOKENS:\n"
+        "1. Write the absolute minimum CSS and JS required.\n"
+        "2. Do NOT use external libraries, complex SVGs, or Tailwind.\n"
+        "3. You MUST use basic HTML/CSS geometric shapes (rectangles, circles, and lines) to represent all objects and data structures. Use simple divs with border-radius.\n"
+        "4. Output MUST be incredibly short and direct.\n\n"
+        "Structure your response exactly like this using markdown:\n\n"
         "### TITLE\n"
-        "Your Topic Title Here\n\n"
+        "Topic Name\n\n"
         "### DESCRIPTION\n"
-        "Short subtitle description\n\n"
+        "1-sentence summary.\n\n"
         "### LECTURE\n"
-        "Extremely detailed, degree-level academic lecture text explaining the topic. Use HTML tags like <strong> and <br>.\n\n"
-        "### HTML_CODE\n"
+        "Brief explanation.\n\n"
+        "### HTML\n"
         "```html\n"
         "<!DOCTYPE html>\n"
         "<html>\n"
         "<head>\n"
-        "  <link rel='stylesheet' href='[https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css](https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css)'>\n"
         "  <style>\n"
-        "    body { margin: 0; background: #030712; color: #fff; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }\n"
-        "    .canvas-container { position: relative; width: 650px; height: 380px; background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; display: flex; align-items: center; justify-content: center; }\n"
-        "    .node { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: all 0.3s ease; }\n"
-        "    .icon { font-size: 2.5rem; color: #3b82f6; filter: drop-shadow(0 0 10px rgba(59,130,246,0.6)); margin-bottom: 8px; }\n"
-        "    .label { font-size: 0.8rem; font-weight: 600; color: #94a3b8; text-align: center; }\n"
-        "    .controls { display: flex; gap: 10px; margin-top: 15px; }\n"
-        "    button { background: #3b82f6; color: white; border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; }\n"
-        "    button:hover { background: #2563eb; transform: translateY(-1px); }\n"
+        "    body { background: #111; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }\n"
+        "    .circle { width: 50px; height: 50px; background: #3b82f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; }\n"
+        "    .rectangle { width: 100px; height: 50px; background: #10b981; display: flex; align-items: center; justify-content: center; }\n"
+        "    button { margin-top: 20px; padding: 10px; cursor: pointer; }\n"
         "  </style>\n"
         "</head>\n"
         "<body>\n"
-        "  <div class='canvas-container' id='stage'>\n"
-        "    <!-- Interactive nodes and simulation elements -->\n"
-        "  </div>\n"
-        "  <div class='controls'>\n"
-        "    <button onclick='runStep()'>Run Simulation Step</button>\n"
-        "  </div>\n"
+        "  <!-- Minimal shapes and buttons go here -->\n"
         "  <script>\n"
-        "    let step = 0;\n"
-        "    function runStep() {\n"
-        "      step++;\n"
-        "      window.parent.postMessage({ type: 'UPDATE_METRIC', title: 'Execution Cycle', value: step }, '*');\n"
-        "    }\n"
+        "    // Extremely minimal JS logic\n"
         "  </script>\n"
         "</body>\n"
         "</html>\n"
         "```"
     )
 
-    safe_topic = body.topic.title().replace('"', '').replace("'", "")
-    
-    # Warm, reassuring fallback experience that never alarms the user
-    graceful_fallback_payload = {
-        "title": f"{safe_topic} — Interactive Visualizer",
-        "description": f"Custom interactive visual model for {safe_topic}.",
-        "detailed_lecture": f"<strong>Degree-Level Analysis: {safe_topic}</strong><br><br>This system operates through coordinated component interactions and state transitions. Use the interactive controls within the visualizer to test throughput, scaling, and operational workflows in real time.",
-        "html_code": f"""<!DOCTYPE html>
-<html lang='en'>
-<head>
-<meta charset='utf-8'>
-<style>
-  body {{ margin: 0; background: #030712; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }}
-  .card {{ background: #0f172a; border: 1px solid #1e293b; padding: 35px; border-radius: 16px; text-align: center; box-shadow: 0 15px 35px rgba(0,0,0,0.6); max-width: 480px; width: 90%; }}
-  h2 {{ color: #3b82f6; margin-top: 0; font-size: 1.4rem; }}
-  p {{ color: #94a3b8; font-size: 0.9rem; line-height: 1.5; }}
-  .sim-view {{ margin: 20px auto; width: 100px; height: 100px; border-radius: 50%; background: radial-gradient(circle, #3b82f6 0%, #1e293b 80%); box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); transition: transform 0.2s ease; }}
-  .btn-group {{ display: flex; gap: 10px; justify-content: center; margin-top: 25px; }}
-  button {{ background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; }}
-  button:hover {{ background: #2563eb; transform: translateY(-1px); }}
-</style>
-</head>
-<body>
-  <div class='card'>
-    <h2>{safe_topic}</h2>
-    <p>Preparing interactive simulation canvas...</p>
-    <div class='sim-view' id='simObject'></div>
-    <div class='btn-group'>
-      <button onclick='runPulse()'>Run Simulation Step</button>
-      <button onclick='resetSim()' style='background: #1e293b; color: #cbd5e1;'>Reset</button>
-    </div>
-  </div>
-  <script>
-    let count = 0;
-    function runPulse() {{
-      count++;
-      const obj = document.getElementById('simObject');
-      obj.style.transform = 'scale(1.2)';
-      setTimeout(() => obj.style.transform = 'scale(1)', 200);
-      window.parent.postMessage({{ type: 'UPDATE_METRIC', title: 'Execution Cycles', value: count }}, '*');
-      window.parent.postMessage({{ type: 'UPDATE_METRIC', title: 'System Status', value: 'Active' }}, '*');
-    }}
-    function resetSim() {{
-      count = 0;
-      window.parent.postMessage({{ type: 'UPDATE_METRIC', title: 'Execution Cycles', value: count }}, '*');
-      window.parent.postMessage({{ type: 'UPDATE_METRIC', title: 'System Status', value: 'Standby' }}, '*');
-    }}
-    resetSim();
-  </script>
-</body>
-</html>"""
-    }
-
     try:
-        logger.info(f"Initiating markdown simulation generation for topic: {body.topic}")
-        
-        # Explicit fallback order putting Groq last: gemini -> openrouter -> deepseek -> groq
-        simulation_fallback_order = "gemini,openrouter,deepseek,groq"
-        user_prompt = f"Generate an interactive HTML/JS simulation application for: {body.topic}"
+        logger.info(f"Initiating token-optimized minimal simulation for: {body.topic}")
+        fallback_order = "gemini,openrouter,deepseek,groq"
+        user_prompt = f"Generate a minimal geometric HTML/JS simulation for: {body.topic}"
 
-        result = providers.call_with_fallback(
-            simulation_fallback_order, 
-            "chat_text", 
-            system_prompt, 
-            user_prompt, 
-            max_tokens=4000
+        # Increased timeout to 90 seconds to allow deep model generation.
+        # Max tokens clamped to 2000 to force the AI to respect brevity.
+        loop = asyncio.get_running_loop()
+        result = await asyncio.wait_for(
+            loop.run_in_executor(
+                None, 
+                lambda: providers.call_with_fallback(fallback_order, "chat_text", system_prompt, user_prompt, max_tokens=2000)
+            ),
+            timeout=90.0
         )
         
         raw_text = result.get("text", "")
         if not raw_text.strip():
-            return JSONResponse(content=graceful_fallback_payload)
+            return JSONResponse(content=fallback_payload)
 
-        # Parse out sections using regex from markdown
-        title_match = re.search(r'###\s*TITLE\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
-        desc_match = re.search(r'###\s*DESCRIPTION\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
-        lecture_match = re.search(r'###\s*LECTURE\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
+        title_match = re.search(r'###\s*(?:TITLE)\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
+        desc_match = re.search(r'###\s*(?:DESCRIPTION)\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
+        lecture_match = re.search(r'###\s*(?:LECTURE)\s*\n(.*?)(?=\n###|\Z)', raw_text, re.DOTALL | re.IGNORECASE)
         
         html_match = re.search(r'```(?:html)?\s*(.*?)\s*```', raw_text, re.DOTALL | re.IGNORECASE)
         mermaid_match = re.search(r'```(?:mermaid|diagram)?\s*(.*?)\s*```', raw_text, re.DOTALL | re.IGNORECASE)
 
         extracted_title = title_match.group(1).strip() if title_match else f"{safe_topic} Simulation"
-        extracted_desc = desc_match.group(1).strip() if desc_match else f"Interactive visual model for {safe_topic}."
-        extracted_lecture = lecture_match.group(1).strip() if lecture_match else graceful_fallback_payload["detailed_lecture"]
+        extracted_desc = desc_match.group(1).strip() if desc_match else f"Minimal interactive model for {safe_topic}."
+        extracted_lecture = lecture_match.group(1).strip() if lecture_match else fallback_payload["detailed_lecture"]
         
         if html_match:
             extracted_html = html_match.group(1).strip()
@@ -179,18 +158,22 @@ async def generate_simulation_schema(
 </body>
 </html>"""
         else:
-            extracted_html = graceful_fallback_payload["html_code"]
+            extracted_html = fallback_payload["html_code"]
 
         return JSONResponse(content={
+            "topic": body.topic,
             "title": extracted_title.replace('"', ''),
             "description": extracted_desc.replace('"', ''),
             "detailed_lecture": extracted_lecture,
             "html_code": extracted_html
         })
 
+    except asyncio.TimeoutError:
+        logger.warning(f"Simulation generation timed out (>90s). Serving instant fallback.")
+        return JSONResponse(content=fallback_payload)
     except Exception as e:
-        logger.info(f"Seamlessly applying standard visual configuration for: {body.topic}")
-        return JSONResponse(content=graceful_fallback_payload)
+        logger.warning(f"Simulation generation caught exception ({e}). Serving robust canvas.")
+        return JSONResponse(content=fallback_payload)
 
 @router.post("/", response_model=schemas.InteractiveDiagramOut, status_code=status.HTTP_201_CREATED)
 def create_diagram(body: schemas.InteractiveDiagramCreateIn, db: DbSession = Depends(get_db), user: models.User = Depends(auth.get_current_user)):

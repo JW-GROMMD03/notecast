@@ -1,12 +1,6 @@
 """
 Unified AI provider layer.
-
-Four providers, in priority order per capability:
-
-1. Gemini     (Google AI Studio free tier)   — text, vision, audio transcription, embeddings
-2. OpenRouter (free tier / flexible pool)     — text (Llama/Gemma free models)
-3. Groq       (free tier)                     — text (Llama), vision (Llama vision), audio (Whisper-large-v3)
-4. DeepSeek   (near-free pay-as-you-go)      — text only
+Includes strict client timeouts, latency tracking, and diagnostic error logging.
 """
 import base64
 import io
@@ -15,7 +9,6 @@ import logging
 import re
 import time
 from openai import OpenAI
-
 from ..config import settings
 
 log = logging.getLogger("notecast.providers")
@@ -27,10 +20,6 @@ except ImportError:
 
 
 def safe_parse_json(raw_text: str) -> dict:
-    """
-    Safely cleans markdown code blocks, sanitizes unescaped control characters, 
-    and handles malformed AI JSON strings without throwing a crash exception.
-    """
     if not isinstance(raw_text, str):
         return {}
     
@@ -39,21 +28,16 @@ def safe_parse_json(raw_text: str) -> dict:
     if match:
         text = match.group(1).strip()
         
-    # 1. Try direct JSON load
     try:
         return json.loads(text, strict=False)
     except json.JSONDecodeError as e:
         log.warning(f"JSON decode failed, attempting recovery: {e}")
-        
-        # 2. Sanitize unescaped control characters (newlines/tabs inside strings)
         try:
-            # Replaces raw control characters with escaped equivalents or spaces
             sanitized = re.sub(r'[\x00-\x1f\x7f-\x9f]', lambda m: '\\u%04x' % ord(m.group(0)), text)
             return json.loads(sanitized, strict=False)
         except Exception:
             pass
 
-        # 3. Extract outermost braces substring
         start = text.find('{')
         end = text.rfind('}')
         if start != -1 and end != -1 and end > start:
@@ -79,7 +63,7 @@ class GeminiProvider:
         if self.configured:
             genai.configure(api_key=settings.GEMINI_API_KEY)
 
-    def chat_json(self, system: str, user: str, max_tokens: int = 4000) -> dict:
+    def chat_json(self, system: str, user: str, max_tokens: int = 2500) -> dict:
         model = genai.GenerativeModel(settings.GEMINI_TEXT_MODEL, system_instruction=system)
         start = time.time()
         resp = model.generate_content(
@@ -97,7 +81,7 @@ class GeminiProvider:
             "tokens": getattr(resp.usage_metadata, "total_token_count", 0) if resp.usage_metadata else 0,
         }
 
-    def chat_text(self, system: str, user: str, max_tokens: int = 4000) -> dict:
+    def chat_text(self, system: str, user: str, max_tokens: int = 2500) -> dict:
         model = genai.GenerativeModel(settings.GEMINI_TEXT_MODEL, system_instruction=system)
         start = time.time()
         resp = model.generate_content(
@@ -113,41 +97,6 @@ class GeminiProvider:
             "model": settings.GEMINI_TEXT_MODEL,
             "latency_ms": int((time.time() - start) * 1000),
             "tokens": getattr(resp.usage_metadata, "total_token_count", 0) if resp.usage_metadata else 0,
-        }
-
-    def vision_json(self, system: str, user_text: str, image_bytes: bytes, mime: str = "image/webp", max_tokens: int = 1500) -> dict:
-        model = genai.GenerativeModel(settings.GEMINI_VISION_MODEL, system_instruction=system)
-        start = time.time()
-        resp = model.generate_content(
-            [user_text, {"mime_type": mime, "data": image_bytes}],
-            generation_config=genai.types.GenerationConfig(
-                response_mime_type="application/json", max_output_tokens=max_tokens
-            ),
-        )
-        parsed_data = safe_parse_json(resp.text)
-        return {
-            "data": parsed_data,
-            "provider": self.name,
-            "model": settings.GEMINI_VISION_MODEL,
-            "latency_ms": int((time.time() - start) * 1000),
-            "tokens": getattr(resp.usage_metadata, "total_token_count", 0) if resp.usage_metadata else 0,
-        }
-
-    def transcribe(self, audio_bytes: bytes, filename: str, vocabulary_hint: str = "") -> dict:
-        mime = "audio/webm"
-        model = genai.GenerativeModel(settings.GEMINI_ASR_MODEL)
-        prompt = "Transcribe this audio verbatim. Respond with the transcript text only, nothing else."
-        if vocabulary_hint:
-            prompt += f" Likely domain terms you may hear: {vocabulary_hint}"
-        start = time.time()
-        resp = model.generate_content([prompt, {"mime_type": mime, "data": audio_bytes}])
-        text = (resp.text or "").strip()
-        return {
-            "text": text,
-            "confidence": 0.85 if text else 0.0,
-            "provider": self.name,
-            "model": settings.GEMINI_ASR_MODEL,
-            "latency_ms": int((time.time() - start) * 1000),
         }
 
     def embed(self, texts: list[str]) -> dict:
@@ -170,9 +119,14 @@ class GroqProvider:
 
     def __init__(self):
         self.configured = bool(settings.GROQ_API_KEY)
-        self._client = OpenAI(api_key=settings.GROQ_API_KEY, base_url="https://api.groq.com/openai/v1", max_retries=0) if self.configured else None
+        self._client = OpenAI(
+            api_key=settings.GROQ_API_KEY, 
+            base_url="https://api.groq.com/openai/v1", 
+            timeout=85.0, 
+            max_retries=1
+        ) if self.configured else None
 
-    def chat_json(self, system: str, user: str, max_tokens: int = 4000) -> dict:
+    def chat_json(self, system: str, user: str, max_tokens: int = 2500) -> dict:
         start = time.time()
         if "json" not in system.lower():
             system += "\nImportant: You must respond exclusively in valid JSON format."
@@ -192,7 +146,7 @@ class GroqProvider:
             "tokens": getattr(resp.usage, "total_tokens", 0),
         }
 
-    def chat_text(self, system: str, user: str, max_tokens: int = 4000) -> dict:
+    def chat_text(self, system: str, user: str, max_tokens: int = 2500) -> dict:
         start = time.time()
         resp = self._client.chat.completions.create(
             model=settings.GROQ_TEXT_MODEL,
@@ -206,58 +160,6 @@ class GroqProvider:
             "model": settings.GROQ_TEXT_MODEL,
             "latency_ms": int((time.time() - start) * 1000),
             "tokens": getattr(resp.usage, "total_tokens", 0),
-        }
-
-    def vision_json(self, system: str, user_text: str, image_bytes: bytes, mime: str = "image/webp", max_tokens: int = 1500) -> dict:
-        b64 = base64.b64encode(image_bytes).decode()
-        start = time.time()
-        resp = self._client.chat.completions.create(
-            model=settings.GROQ_VISION_MODEL,
-            messages=[
-                {"role": "system", "content": system},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": user_text},
-                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                    ],
-                },
-            ],
-            max_tokens=max_tokens,
-        )
-        content = resp.choices[0].message.content
-        parsed_data = safe_parse_json(content)
-        return {
-            "data": parsed_data,
-            "provider": self.name,
-            "model": settings.GROQ_VISION_MODEL,
-            "latency_ms": int((time.time() - start) * 1000),
-            "tokens": getattr(resp.usage, "total_tokens", 0),
-        }
-
-    def transcribe(self, audio_bytes: bytes, filename: str, vocabulary_hint: str = "") -> dict:
-        start = time.time()
-        buf = io.BytesIO(audio_bytes)
-        buf.name = filename
-        resp = self._client.audio.transcriptions.create(
-            model=settings.GROQ_ASR_MODEL,
-            file=buf,
-            prompt=vocabulary_hint[:800] if vocabulary_hint else None,
-            response_format="verbose_json",
-        )
-        text = (resp.text or "").strip()
-        segments = getattr(resp, "segments", None) or []
-        if segments:
-            avg_logprob = sum((s.get("avg_logprob", -0.2) if isinstance(s, dict) else getattr(s, "avg_logprob", -0.2)) for s in segments) / len(segments)
-            confidence = max(0.0, min(1.0, 1.0 + avg_logprob))
-        else:
-            confidence = 0.9 if text else 0.0
-        return {
-            "text": text,
-            "confidence": confidence,
-            "provider": self.name,
-            "model": settings.GROQ_ASR_MODEL,
-            "latency_ms": int((time.time() - start) * 1000),
         }
 
 
@@ -274,12 +176,13 @@ class OpenRouterProvider:
         self._client = OpenAI(
             api_key=key, 
             base_url="https://openrouter.ai/api/v1", 
-            max_retries=0
+            timeout=85.0,
+            max_retries=1
         ) if self.configured else None
         
         self.model = getattr(settings, "OPENROUTER_TEXT_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
 
-    def chat_json(self, system: str, user: str, max_tokens: int = 4000) -> dict:
+    def chat_json(self, system: str, user: str, max_tokens: int = 2500) -> dict:
         start = time.time()
         if "json" not in system.lower():
             system += "\nImportant: You must respond exclusively in valid JSON format."
@@ -288,10 +191,7 @@ class OpenRouterProvider:
             model=self.model,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=max_tokens,
-            extra_headers={
-                "HTTP-Referer": "https://notecast.app",
-                "X-Title": "NoteCast AI"
-            }
+            extra_headers={"HTTP-Referer": "https://notecast.app", "X-Title": "NoteCast AI"}
         )
         content = resp.choices[0].message.content
         parsed_data = safe_parse_json(content)
@@ -303,16 +203,13 @@ class OpenRouterProvider:
             "tokens": getattr(resp.usage, "total_tokens", 0),
         }
 
-    def chat_text(self, system: str, user: str, max_tokens: int = 4000) -> dict:
+    def chat_text(self, system: str, user: str, max_tokens: int = 2500) -> dict:
         start = time.time()
         resp = self._client.chat.completions.create(
             model=self.model,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=max_tokens,
-            extra_headers={
-                "HTTP-Referer": "https://notecast.app",
-                "X-Title": "NoteCast AI"
-            }
+            extra_headers={"HTTP-Referer": "https://notecast.app", "X-Title": "NoteCast AI"}
         )
         text = resp.choices[0].message.content or ""
         return {
@@ -333,9 +230,14 @@ class DeepSeekProvider:
 
     def __init__(self):
         self.configured = bool(settings.DEEPSEEK_API_KEY)
-        self._client = OpenAI(api_key=settings.DEEPSEEK_API_KEY, base_url="https://api.deepseek.com", max_retries=0) if self.configured else None
+        self._client = OpenAI(
+            api_key=settings.DEEPSEEK_API_KEY, 
+            base_url="https://api.deepseek.com", 
+            timeout=85.0,
+            max_retries=1
+        ) if self.configured else None
 
-    def chat_json(self, system: str, user: str, max_tokens: int = 4000) -> dict:
+    def chat_json(self, system: str, user: str, max_tokens: int = 2500) -> dict:
         start = time.time()
         resp = self._client.chat.completions.create(
             model=settings.DEEPSEEK_TEXT_MODEL,
@@ -353,7 +255,7 @@ class DeepSeekProvider:
             "tokens": getattr(resp.usage, "total_tokens", 0),
         }
 
-    def chat_text(self, system: str, user: str, max_tokens: int = 4000) -> dict:
+    def chat_text(self, system: str, user: str, max_tokens: int = 2500) -> dict:
         start = time.time()
         resp = self._client.chat.completions.create(
             model=settings.DEEPSEEK_TEXT_MODEL,
@@ -371,7 +273,7 @@ class DeepSeekProvider:
 
 
 # ---------------------------------------------------------------------------
-# Registry + fallback runner
+# Registry + Diagnostic Fallback Runner
 # ---------------------------------------------------------------------------
 
 _REGISTRY = {
@@ -391,14 +293,13 @@ def _get(name: str):
 
 def call_with_fallback(order_csv: str, method_name: str, system: str, user: str, provider_overrides: dict = None, **kwargs) -> dict:
     tried = []
-    provider_order = settings.order(order_csv) if hasattr(settings, "order") else [p.strip() for p in order_csv.split(",")]
+    errors = {}
+    provider_order = [p.strip() for p in order_csv.split(",")]
     
     for name in provider_order:
         if name not in _REGISTRY:
-            log.warning("unknown provider %r in order list, skipping", name)
             continue
         provider = _get(name)
-        
         if not getattr(provider, "configured", False):
             continue  
             
@@ -407,51 +308,18 @@ def call_with_fallback(order_csv: str, method_name: str, system: str, user: str,
             continue  
             
         tried.append(name)
-        
         current_system = system
         if provider_overrides and name in provider_overrides:
             current_system = provider_overrides[name]
 
         try:
-            return method(current_system, user, **kwargs)
-        except Exception as e:  
-            log.warning("%s.%s failed (%s), falling over to next provider", name, method_name, e)
+            log.info(f"Attempting {name}.{method_name}...")
+            res = method(current_system, user, **kwargs)
+            log.info(f"✅ SUCCESS: {name}.{method_name} completed in {res.get('latency_ms', 0)}ms")
+            return res
+        except Exception as e:
+            errors[name] = str(e)
+            log.warning(f"❌ FAIL: {name}.{method_name} encountered error: {e}")
             continue
 
-    if not tried:
-        raise RuntimeError(f"No provider configured for {method_name}.")
-    raise RuntimeError(f"All configured providers failed for {method_name}: tried {tried}")
-
-
-async def llm_chat_completion(capability: str, messages: list, temperature: float = 0.7, provider_overrides: dict = None) -> dict:
-    system = ""
-    user = ""
-    for m in messages:
-        if m.get("role") == "system":
-            system = m.get("content", "")
-        elif m.get("role") == "user":
-            user = m.get("content", "")
-
-    fallback_order = "gemini,openrouter,groq,deepseek"
-
-    try:
-        res = call_with_fallback(
-            fallback_order, 
-            "chat_json", 
-            system, 
-            user, 
-            provider_overrides=provider_overrides,
-            max_tokens=4000
-        )
-        return {"content": res.get("data", {})}
-    except Exception as e:
-        log.warning(f"chat_json fallback failed in llm_chat_completion, trying chat_text: {e}")
-        res = call_with_fallback(
-            fallback_order, 
-            "chat_text", 
-            system, 
-            user, 
-            provider_overrides=provider_overrides,
-            max_tokens=4000
-        )
-        return {"content": res.get("text", "")}
+    raise RuntimeError(f"All configured providers failed for {method_name}. Tried: {tried}. Errors: {errors}")
