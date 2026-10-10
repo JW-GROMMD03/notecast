@@ -69,7 +69,7 @@ async function init() {
     });
   });
 
-  // 2. Wire Dynamic Simulation Generator (Upgraded to authedFetch)
+  // 2. Wire Dynamic Simulation Generator (Fixed for Long-Running 90s Timeout)
   const generateSimBtn = document.getElementById("generateSimBtn");
   if (generateSimBtn) {
     generateSimBtn.addEventListener("click", async () => {
@@ -79,14 +79,28 @@ async function init() {
       generateSimBtn.disabled = true;
       generateSimBtn.textContent = "AI Synthesizing 3D Env...";
       try {
-        const schema = await authedFetch("/diagrams/generate-sim/", {
+        // We use native fetch here instead of authedFetch to bypass any client-side 
+        // AbortController timeouts that might be killing the request at 15 seconds.
+        const response = await fetch("/diagrams/generate-sim/", {
           method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem('nc_access') || ''}`
+          },
+          credentials: "include", // Ensures your nc_access auth cookies are sent
           body: JSON.stringify({ topic })
         });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const schema = await response.json();
         sessionStorage.setItem("active_sim_schema", JSON.stringify(schema));
         window.location.href = `simulator.html?topic=${encodeURIComponent(topic)}`;
       } catch (err) {
-        alert("Failed to generate simulation. Please check your provider keys.");
+        console.error("Simulation Generation Error:", err);
+        alert("Failed to generate simulation. The AI provider took too long to respond. Please try again.");
       } finally {
         generateSimBtn.disabled = false;
         generateSimBtn.textContent = "Generate Live Simulation";
