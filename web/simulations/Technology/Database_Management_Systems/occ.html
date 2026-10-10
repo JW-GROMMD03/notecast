@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Optimistic Concurrency Control (OCC) — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #22c55e, #10b981, #14b8a6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(34,197,94,0.15);
+    color: #86efac;
+    border-color: #22c55e;
+  }
+  .teaching-toggle:hover { background: rgba(34,197,94,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #86efac;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #22c55e; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #22c55e; color: #052e14; border-color: #22c55e; }
+  .btn.primary:hover { background: #16a34a; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #86efac; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #22c55e; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(34,197,94,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* OCC PHASE INDICATOR */
+  .phase-indicator {
+    position: absolute;
+    top: 42px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 4px;
+    z-index: 8;
+    background: rgba(10,14,25,0.95);
+    padding: 5px 8px;
+    border-radius: 20px;
+    border: 1px solid #1e293b;
+  }
+  .phase-pill {
+    padding: 4px 14px;
+    border-radius: 14px;
+    font-size: 0.6rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    font-family: monospace;
+    color: #64748b;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: all 0.3s;
+    text-transform: uppercase;
+  }
+  .phase-pill.active-read {
+    background: rgba(34,211,238,0.2);
+    border-color: #22d3ee;
+    color: #7dd3fc;
+    box-shadow: 0 0 15px rgba(34,211,238,0.5);
+  }
+  .phase-pill.active-validate {
+    background: rgba(234,179,8,0.2);
+    border-color: #eab308;
+    color: #fde047;
+    box-shadow: 0 0 15px rgba(234,179,8,0.5);
+  }
+  .phase-pill.active-write {
+    background: rgba(34,197,94,0.2);
+    border-color: #22c55e;
+    color: #86efac;
+    box-shadow: 0 0 15px rgba(34,197,94,0.5);
+  }
+  .phase-arrow {
+    color: #475569;
+    align-self: center;
+    font-size: 0.7rem;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 90px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  /* TIMELINE / VERSION LOG (left) */
+  .timeline-pane {
+    flex: 1.05;
+    background: #070a14;
+    border: 2px solid #22c55e;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+    box-shadow: 0 0 25px rgba(34,197,94,0.15);
+  }
+  .timeline-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #86efac;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .timeline-title .clock {
+    font-size: 0.55rem;
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  /* Global version table */
+  .version-table {
+    background: #0a0e19;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: monospace;
+    font-size: 0.62rem;
+  }
+  .version-table-title {
+    font-size: 0.55rem;
+    color: #64748b;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .version-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+  }
+  .version-row:last-child { border-bottom: none; }
+  .version-row .key { color: #cbd5e1; font-weight: 700; }
+  .version-row .ver {
+    padding: 0 6px;
+    border-radius: 3px;
+    background: rgba(34,197,94,0.15);
+    color: #86efac;
+    font-weight: 800;
+    transition: all 0.3s;
+  }
+  .version-row .ver.bump {
+    background: rgba(234,179,8,0.3);
+    color: #fde047;
+    transform: scale(1.15);
+    box-shadow: 0 0 10px rgba(234,179,8,0.6);
+  }
+
+  /* OCC timeline for txns (three-phase bar chart) */
+  .occ-timeline {
+    flex: 1;
+    position: relative;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    overflow: hidden;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .occ-timeline-title {
+    font-size: 0.55rem;
+    color: #64748b;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    font-family: monospace;
+  }
+  .occ-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+  }
+  .occ-row-label {
+    width: 40px;
+    font-family: monospace;
+    font-size: 0.6rem;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .occ-row-track {
+    flex: 1;
+    height: 20px;
+    background: rgba(30,41,59,0.3);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+  }
+  .occ-block {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    color: #fff;
+    transition: all 0.4s ease;
+    opacity: 0;
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  .occ-block.visible {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  .occ-block.read {
+    background: linear-gradient(90deg, rgba(34,211,238,0.6), rgba(34,211,238,0.4));
+    border: 1px solid #22d3ee;
+  }
+  .occ-block.validate {
+    background: linear-gradient(90deg, rgba(234,179,8,0.6), rgba(234,179,8,0.4));
+    border: 1px solid #eab308;
+  }
+  .occ-block.write {
+    background: linear-gradient(90deg, rgba(34,197,94,0.6), rgba(34,197,94,0.4));
+    border: 1px solid #22c55e;
+  }
+  .occ-block.conflict {
+    background: linear-gradient(90deg, rgba(239,68,68,0.6), rgba(239,68,68,0.4));
+    border: 1px solid #ef4444;
+    animation: conflictShake 0.4s ease;
+  }
+  @keyframes conflictShake {
+    0%, 100% { transform: scaleX(1) translateX(0); }
+    25% { transform: scaleX(1) translateX(-3px); }
+    75% { transform: scaleX(1) translateX(3px); }
+  }
+  .occ-block.committed {
+    background: linear-gradient(90deg, rgba(16,185,129,0.7), rgba(16,185,129,0.5));
+    border: 1px solid #10b981;
+  }
+  .occ-block.aborted {
+    background: linear-gradient(90deg, rgba(239,68,68,0.5), rgba(239,68,68,0.3));
+    border: 1px solid #ef4444;
+    text-decoration: line-through;
+  }
+
+  .timeline-marker {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: #22c55e;
+    box-shadow: 0 0 10px #22c55e;
+    transition: left 0.15s linear;
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  /* VERIFICATION PHASE detail (right) */
+  .verify-pane {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #eab308;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    box-shadow: 0 0 25px rgba(234,179,8,0.15);
+  }
+  .verify-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fde047;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .verify-desc {
+    font-size: 0.6rem;
+    color: #94a3b8;
+    font-family: monospace;
+    line-height: 1.5;
+    padding: 6px 8px;
+    background: rgba(30,41,59,0.3);
+    border-radius: 5px;
+    border-left: 3px solid #eab308;
+  }
+
+  /* Txn cards (right side) */
+  .txn-card {
+    background: #0a0e19;
+    border: 1.5px solid #334155;
+    border-radius: 8px;
+    padding: 8px 10px;
+    transition: all 0.4s;
+    position: relative;
+    overflow: hidden;
+  }
+  .txn-card.reading { border-color: #22d3ee; box-shadow: 0 0 15px rgba(34,211,238,0.3); }
+  .txn-card.validating { border-color: #eab308; box-shadow: 0 0 15px rgba(234,179,8,0.4); animation: validatePulse 0.8s ease-in-out infinite; }
+  @keyframes validatePulse {
+    0%, 100% { box-shadow: 0 0 15px rgba(234,179,8,0.4); }
+    50%      { box-shadow: 0 0 30px rgba(234,179,8,0.9); }
+  }
+  .txn-card.writing { border-color: #22c55e; box-shadow: 0 0 15px rgba(34,197,94,0.4); }
+  .txn-card.committed { border-color: #10b981; background: rgba(16,185,129,0.05); opacity: 0.9; }
+  .txn-card.aborted { border-color: #ef4444; background: rgba(239,68,68,0.04); opacity: 0.85; }
+  .txn-card.conflicting {
+    border-color: #ef4444;
+    animation: conflictShake2 0.5s ease;
+    box-shadow: 0 0 30px rgba(239,68,68,0.9);
+  }
+  @keyframes conflictShake2 {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-5px); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
+
+  .txn-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+  }
+  .txn-name {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    font-family: monospace;
+  }
+  .txn-badge {
+    font-size: 0.5rem;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    font-family: monospace;
+  }
+  .txn-badge.reading { background: rgba(34,211,238,0.2); color: #7dd3fc; }
+  .txn-badge.validating { background: rgba(234,179,8,0.2); color: #fde047; }
+  .txn-badge.writing { background: rgba(34,197,94,0.2); color: #86efac; }
+  .txn-badge.committed { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+  .txn-badge.aborted { background: rgba(239,68,68,0.2); color: #fca5a5; }
+
+  .txn-snapshot-info {
+    font-size: 0.55rem;
+    color: #94a3b8;
+    font-family: monospace;
+    padding: 3px 6px;
+    background: rgba(30,41,59,0.4);
+    border-radius: 4px;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .txn-snapshot-info .val { color: #22d3ee; font-weight: 700; }
+
+  .txn-ops {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-family: monospace;
+    font-size: 0.55rem;
+    max-height: 90px;
+    overflow-y: auto;
+  }
+  .txn-op {
+    padding: 2px 5px;
+    border-radius: 3px;
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    background: rgba(30,41,59,0.3);
+    color: #94a3b8;
+    border-left: 3px solid transparent;
+    animation: opAppear 0.3s ease;
+  }
+  @keyframes opAppear {
+    from { transform: translateX(-8px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .txn-op.read { border-left-color: #22d3ee; color: #7dd3fc; }
+  .txn-op.validate { border-left-color: #eab308; color: #fde047; }
+  .txn-op.write { border-left-color: #22c55e; color: #86efac; }
+  .txn-op.abort { border-left-color: #ef4444; color: #fca5a5; }
+  .txn-op .icon { font-weight: 800; }
+  .txn-op .ts {
+    margin-left: auto;
+    color: #475569;
+    font-size: 0.5rem;
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(34,197,94,0.06);
+    border: 1px solid rgba(34,197,94,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.58rem;
+    color: #86efac;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1.05rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #22d3ee; text-shadow: 0 0 10px rgba(34,211,238,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 260px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #22c55e;
+    background: rgba(34,197,94,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #22c55e; background: rgba(34,197,94,0.06); }
+  .teach-entry.cyan   { border-color: #22d3ee; background: rgba(34,211,238,0.05); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(34,197,94,0.15); color: #86efac; }
+  .teach-entry .tag.cyan   { background: rgba(34,211,238,0.15); color: #7dd3fc; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Comparison card */
+  .comparison-card {
+    background: linear-gradient(145deg, rgba(34,197,94,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(34,197,94,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.6rem;
+  }
+  .comparison-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #86efac;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .comparison-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+  }
+  .comparison-row:last-child { border-bottom: none; }
+  .comparison-row .lbl { color: #94a3b8; font-size: 0.55rem; }
+  .comparison-row .occ { color: #86efac; font-weight: 700; font-size: 0.55rem; }
+  .comparison-row .pl { color: #fda4af; font-weight: 700; font-size: 0.55rem; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #22c55e;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(34,197,94,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>OPTIMISTIC CONCURRENCY CONTROL</h1>
+    <span class="sub">READ · VALIDATE · WRITE — NO LOCKS UNTIL COMMIT</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Demo Scenarios</h3>
+      <select id="demoSelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="clean" selected>✅ No Conflict — Both commit</option>
+        <option value="conflict">❌ Write Conflict — One aborts</option>
+        <option value="read-only">📖 Read-Only Transaction</option>
+        <option value="high-contention">🔥 High Contention (many txns)</option>
+        <option value="phantom">👻 Phantom via Insert</option>
+        <option value="serializable">🔒 Serializable OCC (validation)</option>
+      </select>
+      <button class="btn primary" id="btnRun">▶ Run Demo</button>
+      <button class="btn" id="btnStep">⏭ Step</button>
+      <button class="btn" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Validation Strategy</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="val" value="backward" checked style="accent-color:#22c55e;">
+          Backward (check txn's read set)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="val" value="forward" style="accent-color:#22c55e;">
+          Forward (check active txns' writes)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="val" value="both" style="accent-color:#22c55e;">
+          Both
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Concurrency Config</h3>
+      <div class="slider-row"><span>Active txns</span><span class="value" id="txnVal">3</span></div>
+      <input type="range" id="txnRange" min="2" max="6" value="3">
+      <div class="slider-row"><span>Speed</span><span class="value" id="speedVal">1.0×</span></div>
+      <input type="range" id="speedRange" min="0.3" max="2.5" step="0.1" value="1.0">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#22d3ee;"></div>Read phase</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#eab308;"></div>Validation phase</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#22c55e;"></div>Write phase</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>Conflict / abort</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">OCC: READ WITHOUT LOCKS · VALIDATE AT COMMIT · ABORT ON CONFLICT</div>
+
+      <!-- Phase indicator -->
+      <div class="phase-indicator">
+        <div class="phase-pill" id="phaseRead">READ</div>
+        <div class="phase-arrow">→</div>
+        <div class="phase-pill" id="phaseValidate">VALIDATE</div>
+        <div class="phase-arrow">→</div>
+        <div class="phase-pill" id="phaseWrite">WRITE</div>
+      </div>
+
+      <div class="main-split">
+        <!-- TIMELINE + VERSION LOG -->
+        <div class="timeline-pane">
+          <div class="timeline-title">
+            <span>📋 GLOBAL VERSION TABLE + TIMELINE</span>
+            <span class="clock" id="clockLabel">t=0.0s</span>
+          </div>
+
+          <div class="version-table" id="versionTable"></div>
+
+          <div class="occ-timeline" id="occTimeline">
+            <div class="occ-timeline-title">TRANSACTION PHASES</div>
+            <div id="occRows"></div>
+            <div class="timeline-marker" id="timelineMarker" style="left:0%"></div>
+          </div>
+        </div>
+
+        <!-- VALIDATION + TXN CARDS -->
+        <div class="verify-pane">
+          <div class="verify-title">
+            <span>🔍 VALIDATION PHASE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="valClock">idle</span>
+          </div>
+          <div class="verify-desc" id="verifyDesc">
+            Waiting for a transaction to validate. OCC checks that no OTHER transaction has modified this txn's read set since it started.
+          </div>
+          <div id="txnsPane" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Elapsed</div>
+        <div class="metric-value info" id="mElapsed">0.0s</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Active</div>
+        <div class="metric-value" id="mActive">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Committed</div>
+        <div class="metric-value" id="mCommitted">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Aborted</div>
+        <div class="metric-value bad" id="mAborted">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Conflicts</div>
+        <div class="metric-value warn" id="mConflicts">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Retry Rate</div>
+        <div class="metric-value" id="mRetry">0%</div>
+      </div>
+    </div>
+
+    <div class="comparison-card">
+      <div class="comparison-title">⚖️ OCC vs 2PL</div>
+      <div class="comparison-row"><span class="lbl">Lock on read</span><span><span class="pl">2PL: YES</span> · <span class="occ">OCC: NO</span></span></div>
+      <div class="comparison-row"><span class="lbl">Conflict detection</span><span><span class="pl">2PL: eager</span> · <span class="occ">OCC: lazy</span></span></div>
+      <div class="comparison-row"><span class="lbl">Best for</span><span><span class="pl">2PL: high contention</span> · <span class="occ">OCC: low contention</span></span></div>
+      <div class="comparison-row"><span class="lbl">Deadlocks?</span><span><span class="pl">2PL: possible</span> · <span class="occ">OCC: never</span></span></div>
+      <div class="comparison-row"><span class="lbl">Retries?</span><span><span class="pl">2PL: rare</span> · <span class="occ">OCC: common</span></span></div>
+      <div class="comparison-row"><span class="lbl">Used by</span><span style="font-size:0.5rem; color:#86efac;">Redis, MongoDB</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  demo: 'clean',
+  validation: 'backward',
+  txnCount: 3,
+  speed: 1.0,
+  running: false,
+  paused: false,
+  elapsedMs: 0,
+  // Global version table — every row has a version counter
+  versions: {
+    A: 1,
+    B: 1,
+    C: 1
+  },
+  // Row values
+  values: {
+    A: 100,
+    B: 200,
+    C: 300
+  },
+  // Active transactions
+  txns: [],
+  events: [],
+  committed: 0,
+  aborted: 0,
+  conflicts: 0,
+  lastTick: 0,
+  rafId: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  versionTable: document.getElementById('versionTable'),
+  occRows: document.getElementById('occRows'),
+  timelineMarker: document.getElementById('timelineMarker'),
+  txnsPane: document.getElementById('txnsPane'),
+  verifyDesc: document.getElementById('verifyDesc'),
+  valClock: document.getElementById('valClock'),
+  phaseRead: document.getElementById('phaseRead'),
+  phaseValidate: document.getElementById('phaseValidate'),
+  phaseWrite: document.getElementById('phaseWrite'),
+  clockLabel: document.getElementById('clockLabel'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  demoSelect: document.getElementById('demoSelect'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  txnRange: document.getElementById('txnRange'),
+  txnVal: document.getElementById('txnVal'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  mElapsed: document.getElementById('mElapsed'),
+  mActive: document.getElementById('mActive'),
+  mCommitted: document.getElementById('mCommitted'),
+  mAborted: document.getElementById('mAborted'),
+  mConflicts: document.getElementById('mConflicts'),
+  mRetry: document.getElementById('mRetry')
+};
+
+const COLORS = ['#22d3ee', '#f59e0b', '#a855f7', '#ec4899', '#10b981', '#84cc16'];
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining optimistic concurrency control.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   RENDER — VERSION TABLE
+   ============================================================ */
+function renderVersionTable() {
+  let html = `<div class="version-table-title"><span>Row</span><span>Version</span></div>`;
+  for (const key of ['A', 'B', 'C']) {
+    html += `
+      <div class="version-row">
+        <span class="key">Row ${key} = ${STATE.values[key]}</span>
+        <span class="ver" id="ver-${key}">v${STATE.versions[key]}</span>
+      </div>
+    `;
+  }
+  DOM.versionTable.innerHTML = html;
+}
+
+function bumpVersion(key) {
+  STATE.versions[key]++;
+  const el = document.getElementById(`ver-${key}`);
+  if (el) {
+    el.textContent = `v${STATE.versions[key]}`;
+    el.classList.add('bump');
+    setTimeout(() => el.classList.remove('bump'), 800);
+  }
+  renderVersionTable();
+}
+
+/* ============================================================
+   RENDER — OCC TIMELINE (three-phase bars)
+   ============================================================ */
+function renderOccRows() {
+  if (STATE.txns.length === 0) {
+    DOM.occRows.innerHTML = `<div style="color:#475569; font-family:monospace; font-size:0.6rem; text-align:center; padding:12px;">No active transactions</div>`;
+    return;
+  }
+  let html = '';
+  for (const txn of STATE.txns) {
+    html += `
+      <div class="occ-row" data-txn-name="${txn.name}">
+        <div class="occ-row-label" style="color:${txn.color};">${txn.name}</div>
+        <div class="occ-row-track">
+          ${txn.phases.map((p, idx) => `
+            <div class="occ-block ${p.type} ${p.visible ? 'visible' : ''}"
+                 style="left:${p.startPct}%; width:${p.widthPct}%;"
+                 data-phase-idx="${idx}">
+              ${p.label || p.type.toUpperCase()}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  DOM.occRows.innerHTML = html;
+}
+
+/* ============================================================
+   RENDER — TXN CARDS
+   ============================================================ */
+function renderTxns() {
+  if (STATE.txns.length === 0) {
+    DOM.txnsPane.innerHTML = `<div style="color:#475569; font-family:monospace; font-size:0.65rem; text-align:center; padding:16px;">
+      No active transactions.
+    </div>`;
+    return;
+  }
+  let html = '';
+  for (const txn of STATE.txns) {
+    html += `
+      <div class="txn-card ${txn.status}" style="--txn-color:${txn.color};">
+        <div class="txn-header">
+          <span class="txn-name" style="color:${txn.color};">${txn.name}</span>
+          <span class="txn-badge ${txn.status}">${txn.status.toUpperCase()}</span>
+        </div>
+        <div class="txn-snapshot-info">
+          <span>startTs = <span class="val">${txn.startTs}</span></span>
+          <span>readSet = <span class="val">${txn.readSet.length}</span></span>
+          <span>writeSet = <span class="val">${txn.writeSet.length}</span></span>
+        </div>
+        <div class="txn-ops">
+          ${txn.ops.map(op => `
+            <div class="txn-op ${op.cls}">
+              <span class="icon">${op.icon}</span>
+              <span>${op.text}</span>
+              <span class="ts">t=${op.t}ms</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  DOM.txnsPane.innerHTML = html;
+}
+
+/* ============================================================
+   TRANSACTION HELPERS
+   ============================================================ */
+let GLOBAL_TS = 100;
+
+function createTxn(name) {
+  const txn = {
+    name,
+    color: COLORS[STATE.txns.length % COLORS.length],
+    status: 'reading',        // reading | validating | writing | committed | aborted
+    startTs: GLOBAL_TS++,
+    readSet: [],              // { key, version }
+    writeSet: [],             // { key, value }
+    phases: [],               // timeline bars
+    ops: []
+  };
+  STATE.txns.push(txn);
+  renderTxns();
+  renderOccRows();
+  return txn;
+}
+
+function logOp(txn, cls, icon, text) {
+  txn.ops.push({ cls, icon, text, t: Math.round(STATE.elapsedMs) });
+  renderTxns();
+}
+
+function addPhase(txn, type, startPct, widthPct, label) {
+  txn.phases.push({ type, startPct, widthPct, label: label || '', visible: false });
+  renderOccRows();
+  // Animate visibility after a tick
+  setTimeout(() => {
+    const rows = DOM.occRows.querySelectorAll(`[data-txn-name="${txn.name}"] .occ-block`);
+    const last = rows[rows.length - 1];
+    if (last) last.classList.add('visible');
+  }, 30);
+}
+
+/* ============================================================
+   VERSION TRACKING — record which version of each row a txn read
+   ============================================================ */
+function recordRead(txn, key) {
+  const version = STATE.versions[key];
+  txn.readSet.push({ key, version });
+  logOp(txn, 'read', '👁', `READ ${key} = ${STATE.values[key]} (v${version})`);
+}
+
+function recordWrite(txn, key, newValue) {
+  txn.writeSet.push({ key, value: newValue });
+  logOp(txn, 'write', '✏️', `BUFFERED WRITE ${key} = ${newValue}`);
+}
+
+/* ============================================================
+   VALIDATION
+   ============================================================ */
+function validateTxn(txn) {
+  STATE.valClock = `validating ${txn.name}`;
+  txn.status = 'validating';
+  renderTxns();
+  updatePhaseIndicator();
+
+  DOM.verifyDesc.innerHTML = `
+    <strong>Validating ${txn.name}</strong><br>
+    startTs = ${txn.startTs}<br>
+    Read set: ${txn.readSet.map(r => `${r.key}=v${r.version}`).join(', ') || 'empty'}<br>
+    Checking: has any row in the read set been modified since this txn started?
+  `;
+
+  let conflictDetected = false;
+  let conflictedKey = null;
+
+  // For each read, check if the version has changed
+  for (const r of txn.readSet) {
+    const currentVersion = STATE.versions[r.key];
+    if (currentVersion !== r.version) {
+      conflictDetected = true;
+      conflictedKey = r.key;
+      break;
+    }
+  }
+
+  return { conflictDetected, conflictedKey };
+}
+
+/* ============================================================
+   COMMIT / ABORT
+   ============================================================ */
+function commitTxn(txn) {
+  // Apply all buffered writes
+  for (const w of txn.writeSet) {
+    STATE.values[w.key] = w.value;
+    bumpVersion(w.key);
+  }
+  txn.status = 'committed';
+  STATE.committed++;
+  logOp(txn, 'write', '✓', `COMMIT (applied ${txn.writeSet.length} writes)`);
+  renderTxns();
+}
+
+function abortTxn(txn, reason) {
+  txn.status = 'aborted';
+  STATE.aborted++;
+  logOp(txn, 'abort', '✗', `ABORT (${reason})`);
+  renderTxns();
+}
+
+/* ============================================================
+   RENDER HELPERS
+   ============================================================ */
+function updatePhaseIndicator() {
+  const anyReading = STATE.txns.some(t => t.status === 'reading');
+  const anyValidating = STATE.txns.some(t => t.status === 'validating');
+  const anyWriting = STATE.txns.some(t => t.status === 'writing');
+  DOM.phaseRead.className = 'phase-pill' + (anyReading ? ' active-read' : '');
+  DOM.phaseValidate.className = 'phase-pill' + (anyValidating ? ' active-validate' : '');
+  DOM.phaseWrite.className = 'phase-pill' + (anyWriting ? ' active-write' : '');
+}
+
+/* ============================================================
+   DEMO SCENARIOS
+   ============================================================ */
+function getDemoName() {
+  const names = {
+    'clean': 'NO CONFLICT',
+    'conflict': 'WRITE CONFLICT',
+    'read-only': 'READ-ONLY TXN',
+    'high-contention': 'HIGH CONTENTION',
+    'phantom': 'PHANTOM INSERT',
+    'serializable': 'SERIALIZABLE OCC'
+  };
+  return names[STATE.demo] || 'OCC';
+}
+
+function resetAll() {
+  STATE.running = false;
+  STATE.paused = false;
+  STATE.elapsedMs = 0;
+  STATE.txns = [];
+  STATE.events = [];
+  STATE.committed = 0;
+  STATE.aborted = 0;
+  STATE.conflicts = 0;
+  STATE.versions = { A: 1, B: 1, C: 1 };
+  STATE.values = { A: 100, B: 200, C: 300 };
+  GLOBAL_TS = 100;
+  if (STATE.rafId) cancelAnimationFrame(STATE.rafId);
+  STATE.rafId = null;
+  renderVersionTable();
+  renderOccRows();
+  renderTxns();
+  updatePhaseIndicator();
+  updateTelemetry();
+  DOM.valClock.textContent = 'idle';
+  DOM.verifyDesc.innerHTML = 'Waiting for a transaction to validate.';
+}
+
+function runDemo() {
+  resetAll();
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+
+  teach('START', `Running: ${getDemoName()}. OCC has three phases per transaction: READ (no locks), VALIDATE (check for conflicts), WRITE (apply changes). Watch how the validation phase decides who commits and who aborts.`, 'purple');
+
+  const demo = STATE.demo;
+  if (demo === 'clean') runClean();
+  else if (demo === 'conflict') runConflict();
+  else if (demo === 'read-only') runReadOnly();
+  else if (demo === 'high-contention') runHighContention();
+  else if (demo === 'phantom') runPhantom();
+  else if (demo === 'serializable') runSerializable();
+
+  STATE.lastTick = performance.now();
+  loop();
+}
+
+/* ============================================================
+   DEMO 1: NO CONFLICT
+   ============================================================ */
+function runClean() {
+  const t1 = createTxn('T1');
+  const t2 = createTxn('T2');
+
+  STATE.events = [
+    { at: 200, fn: () => {
+      logOp(t1, 'read', '👁', 'BEGIN (startTs=100)');
+      addPhase(t1, 'read', 0, 20, 'READ');
+      teach('T1 BEGINS', `${t1.name} starts at startTs=${t1.startTs}. It enters the READ phase. NO LOCKS are acquired — OCC doesn\'t lock anything on read.`, 'cyan');
+    }},
+    { at: 500, fn: () => {
+      logOp(t2, 'read', '👁', 'BEGIN (startTs=101)');
+      addPhase(t2, 'read', 0, 20, 'READ');
+      teach('T2 BEGINS', `${t2.name} starts at startTs=${t2.startTs}. Both transactions are now in the READ phase simultaneously. No blocking, no locks.`, 'cyan');
+    }},
+    { at: 900, fn: () => {
+      recordRead(t1, 'A');
+      teach('T1 READS A', `${t1.name} reads Row A = 100 (version v1). It records (key=A, version=1) in its READ SET. This is the snapshot it will validate against later.`, 'info');
+    }},
+    { at: 1200, fn: () => {
+      recordRead(t2, 'B');
+      teach('T2 READS B', `${t2.name} reads Row B = 200 (version v1). Different row — no conflict with T1.`, 'info');
+    }},
+    { at: 1600, fn: () => {
+      recordWrite(t1, 'A', 150);
+      teach('T1 WRITES', `${t1.name} wants to write A = 150. In OCC, the write is BUFFERED locally — it doesn\'t touch the database yet. The change only becomes visible at commit.`, 'purple');
+    }},
+    { at: 2000, fn: () => {
+      recordWrite(t2, 'B', 250);
+      teach('T2 WRITES', `${t2.name} buffers its write B = 250. Both transactions have their writes ready. Now they enter the VALIDATION phase.`, 'purple');
+    }},
+    { at: 2600, fn: () => {
+      // T1 validates
+      addPhase(t1, 'validate', 60, 12, 'VAL');
+      const res = validateTxn(t1);
+      teach('T1 VALIDATES', `Checking ${t1.name}'s read set: did anyone modify A between startTs and now? Version of A is still v1 — MATCHES. No conflict!`, 'ok');
+      setTimeout(() => {
+        addPhase(t1, 'write', 78, 12, 'WRITE');
+        commitTxn(t1);
+        teach('T1 COMMITS', `${t1.name} commits. Buffered writes are applied: A becomes 150 (version bumps to v2). This is the WRITE phase — atomic and short.`, 'ok');
+      }, 400);
+    }},
+    { at: 3400, fn: () => {
+      // T2 validates
+      addPhase(t2, 'validate', 60, 12, 'VAL');
+      const res = validateTxn(t2);
+      teach('T2 VALIDATES', `Checking ${t2.name}'s read set: B is still v1? YES. No conflict. Both transactions ran in parallel and both succeeded — this is OCC working optimally.`, 'ok');
+      setTimeout(() => {
+        addPhase(t2, 'write', 78, 12, 'WRITE');
+        commitTxn(t2);
+        teach('T2 COMMITS', `${t2.name} commits B = 250. Final state: A=150, B=250. Zero locks, zero blocking, two clean commits.`, 'ok');
+      }, 400);
+    }},
+    { at: 4400, fn: () => {
+      teach('SUMMARY', `When there are NO conflicts, OCC is faster than 2PL — no lock overhead, no waiting, no deadlock detection. This is why OCC shines in low-contention workloads.`, 'purple');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 2: WRITE CONFLICT
+   ============================================================ */
+function runConflict() {
+  const t1 = createTxn('T1');
+  const t2 = createTxn('T2');
+
+  STATE.events = [
+    { at: 200, fn: () => {
+      logOp(t1, 'read', '👁', 'BEGIN (startTs=100)');
+      addPhase(t1, 'read', 0, 30, 'READ');
+    }},
+    { at: 500, fn: () => {
+      logOp(t2, 'read', '👁', 'BEGIN (startTs=101)');
+      addPhase(t2, 'read', 0, 30, 'READ');
+      teach('BOTH BEGIN', `T1 and T2 both begin in the READ phase. Neither locks anything. Neither knows the other exists.`, 'cyan');
+    }},
+    { at: 900, fn: () => {
+      recordRead(t1, 'A');
+      teach('T1 READS A', `${t1.name} reads A = 100 (v1). Recorded in read set.`, 'info');
+    }},
+    { at: 1200, fn: () => {
+      recordRead(t2, 'A');
+      teach('T2 READS A', `${t2.name} ALSO reads A = 100 (v1). Both transactions have the same snapshot of A. Neither blocks the other.`, 'info');
+    }},
+    { at: 1700, fn: () => {
+      recordWrite(t1, 'A', 150);
+      recordWrite(t2, 'A', 200);
+      teach('BOTH WRITE', `${t1.name} buffers A=150, ${t2.name} buffers A=200. Each thinks it has the final say. This is the crux — both will try to validate and only ONE will succeed.`, 'warn');
+    }},
+    { at: 2400, fn: () => {
+      // T1 commits first
+      addPhase(t1, 'validate', 55, 12, 'VAL');
+      const res = validateTxn(t1);
+      teach('T1 VALIDATES', `${t1.name} checks its read set: was A modified since startTs=100? Version is still v1 — no. T1 can commit.`, 'ok');
+      setTimeout(() => {
+        addPhase(t1, 'write', 72, 15, 'WRITE');
+        commitTxn(t1);
+        teach('T1 COMMITS FIRST', `${t1.name} commits A=150. The version of A bumps from v1 to v2. This is crucial — the version increment is what other transactions will detect.`, 'ok');
+      }, 300);
+    }},
+    { at: 3300, fn: () => {
+      // T2 tries to validate — FAILS
+      addPhase(t2, 'validate', 55, 12, 'VAL');
+      STATE.conflicts++;
+      const res = validateTxn(t2);
+      if (res.conflictDetected) {
+        // Show conflict visually
+        const card = DOM.txnsPane.querySelector(`[data-txn-name="T2"]`) || DOM.txnsPane.children[1];
+        if (card) card.classList.add('conflicting');
+
+        addPhase(t2, 'validate', 70, 20, 'CONFLICT!');
+        teach('⚠️ T2 CONFLICT', `${t2.name} checks its read set: was A modified since startTs=101? Current version is v2, but T2 read v1! CONFLICT DETECTED. T2's snapshot is STALE — its writes would be based on old data.`, 'error');
+      }
+    }},
+    { at: 4100, fn: () => {
+      abortTxn(t2, 'validation failed');
+      teach('T2 ABORTS', `${t2.name} ABORTS. Its buffered writes are discarded. The transaction must be RETRIED by the application — with fresh reads, on the new snapshot (v2).`, 'error');
+    }},
+    { at: 4800, fn: () => {
+      teach('LESSON', `This is OCC's fundamental trade-off: NO BLOCKING on read, but ABORTS on conflict. In 2PL, ${t2.name} would have WAITED for ${t1.name} (blocking, but no abort). In OCC, ${t2.name} runs freely but must retry. First-committer-wins.`, 'purple');
+      teach('WHEN TO USE OCC', `OCC is best when conflicts are RARE. If your workload has 90% of transactions touching different rows, OCC beats 2PL. If most transactions hit the same hot rows, OCC causes retry storms and 2PL wins.`, 'info');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 3: READ-ONLY
+   ============================================================ */
+function runReadOnly() {
+  const t1 = createTxn('T1');
+  const writer = createTxn('T2');
+
+  STATE.events = [
+    { at: 200, fn: () => {
+      logOp(t1, 'read', '👁', 'BEGIN (startTs=100, READ-ONLY)');
+      addPhase(t1, 'read', 0, 60, 'READ-ONLY');
+      teach('READ-ONLY', `${t1.name} is READ-ONLY. It will only read, never write. Under OCC, read-only transactions are especially cheap — they still need to validate, but they have no writes to buffer.`, 'cyan');
+    }},
+    { at: 700, fn: () => {
+      recordRead(t1, 'A');
+      recordRead(t1, 'B');
+      teach('T1 READS', `${t1.name} reads A = 100 and B = 200. It records both in its read set.`, 'info');
+    }},
+    { at: 1200, fn: () => {
+      logOp(writer, 'read', '👁', 'BEGIN (startTs=101)');
+      addPhase(writer, 'read', 0, 30, 'READ');
+    }},
+    { at: 1600, fn: () => {
+      recordWrite(writer, 'B', 250);
+      teach('WRITER BUFFERS', `${writer.name} buffers a write to B. Under OCC, this is invisible to ${t1.name} until ${writer.name} commits.`, 'purple');
+    }},
+    { at: 2200, fn: () => {
+      addPhase(writer, 'validate', 40, 12, 'VAL');
+      validateTxn(writer);
+      setTimeout(() => {
+        addPhase(writer, 'write', 55, 15, 'WRITE');
+        commitTxn(writer);
+        teach('WRITER COMMITS', `${writer.name} commits B = 250. Version of B bumps to v2. Now ${t1.name}'s read set is STALE — it read B=v1.`, 'ok');
+      }, 300);
+    }},
+    { at: 3200, fn: () => {
+      addPhase(t1, 'validate', 65, 12, 'VAL');
+      const res = validateTxn(t1);
+      teach('T1 VALIDATES', `Checking ${t1.name}'s read set: A still v1? YES. B still v1? NO — it's v2 now. ${t1.name} read a value that has changed. But since ${t1.name} is READ-ONLY, it doesn't have writes to apply...`, 'warn');
+    }},
+    { at: 3800, fn: () => {
+      // Read-only txns can commit even with stale reads (no writes to conflict)
+      commitTxn(t1);
+      teach('READ-ONLY COMMITS', `${t1.name} commits! Even though its read set was stale, it has no writes to apply. It saw a CONSISTENT snapshot from when it started — which is perfectly valid for a read-only txn. This is one of OCC's underappreciated wins.`, 'ok');
+    }},
+    { at: 4500, fn: () => {
+      teach('OPTIMIZATION', `Real OCC systems (like PostgreSQL SSI) optimize for this: read-only txns validate against the SNAPSHOT they captured, and can commit without checking newer versions, as long as no dangerous write skew occurred.`, 'purple');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 4: HIGH CONTENTION
+   ============================================================ */
+function runHighContention() {
+  const txns = [];
+  for (let i = 0; i < STATE.txnCount; i++) txns.push(createTxn('T' + (i + 1)));
+
+  STATE.events = [
+    { at: 200, fn: () => {
+      txns.forEach(t => {
+        logOp(t, 'read', '👁', `BEGIN (startTs=${t.startTs})`);
+        addPhase(t, 'read', 0, 25, 'READ');
+      });
+      teach('MANY BEGINS', `${txns.length} transactions begin together. All enter the READ phase. NONE of them locks anything — OCC is completely free of read locks.`, 'cyan');
+    }},
+    { at: 700, fn: () => {
+      txns.forEach(t => recordRead(t, 'A'));
+      teach('ALL READ A', `All ${txns.length} transactions read A = 100 (version v1). They all have the same snapshot. In 2PL, this would be fine — S-locks are compatible. In OCC, this is fine — no locks at all.`, 'info');
+    }},
+    { at: 1400, fn: () => {
+      txns.forEach((t, i) => recordWrite(t, 'A', 100 + (i + 1) * 50));
+      teach('ALL WRITE A', `All ${txns.length} buffer a write to A. Now the crunch comes — only the FIRST one to validate will succeed. All the others will detect that version(A) changed and abort.`, 'warn');
+    }},
+    { at: 2300, fn: () => {
+      addPhase(txns[0], 'validate', 60, 12, 'VAL');
+      validateTxn(txns[0]);
+      setTimeout(() => {
+        addPhase(txns[0], 'write', 74, 12, 'WRITE');
+        commitTxn(txns[0]);
+        teach('T1 WINS', `${txns[0].name} validates first. Version of A becomes v2. Every other txn read v1 — they're now stale.`, 'ok');
+      }, 300);
+    }},
+    { at: 3300, fn: () => {
+      for (let i = 1; i < txns.length; i++) {
+        STATE.conflicts++;
+        addPhase(txns[i], 'validate', 60, 12, 'VAL');
+        addPhase(txns[i], 'validate', 72, 20, 'CONFLICT!');
+        abortTxn(txns[i], 'stale snapshot');
+      }
+      teach('⚠️ RETRY STORM', `${txns.length - 1} transactions just ABORTED. They all tried to write the same row based on the same stale snapshot. This is OCC's worst case: HIGH CONTENTION causes RETRY STORMS.`, 'error');
+    }},
+    { at: 4200, fn: () => {
+      teach('WHY THIS HAPPENS', `Under high contention, OCC degenerates. Every transaction succeeds in reading, does all its work, then discovers at validation that it must abort. Compare 2PL: ${txns[1].name} would have BLOCKED immediately on the X-lock, then succeeded after ${txns[0].name} released. Same throughput, but no wasted work.`, 'warn');
+    }},
+    { at: 5200, fn: () => {
+      teach('WHEN 2PL WINS', `Rule of thumb: if contention is HIGH (many txns hitting the same rows), use 2PL or MVCC. If contention is LOW (txns hit different rows), OCC is cheaper. Systems like MongoDB let you choose, but default to optimistic.`, 'purple');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 5: PHANTOM
+   ============================================================ */
+function runPhantom() {
+  const t1 = createTxn('T1');
+  const t2 = createTxn('T2');
+
+  STATE.events = [
+    { at: 200, fn: () => {
+      logOp(t1, 'read', '👁', 'BEGIN (startTs=100)');
+      addPhase(t1, 'read', 0, 40, 'READ (SELECT COUNT)');
+      teach('RANGE QUERY', `${t1.name} runs SELECT COUNT(*) WHERE status=active. It reads the current set of matching rows. The result is 2.`, 'cyan');
+    }},
+    { at: 900, fn: () => {
+      logOp(t2, 'read', '👁', 'BEGIN (startTs=101)');
+      addPhase(t2, 'read', 0, 30, 'READ');
+    }},
+    { at: 1500, fn: () => {
+      logOp(t2, 'write', '✏️', 'INSERT new row where status=active');
+      recordWrite(t2, 'C', 400);
+      teach('INSERT', `${t2.name} inserts a NEW ROW C where status=active. Under OCC, this is buffered locally.`, 'purple');
+    }},
+    { at: 2200, fn: () => {
+      addPhase(t2, 'validate', 40, 12, 'VAL');
+      validateTxn(t2);
+      setTimeout(() => {
+        addPhase(t2, 'write', 54, 15, 'WRITE');
+        commitTxn(t2);
+        teach('T2 COMMITS', `${t2.name} commits. Row C is now visible with status=active. Version of C is now v1.`, 'ok');
+      }, 300);
+    }},
+    { at: 3300, fn: () => {
+      addPhase(t1, 'validate', 55, 12, 'VAL');
+      const res = validateTxn(t1);
+      teach('T1 VALIDATION', `${t1.name} validates its read set. It read rows A and B (both unchanged). But it never read row C — because C didn't exist when ${t1.name} started! This is the PHANTOM problem.`, 'warn');
+    }},
+    { at: 4200, fn: () => {
+      commitTxn(t1);
+      teach('⚠️ PHANTOM', `${t1.name} commits, but its SELECT COUNT result (2) is now STALE — the real count is 3. This is a PHANTOM: a new row appeared that wasn't in the read set. OCC's basic read-set validation does NOT catch this.`, 'error');
+    }},
+    { at: 5000, fn: () => {
+      teach('FIX: RANGE VALIDATION', `To prevent phantoms, OCC must track RANGE reads — not just specific rows. Or use SERIALIZABLE SNAPSHOT ISOLATION (SSI, used by Postgres) which watches for "dangerous structures" in the dependency graph.`, 'purple');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 6: SERIALIZABLE OCC
+   ============================================================ */
+function runSerializable() {
+  const t1 = createTxn('T1');
+  const t2 = createTxn('T2');
+
+  STATE.events = [
+    { at: 200, fn: () => {
+      logOp(t1, 'read', '👁', 'BEGIN (startTs=100)');
+      addPhase(t1, 'read', 0, 40, 'READ A, B');
+    }},
+    { at: 500, fn: () => {
+      logOp(t2, 'read', '👁', 'BEGIN (startTs=101)');
+      addPhase(t2, 'read', 0, 40, 'READ A, B');
+      teach('WRITE SKEW', `Both transactions will read the SAME two rows, then write DIFFERENT rows. Under basic OCC, this is dangerous — no direct read-write conflict, but the combined effect may be inconsistent. Watch.`, 'warn');
+    }},
+    { at: 1100, fn: () => {
+      recordRead(t1, 'A');
+      recordRead(t1, 'B');
+      recordRead(t2, 'A');
+      recordRead(t2, 'B');
+      teach('BOTH READ A AND B', `Both transactions read A and B. All reads see v1. No locks, no blocking.`, 'info');
+    }},
+    { at: 1800, fn: () => {
+      recordWrite(t1, 'A', 150);
+      recordWrite(t2, 'B', 250);
+      teach('DIFFERENT WRITES', `${t1.name} writes A, ${t2.name} writes B. No overlap in write sets! Basic OCC would let BOTH commit — but that's WRITE SKEW.`, 'warn');
+    }},
+    { at: 2600, fn: () => {
+      addPhase(t1, 'validate', 55, 15, 'VAL + SAFETY');
+      validateTxn(t1);
+      teach('SSI CHECK', `Serializable Snapshot Isolation (SSI) does more than check versions. It builds a DEPENDENCY GRAPH tracking rw-antidependencies (who read what the other will write). Both ${t1.name} and ${t2.name} have a dangerous structure.`, 'cyan');
+      setTimeout(() => {
+        addPhase(t1, 'write', 72, 12, 'WRITE');
+        commitTxn(t1);
+      }, 400);
+    }},
+    { at: 3500, fn: () => {
+      addPhase(t2, 'validate', 55, 15, 'SSI ABORT');
+      STATE.conflicts++;
+      teach('⚠️ SSI DETECTS', `When ${t2.name} validates, SSI detects a dangerous cycle: T1 → T2 → T1. Even though their reads and writes don't directly overlap, their combination violates serializability. SSI aborts ${t2.name}.`, 'error');
+      abortTxn(t2, 'SSI dangerous structure');
+    }},
+    { at: 4400, fn: () => {
+      teach('SERIALIZABLE OCC', `SSI (Serializable Snapshot Isolation) is OCC + dependency tracking. It's the default "serializable" isolation in PostgreSQL since 9.1. It gives true serializability WITHOUT holding long locks — but it can abort txns that basic OCC would let through.`, 'purple');
+      teach('TAKEAWAY', `OCC isn't just "no locks" — it's a family of techniques. Basic OCC catches direct conflicts. SSI adds the ability to catch indirect ones (write skew, phantoms in some cases). Choose based on how strict your correctness requirements are.`, 'ok');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   MAIN LOOP
+   ============================================================ */
+function loop() {
+  const now = performance.now();
+  const dt = (now - STATE.lastTick) * STATE.speed;
+  STATE.lastTick = now;
+
+  if (STATE.running) {
+    STATE.elapsedMs += dt;
+
+    for (const evt of STATE.events) {
+      if (!evt.fired && STATE.elapsedMs >= evt.at) {
+        evt.fired = true;
+        try { evt.fn(); } catch (e) { console.warn(e); }
+      }
+    }
+
+    // Timeline marker
+    const pct = clamp((STATE.elapsedMs / 5000) * 100, 0, 100);
+    DOM.timelineMarker.style.left = pct + '%';
+
+    updatePhaseIndicator();
+    updateTelemetry();
+  }
+
+  STATE.rafId = requestAnimationFrame(loop);
+}
+
+/* ============================================================
+   TELEMETRY
+   ============================================================ */
+function updateTelemetry() {
+  DOM.mElapsed.textContent = (STATE.elapsedMs / 1000).toFixed(1) + 's';
+  DOM.clockLabel.textContent = `t=${(STATE.elapsedMs / 1000).toFixed(1)}s`;
+
+  DOM.mActive.textContent = STATE.txns.filter(t => t.status === 'reading' || t.status === 'validating' || t.status === 'writing').length;
+  DOM.mCommitted.textContent = STATE.committed;
+  DOM.mAborted.textContent = STATE.aborted;
+  DOM.mConflicts.textContent = STATE.conflicts;
+
+  const total = STATE.committed + STATE.aborted;
+  const retryRate = total > 0 ? Math.round((STATE.aborted / total) * 100) : 0;
+  DOM.mRetry.textContent = retryRate + '%';
+  DOM.mRetry.className = 'metric-value' + (retryRate > 50 ? ' bad' : retryRate > 20 ? ' warn' : '');
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.demoSelect.addEventListener('change', e => {
+  STATE.demo = e.target.value;
+  resetAll();
+  DOM.btnRun.textContent = '▶ Run Demo';
+  teach('DEMO', `Selected: ${getDemoName()}. Press RUN to see it play out.`, 'info');
+});
+
+DOM.btnRun.addEventListener('click', () => {
+  if (STATE.running) {
+    STATE.running = false;
+    DOM.btnRun.textContent = '▶ Resume';
+  } else {
+    if (STATE.txns.length === 0) runDemo();
+    else {
+      STATE.running = true;
+      STATE.lastTick = performance.now();
+      DOM.btnRun.textContent = '⏸ Pause';
+    }
+  }
+});
+
+DOM.btnStep.addEventListener('click', () => {
+  if (STATE.txns.length === 0) { runDemo(); return; }
+  STATE.running = false;
+  const nextEvt = STATE.events.find(e => !e.fired);
+  if (nextEvt) {
+    STATE.elapsedMs = nextEvt.at;
+    for (const evt of STATE.events) {
+      if (!evt.fired && STATE.elapsedMs >= evt.at) {
+        evt.fired = true;
+        try { evt.fn(); } catch (e) {}
+      }
+    }
+    updateTelemetry();
+  }
+});
+
+DOM.btnReset.addEventListener('click', () => {
+  resetAll();
+  DOM.btnRun.textContent = '▶ Run Demo';
+  teach('RESET', 'Reset. Ready to run.', 'info', false);
+});
+
+DOM.txnRange.addEventListener('input', e => {
+  STATE.txnCount = parseInt(e.target.value);
+  DOM.txnVal.textContent = STATE.txnCount;
+});
+
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseFloat(e.target.value);
+  DOM.speedVal.textContent = STATE.speed.toFixed(1) + '×';
+});
+
+document.querySelectorAll('input[name="val"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.validation = e.target.value;
+    const desc = {
+      backward: `BACKWARD validation: check that the txn's READ SET hasn't been modified since it started. Used by most OCC implementations.`,
+      forward: `FORWARD validation: check that no currently-active txn's WRITE SET intersects this txn's read set. Used when validation must be done before commit.`,
+      both: `BOTH directions: maximizes safety at the cost of more checks. Ensures serializability under stricter conditions.`
+    };
+    teach('VALIDATION', desc[e.target.value], 'purple');
+  });
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+STATE.rafId = requestAnimationFrame(loop);
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Optimistic Concurrency Control — OCC. This is the "ask forgiveness, not permission" approach to concurrency. Instead of locking before every read and write (as in 2PL), OCC does the work freely, then CHECKS for conflicts at commit time. If a conflict is found, the txn ABORTS and RETRIES.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('THREE PHASES',
+      `Every OCC transaction has three phases. (1) READ: do all reads, no locks. (2) VALIDATE: check if any of your reads have been invalidated by another txn's commit. (3) WRITE: apply your buffered writes to the database — atomic and short. The validation phase is the whole game.`,
+      'cyan'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('WHEN OCC WINS',
+      `OCC is optimal when conflicts are RARE. In web workloads where 90%+ of transactions touch different rows, OCC eliminates ALL lock overhead and blocking. Compare 2PL: readers wait for writers, writers wait for readers. OCC has none of that. This is why Redis, MongoDB, and many microservice databases default to optimistic.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('WHEN OCC LOSES',
+      `But when contention is HIGH — say, a flash sale where everyone bids on one item — OCC collapses. Transactions do all their work, then discover at validation that they must abort. The work is WASTED. This is a "retry storm". Use the HIGH CONTENTION demo to see it. 2PL would have serialized them efficiently.`,
+      'warn'
+    );
+  }, 13000);
+
+  showToast('👋 Pick a demo and press RUN', 4000);
+}, 600);
+</script>
+</body>
+</html>

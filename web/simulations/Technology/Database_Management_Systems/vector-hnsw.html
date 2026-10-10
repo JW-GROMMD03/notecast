@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vector Database Indexing (HNSW) — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #ec4899, #d946ef, #a855f7);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(236,72,153,0.15);
+    color: #f9a8d4;
+    border-color: #ec4899;
+  }
+  .teaching-toggle:hover { background: rgba(236,72,153,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #f9a8d4;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #ec4899; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #ec4899; color: #fff; border-color: #ec4899; }
+  .btn.primary:hover { background: #db2777; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.info { background: #1e3a8a; color: #bfdbfe; border-color: #3b82f6; }
+  .btn.info:hover { background: #1e40af; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #f9a8d4; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #ec4899; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(236,72,153,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* MAIN GRAPH AREA */
+  .graph-area {
+    flex: 1;
+    display: flex;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  .graph-box {
+    flex: 1.4;
+    background: #070a14;
+    border: 2px solid #ec4899;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(236,72,153,0.15);
+    min-height: 0;
+  }
+  .graph-box-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #f9a8d4;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .graph-canvas {
+    flex: 1;
+    position: relative;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .graph-edges {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .graph-edges line {
+    stroke: #334155;
+    stroke-width: 1;
+    transition: all 0.3s;
+  }
+  .graph-edges line.hnsw-edge-l0 {
+    stroke: #475569;
+  }
+  .graph-edges line.hnsw-edge-l1 {
+    stroke: #a855f7;
+    stroke-width: 1.2;
+  }
+  .graph-edges line.hnsw-edge-l2 {
+    stroke: #ec4899;
+    stroke-width: 1.4;
+  }
+  .graph-edges line.search-path {
+    stroke: #facc15;
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 6px rgba(250,204,21,0.9));
+  }
+  .graph-edges line.result-path {
+    stroke: #10b981;
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 6px rgba(16,185,129,0.9));
+  }
+
+  .hnsw-node {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    font-size: 0.5rem;
+    font-weight: 800;
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    border: 1.5px solid;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+  }
+  .hnsw-node.layer-l0 {
+    border-color: #475569;
+    background: linear-gradient(145deg, #334155, #1e293b);
+    width: 18px;
+    height: 18px;
+  }
+  .hnsw-node.layer-l1 {
+    border-color: #a855f7;
+    background: linear-gradient(145deg, #581c87, #3b0764);
+    width: 22px;
+    height: 22px;
+  }
+  .hnsw-node.layer-l2 {
+    border-color: #ec4899;
+    background: linear-gradient(145deg, #831843, #500724);
+    width: 26px;
+    height: 26px;
+    box-shadow: 0 0 10px rgba(236,72,153,0.6);
+  }
+  .hnsw-node.entry-point {
+    border-color: #facc15;
+    box-shadow: 0 0 15px rgba(250,204,21,0.9);
+    animation: entryPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes entryPulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.15); }
+  }
+  .hnsw-node.query-point {
+    border-color: #10b981;
+    background: linear-gradient(145deg, #065f46, #022c22);
+    box-shadow: 0 0 20px rgba(16,185,129,0.9);
+    width: 28px;
+    height: 28px;
+    animation: queryPulse 0.8s ease-in-out infinite;
+  }
+  @keyframes queryPulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.2); }
+  }
+  .hnsw-node.visited {
+    border-color: #facc15;
+    background: linear-gradient(145deg, #78350f, #451a03);
+    box-shadow: 0 0 12px rgba(250,204,21,0.7);
+  }
+  .hnsw-node.result {
+    border-color: #10b981;
+    background: linear-gradient(145deg, #065f46, #022c22);
+    box-shadow: 0 0 15px rgba(16,185,129,0.8);
+    animation: resultBounce 0.5s ease;
+  }
+  @keyframes resultBounce {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.3); }
+  }
+  .hnsw-node.candidate {
+    border-color: #a855f7;
+    background: linear-gradient(145deg, #581c87, #3b0764);
+    box-shadow: 0 0 12px rgba(168,85,247,0.8);
+  }
+
+  /* SIDE PANEL */
+  .side-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    min-width: 320px;
+  }
+
+  .info-box {
+    background: #070a14;
+    border: 2px solid #a855f7;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    box-shadow: 0 0 20px rgba(168,85,247,0.15);
+  }
+  .info-box.results { border-color: #10b981; box-shadow: 0 0 20px rgba(16,185,129,0.15); }
+  .info-box.log { border-color: #06b6d4; box-shadow: 0 0 20px rgba(6,182,212,0.15); flex: 1; }
+
+  .info-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .info-box.results .info-title { color: #6ee7b7; }
+  .info-box.log .info-title { color: #67e8f9; }
+  .info-box .info-title { color: #d8b4fe; }
+
+  .neighbors-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 0.58rem;
+    min-height: 0;
+    flex: 1;
+  }
+  .neighbor-row {
+    padding: 4px 6px;
+    border-radius: 4px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    background: rgba(30,41,59,0.4);
+    transition: all 0.3s;
+    border-left: 2px solid transparent;
+  }
+  .neighbor-row.layer-L2 { border-left-color: #ec4899; }
+  .neighbor-row.layer-L1 { border-left-color: #a855f7; }
+  .neighbor-row.layer-L0 { border-left-color: #475569; }
+  .neighbor-row .n-id {
+    color: #f9a8d4;
+    font-weight: 800;
+    min-width: 44px;
+  }
+  .neighbor-row .n-layer {
+    font-size: 0.5rem;
+    letter-spacing: 0.5px;
+    color: #94a3b8;
+    min-width: 24px;
+  }
+  .neighbor-row .n-dist {
+    color: #fbbf24;
+    font-weight: 800;
+    margin-left: auto;
+  }
+  .neighbor-row .n-mark {
+    font-size: 0.55rem;
+  }
+  .neighbor-row.visited { background: rgba(250,204,21,0.1); }
+  .neighbor-row.result { background: rgba(16,185,129,0.15); border-left-color: #10b981; }
+
+  .log-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.58rem;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+  }
+  .log-line {
+    padding: 2px 4px;
+    border-radius: 3px;
+    animation: logIn 0.3s ease;
+    border-left: 2px solid transparent;
+  }
+  @keyframes logIn {
+    from { transform: translateX(-6px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .log-line.layer-2 { border-left-color: #ec4899; background: rgba(236,72,153,0.05); }
+  .log-line.layer-1 { border-left-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .log-line.layer-0 { border-left-color: #64748b; background: rgba(100,116,139,0.05); }
+  .log-line.result { border-left-color: #10b981; background: rgba(16,185,129,0.08); font-weight: 700; }
+  .log-line.descend { border-left-color: #facc15; background: rgba(250,204,21,0.05); }
+  .log-line .ts {
+    color: #475569;
+    font-size: 0.5rem;
+    margin-right: 4px;
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(236,72,153,0.06);
+    border: 1px solid rgba(236,72,153,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #f9a8d4;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #f9a8d4; text-shadow: 0 0 10px rgba(236,72,153,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 240px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #ec4899;
+    background: rgba(236,72,153,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.pink   { border-color: #ec4899; background: rgba(236,72,153,0.06); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.05); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.pink   { background: rgba(236,72,153,0.15); color: #f9a8d4; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Info card */
+  .info-card {
+    background: linear-gradient(145deg, rgba(236,72,153,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(236,72,153,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #f9a8d4;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1.5px solid;
+  }
+
+  /* Status banner */
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #ec4899;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #f9a8d4;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(236,72,153,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.found { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #ec4899;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(236,72,153,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>HNSW VECTOR INDEXING</h1>
+    <span class="sub">HIERARCHICAL NAVIGABLE SMALL WORLD · ANN SEARCH</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Query</h3>
+      <button class="btn primary" id="btnQuery">🔍 Run Nearest-Neighbor Query</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset Search</button>
+    </div>
+
+    <div class="panel">
+      <h3>Search Parameters</h3>
+      <div class="slider-row"><span>ef_search (beam)</span><span class="value" id="efVal">5</span></div>
+      <input type="range" id="efRange" min="1" max="20" value="5">
+      <div style="font-size:0.55rem; color:#64748b; font-family:monospace; margin-top:-4px;">
+        Higher ef = more accuracy, slower search.
+      </div>
+      <div class="slider-row" style="margin-top:8px;"><span>K (results)</span><span class="value" id="kVal">3</span></div>
+      <input type="range" id="kRange" min="1" max="8" value="3">
+    </div>
+
+    <div class="panel">
+      <h3>Graph Layer Settings</h3>
+      <div class="slider-row"><span>M (neighbors/node)</span><span class="value" id="mVal">4</span></div>
+      <input type="range" id="mRange" min="2" max="8" value="4">
+      <div class="slider-row"><span>Nodes (dataset)</span><span class="value" id="nVal">40</span></div>
+      <input type="range" id="nRange" min="20" max="80" value="40">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#ec4899; background:rgba(236,72,153,0.3);"></div>Layer 2 (top) — coarse</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#a855f7; background:rgba(168,85,247,0.3);"></div>Layer 1 (middle)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#475569; background:rgba(71,85,105,0.3);"></div>Layer 0 (bottom) — all nodes</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#facc15; background:rgba(250,204,21,0.3);"></div>Entry point (search start)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#10b981; background:rgba(16,185,129,0.3);"></div>Query point / result</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">HIERARCHICAL GRAPH · TOP-DOWN SEARCH · GREEDY DESCENT</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="graph-area">
+          <!-- GRAPH -->
+          <div class="graph-box">
+            <div class="graph-box-title">
+              <span>🌐 HNSW GRAPH</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="graphHint">— idle —</span>
+            </div>
+            <div class="graph-canvas" id="graphCanvas">
+              <svg class="graph-edges" id="graphEdges"></svg>
+            </div>
+          </div>
+
+          <!-- SIDE PANEL -->
+          <div class="side-panel">
+            <div class="info-box">
+              <div class="info-title">
+                <span>📊 NODES VISITED</span>
+                <span style="font-size:0.5rem; color:#64748b;" id="visitedHint">0 visited</span>
+              </div>
+              <div class="neighbors-list" id="neighborsList">
+                <div style="color:#475569; text-align:center; padding:12px; font-size:0.6rem;">Run a query to see visited nodes</div>
+              </div>
+            </div>
+
+            <div class="info-box results">
+              <div class="info-title">
+                <span>🏆 TOP-K RESULTS</span>
+                <span style="font-size:0.5rem; color:#64748b;" id="resultsHint">—</span>
+              </div>
+              <div class="neighbors-list" id="resultsList">
+                <div style="color:#475569; text-align:center; padding:12px; font-size:0.6rem;">No results yet</div>
+              </div>
+            </div>
+
+            <div class="info-box log">
+              <div class="info-title">
+                <span>📋 SEARCH TRACE</span>
+                <span style="font-size:0.5rem; color:#64748b;" id="logHint">— 0 steps —</span>
+              </div>
+              <div class="log-body" id="logBody">
+                <div style="color:#475569; text-align:center; padding:12px; font-size:0.6rem;">Search trace will appear here</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Total Nodes</div>
+        <div class="metric-value info" id="mNodes">40</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Visited</div>
+        <div class="metric-value warn" id="mVisited">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Efficiency</div>
+        <div class="metric-value" id="mEff">—</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Best Dist</div>
+        <div class="metric-value" id="mBestDist">—</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎯 HNSW Parameters</div>
+      <div class="info-row"><span class="lbl">M</span><span class="val good">neighbors per node</span></div>
+      <div class="info-row"><span class="lbl">efConstruction</span><span class="val warn">build-time beam width</span></div>
+      <div class="info-row"><span class="lbl">efSearch</span><span class="val">query-time beam width</span></div>
+      <div class="info-row"><span class="lbl">Layers</span><span class="val">log(N) expected</span></div>
+      <div class="info-row"><span class="lbl">Complexity</span><span class="val good">O(log N)</span></div>
+      <div class="info-row"><span class="lbl">Guarantee</span><span class="val bad">Approximate (ANN)</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">Pinecone, Weaviate, Milvus</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  nodeCount: 40,
+  M: 4,                 // max neighbors per node per layer
+  efSearch: 5,
+  K: 3,
+  // Data
+  nodes: [],            // [{ id, x, y, layer }]  layer = highest layer node appears in
+  edges: [],            // { from, to, layer }
+  // Search
+  entryPointId: null,
+  queryPoint: null,
+  visited: [],
+  candidates: [],
+  results: [],
+  searchPath: [],
+  running: false,
+  stepIndex: 0,
+  steps: [],
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  graphCanvas: document.getElementById('graphCanvas'),
+  graphEdges: document.getElementById('graphEdges'),
+  graphHint: document.getElementById('graphHint'),
+  neighborsList: document.getElementById('neighborsList'),
+  visitedHint: document.getElementById('visitedHint'),
+  resultsList: document.getElementById('resultsList'),
+  resultsHint: document.getElementById('resultsHint'),
+  logBody: document.getElementById('logBody'),
+  logHint: document.getElementById('logHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnQuery: document.getElementById('btnQuery'),
+  btnReset: document.getElementById('btnReset'),
+  efRange: document.getElementById('efRange'),
+  efVal: document.getElementById('efVal'),
+  kRange: document.getElementById('kRange'),
+  kVal: document.getElementById('kVal'),
+  mRange: document.getElementById('mRange'),
+  mVal: document.getElementById('mVal'),
+  nRange: document.getElementById('nRange'),
+  nVal: document.getElementById('nVal'),
+  // Metrics
+  mNodes: document.getElementById('mNodes'),
+  mVisited: document.getElementById('mVisited'),
+  mEff: document.getElementById('mEff'),
+  mBestDist: document.getElementById('mBestDist'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+}
+
+function clearStatus() {
+  DOM.statusBanner.classList.remove('show');
+}
+
+function dist(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining HNSW vector indexing.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   LOGGING
+   ============================================================ */
+let LOG_COUNTER = 0;
+function logLine(cls, msg) {
+  LOG_COUNTER++;
+  const line = document.createElement('div');
+  line.className = `log-line ${cls}`;
+  line.innerHTML = `<span class="ts">${String(LOG_COUNTER).padStart(2, '0')}</span>${msg}`;
+  DOM.logBody.prepend(line);
+  while (DOM.logBody.children.length > 40) DOM.logBody.lastChild.remove();
+  DOM.logHint.textContent = `${LOG_COUNTER} steps`;
+}
+
+function clearLog() {
+  LOG_COUNTER = 0;
+  DOM.logBody.innerHTML = '';
+  DOM.logHint.textContent = '0 steps';
+}
+
+/* ============================================================
+   BUILD HNSW GRAPH
+   ============================================================ */
+function buildGraph() {
+  STATE.nodes = [];
+  STATE.edges = [];
+  STATE.entryPointId = null;
+  STATE.visited = [];
+  STATE.candidates = [];
+  STATE.results = [];
+  STATE.searchPath = [];
+  STATE.queryPoint = null;
+
+  const canvas = DOM.graphCanvas;
+  const W = canvas.clientWidth || 600;
+  const H = canvas.clientHeight || 400;
+
+  const N = STATE.nodeCount;
+
+  // Assign layers: geometric distribution
+  // Most nodes on layer 0, ~1/M on layer 1, ~1/M^2 on layer 2, etc.
+  // For visualization, max 3 layers
+  const maxLayer = 2;
+  const layerCounts = { 0: 0, 1: 0, 2: 0 };
+
+  for (let i = 0; i < N; i++) {
+    const x = 30 + Math.random() * (W - 60);
+    const y = 30 + Math.random() * (H - 60);
+    // Highest layer this node appears in
+    let layer = 0;
+    if (Math.random() < 0.25) layer = 1;
+    if (Math.random() < 0.07) layer = 2;
+    STATE.nodes.push({ id: i, x, y, layer });
+    layerCounts[layer]++;
+  }
+
+  // Ensure we have a few on top layers
+  if (layerCounts[2] === 0) {
+    // Force one node to layer 2
+    STATE.nodes[Math.floor(Math.random() * N)].layer = 2;
+  }
+  if (layerCounts[1] < 2) {
+    const candidates = STATE.nodes.filter(n => n.layer === 0);
+    for (let i = 0; i < 2 && candidates.length; i++) {
+      const idx = Math.floor(Math.random() * candidates.length);
+      candidates[idx].layer = 1;
+      candidates.splice(idx, 1);
+    }
+  }
+
+  // Build edges per layer: k-nearest neighbors within the layer
+  for (let layer = 0; layer <= maxLayer; layer++) {
+    const layerNodes = STATE.nodes.filter(n => n.layer >= layer);
+    for (const nodeA of layerNodes) {
+      // Find k-nearest in this layer
+      const distances = layerNodes
+        .filter(n => n.id !== nodeA.id)
+        .map(n => ({ node: n, d: dist(nodeA, n) }))
+        .sort((a, b) => a.d - b.d);
+
+      for (let i = 0; i < Math.min(STATE.M, distances.length); i++) {
+        const B = distances[i].node;
+        // Deduplicate undirected edges
+        const exists = STATE.edges.some(e =>
+          e.layer === layer &&
+          ((e.from === nodeA.id && e.to === B.id) || (e.from === B.id && e.to === nodeA.id))
+        );
+        if (!exists) {
+          STATE.edges.push({ from: nodeA.id, to: B.id, layer });
+        }
+      }
+    }
+  }
+
+  // Entry point = node in highest layer
+  const topLayerNodes = STATE.nodes.filter(n => n.layer === 2);
+  if (topLayerNodes.length > 0) {
+    STATE.entryPointId = topLayerNodes[0].id;
+  } else {
+    const layer1Nodes = STATE.nodes.filter(n => n.layer >= 1);
+    STATE.entryPointId = layer1Nodes.length > 0 ? layer1Nodes[0].id : STATE.nodes[0].id;
+  }
+
+  renderAll();
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderAll() {
+  renderGraph();
+  renderMetrics();
+}
+
+function renderGraph() {
+  const canvas = DOM.graphCanvas;
+  // Remove old nodes
+  canvas.querySelectorAll('.hnsw-node').forEach(el => el.remove());
+
+  // Render edges (3 layers)
+  let edgeHTML = '';
+  for (const layer of [0, 1, 2]) {
+    const layerEdges = STATE.edges.filter(e => e.layer === layer);
+    for (const e of layerEdges) {
+      const A = STATE.nodes[e.from];
+      const B = STATE.nodes[e.to];
+      if (!A || !B) continue;
+
+      let cls = `hnsw-edge-l${layer}`;
+      // Highlight edges in search path
+      const pathKey = `${A.id}-${B.id}`;
+      const pathKeyRev = `${B.id}-${A.id}`;
+      if (STATE.searchPath.some(p => p === pathKey || p === pathKeyRev)) {
+        cls += ' search-path';
+      }
+      if (STATE.results.some(r => r.id === A.id) && STATE.results.some(r => r.id === B.id)) {
+        cls += ' result-path';
+      }
+
+      edgeHTML += `<line x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}" class="${cls}" />`;
+    }
+  }
+  DOM.graphEdges.innerHTML = edgeHTML;
+
+  // Draw nodes on top (layer 0 first, then 1, then 2)
+  const orderedNodes = [...STATE.nodes].sort((a, b) => a.layer - b.layer);
+  for (const n of orderedNodes) {
+    const el = document.createElement('div');
+    el.className = `hnsw-node layer-l${n.layer}`;
+    el.dataset.nodeId = n.id;
+    el.style.left = n.x + 'px';
+    el.style.top = n.y + 'px';
+    el.style.zIndex = 2 + n.layer;
+
+    // State classes
+    if (n.id === STATE.entryPointId) el.classList.add('entry-point');
+    if (STATE.visited.includes(n.id)) el.classList.add('visited');
+    if (STATE.candidates.includes(n.id)) el.classList.add('candidate');
+    if (STATE.results.some(r => r.id === n.id)) el.classList.add('result');
+
+    el.textContent = n.id;
+    canvas.appendChild(el);
+  }
+
+  // Query point (if set)
+  if (STATE.queryPoint) {
+    const qEl = document.createElement('div');
+    qEl.className = 'hnsw-node query-point';
+    qEl.dataset.query = 'true';
+    qEl.style.left = STATE.queryPoint.x + 'px';
+    qEl.style.top = STATE.queryPoint.y + 'px';
+    qEl.style.zIndex = 10;
+    qEl.textContent = 'Q';
+    canvas.appendChild(qEl);
+  }
+
+  // Update hint
+  DOM.graphHint.textContent = `— ${STATE.nodes.length} nodes · ${STATE.edges.length} edges · entry=${STATE.entryPointId} —`;
+}
+
+function renderMetrics() {
+  DOM.mNodes.textContent = STATE.nodeCount;
+  DOM.mVisited.textContent = STATE.visited.length;
+  const eff = STATE.visited.length > 0
+    ? Math.round((STATE.visited.length / STATE.nodeCount) * 100)
+    : 0;
+  DOM.mEff.textContent = STATE.visited.length > 0 ? eff + '%' : '—';
+  DOM.mEff.className = 'metric-value ' + (eff < 50 ? '' : eff < 80 ? 'warn' : 'bad');
+
+  const best = STATE.results.length > 0 ? STATE.results[0].distance : null;
+  DOM.mBestDist.textContent = best !== null ? best.toFixed(1) : '—';
+}
+
+/* ============================================================
+   RENDER VISITED LIST
+   ============================================================ */
+function renderVisitedList() {
+  if (STATE.visited.length === 0) {
+    DOM.neighborsList.innerHTML = `<div style="color:#475569; text-align:center; padding:12px; font-size:0.6rem;">Run a query to see visited nodes</div>`;
+    DOM.visitedHint.textContent = '0 visited';
+    return;
+  }
+
+  // Build rows for each visited node
+  let html = '';
+  for (const id of STATE.visited) {
+    const n = STATE.nodes[id];
+    if (!n) continue;
+    const d = STATE.queryPoint ? dist(n, STATE.queryPoint) : 0;
+    const isResult = STATE.results.some(r => r.id === id);
+    const cls = isResult ? 'result' : 'visited';
+    html += `
+      <div class="neighbor-row layer-L${n.layer} ${cls}">
+        <span class="n-id">node ${id}</span>
+        <span class="n-layer">L${n.layer}</span>
+        <span class="n-mark">${isResult ? '🏆' : '·'}</span>
+        <span class="n-dist">${d.toFixed(1)}</span>
+      </div>
+    `;
+  }
+  DOM.neighborsList.innerHTML = html;
+  DOM.visitedHint.textContent = `${STATE.visited.length} visited`;
+}
+
+function renderResultsList() {
+  if (STATE.results.length === 0) {
+    DOM.resultsList.innerHTML = `<div style="color:#475569; text-align:center; padding:12px; font-size:0.6rem;">No results yet</div>`;
+    DOM.resultsHint.textContent = '—';
+    return;
+  }
+
+  let html = '';
+  STATE.results.forEach((r, i) => {
+    const n = STATE.nodes[r.id];
+    if (!n) return;
+    html += `
+      <div class="neighbor-row result">
+        <span class="n-id">#${i + 1} node ${r.id}</span>
+        <span class="n-layer">L${n.layer}</span>
+        <span class="n-mark">🏆</span>
+        <span class="n-dist">${r.distance.toFixed(1)}</span>
+      </div>
+    `;
+  });
+  DOM.resultsList.innerHTML = html;
+  DOM.resultsHint.textContent = `${STATE.results.length} results`;
+}
+
+/* ============================================================
+   HNSW SEARCH
+   ============================================================ */
+function buildSearchSteps() {
+  STATE.steps = [];
+  STATE.visited = [];
+  STATE.candidates = [];
+  STATE.results = [];
+  STATE.searchPath = [];
+
+  if (STATE.entryPointId === null) return;
+
+  const q = STATE.queryPoint;
+  let currentId = STATE.entryPointId;
+  let currentDist = dist(STATE.nodes[currentId], q);
+
+  // Phase 1: descend from top layer (2) to layer 1, then layer 0
+  for (let layer = 2; layer >= 1; layer--) {
+    const layerNodes = STATE.nodes.filter(n => n.layer >= layer);
+    if (layerNodes.length === 0) continue;
+
+    // Ensure current node is in this layer (if not, pick nearest from higher up)
+    if (STATE.nodes[currentId].layer < layer) {
+      // Find closest node in layer to current position
+      let best = null;
+      let bestD = Infinity;
+      for (const n of layerNodes) {
+        const d = dist(STATE.nodes[currentId], n);
+        if (d < bestD) { bestD = d; best = n; }
+      }
+      if (best) {
+        STATE.steps.push(() => {
+          logLine('descend', `Descend to L${layer}, enter at node ${best.id}`);
+          currentId = best.id;
+          currentDist = dist(STATE.nodes[currentId], q);
+          if (!STATE.visited.includes(currentId)) STATE.visited.push(currentId);
+          renderAll();
+          renderVisitedList();
+        });
+      }
+    }
+
+    // Greedy descent: keep moving to closer neighbors until local minimum
+    // Simulate up to 3 hops
+    for (let hop = 0; hop < 3; hop++) {
+      const neighbors = STATE.edges
+        .filter(e => e.layer === layer && (e.from === currentId || e.to === currentId))
+        .map(e => e.from === currentId ? e.to : e.from);
+
+      if (neighbors.length === 0) break;
+
+      // Find best neighbor
+      let bestNeighbor = null;
+      let bestNeighborDist = currentDist;
+      for (const nid of neighbors) {
+        const d = dist(STATE.nodes[nid], q);
+        if (d < bestNeighborDist) {
+          bestNeighborDist = d;
+          bestNeighbor = nid;
+        }
+      }
+
+      if (bestNeighbor !== null) {
+        const prev = currentId;
+        const next = bestNeighbor;
+        STATE.steps.push(() => {
+          logLine(`layer-${layer}`, `L${layer}: hop ${prev} → ${next} (dist ${bestNeighborDist.toFixed(1)})`);
+          STATE.searchPath.push(`${prev}-${next}`);
+          currentId = next;
+          currentDist = bestNeighborDist;
+          if (!STATE.visited.includes(currentId)) STATE.visited.push(currentId);
+          renderAll();
+          renderVisitedList();
+        });
+      } else {
+        break;
+      }
+    }
+  }
+
+  // Phase 2: beam search at layer 0 with ef
+  STATE.steps.push(() => {
+    logLine('layer-0', `Enter L0 at node ${currentId}, running ef-search with ef=${STATE.efSearch}`);
+    if (!STATE.visited.includes(currentId)) STATE.visited.push(currentId);
+    STATE.candidates = [currentId];
+    renderAll();
+    renderVisitedList();
+  });
+
+  // Simple beam search at layer 0
+  let beam = [currentId];
+  let beamSet = new Set(beam);
+  const visitedSet = new Set(STATE.visited);
+
+  const beamSteps = [];
+  for (let iteration = 0; iteration < STATE.efSearch; iteration++) {
+    // Expand beam: for each node in beam, look at its L0 neighbors
+    const nextCandidates = [];
+    for (const nodeId of beam) {
+      const neighbors = STATE.edges
+        .filter(e => e.layer === 0 && (e.from === nodeId || e.to === nodeId))
+        .map(e => e.from === nodeId ? e.to : e.from);
+      for (const nid of neighbors) {
+        if (!visitedSet.has(nid)) {
+          nextCandidates.push(nid);
+          visitedSet.add(nid);
+        }
+      }
+    }
+
+    if (nextCandidates.length === 0) break;
+
+    // Sort by distance, keep top-ef
+    nextCandidates.sort((a, b) => dist(STATE.nodes[a], q) - dist(STATE.nodes[b], q));
+    const top = nextCandidates.slice(0, STATE.efSearch);
+
+    beamSteps.push({ iteration, top, candidates: nextCandidates.length });
+
+    // Update beam
+    const combined = [...new Set([...beam, ...top])]
+      .sort((a, b) => dist(STATE.nodes[a], q) - dist(STATE.nodes[b], q))
+      .slice(0, STATE.efSearch);
+    beam = combined;
+  }
+
+  // Emit beam search steps
+  for (const bs of beamSteps) {
+    STATE.steps.push(() => {
+      logLine('layer-0', `L0 iteration ${bs.iteration}: expanded ${bs.candidates} candidates, top-${STATE.efSearch} kept`);
+      for (const nid of bs.top) {
+        if (!STATE.visited.includes(nid)) STATE.visited.push(nid);
+      }
+      STATE.candidates = [...beam];
+      renderAll();
+      renderVisitedList();
+    });
+  }
+
+  // Final: pick top-K
+  STATE.steps.push(() => {
+    const allVisitedSorted = [...STATE.visited]
+      .map(id => ({ id, distance: dist(STATE.nodes[id], q) }))
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, STATE.K);
+
+    STATE.results = allVisitedSorted;
+    logLine('result', `✔ Found ${STATE.results.length} nearest neighbors: ${allVisitedSorted.map(r => `#${r.id} (d=${r.distance.toFixed(1)})`).join(', ')}`);
+
+    showStatus(`✅ Found ${STATE.results.length} nearest neighbors`, 'found');
+
+    teach('RESULT',
+      `Search complete. We visited only ${STATE.visited.length} of ${STATE.nodeCount} nodes — that's ${Math.round((STATE.visited.length / STATE.nodeCount) * 100)}% of the dataset. But we found the top-${STATE.K} nearest neighbors by distance. This is the power of HNSW: approximate results in sublinear time.`,
+      'ok'
+    );
+
+    renderAll();
+    renderVisitedList();
+    renderResultsList();
+    updateMetrics();
+  });
+
+  STATE.steps.push(() => {
+    const best = STATE.results[0];
+    if (best) {
+      teach('TUNING',
+        `Best match: node ${best.id} at distance ${best.distance.toFixed(1)}. Higher ef_search would visit more nodes and find better matches. Try sliding ef_search up to see the trade-off: more work, better accuracy.`,
+        'purple'
+      );
+    }
+    STATE.running = false;
+    DOM.btnQuery.textContent = '🔍 Run Nearest-Neighbor Query';
+  });
+}
+
+function updateMetrics() {
+  renderMetrics();
+}
+
+/* ============================================================
+   RUN SEARCH
+   ============================================================ */
+function runQuery() {
+  if (STATE.running) return;
+
+  // Reset search state
+  STATE.visited = [];
+  STATE.candidates = [];
+  STATE.results = [];
+  STATE.searchPath = [];
+  clearLog();
+  renderVisitedList();
+  renderResultsList();
+
+  // Place query point at random location
+  const canvas = DOM.graphCanvas;
+  const W = canvas.clientWidth || 600;
+  const H = canvas.clientHeight || 400;
+  STATE.queryPoint = {
+    x: 30 + Math.random() * (W - 60),
+    y: 30 + Math.random() * (H - 60)
+  };
+
+  // Rebuild steps
+  buildSearchSteps();
+
+  STATE.running = true;
+  DOM.btnQuery.textContent = '⏳ Searching...';
+
+  let i = 0;
+  const timer = setInterval(() => {
+    if (i >= STATE.steps.length) {
+      clearInterval(timer);
+      STATE.running = false;
+      DOM.btnQuery.textContent = '🔍 Run Nearest-Neighbor Query';
+      return;
+    }
+    STATE.steps[i]();
+    i++;
+  }, 550);
+
+  teach('START SEARCH',
+    `Starting HNSW search. The query point Q is placed randomly. We'll descend the hierarchy: start at the entry point on the top layer, greedily move toward Q, descend to the next layer, and finish with a beam search at layer 0.`,
+    'pink'
+  );
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  STATE.running = false;
+  STATE.visited = [];
+  STATE.candidates = [];
+  STATE.results = [];
+  STATE.searchPath = [];
+  STATE.queryPoint = null;
+  STATE.entryPointId = null;
+  clearLog();
+  clearStatus();
+  buildGraph();
+  renderVisitedList();
+  renderResultsList();
+  updateMetrics();
+  DOM.btnQuery.textContent = '🔍 Run Nearest-Neighbor Query';
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnQuery.addEventListener('click', runQuery);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.efRange.addEventListener('input', e => {
+  STATE.efSearch = parseInt(e.target.value);
+  DOM.efVal.textContent = STATE.efSearch;
+});
+
+DOM.kRange.addEventListener('input', e => {
+  STATE.K = parseInt(e.target.value);
+  DOM.kVal.textContent = STATE.K;
+});
+
+DOM.mRange.addEventListener('input', e => {
+  STATE.M = parseInt(e.target.value);
+  DOM.mVal.textContent = STATE.M;
+  resetAll();
+});
+
+DOM.nRange.addEventListener('input', e => {
+  STATE.nodeCount = parseInt(e.target.value);
+  DOM.nVal.textContent = STATE.nodeCount;
+  resetAll();
+});
+
+window.addEventListener('resize', () => {
+  // Rebuild to fit new canvas size
+  // (we don't reposition — just re-render with same coordinates)
+  renderAll();
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to HNSW — Hierarchical Navigable Small World. This is the state-of-the-art algorithm for Approximate Nearest Neighbor search in vector databases. It finds similar vectors in millions of embeddings without checking every one. Used by Pinecone, Weaviate, Milvus, Qdrant, and most vector DBs.`,
+    'pink'
+  );
+
+  setTimeout(() => {
+    teach('THE PROBLEM',
+      `A vector database stores embeddings — 128 to 1536 dimensional vectors representing text, images, audio, etc. Query: given a query vector, find the K vectors closest to it. Brute force is O(N) — for 100 million vectors, that's too slow. HNSW brings it down to O(log N) via a navigable graph.`,
+      'cyan'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE HIERARCHY',
+      `HNSW is built on three levels here (real systems use ~6). Layer 2 has ~7% of nodes, layer 1 ~25%, layer 0 has all of them. Search starts at the top, greedily moves toward the query, then descends one layer at a time — like a skip list but for graphs.`,
+      'purple'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('THE SEARCH',
+      `The search has two phases: (1) GREEDY DESCENT on the upper layers — jump from node to neighbor, always moving closer to Q, until you reach a local minimum. (2) BEAM SEARCH at layer 0 — expand a set of ef_search candidates, explore their neighbors, keep the best. Higher ef = better accuracy, more work.`,
+      'ok'
+    );
+  }, 13500);
+
+  setTimeout(() => {
+    teach('THE TRADE-OFF',
+      `HNSW gives you: (1) fast approximate search (1000s of QPS), (2) tunable accuracy — ef_search trades speed for recall. (3) high build cost — graph construction is expensive. (4) high memory — graph edges + vectors. Modern alternatives include DiskANN (disk-based), ScaNN (Google's), and IVF-PQ. But HNSW remains the gold standard for in-memory ANN.`,
+      'warn'
+    );
+  }, 18000);
+
+  showToast('👋 Press RUN to see HNSW search in action', 4000);
+}, 600);
+</script>
+</body>
+</html>

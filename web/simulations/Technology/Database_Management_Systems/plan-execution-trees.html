@@ -1,0 +1,1748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan Selection &amp; Execution Trees — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #a855f7, #8b5cf6, #6366f1);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(168,85,247,0.15);
+    color: #d8b4fe;
+    border-color: #a855f7;
+  }
+  .teaching-toggle:hover { background: rgba(168,85,247,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #d8b4fe;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #a855f7; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #a855f7; color: #fff; border-color: #a855f7; }
+  .btn.primary:hover { background: #9333ea; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #d8b4fe; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #a855f7; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(168,85,247,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  /* LEFT: EXECUTION TREE */
+  .tree-pane {
+    flex: 1.6;
+    background: #070a14;
+    border: 2px solid #a855f7;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(168,85,247,0.15);
+    min-height: 0;
+  }
+  .tree-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #d8b4fe;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tree-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .tree-canvas {
+    flex: 1;
+    position: relative;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* SVG lines for tree edges */
+  .tree-edges {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .tree-edges path {
+    stroke: #475569;
+    stroke-width: 1.5;
+    fill: none;
+    transition: all 0.3s;
+  }
+  .tree-edges path.pulling {
+    stroke: #22d3ee;
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 8px rgba(34,211,238,0.9));
+  }
+
+  /* Nodes placed via JS on a grid */
+  .plan-node {
+    position: absolute;
+    background: linear-gradient(145deg, #0a1220, #050810);
+    border: 2px solid #475569;
+    border-radius: 10px;
+    padding: 8px 10px;
+    min-width: 180px;
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    z-index: 2;
+    font-family: monospace;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  .plan-node.scan { border-color: #22d3ee; }
+  .plan-node.scan.active { box-shadow: 0 0 25px rgba(34,211,238,0.7); }
+  .plan-node.filter { border-color: #f59e0b; }
+  .plan-node.filter.active { box-shadow: 0 0 25px rgba(245,158,11,0.7); }
+  .plan-node.join { border-color: #a855f7; }
+  .plan-node.join.active { box-shadow: 0 0 25px rgba(168,85,247,0.7); }
+  .plan-node.agg { border-color: #10b981; }
+  .plan-node.agg.active { box-shadow: 0 0 25px rgba(16,185,129,0.7); }
+  .plan-node.sort { border-color: #ec4899; }
+  .plan-node.sort.active { box-shadow: 0 0 25px rgba(236,72,153,0.7); }
+  .plan-node.limit { border-color: #facc15; }
+  .plan-node.limit.active { box-shadow: 0 0 25px rgba(250,204,21,0.7); }
+  .plan-node.output { border-color: #22c55e; }
+  .plan-node.output.active { box-shadow: 0 0 25px rgba(34,197,94,0.7); }
+
+  .plan-node.pulling {
+    animation: nodePull 0.5s ease;
+  }
+  @keyframes nodePull {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+  .plan-node.producing {
+    animation: nodeProduce 0.5s ease;
+  }
+  @keyframes nodeProduce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(4px); }
+  }
+
+  .node-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .node-op {
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+  }
+  .plan-node.scan .node-op { color: #67e8f9; }
+  .plan-node.filter .node-op { color: #fbbf24; }
+  .plan-node.join .node-op { color: #d8b4fe; }
+  .plan-node.agg .node-op { color: #6ee7b7; }
+  .plan-node.sort .node-op { color: #f9a8d4; }
+  .plan-node.limit .node-op { color: #fef08a; }
+  .plan-node.output .node-op { color: #86efac; }
+
+  .node-time {
+    font-size: 0.5rem;
+    color: #64748b;
+    letter-spacing: 0.5px;
+  }
+  .node-detail {
+    font-size: 0.52rem;
+    color: #94a3b8;
+    letter-spacing: 0.3px;
+    line-height: 1.4;
+  }
+  .node-stat {
+    font-size: 0.52rem;
+    color: #fbbf24;
+    letter-spacing: 0.3px;
+    margin-top: 3px;
+    font-weight: 700;
+  }
+  .node-stat .hit { color: #6ee7b7; }
+  .node-stat .miss { color: #f87171; }
+
+  /* RIGHT: tuple stream + logs */
+  .right-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    min-width: 320px;
+  }
+
+  .tuple-pane {
+    background: #070a14;
+    border: 2px solid #22d3ee;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 180px;
+    box-shadow: 0 0 25px rgba(34,211,238,0.15);
+  }
+  .tuple-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tuple-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .tuple-stream {
+    flex: 1;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 6px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.6rem;
+    line-height: 1.4;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+  }
+  .tuple-row {
+    padding: 2px 6px;
+    background: rgba(34,211,238,0.06);
+    border-left: 3px solid #22d3ee;
+    border-radius: 2px;
+    color: #cbd5e1;
+    display: flex;
+    gap: 8px;
+    animation: tupleIn 0.3s ease;
+  }
+  @keyframes tupleIn {
+    from { transform: translateX(10px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .tuple-row.dropped {
+    border-left-color: #ef4444;
+    background: rgba(239,68,68,0.08);
+    color: #fca5a5;
+    text-decoration: line-through;
+    opacity: 0.7;
+  }
+  .tuple-row.emitted {
+    border-left-color: #22c55e;
+    background: rgba(34,197,94,0.1);
+    color: #a7f3d0;
+    font-weight: 700;
+  }
+  .tuple-row .t-id {
+    color: #67e8f9;
+    font-weight: 800;
+    min-width: 22px;
+  }
+  .tuple-row .t-op {
+    color: #64748b;
+    font-size: 0.5rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .tuple-row .t-data {
+    flex: 1;
+    font-size: 0.55rem;
+  }
+
+  /* Iterator log */
+  .log-pane {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #ec4899;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    box-shadow: 0 0 25px rgba(236,72,153,0.15);
+  }
+  .log-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #f9a8d4;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .log-body {
+    flex: 1;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 6px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.58rem;
+    line-height: 1.45;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+  }
+  .log-line {
+    padding: 2px 4px;
+    border-radius: 2px;
+    display: flex;
+    gap: 6px;
+    animation: logIn 0.3s ease;
+  }
+  @keyframes logIn {
+    from { transform: translateY(-6px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .log-line .ts {
+    color: #475569;
+    font-size: 0.5rem;
+    min-width: 50px;
+  }
+  .log-line .msg {
+    color: #cbd5e1;
+    flex: 1;
+  }
+  .log-line.pull .msg { color: #67e8f9; }
+  .log-line.produce .msg { color: #86efac; }
+  .log-line.drop .msg { color: #f87171; }
+  .log-line.next .msg { color: #fbbf24; }
+  .log-line.done .msg { color: #c084fc; font-weight: 800; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(168,85,247,0.06);
+    border: 1px solid rgba(168,85,247,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #d8b4fe;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #d8b4fe; text-shadow: 0 0 10px rgba(168,85,247,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 240px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #a855f7;
+    background: rgba(168,85,247,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.06); }
+  .teach-entry.cyan   { border-color: #22d3ee; background: rgba(34,211,238,0.05); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(34,211,238,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Volcano model info */
+  .model-card {
+    background: linear-gradient(145deg, rgba(168,85,247,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(168,85,247,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.58rem;
+  }
+  .model-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #d8b4fe;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .model-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .model-row:last-child { border-bottom: none; }
+  .model-row .lbl { color: #94a3b8; }
+  .model-row .val { color: #d8b4fe; font-weight: 800; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1.5px solid;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #a855f7;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(168,85,247,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Top banner */
+  .banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    z-index: 8;
+    background: rgba(10,14,25,0.95);
+    padding: 5px 10px;
+    border-radius: 20px;
+    border: 1px solid #1e293b;
+    font-family: monospace;
+    font-size: 0.6rem;
+    letter-spacing: 1px;
+    color: #94a3b8;
+  }
+  .banner .chip {
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: rgba(168,85,247,0.15);
+    color: #d8b4fe;
+    font-weight: 800;
+    letter-spacing: 1px;
+  }
+  .banner .chip.active {
+    background: rgba(34,197,94,0.2);
+    color: #86efac;
+    animation: chipPulse 1s ease-in-out infinite;
+  }
+  @keyframes chipPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>PLAN EXECUTION TREES</h1>
+    <span class="sub">VOLCANO MODEL · ITERATORS · PULL-BASED</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Query Plan</h3>
+      <select id="planSelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="simple" selected>🔍 Simple Scan + Filter</option>
+        <option value="join">🔗 Hash Join + Aggregation</option>
+        <option value="sort">📊 Sort + Limit (Top-N)</option>
+        <option value="pipeline">🔀 Complex Pipeline (5 operators)</option>
+        <option value="index">🌲 Index Scan + Bitmap</option>
+      </select>
+      <button class="btn primary" id="btnRun">▶ Execute Plan</button>
+      <button class="btn" id="btnNextTuple">⏭ Next Tuple</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Row Source</h3>
+      <div class="slider-row"><span>Table rows</span><span class="value" id="rowsVal">12</span></div>
+      <input type="range" id="rowsRange" min="6" max="24" value="12">
+      <div class="slider-row"><span>Filter selectivity</span><span class="value" id="selVal">30%</span></div>
+      <input type="range" id="selRange" min="0" max="100" value="30">
+    </div>
+
+    <div class="panel">
+      <h3>Execution Mode</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="mode" value="step" checked style="accent-color:#a855f7;">
+          Step-by-step (slow)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="mode" value="fast" style="accent-color:#a855f7;">
+          Fast (auto-run)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="mode" value="trace" style="accent-color:#a855f7;">
+          Trace all calls
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#22d3ee;"></div>Scan (leaf)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#f59e0b;"></div>Filter</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#a855f7;"></div>Join</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#10b981;"></div>Aggregate</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#ec4899;"></div>Sort</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#facc15;"></div>Limit</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#22c55e;"></div>Output</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">VOLCANO MODEL: EACH OPERATOR IS AN ITERATOR WITH NEXT()</div>
+
+      <div class="banner">
+        <span class="chip" id="chipIdle">IDLE</span>
+        <span class="chip" id="chipPull">PULL ↓</span>
+        <span class="chip" id="chipProduce">PRODUCE ↑</span>
+      </div>
+
+      <div class="main-split">
+        <!-- EXECUTION TREE -->
+        <div class="tree-pane">
+          <div class="tree-title">
+            <span>🌳 EXECUTION TREE</span>
+            <span class="hint" id="treeHint">— 0 tuples emitted —</span>
+          </div>
+          <div class="tree-canvas" id="treeCanvas">
+            <svg class="tree-edges" id="treeEdges"></svg>
+            <!-- Nodes injected here -->
+          </div>
+        </div>
+
+        <!-- TUPLE STREAM + LOG -->
+        <div class="right-col">
+          <div class="tuple-pane">
+            <div class="tuple-title">
+              <span>📦 TUPLE STREAM</span>
+              <span class="hint" id="tupleHint">— 0 rows —</span>
+            </div>
+            <div class="tuple-stream" id="tupleStream">
+              <div style="color:#475569; text-align:center; padding:12px; font-size:0.6rem;">Press Execute to see tuples flow</div>
+            </div>
+          </div>
+
+          <div class="log-pane">
+            <div class="log-title">
+              <span>📋 NEXT() CALL TRACE</span>
+              <span class="hint" id="logHint">— 0 calls —</span>
+            </div>
+            <div class="log-body" id="logBody"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Tuples Out</div>
+        <div class="metric-value" id="mOut">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Next() Calls</div>
+        <div class="metric-value info" id="mCalls">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Rows Dropped</div>
+        <div class="metric-value bad" id="mDrop">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Pass-Throughs</div>
+        <div class="metric-value warn" id="mPass">0</div>
+      </div>
+    </div>
+
+    <div class="model-card">
+      <div class="model-title">🌋 The Volcano Model</div>
+      <div class="model-row"><span class="lbl">Interface</span><span class="val">open() · next() · close()</span></div>
+      <div class="model-row"><span class="lbl">Driver</span><span class="val">Root pulls tuples</span></div>
+      <div class="model-row"><span class="lbl">Direction</span><span class="val">Bottom-up production</span></div>
+      <div class="model-row"><span class="lbl">Root call</span><span class="val">next() until null</span></div>
+      <div class="model-row"><span class="lbl">Each call</span><span class="val">1 tuple (streaming)</span></div>
+      <div class="model-row"><span class="lbl">Cost model</span><span class="val bad">Next() is where work happens</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  plan: 'simple',
+  mode: 'step',
+  rowCount: 12,
+  selectivity: 0.3,
+  running: false,
+  paused: false,
+  // Execution tree: array of nodes, each with parent
+  nodes: [],
+  edges: [],
+  // Root node id
+  rootId: null,
+  // Execution
+  executing: false,
+  finished: false,
+  tupleStream: [],
+  log: [],
+  totalCalls: 0,
+  tuplesOut: 0,
+  tuplesDropped: 0,
+  passThroughs: 0,
+  // Data source
+  sourceRows: [],
+  // Auto-run timer
+  autoTimer: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  treeCanvas: document.getElementById('treeCanvas'),
+  treeEdges: document.getElementById('treeEdges'),
+  treeHint: document.getElementById('treeHint'),
+  tupleStream: document.getElementById('tupleStream'),
+  tupleHint: document.getElementById('tupleHint'),
+  logBody: document.getElementById('logBody'),
+  logHint: document.getElementById('logHint'),
+  chipIdle: document.getElementById('chipIdle'),
+  chipPull: document.getElementById('chipPull'),
+  chipProduce: document.getElementById('chipProduce'),
+  planSelect: document.getElementById('planSelect'),
+  btnRun: document.getElementById('btnRun'),
+  btnNextTuple: document.getElementById('btnNextTuple'),
+  btnReset: document.getElementById('btnReset'),
+  rowsRange: document.getElementById('rowsRange'),
+  rowsVal: document.getElementById('rowsVal'),
+  selRange: document.getElementById('selRange'),
+  selVal: document.getElementById('selVal'),
+  mOut: document.getElementById('mOut'),
+  mCalls: document.getElementById('mCalls'),
+  mDrop: document.getElementById('mDrop'),
+  mPass: document.getElementById('mPass'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function ts() {
+  return (STATE.totalCalls).toString().padStart(3, '0');
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining plan execution trees and the Volcano model.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   PLAN TEMPLATES
+   Each plan is a tree. Each node has:
+    - id, type, label, detail
+    - children (ids)
+    - position computed by layout
+    - next() iterator logic
+   ============================================================ */
+
+// A simple row generator: rows are {id, value, group}
+function buildSourceRows() {
+  const rows = [];
+  for (let i = 1; i <= STATE.rowCount; i++) {
+    rows.push({
+      id: i,
+      value: Math.floor(Math.random() * 1000) + 1,
+      group: ['A', 'B', 'C'][i % 3]
+    });
+  }
+  return rows;
+}
+
+const PLAN_TEMPLATES = {
+  simple: {
+    name: 'Simple Scan + Filter',
+    description: 'A single source scan, filtered, sent to output.',
+    build: () => {
+      return [
+        { id: 'out',   type: 'output', label: 'OUTPUT', detail: 'Send rows to client', children: ['filt'], parent: null },
+        { id: 'filt',  type: 'filter', label: 'FILTER', detail: 'value > threshold', children: ['scan'], parent: 'out' },
+        { id: 'scan',  type: 'scan',   label: 'SEQ SCAN', detail: `Read ${STATE.rowCount} rows`, children: [], parent: 'filt' }
+      ];
+    }
+  },
+
+  join: {
+    name: 'Hash Join + Aggregation',
+    description: 'Build hash on one side, probe with other, then aggregate.',
+    build: () => {
+      return [
+        { id: 'out',  type: 'output', label: 'OUTPUT',   detail: 'Send results', children: ['agg'], parent: null },
+        { id: 'agg',  type: 'agg',    label: 'HASH AGG', detail: 'GROUP BY group', children: ['join'], parent: 'out' },
+        { id: 'join', type: 'join',   label: 'HASH JOIN',detail: 'on group = group', children: ['scanL', 'scanR'], parent: 'agg' },
+        { id: 'scanL',type: 'scan',   label: 'BUILD',    detail: 'Left: small set', children: [], parent: 'join' },
+        { id: 'scanR',type: 'scan',   label: 'PROBE',    detail: 'Right: large set', children: [], parent: 'join' }
+      ];
+    }
+  },
+
+  sort: {
+    name: 'Sort + Limit (Top-N)',
+    description: 'Sort all rows, emit only the top N.',
+    build: () => {
+      return [
+        { id: 'out',   type: 'output', label: 'OUTPUT',   detail: 'Return to client', children: ['limit'], parent: null },
+        { id: 'limit', type: 'limit',  label: 'LIMIT 5',  detail: 'Stop after 5 rows', children: ['sort'], parent: 'out' },
+        { id: 'sort',  type: 'sort',   label: 'SORT',     detail: 'ORDER BY value DESC', children: ['scan'], parent: 'limit' },
+        { id: 'scan',  type: 'scan',   label: 'SEQ SCAN', detail: `Read ${STATE.rowCount} rows`, children: [], parent: 'sort' }
+      ];
+    }
+  },
+
+  pipeline: {
+    name: 'Complex Pipeline',
+    description: 'Five stacked operators: scan → filter → sort → agg → limit.',
+    build: () => {
+      return [
+        { id: 'out',   type: 'output', label: 'OUTPUT',    detail: 'Final stream', children: ['limit'], parent: null },
+        { id: 'limit', type: 'limit',  label: 'LIMIT 3',   detail: 'Top 3 results', children: ['agg'], parent: 'out' },
+        { id: 'agg',   type: 'agg',    label: 'AGG',       detail: 'SUM(value)', children: ['sort'], parent: 'limit' },
+        { id: 'sort',  type: 'sort',   label: 'SORT',      detail: 'BY group', children: ['filt'], parent: 'agg' },
+        { id: 'filt',  type: 'filter', label: 'FILTER',    detail: 'value > 100', children: ['scan'], parent: 'sort' },
+        { id: 'scan',  type: 'scan',   label: 'SEQ SCAN',  detail: `Read ${STATE.rowCount} rows`, children: [], parent: 'filt' }
+      ];
+    }
+  },
+
+  index: {
+    name: 'Index Scan + Bitmap',
+    description: 'A bitmap index scan feeding a filter and output.',
+    build: () => {
+      return [
+        { id: 'out',    type: 'output', label: 'OUTPUT',     detail: 'Final rows', children: ['filt'], parent: null },
+        { id: 'filt',   type: 'filter', label: 'FILTER',     detail: 'value < 500', children: ['bitmap'], parent: 'out' },
+        { id: 'bitmap', type: 'scan',   label: 'BITMAP IDX', detail: 'Index scan → page set', children: ['scan'], parent: 'filt' },
+        { id: 'scan',   type: 'scan',   label: 'PK LOOKUP',  detail: 'Fetch heap pages', children: [], parent: 'bitmap' }
+      ];
+    }
+  }
+};
+
+/* ============================================================
+   LAYOUT — position nodes in the tree canvas
+   ============================================================ */
+function layoutTree() {
+  const canvas = DOM.treeCanvas;
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+
+  // Compute depth (max distance from root)
+  const byId = {};
+  STATE.nodes.forEach(n => byId[n.id] = n);
+
+  // Compute level: 0 = root, 1 = child, ...
+  const level = {};
+  function computeLevel(node, lvl) {
+    level[node.id] = lvl;
+    for (const cid of node.children) {
+      computeLevel(byId[cid], lvl + 1);
+    }
+  }
+  computeLevel(byId[STATE.rootId], 0);
+
+  // Group nodes by level
+  const levels = {};
+  for (const n of STATE.nodes) {
+    const l = level[n.id];
+    if (!levels[l]) levels[l] = [];
+    levels[l].push(n);
+  }
+
+  const maxLevel = Math.max(...Object.keys(levels).map(Number));
+  const rowHeight = (H - 60) / (maxLevel + 1);
+
+  // Position each node
+  for (const lStr of Object.keys(levels)) {
+    const l = parseInt(lStr);
+    const nodes = levels[l];
+    const count = nodes.length;
+    const spacing = W / (count + 1);
+
+    nodes.forEach((n, i) => {
+      const x = spacing * (i + 1);
+      const y = 30 + l * rowHeight + rowHeight / 2;
+      n.x = x;
+      n.y = y;
+    });
+  }
+}
+
+/* ============================================================
+   RENDER TREE
+   ============================================================ */
+function renderTree() {
+  const canvas = DOM.treeCanvas;
+  // Remove old nodes
+  canvas.querySelectorAll('.plan-node').forEach(el => el.remove());
+
+  layoutTree();
+
+  // Draw edges first
+  renderEdges();
+
+  // Add node elements
+  const byId = {};
+  STATE.nodes.forEach(n => byId[n.id] = n);
+
+  for (const n of STATE.nodes) {
+    const el = document.createElement('div');
+    el.className = `plan-node ${n.type}`;
+    el.dataset.nodeId = n.id;
+    el.style.left = (n.x - 90) + 'px';
+    el.style.top = (n.y - 30) + 'px';
+
+    const stats = n.stats || {};
+    const statLine = n.type === 'scan'
+      ? `<div class="node-stat">rows: <span class="hit">${stats.rowsOut || 0}</span> · calls: <span class="hit">${stats.calls || 0}</span></div>`
+      : n.type === 'filter'
+      ? `<div class="node-stat">in: <span class="hit">${stats.rowsIn || 0}</span> · out: <span class="hit">${stats.rowsOut || 0}</span> · drop: <span class="miss">${stats.dropped || 0}</span></div>`
+      : n.type === 'limit'
+      ? `<div class="node-stat">out: <span class="hit">${stats.rowsOut || 0}</span> / ${n.limit || 5}</div>`
+      : `<div class="node-stat">out: <span class="hit">${stats.rowsOut || 0}</span></div>`;
+
+    el.innerHTML = `
+      <div class="node-header">
+        <span class="node-op">${n.label}</span>
+        <span class="node-time">${stats.lastCall || ''}</span>
+      </div>
+      <div class="node-detail">${n.detail}</div>
+      ${statLine}
+    `;
+
+    canvas.appendChild(el);
+  }
+}
+
+function renderEdges() {
+  const byId = {};
+  STATE.nodes.forEach(n => byId[n.id] = n);
+
+  let html = '';
+  for (const n of STATE.nodes) {
+    for (const cid of n.children) {
+      const c = byId[cid];
+      // From child top to parent bottom
+      const x1 = c.x;
+      const y1 = c.y - 30;
+      const x2 = n.x;
+      const y2 = n.y + 30;
+      // Draw bezier
+      const midY = (y1 + y2) / 2;
+      html += `<path data-edge="${cid}-${n.id}" d="M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" />`;
+    }
+  }
+  DOM.treeEdges.innerHTML = html;
+}
+
+/* ============================================================
+   EXECUTION ENGINE — the Volcano model
+   Each node is an iterator. next() returns the next tuple or null.
+   Tuples flow UP the tree on each call.
+   ============================================================ */
+
+function initExecution() {
+  // Reset stats
+  for (const n of STATE.nodes) {
+    n.stats = { calls: 0, rowsIn: 0, rowsOut: 0, dropped: 0, lastCall: '' };
+    n.done = false;
+    n.state = {};
+  }
+
+  // Build source rows
+  STATE.sourceRows = buildSourceRows();
+
+  // Source scan iterator: returns one row per call
+  const byId = {};
+  STATE.nodes.forEach(n => byId[n.id] = n);
+
+  // Attach next() functions to each node
+  for (const n of STATE.nodes) {
+    n.next = makeNext(n, byId);
+  }
+}
+
+// The core of the Volcano model
+function makeNext(node, byId) {
+  switch (node.type) {
+    case 'scan':
+      return scanNext(node);
+    case 'filter':
+      return filterNext(node, byId[node.children[0]]);
+    case 'sort':
+      return sortNext(node, byId[node.children[0]]);
+    case 'limit':
+      return limitNext(node, byId[node.children[0]]);
+    case 'agg':
+      return aggNext(node, byId[node.children[0]]);
+    case 'join':
+      return joinNext(node, byId[node.children[0]], byId[node.children[1]]);
+    case 'output':
+      return outputNext(node, byId[node.children[0]]);
+  }
+}
+
+function scanNext(node) {
+  return function() {
+    node.stats.calls++;
+    node.stats.lastCall = `t=${ts()}`;
+    // Row source depends on the node's role
+    const sourceRows = STATE.sourceRows;
+    const idx = node.state.rowIdx || 0;
+
+    if (idx >= sourceRows.length) {
+      node.done = true;
+      logLine('next', `[${node.label}] next() → NULL (exhausted)`);
+      return null;
+    }
+    const row = { ...sourceRows[idx] };
+    row._source = node.id;
+    node.state.rowIdx = idx + 1;
+    node.stats.rowsOut++;
+    logLine('produce', `[${node.label}] next() → tuple #${row.id} (value=${row.value}, group=${row.group})`);
+    return row;
+  };
+}
+
+function filterNext(node, child) {
+  return function() {
+    node.stats.calls++;
+    node.stats.lastCall = `t=${ts()}`;
+    while (true) {
+      const row = child.next();
+      if (!row) {
+        node.done = true;
+        logLine('next', `[FILTER] child returned NULL → filter done`);
+        return null;
+      }
+      node.stats.rowsIn++;
+      // Predicate: value > 100 (or based on plan)
+      const threshold = 100;
+      if (row.value > threshold) {
+        node.stats.rowsOut++;
+        logLine('produce', `[FILTER] value=${row.value} > ${threshold} → PASS`);
+        return row;
+      } else {
+        node.stats.dropped++;
+        STATE.tuplesDropped++;
+        logLine('drop', `[FILTER] value=${row.value} ≤ ${threshold} → DROP`);
+      }
+    }
+  };
+}
+
+function sortNext(node, child) {
+  return function() {
+    node.stats.calls++;
+    node.stats.lastCall = `t=${ts()}`;
+
+    // On first call, drain the child into memory and sort
+    if (!node.state.sorted) {
+      logLine('pull', `[SORT] first call → draining child into memory`);
+      const rows = [];
+      while (true) {
+        const r = child.next();
+        if (!r) break;
+        rows.push(r);
+      }
+      // Sort descending by value
+      rows.sort((a, b) => b.value - a.value);
+      node.state.buffer = rows;
+      node.state.idx = 0;
+      node.state.sorted = true;
+      logLine('next', `[SORT] buffered ${rows.length} rows, sorted desc`);
+    }
+
+    const rows = node.state.buffer;
+    const idx = node.state.idx;
+    if (idx >= rows.length) {
+      node.done = true;
+      logLine('next', `[SORT] next() → NULL (all emitted)`);
+      return null;
+    }
+    const row = rows[idx];
+    node.state.idx = idx + 1;
+    node.stats.rowsOut++;
+    logLine('produce', `[SORT] next() → tuple #${row.id} (value=${row.value})`);
+    return row;
+  };
+}
+
+function limitNext(node, child) {
+  const LIMIT = 5;
+  node.limit = LIMIT;
+  return function() {
+    node.stats.calls++;
+    node.stats.lastCall = `t=${ts()}`;
+    if (!node.state.count) node.state.count = 0;
+    if (node.state.count >= LIMIT) {
+      node.done = true;
+      logLine('next', `[LIMIT] next() → NULL (reached limit ${LIMIT})`);
+      return null;
+    }
+    const row = child.next();
+    if (!row) {
+      node.done = true;
+      logLine('next', `[LIMIT] child returned NULL`);
+      return null;
+    }
+    node.state.count++;
+    node.stats.rowsOut++;
+    logLine('produce', `[LIMIT] next() → tuple #${row.id} (${node.state.count}/${LIMIT})`);
+    return row;
+  };
+}
+
+function aggNext(node, child) {
+  return function() {
+    node.stats.calls++;
+    node.stats.lastCall = `t=${ts()}`;
+
+    if (!node.state.done) {
+      // Drain child on first call, group by 'group'
+      logLine('pull', `[AGG] draining child, grouping by group`);
+      const groups = {};
+      while (true) {
+        const r = child.next();
+        if (!r) break;
+        if (!groups[r.group]) groups[r.group] = { group: r.group, sum: 0, count: 0 };
+        groups[r.group].sum += r.value;
+        groups[r.group].count++;
+      }
+      node.state.results = Object.values(groups);
+      node.state.idx = 0;
+      node.state.done = true;
+      logLine('next', `[AGG] aggregated into ${node.state.results.length} groups`);
+    }
+
+    const results = node.state.results;
+    const idx = node.state.idx;
+    if (idx >= results.length) {
+      node.done = true;
+      logLine('next', `[AGG] next() → NULL (all groups emitted)`);
+      return null;
+    }
+    const row = results[idx];
+    node.state.idx = idx + 1;
+    node.stats.rowsOut++;
+    logLine('produce', `[AGG] next() → group ${row.group} sum=${row.sum} count=${row.count}`);
+    return { id: row.group, value: row.sum, group: row.group };
+  };
+}
+
+function joinNext(node, left, right) {
+  return function() {
+    node.stats.calls++;
+    node.stats.lastCall = `t=${ts()}`;
+
+    // On first call, build hash on left, drain right into probe list
+    if (!node.state.built) {
+      logLine('pull', `[JOIN] building hash table from left side`);
+      const hashTable = {};
+      while (true) {
+        const r = left.next();
+        if (!r) break;
+        if (!hashTable[r.group]) hashTable[r.group] = [];
+        hashTable[r.group].push(r);
+      }
+
+      logLine('pull', `[JOIN] probing with right side`);
+      const results = [];
+      while (true) {
+        const r = right.next();
+        if (!r) break;
+        const matches = hashTable[r.group] || [];
+        for (const m of matches) {
+          results.push({ ...r, joinedWith: m.id, value: r.value + m.value });
+        }
+      }
+      node.state.results = results;
+      node.state.idx = 0;
+      node.state.built = true;
+      logLine('next', `[JOIN] produced ${results.length} joined rows`);
+    }
+
+    const results = node.state.results;
+    const idx = node.state.idx;
+    if (idx >= results.length) {
+      node.done = true;
+      logLine('next', `[JOIN] next() → NULL`);
+      return null;
+    }
+    const row = results[idx];
+    node.state.idx = idx + 1;
+    node.stats.rowsOut++;
+    logLine('produce', `[JOIN] next() → joined tuple (value=${row.value}, group=${row.group})`);
+    return row;
+  };
+}
+
+function outputNext(node, child) {
+  return function() {
+    node.stats.calls++;
+    node.stats.lastCall = `t=${ts()}`;
+    const row = child.next();
+    if (!row) {
+      node.done = true;
+      logLine('next', `[OUTPUT] next() → NULL — execution complete`);
+      return null;
+    }
+    node.stats.rowsOut++;
+    logLine('produce', `[OUTPUT] next() → deliver tuple #${row.id || row.group} to client`);
+    return row;
+  };
+}
+
+/* ============================================================
+   PULL ONE TUPLE FROM ROOT
+   ============================================================ */
+function pullOneTuple() {
+  if (STATE.finished) return;
+
+  const byId = {};
+  STATE.nodes.forEach(n => byId[n.id] = n);
+  const root = byId[STATE.rootId];
+
+  STATE.totalCalls++;
+  logLine('pull', `▶ ROOT.next() called — pulling one tuple up the tree`);
+
+  // Animate the pull path (visually)
+  const pullPath = collectPathToLeaf(root, byId);
+  animatePull(pullPath);
+
+  const row = root.next();
+
+  // Update UI
+  renderTree();
+
+  if (row) {
+    STATE.tuplesOut++;
+    addTupleRow(row, 'emitted');
+    DOM.treeHint.textContent = `— ${STATE.tuplesOut} tuples emitted —`;
+  } else {
+    STATE.finished = true;
+    logLine('done', `✔ Execution complete — root returned NULL after ${STATE.totalCalls} calls`);
+    teach('EXECUTION COMPLETE',
+      `The root next() returned NULL. That means the entire pipeline is exhausted. Total of ${STATE.totalCalls} next() calls produced ${STATE.tuplesOut} tuples. ` +
+      `Notice: the driver didn't have to know about the tree structure — it just called next() until NULL.`,
+      'ok'
+    );
+    setTimeout(() => renderTree(), 400);
+    stopAuto();
+    return;
+  }
+}
+
+function collectPathToLeaf(node, byId) {
+  // Just return the leaf-most path of the FIRST child chain
+  const path = [node.id];
+  let current = node;
+  while (current.children.length > 0) {
+    const cid = current.children[0];
+    path.push(cid);
+    current = byId[cid];
+  }
+  return path;
+}
+
+function animatePull(path) {
+  // Highlight edges on the path
+  for (const id of path) {
+    const el = document.querySelector(`[data-node-id="${id}"]`);
+    if (el) {
+      el.classList.add('pulling');
+      setTimeout(() => el.classList.remove('pulling'), 300);
+    }
+  }
+  // Briefly toggle banner chips
+  DOM.chipPull.classList.add('active');
+  setTimeout(() => DOM.chipPull.classList.remove('active'), 250);
+}
+
+/* ============================================================
+   LOGGING & TUPLE STREAM
+   ============================================================ */
+function logLine(type, msg) {
+  STATE.log.unshift({ type, msg, n: STATE.totalCalls });
+  if (STATE.log.length > 50) STATE.log.pop();
+
+  let html = '';
+  for (const e of STATE.log) {
+    html += `
+      <div class="log-line ${e.type}">
+        <span class="ts">${String(e.n).padStart(3, '0')}</span>
+        <span class="msg">${e.msg}</span>
+      </div>
+    `;
+  }
+  DOM.logBody.innerHTML = html;
+  DOM.logHint.textContent = `${STATE.totalCalls} calls`;
+}
+
+function addTupleRow(row, kind) {
+  const t = STATE.tupleStream;
+  const id = row.id !== undefined ? row.id : (row.group || '?');
+  t.unshift({ row, kind, n: STATE.tuplesOut });
+  if (t.length > 30) t.pop();
+
+  let html = '';
+  for (const e of t) {
+    const r = e.row;
+    const idVal = r.id !== undefined ? r.id : (r.group || '?');
+    const dataStr = r.sum !== undefined
+      ? `group=${r.group} sum=${r.sum}`
+      : `id=${r.id} value=${r.value} group=${r.group}`;
+    html += `
+      <div class="tuple-row ${e.kind}">
+        <span class="t-id">#${String(idVal).padStart(2, ' ')}</span>
+        <span class="t-op">${e.kind === 'emitted' ? 'OUT' : 'MID'}</span>
+        <span class="t-data">${dataStr}</span>
+      </div>
+    `;
+  }
+  DOM.tupleStream.innerHTML = html;
+  DOM.tupleHint.textContent = `${STATE.tuplesOut} rows`;
+}
+
+/* ============================================================
+   BUILD / RESET
+   ============================================================ */
+function buildPlan() {
+  const tpl = PLAN_TEMPLATES[STATE.plan];
+  if (!tpl) return;
+  STATE.nodes = tpl.build();
+  // Find root
+  STATE.rootId = STATE.nodes.find(n => n.parent === null)?.id || STATE.nodes[0].id;
+
+  // Set limit for limit node (if any)
+  for (const n of STATE.nodes) {
+    if (n.type === 'limit') n.limit = 5;
+  }
+}
+
+function resetAll() {
+  stopAuto();
+  STATE.totalCalls = 0;
+  STATE.tuplesOut = 0;
+  STATE.tuplesDropped = 0;
+  STATE.passThroughs = 0;
+  STATE.tupleStream = [];
+  STATE.log = [];
+  STATE.finished = false;
+  STATE.executing = false;
+
+  buildPlan();
+  initExecution();
+  renderTree();
+
+  DOM.tupleStream.innerHTML = `<div style="color:#475569; text-align:center; padding:12px; font-size:0.6rem;">Press Execute to see tuples flow</div>`;
+  DOM.logBody.innerHTML = `<div style="color:#475569; text-align:center; padding:12px; font-size:0.6rem;">No next() calls yet</div>`;
+  DOM.treeHint.textContent = `— 0 tuples emitted —`;
+  DOM.tupleHint.textContent = `0 rows`;
+  DOM.logHint.textContent = `0 calls`;
+
+  updateStats();
+}
+
+/* ============================================================
+   STATS
+   ============================================================ */
+function updateStats() {
+  DOM.mOut.textContent = STATE.tuplesOut;
+  DOM.mCalls.textContent = STATE.totalCalls;
+  DOM.mDrop.textContent = STATE.tuplesDropped;
+  DOM.mPass.textContent = STATE.passThroughs;
+}
+
+/* ============================================================
+   RUN MODES
+   ============================================================ */
+function runPlan() {
+  if (STATE.finished) {
+    resetAll();
+  }
+
+  if (STATE.mode === 'step') {
+    // Step mode: user presses Next Tuple
+    teach('STEP MODE',
+      `Stepping through execution. Each press of NEXT TUPLE triggers one call to the root's next() method. Watch how the call propagates down the tree and a single tuple bubbles back up.`,
+      'purple'
+    );
+  } else if (STATE.mode === 'fast') {
+    // Auto-run
+    startAuto();
+  } else {
+    // Trace mode: same as fast but log everything
+    startAuto();
+  }
+}
+
+function startAuto() {
+  if (STATE.autoTimer) return;
+  teach('EXECUTING',
+    `Auto-running execution. The root repeatedly calls next() until NULL. Each call drains exactly one tuple from the pipeline. When an operator can't produce a tuple without more input, it pulls from its children.`,
+    'cyan'
+  );
+  STATE.autoTimer = setInterval(() => {
+    if (STATE.finished) {
+      stopAuto();
+      return;
+    }
+    pullOneTuple();
+    updateStats();
+  }, 700);
+}
+
+function stopAuto() {
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  STATE.autoTimer = null;
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.planSelect.addEventListener('change', e => {
+  STATE.plan = e.target.value;
+  resetAll();
+  teach('PLAN LOADED', `Loaded: ${PLAN_TEMPLATES[STATE.plan].name}. ${PLAN_TEMPLATES[STATE.plan].description}`, 'purple');
+});
+
+DOM.btnRun.addEventListener('click', runPlan);
+DOM.btnNextTuple.addEventListener('click', () => {
+  if (STATE.mode !== 'step') {
+    teach('MODE', 'Switch to Step mode to manually control next() calls.', 'warn', false);
+    return;
+  }
+  pullOneTuple();
+  updateStats();
+});
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.rowsRange.addEventListener('input', e => {
+  STATE.rowCount = parseInt(e.target.value);
+  DOM.rowsVal.textContent = STATE.rowCount;
+  resetAll();
+});
+DOM.selRange.addEventListener('input', e => {
+  STATE.selectivity = parseInt(e.target.value) / 100;
+  DOM.selVal.textContent = e.target.value + '%';
+});
+
+document.querySelectorAll('input[name="mode"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.mode = e.target.value;
+    if (STATE.mode === 'fast' || STATE.mode === 'trace') {
+      startAuto();
+    } else {
+      stopAuto();
+    }
+  });
+});
+
+window.addEventListener('resize', () => {
+  if (STATE.nodes.length > 0) {
+    renderTree();
+  }
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Plan Execution Trees. The optimizer chose a plan — now the executor must run it. Every plan is a tree of operators. Each operator is an ITERATOR with an open(), next(), close() interface. This is the Volcano model, used by PostgreSQL, MySQL, SQL Server, and most row-based engines.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('PULL-BASED FLOW',
+      `The engine works by PULLING, not pushing. The driver at the top calls next() on the ROOT. The root calls next() on ITS children. Each leaf eventually produces a tuple from disk or memory. That tuple bubbles back UP the tree — through filters (which may drop it), through joins (which may have to pull more from children first), until the root returns it to the client.`,
+      'cyan'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('ONE TUPLE AT A TIME',
+      `Each next() call returns exactly ONE tuple. If a filter drops that tuple, it pulls more from its child internally before returning. When the driver calls next() again, the process repeats. This is why LIMIT is so efficient — the moment the root has produced N tuples, it just stops calling next(). Everything below never has to finish.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('MATERIALIZATION POINTS',
+      `Some operators can't stream — they need to see ALL their input first. SORT and HASH JOIN are examples: on their first next() call, they drain their child completely, buffer the results, then produce one tuple per subsequent call. Everything below the materialization point runs to completion immediately.`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Pick a plan and press Execute', 4000);
+}, 600);
+</script>
+</body>
+</html>

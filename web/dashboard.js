@@ -76,11 +76,57 @@ const FACULTY_DATA = {
   ]
 };
 
-const MODULES = [
-  { file: "fundamentals.html", name: "Fundamentals & Core Concepts" },
-  { file: "advanced_architecture.html", name: "Advanced Architecture & Systems" },
-  { file: "case_study_simulation.html", name: "Case Study & Real-World Simulation" }
-];
+// --- DYNAMIC MODULE ROUTING ENGINE ---
+// Maps specific courses to their custom HTML files, with a fallback for unbuilt courses.
+const COURSE_MODULES = {
+  "Database_Management_Systems": [
+    { file: "single-node.html", name: "Single-Node Database Architecture" },
+    { file: "shared-everything.html", name: "Shared-Everything Architecture (SMP)" },
+    { file: "shared-disk.html", name: "Shared-Disk Architecture (SAN)" },
+    { file: "shared-nothing.html", name: "Shared-Nothing Architecture (MPP)" },
+    { file: "master-slave-replication.html", name: "Master-Slave Replication" },
+    { file: "multi-master.html", name: "Multi-Master Replication" },
+    { file: "peer-to-peer.html", name: "Peer-to-Peer Database Architecture" },
+    { file: "serverless-database.html", name: "Serverless Database Architecture" },
+    { file: "sharding.html", name: "Horizontal Partitioning (Sharding)" },
+    { file: "vertical-partitioning.html", name: "Vertical Partitioning" },
+    { file: "range-partitioning.html", name: "Range Partitioning" },
+    { file: "hash-partitioning.html", name: "Hash Partitioning" },
+    { file: "list-partitioning.html", name: "List Partitioning" },
+    { file: "composite-partitioning.html", name: "Composite Partitioning" },
+    { file: "concurrency-control-locking.html", name: "Concurrency Control and Locking" },
+    { file: "mvcc.html", name: "Multi-Version Concurrency Control" },
+    { file: "two-phase-locking.html", name: "Two-Phase Locking (2PL)" },
+    { file: "occ.html", name: "Optimistic Concurrency Control" },
+    { file: "wal.html", name: "Write-Ahead Logging (WAL)" },
+    { file: "aries.html", name: "ARIES Recovery Protocol" },
+    { file: "buffer-pool.html", name: "Buffer Pool Management" },
+    { file: "lru-eviction.html", name: "LRU Cache Eviction" },
+    { file: "clock-replacement.html", name: "Clock Page Replacement" },
+    { file: "cost-based-optimizer.html", name: "Cost-Based Query Optimization" },
+    { file: "plan-execution-trees.html", name: "Plan Selection & Execution Trees" },
+    { file: "btree-splits.html", name: "B+ Tree Index Node Splitting" },
+    { file: "lsm-compaction.html", name: "LSM-Tree Log Compaction" },
+    { file: "write-amplification.html", name: "Write Amplification Modeling" },
+    { file: "in-memory-tiering.html", name: "In-Memory Data Tiering" },
+    { file: "deadlock-detection.html", name: "Transaction Deadlock Detection" },
+    { file: "two-phase-commit.html", name: "Two-Phase Commit Protocol (2PC)" },
+    { file: "three-phase-commit.html", name: "Three-Phase Commit Protocol (3PC)" },
+    { file: "vector-hnsw.html", name: "Vector Database Indexing (HNSW)" },
+    { file: "columnar-compaction.html", name: "Columnar Storage Compaction" },
+    { file: "raft.html", name: "Distributed Consensus (Raft)" },
+    { file: "paxos.html", name: "Distributed Consensus (Paxos)" },
+    { file: "concurrency-comparison.html", name: "MVCC vs 2PL vs OCC Comparison" },
+    { file: "distributed-transactions.html", name: "Distributed Transactions (Capstone)" },
+    { file: "database-architecture.html", name: "Full Database System Architecture" },
+    { file: "database-design-space.html", name: "The Database Design Space (Finale)" }
+  ],
+  "default_fallback": [
+    { file: "fundamentals.html", name: "Fundamentals & Core Concepts" },
+    { file: "advanced_architecture.html", name: "Advanced Architecture & Systems" },
+    { file: "case_study_simulation.html", name: "Case Study & Real-World Simulation" }
+  ]
+};
 
 async function init() {
   user = await requireAuth();
@@ -141,7 +187,10 @@ async function init() {
       launchBtn.disabled = true;
 
       if (course) {
-        MODULES.forEach(mod => {
+        // Automatically check if custom modules exist for this course, otherwise load the 3 defaults
+        const modulesToLoad = COURSE_MODULES[course] || COURSE_MODULES["default_fallback"];
+        
+        modulesToLoad.forEach(mod => {
           const opt = document.createElement("option");
           opt.value = mod.file;
           opt.textContent = mod.name;
@@ -179,30 +228,22 @@ async function init() {
       generateSimBtn.disabled = true;
       generateSimBtn.textContent = "Synthesizing...";
       
-      // We implement an explicit AbortController to cleanly handle 120s client-side limits,
-      // but if the Render cloud edge drops it at 30s (502 Bad Gateway), the catch block guides the user safely.
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000); 
 
       try {
-        const response = await fetch("/diagrams/generate-sim/", {
+        const schema = await authedFetch("/diagrams/generate-sim/", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${localStorage.getItem('nc_access') || ''}`
-          },
-          credentials: "include", 
           body: JSON.stringify({ topic }),
           signal: controller.signal
         });
         
         clearTimeout(timeoutId);
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: The proxy cloud provider timed out the request.`);
+        if (!schema) {
+          throw new Error("The proxy cloud provider timed out the request or returned an empty response.");
         }
 
-        const schema = await response.json();
         sessionStorage.setItem("active_sim_schema", JSON.stringify(schema));
         window.location.href = `simulator.html?topic=${encodeURIComponent(topic)}`;
       } catch (err) {
@@ -210,7 +251,7 @@ async function init() {
         console.error("Simulation Generation Error:", err);
         
         // Friendly alert intercepting Render proxy drops
-        if (err.name === 'AbortError' || err.message.includes("502") || err.message.includes("504")) {
+        if (err.name === 'AbortError' || (err.message && (err.message.includes("502") || err.message.includes("504") || err.message.includes("empty response")))) {
           alert(`Network Timeout: The cloud provider dropped the connection because the AI took longer than 30 seconds to generate the environment.\n\nPlease use the "Pre-Compiled Academic Library" dropdown above instead for instant access without generation limits.`);
         } else {
           alert("Failed to generate simulation. Please check your provider keys and try again.");

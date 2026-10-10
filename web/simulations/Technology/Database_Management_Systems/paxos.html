@@ -1,0 +1,1570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paxos Consensus — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f59e0b, #f97316, #ef4444);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(245,158,11,0.15);
+    color: #fcd34d;
+    border-color: #f59e0b;
+  }
+  .teaching-toggle:hover { background: rgba(245,158,11,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f59e0b; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f59e0b; color: #2a1503; border-color: #f59e0b; }
+  .btn.primary:hover { background: #d97706; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.info { background: #1e3a8a; color: #bfdbfe; border-color: #3b82f6; }
+  .btn.info:hover { background: #1e40af; }
+  .btn.purple { background: #6d28d9; color: #fff; border-color: #6d28d9; }
+  .btn.purple:hover { background: #5b21b6; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fcd34d; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f59e0b; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(245,158,11,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* PHASE INDICATOR */
+  .phase-indicator {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    z-index: 10;
+    background: rgba(10,14,25,0.95);
+    padding: 6px 10px;
+    border-radius: 22px;
+    border: 1px solid #1e293b;
+    box-shadow: 0 0 20px rgba(245,158,11,0.2);
+  }
+  .phase-pill {
+    padding: 5px 14px;
+    border-radius: 16px;
+    font-size: 0.6rem;
+    font-weight: 800;
+    letter-spacing: 1.3px;
+    font-family: monospace;
+    color: #64748b;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: all 0.3s;
+    text-transform: uppercase;
+  }
+  .phase-pill.active {
+    color: #fff;
+    box-shadow: 0 0 20px currentColor;
+    animation: phasePulse 1.2s ease-in-out infinite;
+  }
+  @keyframes phasePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+  .phase-pill.prepare.active { background: #3b82f6; border-color: #60a5fa; }
+  .phase-pill.promise.active { background: #f59e0b; border-color: #fbbf24; }
+  .phase-pill.accept.active { background: #a855f7; border-color: #c084fc; }
+  .phase-pill.accepted.active { background: #10b981; border-color: #34d399; }
+  .phase-pill.chosen.active { background: #14b8a6; border-color: #2dd4bf; }
+  .phase-arrow {
+    color: #475569;
+    font-size: 0.75rem;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 90px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  /* CLUSTER VIEW */
+  .cluster-pane {
+    flex: 1.5;
+    background: #070a14;
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(245,158,11,0.15);
+    min-height: 0;
+  }
+  .cluster-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .cluster-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .cluster-canvas {
+    flex: 1;
+    position: relative;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .cluster-edges {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .cluster-edges line {
+    stroke: #334155;
+    stroke-width: 1.2;
+    transition: all 0.3s;
+  }
+  .cluster-edges line.phase-prepare {
+    stroke: #3b82f6;
+    stroke-width: 2.5;
+    stroke-dasharray: 8 4;
+    animation: dashFlow 0.8s linear infinite;
+    filter: drop-shadow(0 0 8px rgba(59,130,246,0.9));
+  }
+  .cluster-edges line.phase-promise {
+    stroke: #f59e0b;
+    stroke-width: 2.5;
+    stroke-dasharray: 8 4;
+    animation: dashFlow 0.8s linear infinite;
+    filter: drop-shadow(0 0 8px rgba(245,158,11,0.9));
+  }
+  .cluster-edges line.phase-accept {
+    stroke: #a855f7;
+    stroke-width: 2.5;
+    stroke-dasharray: 8 4;
+    animation: dashFlow 0.8s linear infinite;
+    filter: drop-shadow(0 0 8px rgba(168,85,247,0.9));
+  }
+  .cluster-edges line.phase-accepted {
+    stroke: #10b981;
+    stroke-width: 2.5;
+    stroke-dasharray: 8 4;
+    animation: dashFlow 0.8s linear infinite;
+    filter: drop-shadow(0 0 8px rgba(16,185,129,0.9));
+  }
+  @keyframes dashFlow {
+    to { stroke-dashoffset: -24; }
+  }
+
+  .paxos-node {
+    position: absolute;
+    width: 100px;
+    height: 110px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    z-index: 2;
+    border: 3px solid;
+    background: linear-gradient(145deg, #0a1220, #050810);
+    transform: translate(-50%, -50%);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    padding: 6px 4px;
+  }
+  .paxos-node.acceptor {
+    border-color: #64748b;
+  }
+  .paxos-node.proposer {
+    border-color: #3b82f6;
+    box-shadow: 0 0 25px rgba(59,130,246,0.7);
+  }
+  .paxos-node.proposer::before {
+    content: '🎯';
+    position: absolute;
+    top: -16px;
+    font-size: 1rem;
+  }
+  .paxos-node.promised {
+    border-color: #f59e0b;
+    box-shadow: 0 0 20px rgba(245,158,11,0.6);
+  }
+  .paxos-node.accepted {
+    border-color: #a855f7;
+    box-shadow: 0 0 20px rgba(168,85,247,0.6);
+  }
+  .paxos-node.chosen {
+    border-color: #10b981;
+    background: linear-gradient(145deg, #064e3b, #022c22);
+    box-shadow: 0 0 30px rgba(16,185,129,0.8);
+  }
+  .paxos-node.crashed {
+    border-color: #ef4444;
+    background: linear-gradient(145deg, #450a0a, #1c0606);
+    opacity: 0.5;
+  }
+  .paxos-node.crashed::after {
+    content: '💀';
+    position: absolute;
+    font-size: 1.4rem;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .node-name {
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 1px;
+    margin-bottom: 3px;
+    color: #cbd5e1;
+  }
+  .paxos-node.proposer .node-name { color: #93c5fd; }
+  .paxos-node.promised .node-name { color: #fde047; }
+  .paxos-node.accepted .node-name { color: #d8b4fe; }
+  .paxos-node.chosen .node-name { color: #86efac; }
+  .paxos-node.crashed .node-name { color: #f87171; }
+
+  .node-role {
+    font-size: 0.45rem;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    font-weight: 800;
+    padding: 2px 5px;
+    border-radius: 3px;
+    background: rgba(0,0,0,0.3);
+    color: #94a3b8;
+  }
+  .paxos-node.proposer .node-role { color: #93c5fd; background: rgba(59,130,246,0.2); }
+  .paxos-node.promised .node-role { color: #fde047; background: rgba(245,158,11,0.2); }
+  .paxos-node.accepted .node-role { color: #d8b4fe; background: rgba(168,85,247,0.2); }
+  .paxos-node.chosen .node-role { color: #6ee7b7; background: rgba(16,185,129,0.25); }
+
+  .node-state {
+    font-size: 0.42rem;
+    color: #64748b;
+    margin-top: 4px;
+    text-align: center;
+    line-height: 1.3;
+    padding: 0 4px;
+  }
+  .node-state .k { color: #fbbf24; }
+  .node-state .v { color: #f9a8d4; font-weight: 800; }
+
+  /* RIGHT PANEL */
+  .side-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    min-width: 340px;
+  }
+
+  .info-box {
+    background: #070a14;
+    border: 2px solid #3b82f6;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    box-shadow: 0 0 20px rgba(59,130,246,0.15);
+  }
+  .info-box.state { border-color: #10b981; box-shadow: 0 0 20px rgba(16,185,129,0.15); }
+  .info-box.log { border-color: #06b6d4; box-shadow: 0 0 20px rgba(6,182,212,0.15); flex: 1; }
+
+  .info-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .info-box.state .info-title { color: #6ee7b7; }
+  .info-box.log .info-title { color: #67e8f9; }
+  .info-box .info-title { color: #93c5fd; }
+
+  .state-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+  .state-cell {
+    background: rgba(30,41,59,0.4);
+    border-radius: 5px;
+    padding: 5px 7px;
+    font-family: monospace;
+  }
+  .state-cell .lbl {
+    color: #64748b;
+    font-size: 0.48rem;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 1px;
+    text-transform: uppercase;
+  }
+  .state-cell .val {
+    color: #93c5fd;
+    font-size: 0.78rem;
+    font-weight: 900;
+  }
+  .state-cell .val.good { color: #6ee7b7; }
+  .state-cell .val.warn { color: #fde047; }
+  .state-cell .val.bad { color: #f87171; }
+  .state-cell .val.purple { color: #d8b4fe; }
+
+  .log-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.58rem;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+  }
+  .log-line {
+    padding: 2px 4px;
+    border-radius: 3px;
+    animation: logIn 0.3s ease;
+    border-left: 2px solid transparent;
+  }
+  @keyframes logIn {
+    from { transform: translateX(-6px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .log-line.prepare { border-left-color: #3b82f6; color: #93c5fd; }
+  .log-line.promise { border-left-color: #f59e0b; color: #fde047; }
+  .log-line.accept { border-left-color: #a855f7; color: #d8b4fe; }
+  .log-line.accepted { border-left-color: #10b981; color: #6ee7b7; }
+  .log-line.chosen { border-left-color: #14b8a6; color: #5eead4; font-weight: 800; }
+  .log-line.reject { border-left-color: #ef4444; color: #fca5a5; }
+  .log-line.info { border-left-color: #64748b; color: #cbd5e1; }
+  .log-line .ts {
+    color: #475569;
+    font-size: 0.5rem;
+    margin-right: 4px;
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(245,158,11,0.06);
+    border: 1px solid rgba(245,158,11,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fcd34d;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #93c5fd; text-shadow: 0 0 10px rgba(59,130,246,0.5); }
+  .metric-value.purple { color: #d8b4fe; text-shadow: 0 0 10px rgba(168,85,247,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 240px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f59e0b;
+    background: rgba(245,158,11,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.05); }
+  .teach-entry.yellow { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .tag.yellow { background: rgba(245,158,11,0.15); color: #fde047; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Info card */
+  .info-card {
+    background: linear-gradient(145deg, rgba(245,158,11,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 12px; height: 12px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1.5px solid;
+  }
+
+  /* Status banner */
+  .status-banner {
+    position: absolute;
+    top: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #f59e0b;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fcd34d;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(245,158,11,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.chosen { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.failed { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f59e0b;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(245,158,11,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>PAXOS CONSENSUS</h1>
+    <span class="sub">PREPARE · PROMISE · ACCEPT · LEARN — LAMPORT 1989</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Simulation</h3>
+      <button class="btn primary" id="btnRunProposal">▶ Run Paxos Round</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Manual Steps</h3>
+      <button class="btn info" id="btnPrepare">1. PREPARE (Phase 1a)</button>
+      <button class="btn warn" id="btnPromise">2. PROMISE (Phase 1b)</button>
+      <button class="btn purple" id="btnAccept">3. ACCEPT (Phase 2a)</button>
+      <button class="btn success" id="btnAccepted">4. ACCEPTED (Phase 2b)</button>
+    </div>
+
+    <div class="panel">
+      <h3>Fault Injection</h3>
+      <button class="btn danger" id="btnKillAcceptor">💀 Kill Acceptor</button>
+      <button class="btn warn" id="btnDelayAcceptor">🐌 Delay Acceptor</button>
+      <button class="btn success" id="btnRecover">🔄 Recover</button>
+    </div>
+
+    <div class="panel">
+      <h3>Proposer Config</h3>
+      <div class="slider-row"><span>Proposal value</span><span class="value" id="valVal">42</span></div>
+      <input type="range" id="valRange" min="1" max="100" value="42">
+      <div class="slider-row"><span>Proposal number (n)</span><span class="value" id="propVal">1</span></div>
+      <input type="range" id="propRange" min="1" max="10" value="1">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#64748b; background:rgba(100,116,139,0.15);"></div>Acceptor (idle)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#3b82f6; background:rgba(59,130,246,0.15);"></div>Proposer active</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#f59e0b; background:rgba(245,158,11,0.15);"></div>Promised</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#a855f7; background:rgba(168,85,247,0.15);"></div>Accepted</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#10b981; background:rgba(16,185,129,0.15);"></div>Chosen (consensus)</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">PAXOS MADE SIMPLE — ONE PROPOSER · FIVE ACCEPTORS · MAJORITY QUORUM</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <!-- Phase indicator -->
+      <div class="phase-indicator">
+        <div class="phase-pill prepare" id="pillPrepare">1a. PREPARE</div>
+        <div class="phase-arrow">→</div>
+        <div class="phase-pill promise" id="pillPromise">1b. PROMISE</div>
+        <div class="phase-arrow">→</div>
+        <div class="phase-pill accept" id="pillAccept">2a. ACCEPT</div>
+        <div class="phase-arrow">→</div>
+        <div class="phase-pill accepted" id="pillAccepted">2b. ACCEPTED</div>
+        <div class="phase-arrow">→</div>
+        <div class="phase-pill chosen" id="pillChosen">✓ CHOSEN</div>
+      </div>
+
+      <div class="main-split">
+        <!-- CLUSTER VIEW -->
+        <div class="cluster-pane">
+          <div class="cluster-title">
+            <span>🌐 PAXOS CLUSTER</span>
+            <span class="hint" id="clusterHint">— 5 acceptors · 0 promised —</span>
+          </div>
+          <div class="cluster-canvas" id="clusterCanvas">
+            <svg class="cluster-edges" id="clusterEdges"></svg>
+          </div>
+        </div>
+
+        <!-- SIDE PANEL -->
+        <div class="side-panel">
+          <div class="info-box state">
+            <div class="info-title">
+              <span>📊 ROUND STATE</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="stateHint">—</span>
+            </div>
+            <div class="state-grid">
+              <div class="state-cell"><span class="lbl">Proposal</span><span class="val info" id="stProposal">n=1, v=42</span></div>
+              <div class="state-cell"><span class="lbl">Phase</span><span class="val warn" id="stPhase">idle</span></div>
+              <div class="state-cell"><span class="lbl">Promised</span><span class="val" id="stPromised">0 / 5</span></div>
+              <div class="state-cell"><span class="lbl">Accepted</span><span class="val purple" id="stAccepted">0 / 5</span></div>
+              <div class="state-cell"><span class="lbl">Quorum</span><span class="val warn" id="stQuorum">3</span></div>
+              <div class="state-cell"><span class="lbl">Chosen</span><span class="val good" id="stChosen">—</span></div>
+            </div>
+          </div>
+
+          <div class="info-box log">
+            <div class="info-title">
+              <span>📡 MESSAGE LOG</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="logHint">— 0 messages —</span>
+            </div>
+            <div class="log-body" id="logBody"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Phase</div>
+        <div class="metric-value info" id="mPhase">idle</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Promised</div>
+        <div class="metric-value warn" id="mPromised">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Accepted</div>
+        <div class="metric-value purple" id="mAccepted">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Chosen</div>
+        <div class="metric-value" id="mChosen">—</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Paxos Roles &amp; Rules</div>
+      <div class="info-row"><span class="lbl">Proposer</span><span class="val good">proposes values</span></div>
+      <div class="info-row"><span class="lbl">Acceptor</span><span class="val warn">votes / stores</span></div>
+      <div class="info-row"><span class="lbl">Learner</span><span class="val">learns the result</span></div>
+      <div class="info-row"><span class="lbl">Rule 1</span><span class="val bad">Only vote once per ballot</span></div>
+      <div class="info-row"><span class="lbl">Rule 2</span><span class="val bad">Value must be highest-numbered</span></div>
+      <div class="info-row"><span class="lbl">Rule 3</span><span class="val bad">Majority = consensus</span></div>
+      <div class="info-row"><span class="lbl">Safety</span><span class="val good">Never two chosen values</span></div>
+      <div class="info-row"><span class="lbl">Liveness</span><span class="val warn">Not guaranteed!</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  proposer: 0,                // which node acts as proposer
+  proposalNumber: 1,          // current proposal number (n)
+  proposalValue: 42,          // current proposed value (v)
+  phase: 'idle',              // idle | prepare | promise | accept | accepted | chosen
+  quorum: 3,                  // majority of 5
+  // Acceptors
+  acceptors: [],              // [{ id, name, state, promisedN, acceptedN, acceptedV, x, y, crashed, delayed }]
+  // Counts
+  promisedCount: 0,
+  acceptedCount: 0,
+  chosenValue: null,
+  chosenN: null,
+  // Message count
+  msgCount: 0,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  clusterCanvas: document.getElementById('clusterCanvas'),
+  clusterEdges: document.getElementById('clusterEdges'),
+  clusterHint: document.getElementById('clusterHint'),
+  logBody: document.getElementById('logBody'),
+  logHint: document.getElementById('logHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Phase pills
+  pillPrepare: document.getElementById('pillPrepare'),
+  pillPromise: document.getElementById('pillPromise'),
+  pillAccept: document.getElementById('pillAccept'),
+  pillAccepted: document.getElementById('pillAccepted'),
+  pillChosen: document.getElementById('pillChosen'),
+  // Controls
+  btnRunProposal: document.getElementById('btnRunProposal'),
+  btnReset: document.getElementById('btnReset'),
+  btnPrepare: document.getElementById('btnPrepare'),
+  btnPromise: document.getElementById('btnPromise'),
+  btnAccept: document.getElementById('btnAccept'),
+  btnAccepted: document.getElementById('btnAccepted'),
+  btnKillAcceptor: document.getElementById('btnKillAcceptor'),
+  btnDelayAcceptor: document.getElementById('btnDelayAcceptor'),
+  btnRecover: document.getElementById('btnRecover'),
+  valRange: document.getElementById('valRange'),
+  valVal: document.getElementById('valVal'),
+  propRange: document.getElementById('propRange'),
+  propVal: document.getElementById('propVal'),
+  // State display
+  stProposal: document.getElementById('stProposal'),
+  stPhase: document.getElementById('stPhase'),
+  stPromised: document.getElementById('stPromised'),
+  stAccepted: document.getElementById('stAccepted'),
+  stQuorum: document.getElementById('stQuorum'),
+  stChosen: document.getElementById('stChosen'),
+  stateHint: document.getElementById('stateHint'),
+  // Metrics
+  mPhase: document.getElementById('mPhase'),
+  mPromised: document.getElementById('mPromised'),
+  mAccepted: document.getElementById('mAccepted'),
+  mChosen: document.getElementById('mChosen'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2400);
+}
+
+let LOG_COUNTER = 0;
+function logLine(cls, msg) {
+  LOG_COUNTER++;
+  const line = document.createElement('div');
+  line.className = `log-line ${cls}`;
+  line.innerHTML = `<span class="ts">${String(LOG_COUNTER).padStart(3, '0')}</span>${msg}`;
+  DOM.logBody.prepend(line);
+  while (DOM.logBody.children.length > 40) DOM.logBody.lastChild.remove();
+  DOM.logHint.textContent = `${LOG_COUNTER} messages`;
+}
+
+function clearLog() {
+  LOG_COUNTER = 0;
+  DOM.logBody.innerHTML = '';
+  DOM.logHint.textContent = '0 messages';
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining the Paxos consensus protocol.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   INITIALIZATION
+   ============================================================ */
+function initCluster() {
+  STATE.acceptors = [];
+  STATE.proposalNumber = parseInt(DOM.propRange.value);
+  STATE.proposalValue = parseInt(DOM.valRange.value);
+  STATE.promisedCount = 0;
+  STATE.acceptedCount = 0;
+  STATE.chosenValue = null;
+  STATE.chosenN = null;
+  STATE.phase = 'idle';
+
+  for (let i = 0; i < 5; i++) {
+    STATE.acceptors.push({
+      id: i,
+      name: 'A' + (i + 1),
+      state: 'idle',        // idle | promised | accepted | chosen
+      promisedN: 0,
+      acceptedN: 0,
+      acceptedV: null,
+      crashed: false,
+      delayed: false,
+      x: 0,
+      y: 0
+    });
+  }
+
+  layoutNodes();
+  renderAll();
+}
+
+function layoutNodes() {
+  const canvas = DOM.clusterCanvas;
+  const W = canvas.clientWidth || 600;
+  const H = canvas.clientHeight || 400;
+  const cx = W / 2;
+  const cy = H / 2;
+  const radius = Math.min(W, H) * 0.34;
+
+  for (let i = 0; i < STATE.acceptors.length; i++) {
+    const angle = (i / STATE.acceptors.length) * Math.PI * 2 - Math.PI / 2;
+    STATE.acceptors[i].x = cx + Math.cos(angle) * radius;
+    STATE.acceptors[i].y = cy + Math.sin(angle) * radius;
+  }
+}
+
+/* ============================================================
+   PHASE 1a: PREPARE
+   ============================================================ */
+function sendPrepare() {
+  STATE.phase = 'prepare';
+  const n = STATE.proposalNumber;
+
+  logLine('prepare', `📤 PROPOSER sends PREPARE(n=${n}) to all acceptors`);
+  teach('PHASE 1A: PREPARE',
+    `Proposer sends PREPARE(n=${n}) to all acceptors. It's saying: "I want to propose value ${STATE.proposalValue}, using proposal number ${n}. Promise me you won't accept any proposal numbered less than ${n}."`,
+    'info'
+  );
+  renderAll();
+
+  // Send to each acceptor
+  setTimeout(() => {
+    for (const a of STATE.acceptors) {
+      if (a.crashed) continue;
+      if (a.delayed) {
+        logLine('info', `  ⏱ Acceptor ${a.name} delays response`);
+        continue;
+      }
+      // Acceptors that already promised a higher number reject
+      if (a.promisedN > n) {
+        logLine('reject', `  ✗ ${a.name} REJECTS — already promised n=${a.promisedN} > ${n}`);
+      } else {
+        // Accept the prepare
+        a.promisedN = n;
+        a.state = 'promised';
+        logLine('promise', `  ✓ ${a.name} PROMISES to not accept any proposal < n=${n}`);
+      }
+    }
+    STATE.promisedCount = STATE.acceptors.filter(a => !a.crashed && a.promisedN >= n).length;
+
+    renderAll();
+    showStatus(`PREPARE sent to all acceptors`, '');
+  }, 500);
+}
+
+/* ============================================================
+   PHASE 1b: PROMISE
+   ============================================================ */
+function receivePromises() {
+  STATE.phase = 'promise';
+  const n = STATE.proposalNumber;
+  const alive = STATE.acceptors.filter(a => !a.crashed);
+  const promisedCount = alive.filter(a => a.promisedN >= n && !a.delayed).length;
+
+  logLine('promise', `📥 PROPOSER receives ${promisedCount}/${alive.length} PROMISES`);
+
+  if (promisedCount >= STATE.quorum) {
+    teach('PHASE 1B: MAJORITY PROMISED',
+      `${promisedCount} out of ${alive.length} acceptors promised not to accept any lower-numbered proposal. That's a MAJORITY (quorum = ${STATE.quorum}). The proposer can now move to phase 2. It picks the value to propose: if any acceptor already accepted a value, the proposer must use the HIGHEST-numbered such value. Otherwise, it uses its own value.`,
+      'warn'
+    );
+
+    // Check for any already-accepted values
+    const acceptedValues = STATE.acceptors.filter(a => a.acceptedN > 0).map(a => ({ n: a.acceptedN, v: a.acceptedV }));
+    if (acceptedValues.length > 0) {
+      const highest = acceptedValues.reduce((max, a) => a.n > max.n ? a : max);
+      logLine('info', `  ⚠ Proposer detected existing accepted value: n=${highest.n} v=${highest.v}`);
+      logLine('info', `  → Proposer will propose v=${highest.v} (must use highest-n)`)
+      STATE.proposalValue = highest.v;
+      DOM.valRange.value = highest.v;
+      DOM.valVal.textContent = highest.v;
+      teach('RULE: HIGHEST-NUMBERED VALUE',
+        `An acceptor had ALREADY accepted a value at n=${highest.n} with value=${highest.v}. Paxos safety rule: the proposer MUST use this value instead of its own. This prevents two different values from being chosen.`,
+        'purple'
+      );
+    }
+
+    showStatus(`MAJORITY PROMISED (${promisedCount}/${alive.length})`, '');
+  } else {
+    logLine('reject', `  ✗ Only ${promisedCount}/${alive.length} promised — below quorum`);
+    teach('PHASE 1 FAILED',
+      `Only ${promisedCount} acceptors promised — below the quorum of ${STATE.quorum}. The proposer must start over with a HIGHER proposal number. This is why Paxos is not live under contention: two proposers can keep blocking each other.`,
+      'error'
+    );
+    showStatus(`Phase 1 FAILED — need ${STATE.quorum}, got ${promisedCount}`, 'failed');
+    STATE.phase = 'idle';
+  }
+
+  updateCounts();
+  renderAll();
+}
+
+/* ============================================================
+   PHASE 2a: ACCEPT
+   ============================================================ */
+function sendAccept() {
+  if (STATE.phase !== 'promise') {
+    showToast('⚠ Must complete PREPARE first');
+    return;
+  }
+  STATE.phase = 'accept';
+  const n = STATE.proposalNumber;
+  const v = STATE.proposalValue;
+
+  logLine('accept', `📤 PROPOSER sends ACCEPT(n=${n}, v=${v}) to all acceptors`);
+  teach('PHASE 2A: ACCEPT',
+    `Proposer sends ACCEPT(n=${n}, v=${v}) to all acceptors. It's saying: "Please accept value ${v} as proposal number ${n}." Acceptors that already promised n=${n} (or higher) will accept.`,
+    'purple'
+  );
+  renderAll();
+
+  setTimeout(() => {
+    for (const a of STATE.acceptors) {
+      if (a.crashed) continue;
+      if (a.delayed) continue;
+      if (a.promisedN >= n) {
+        a.acceptedN = n;
+        a.acceptedV = v;
+        a.state = 'accepted';
+        logLine('accepted', `  ✓ ${a.name} ACCEPTS (n=${n}, v=${v})`);
+      } else {
+        logLine('reject', `  ✗ ${a.name} rejects (promised only up to n=${a.promisedN})`);
+      }
+    }
+
+    STATE.acceptedCount = STATE.acceptors.filter(a => !a.crashed && a.acceptedN >= n).length;
+    updateCounts();
+    renderAll();
+    showStatus(`ACCEPT sent with value ${v}`, '');
+  }, 500);
+}
+
+/* ============================================================
+   PHASE 2b: ACCEPTED → CHOSEN
+   ============================================================ */
+function receiveAccepted() {
+  if (STATE.phase !== 'accept') {
+    showToast('⚠ Must ACCEPT first');
+    return;
+  }
+  STATE.phase = 'accepted';
+  const n = STATE.proposalNumber;
+  const v = STATE.proposalValue;
+  const alive = STATE.acceptors.filter(a => !a.crashed);
+  const acceptedCount = alive.filter(a => a.acceptedN >= n).length;
+
+  logLine('accepted', `📥 PROPOSER receives ${acceptedCount}/${alive.length} ACCEPTS`);
+
+  if (acceptedCount >= STATE.quorum) {
+    // Chosen!
+    STATE.phase = 'chosen';
+    STATE.chosenValue = v;
+    STATE.chosenN = n;
+
+    for (const a of STATE.acceptors) {
+      if (a.acceptedN >= n) a.state = 'chosen';
+    }
+
+    logLine('chosen', `🏆 VALUE ${v} CHOSEN at n=${n} (majority accepted)`);
+    showStatus(`🏆 VALUE ${v} CHOSEN`, 'chosen');
+
+    teach('CONSENSUS REACHED',
+      `Majority accepted! Value ${v} is now CHOSEN. From this moment on: no other value can ever be chosen at any higher ballot. This is the safety guarantee of Paxos: if a value is chosen, it's chosen forever. All learners can now read the decided value.`,
+      'ok'
+    );
+
+    teach('WHY IT\'S SAFE',
+      `Even if the proposer crashes now, the value is safe. Because a MAJORITY accepted it, any future proposer that contacts a majority will encounter at least one acceptor that already accepted this value — and the proposer will be forced to re-propose it. This is the magic of Paxos.`,
+      'purple'
+    );
+  } else {
+    logLine('reject', `  ✗ Only ${acceptedCount}/${alive.length} accepted — below quorum ${STATE.quorum}`);
+    teach('PHASE 2 FAILED',
+      `Only ${acceptedCount} acceptors accepted — below the quorum of ${STATE.quorum}. The value is NOT chosen. The proposer must retry with a higher proposal number.`,
+      'error'
+    );
+    showStatus(`Phase 2 FAILED — need ${STATE.quorum}, got ${acceptedCount}`, 'failed');
+    STATE.phase = 'idle';
+  }
+
+  updateCounts();
+  renderAll();
+}
+
+/* ============================================================
+   RUN FULL ROUND
+   ============================================================ */
+function runFullRound() {
+  // Reset for fresh round
+  const nextN = STATE.proposalNumber + 1;
+  STATE.proposalNumber = nextN;
+  DOM.propRange.value = Math.min(10, nextN);
+  DOM.propVal.textContent = nextN;
+
+  logLine('info', `▶ Starting Paxos round with n=${nextN}, v=${STATE.proposalValue}`);
+
+  // Step 1: Prepare
+  setTimeout(() => sendPrepare(), 300);
+  // Step 2: Promise
+  setTimeout(() => receivePromises(), 1400);
+  // Step 3: Accept
+  setTimeout(() => sendAccept(), 2600);
+  // Step 4: Accepted
+  setTimeout(() => receiveAccepted(), 3800);
+}
+
+/* ============================================================
+   COUNTS & STATE UPDATE
+   ============================================================ */
+function updateCounts() {
+  const alive = STATE.acceptors.filter(a => !a.crashed);
+  const n = STATE.proposalNumber;
+  STATE.promisedCount = alive.filter(a => a.promisedN >= n && a.promisedN > 0).length;
+  STATE.acceptedCount = alive.filter(a => a.acceptedN >= n && a.acceptedN > 0).length;
+}
+
+/* ============================================================
+   RENDERING
+   ============================================================ */
+function renderAll() {
+  renderCluster();
+  renderEdges();
+  updateState();
+}
+
+function renderCluster() {
+  DOM.clusterCanvas.querySelectorAll('.paxos-node').forEach(el => el.remove());
+
+  for (const a of STATE.acceptors) {
+    const el = document.createElement('div');
+    let cls = 'paxos-node';
+    if (a.crashed) cls += ' crashed';
+    else if (a.state === 'chosen') cls += ' chosen';
+    else if (a.state === 'accepted') cls += ' accepted';
+    else if (a.state === 'promised') cls += ' promised';
+    else cls += ' acceptor';
+    if (a.id === STATE.proposer) cls += ' proposer';
+
+    el.className = cls;
+    el.dataset.nodeId = a.id;
+    el.style.left = a.x + 'px';
+    el.style.top = a.y + 'px';
+
+    const stateText = a.crashed ? 'CRASHED'
+                    : a.state === 'chosen' ? `chosen v=${a.acceptedV}`
+                    : a.state === 'accepted' ? `acc n=${a.acceptedN} v=${a.acceptedV}`
+                    : a.state === 'promised' ? `promised n=${a.promisedN}`
+                    : a.promisedN > 0 ? `promised n=${a.promisedN}`
+                    : 'idle';
+
+    el.innerHTML = `
+      <div class="node-name">${a.name}</div>
+      <div class="node-role">${a.crashed ? 'crashed' : a.state}</div>
+      <div class="node-state">
+        <div><span class="k">promised:</span> <span class="v">${a.promisedN || 0}</span></div>
+        <div><span class="k">accepted:</span> <span class="v">${a.acceptedN || 0}</span></div>
+        ${a.acceptedV !== null ? `<div><span class="k">v:</span> <span class="v">${a.acceptedV}</span></div>` : ''}
+      </div>
+    `;
+    DOM.clusterCanvas.appendChild(el);
+  }
+}
+
+function renderEdges() {
+  const svg = DOM.clusterEdges;
+  let html = '';
+
+  const proposer = STATE.acceptors[STATE.proposer];
+  const phase = STATE.phase;
+
+  // Draw edges from proposer to all acceptors
+  for (const a of STATE.acceptors) {
+    if (a.id === STATE.proposer) continue;
+    if (a.crashed) continue;
+    if (proposer.crashed) continue;
+
+    let cls = '';
+    if (phase === 'prepare') cls = 'phase-prepare';
+    else if (phase === 'promise') cls = 'phase-promise';
+    else if (phase === 'accept') cls = 'phase-accept';
+    else if (phase === 'accepted' || phase === 'chosen') cls = 'phase-accepted';
+
+    html += `<line x1="${proposer.x}" y1="${proposer.y}" x2="${a.x}" y2="${a.y}" class="${cls}" />`;
+  }
+
+  svg.innerHTML = html;
+
+  // Update hint
+  const alive = STATE.acceptors.filter(a => !a.crashed).length;
+  DOM.clusterHint.textContent = `— ${alive}/5 alive · promised ${STATE.promisedCount} · accepted ${STATE.acceptedCount} —`;
+}
+
+function updateState() {
+  const alive = STATE.acceptors.filter(a => !a.crashed).length;
+  const quorum = Math.floor(alive / 2) + 1;
+
+  DOM.stProposal.textContent = `n=${STATE.proposalNumber}, v=${STATE.proposalValue}`;
+  DOM.stPhase.textContent = STATE.phase;
+  DOM.stPromised.textContent = `${STATE.promisedCount} / ${alive}`;
+  DOM.stAccepted.textContent = `${STATE.acceptedCount} / ${alive}`;
+  DOM.stQuorum.textContent = quorum;
+  DOM.stChosen.textContent = STATE.chosenValue !== null ? `${STATE.chosenValue}` : '—';
+
+  DOM.stChosen.className = 'val ' + (STATE.chosenValue !== null ? 'good' : '');
+  DOM.stPhase.className = 'val ' + (
+    STATE.phase === 'idle' ? '' :
+    STATE.phase === 'chosen' ? 'good' :
+    'warn'
+  );
+
+  DOM.mPhase.textContent = STATE.phase;
+  DOM.mPromised.textContent = STATE.promisedCount;
+  DOM.mAccepted.textContent = STATE.acceptedCount;
+  DOM.mChosen.textContent = STATE.chosenValue !== null ? STATE.chosenValue : '—';
+
+  DOM.stateHint.textContent = `${alive}/5 alive`;
+
+  // Update phase pills
+  DOM.pillPrepare.classList.remove('active');
+  DOM.pillPromise.classList.remove('active');
+  DOM.pillAccept.classList.remove('active');
+  DOM.pillAccepted.classList.remove('active');
+  DOM.pillChosen.classList.remove('active');
+
+  if (STATE.phase === 'prepare') DOM.pillPrepare.classList.add('active');
+  else if (STATE.phase === 'promise') DOM.pillPromise.classList.add('active');
+  else if (STATE.phase === 'accept') DOM.pillAccept.classList.add('active');
+  else if (STATE.phase === 'accepted') DOM.pillAccepted.classList.add('active');
+  else if (STATE.phase === 'chosen') DOM.pillChosen.classList.add('active');
+}
+
+/* ============================================================
+   FAULT INJECTION
+   ============================================================ */
+function killAcceptor() {
+  const alive = STATE.acceptors.filter(a => !a.crashed);
+  if (alive.length <= 1) {
+    showToast('⚠ Too few alive acceptors');
+    return;
+  }
+  const victim = alive[Math.floor(Math.random() * alive.length)];
+  victim.crashed = true;
+  victim.state = 'idle';
+  logLine('reject', `💀 ${victim.name} CRASHED`);
+  showStatus(`💀 ${victim.name} crashed`, 'failed');
+
+  const remaining = STATE.acceptors.filter(a => !a.crashed).length;
+  const quorum = Math.floor(remaining / 2) + 1;
+
+  teach('ACCEPTOR DOWN',
+    `${victim.name} crashed. ${remaining} acceptors alive. Quorum is now ${quorum}. As long as a MAJORITY remains, Paxos continues to make progress. This is the fault tolerance guarantee.`,
+    'warn'
+  );
+
+  renderAll();
+}
+
+function delayAcceptor() {
+  const alive = STATE.acceptors.filter(a => !a.crashed && !a.delayed);
+  if (alive.length <= 1) {
+    showToast('⚠ Too few');
+    return;
+  }
+  const victim = alive[Math.floor(Math.random() * alive.length)];
+  victim.delayed = true;
+  logLine('info', `🐌 ${victim.name} DELAYED — will not respond`);
+  teach('ACCEPTOR DELAYED',
+    `${victim.name} is slow to respond (network issue, GC pause, busy CPU). It will miss the current round of messages. Since the quorum only requires a majority, the protocol continues — but if too many acceptors are slow, the proposer won't reach quorum.`,
+    'warn'
+  );
+  renderAll();
+}
+
+function recoverNodes() {
+  for (const a of STATE.acceptors) {
+    a.crashed = false;
+    a.delayed = false;
+  }
+  logLine('info', `✓ All acceptors recovered`);
+  teach('RECOVERED',
+    `All acceptors are back online. They will participate in the next Paxos round.`,
+    'ok'
+  );
+  renderAll();
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  clearLog();
+  DOM.statusBanner.classList.remove('show');
+  initCluster();
+  logLine('info', `Cluster initialized: 5 acceptors, proposer=A1 (simulated)`);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRunProposal.addEventListener('click', runFullRound);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnPrepare.addEventListener('click', sendPrepare);
+DOM.btnPromise.addEventListener('click', receivePromises);
+DOM.btnAccept.addEventListener('click', sendAccept);
+DOM.btnAccepted.addEventListener('click', receiveAccepted);
+DOM.btnKillAcceptor.addEventListener('click', killAcceptor);
+DOM.btnDelayAcceptor.addEventListener('click', delayAcceptor);
+DOM.btnRecover.addEventListener('click', recoverNodes);
+
+DOM.valRange.addEventListener('input', e => {
+  STATE.proposalValue = parseInt(e.target.value);
+  DOM.valVal.textContent = STATE.proposalValue;
+  updateState();
+});
+DOM.propRange.addEventListener('input', e => {
+  STATE.proposalNumber = parseInt(e.target.value);
+  DOM.propVal.textContent = STATE.proposalNumber;
+  updateState();
+});
+
+window.addEventListener('resize', () => {
+  layoutNodes();
+  renderAll();
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Paxos — the original consensus algorithm. Published by Leslie Lamport in 1989, Paxos is the theoretical foundation of every modern consensus protocol. Raft, ZAB, and Viewstamped Replication are all variations on it. This simulator shows the "Paxos Made Simple" version: 1 proposer, 5 acceptors, majority quorum.`,
+    'yellow'
+  );
+
+  setTimeout(() => {
+    teach('THE ROLES',
+      `Paxos has three roles. PROPOSERS propose values (they want a value chosen). ACCEPTORS vote on values (the source of truth). LEARNERS discover the chosen value. A single node can play multiple roles simultaneously. In our sim, A1 acts as proposer; A1 through A5 are all acceptors.`,
+      'info'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE TWO PHASES',
+      `Paxos uses two phases. PHASE 1 (Prepare/Promise): the proposer asks all acceptors "will you promise not to accept any proposal with a number less than n?". PHASE 2 (Accept/Accepted): if a majority promised, the proposer sends the actual value to be accepted. If a majority accept, the value is CHOSEN.`,
+      'purple'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('THE SAFETY RULE',
+      `The critical rule: in Phase 1b, if any acceptor has already accepted a value at a lower ballot, the proposer MUST propose that value — not its own. This ensures that once a value is chosen, no future ballot can choose a DIFFERENT value. Safety is guaranteed.`,
+      'warn'
+    );
+  }, 13500);
+
+  setTimeout(() => {
+    teach('THE LIVENESS PROBLEM',
+      `Paxos guarantees SAFETY (no two different values are ever chosen), but does NOT guarantee LIVENESS. Two proposers can repeatedly block each other: P1 proposes n=1, P2 proposes n=2, P1 retries with n=3, P2 retries with n=4... forever. This is called the "dueling proposers" problem, and it's why real systems like Multi-Paxos elect a stable leader.`,
+      'error'
+    );
+  }, 18000);
+
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click RUN PAXOS ROUND to see the full protocol. Or use the manual buttons to step through phases one at a time. Try KILL ACCEPTOR to see how Paxos tolerates up to 2 failures with 5 nodes. Notice that even if you kill 2 acceptors, consensus still works.`,
+      'yellow'
+    );
+  }, 22500);
+
+  showToast('👋 Click RUN PAXOS ROUND to see the full protocol', 4500);
+}, 600);
+</script>
+</body>
+</html>

@@ -1,0 +1,1928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LSM-Tree Log Compaction — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f59e0b, #f97316, #ef4444);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(245,158,11,0.15);
+    color: #fcd34d;
+    border-color: #f59e0b;
+  }
+  .teaching-toggle:hover { background: rgba(245,158,11,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f59e0b; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f59e0b; color: #2a1503; border-color: #f59e0b; }
+  .btn.primary:hover { background: #d97706; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fcd34d; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f59e0b; margin-bottom: 9px; }
+  input[type=number] {
+    width: 100%;
+    padding: 7px 9px;
+    background: #02040a;
+    border: 1px solid #334155;
+    color: #fcd34d;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  input[type=number]:focus { outline: none; border-color: #f59e0b; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(245,158,11,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* TOP: WRITE PATH */
+  .write-pane {
+    background: #070a14;
+    border: 2px solid #22d3ee;
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 0 25px rgba(34,211,238,0.15);
+    flex-shrink: 0;
+  }
+  .write-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .write-path {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+  }
+  .path-stage {
+    flex: 1;
+    background: rgba(34,211,238,0.05);
+    border: 1px dashed #22d3ee;
+    border-radius: 6px;
+    padding: 8px;
+    text-align: center;
+    transition: all 0.3s;
+    position: relative;
+  }
+  .path-stage.active {
+    background: rgba(34,211,238,0.2);
+    border-style: solid;
+    box-shadow: 0 0 20px rgba(34,211,238,0.6);
+    animation: stagePulse 0.5s ease;
+  }
+  @keyframes stagePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+  }
+  .path-stage .lbl {
+    font-size: 0.5rem;
+    color: #64748b;
+    letter-spacing: 1px;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  .path-stage .desc {
+    font-size: 0.6rem;
+    color: #67e8f9;
+    font-weight: 700;
+    font-family: monospace;
+  }
+  .path-stage.wal { border-color: #f97316; background: rgba(249,115,22,0.05); }
+  .path-stage.wal.active { background: rgba(249,115,22,0.2); box-shadow: 0 0 20px rgba(249,115,22,0.6); }
+  .path-stage.wal .desc { color: #fdba74; }
+
+  .path-stage.memtable { border-color: #facc15; background: rgba(250,204,21,0.05); }
+  .path-stage.memtable.active { background: rgba(250,204,21,0.2); box-shadow: 0 0 20px rgba(250,204,21,0.6); }
+  .path-stage.memtable .desc { color: #fef08a; }
+
+  .path-stage.immutable { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .path-stage.immutable.active { background: rgba(168,85,247,0.2); box-shadow: 0 0 20px rgba(168,85,247,0.6); }
+  .path-stage.immutable .desc { color: #d8b4fe; }
+
+  .path-stage.sst { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .path-stage.sst.active { background: rgba(16,185,129,0.2); box-shadow: 0 0 20px rgba(16,185,129,0.6); }
+  .path-stage.sst .desc { color: #6ee7b7; }
+
+  .path-arrow {
+    font-size: 1rem;
+    color: #475569;
+    font-weight: 900;
+  }
+
+  /* MIDDLE: MEMTABLE + IMMUTABLES */
+  .memtable-row {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+    height: 180px;
+  }
+  .memtable-box {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #facc15;
+    border-radius: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 20px rgba(250,204,21,0.15);
+    min-height: 0;
+  }
+  .memtable-box.immutable-box { border-color: #a855f7; box-shadow: 0 0 20px rgba(168,85,247,0.15); }
+  .mt-title {
+    font-size: 0.58rem;
+    letter-spacing: 1.5px;
+    color: #fef08a;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .immutable-box .mt-title { color: #d8b4fe; }
+  .mt-title .cap {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .mt-content {
+    flex: 1;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 6px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.6rem;
+    line-height: 1.4;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 2px;
+    min-height: 0;
+  }
+  .kv-row {
+    padding: 3px 6px;
+    background: rgba(250,204,21,0.06);
+    border-left: 3px solid #facc15;
+    border-radius: 3px;
+    display: flex;
+    gap: 8px;
+    animation: kvIn 0.3s ease;
+  }
+  @keyframes kvIn {
+    from { transform: translateY(-6px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .kv-row.tombstone {
+    border-left-color: #ef4444;
+    background: rgba(239,68,68,0.08);
+    color: #fca5a5;
+  }
+  .kv-row .k {
+    color: #67e8f9;
+    font-weight: 800;
+    min-width: 40px;
+  }
+  .kv-row .op {
+    color: #94a3b8;
+    font-size: 0.5rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .kv-row .v {
+    color: #fcd34d;
+    font-weight: 700;
+    flex: 1;
+  }
+  .kv-row.tombstone .v { color: #fca5a5; text-decoration: line-through; }
+
+  .mt-empty {
+    color: #475569;
+    text-align: center;
+    padding: 12px;
+    font-style: italic;
+    font-size: 0.55rem;
+  }
+
+  /* SSTABLE STACK (right) */
+  .sst-box {
+    flex: 1.1;
+    background: #070a14;
+    border: 2px solid #10b981;
+    border-radius: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 20px rgba(16,185,129,0.15);
+    min-height: 0;
+  }
+  .sst-title {
+    font-size: 0.58rem;
+    letter-spacing: 1.5px;
+    color: #6ee7b7;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .sst-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+    padding: 4px;
+    background: #02040a;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    min-height: 0;
+  }
+  .sst-level {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 4px;
+    border-left: 3px solid #10b981;
+    background: rgba(16,185,129,0.04);
+    border-radius: 4px;
+    transition: all 0.3s;
+  }
+  .sst-level.compacting {
+    border-left-color: #f59e0b;
+    background: rgba(245,158,11,0.15);
+    box-shadow: 0 0 15px rgba(245,158,11,0.5);
+  }
+  .sst-level.L0 { border-left-color: #22d3ee; background: rgba(34,211,238,0.04); }
+  .sst-level.L1 { border-left-color: #a855f7; background: rgba(168,85,247,0.04); }
+  .sst-level.L2 { border-left-color: #ec4899; background: rgba(236,72,153,0.04); }
+  .sst-level.L3 { border-left-color: #f43f5e; background: rgba(244,63,94,0.04); }
+
+  .sst-level-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: monospace;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+  }
+  .sst-level-header .lbl { color: #6ee7b7; }
+  .sst-level.L0 .sst-level-header .lbl { color: #67e8f9; }
+  .sst-level.L1 .sst-level-header .lbl { color: #d8b4fe; }
+  .sst-level.L2 .sst-level-header .lbl { color: #f9a8d4; }
+  .sst-level.L3 .sst-level-header .lbl { color: #fda4af; }
+  .sst-level-header .count {
+    color: #64748b;
+    font-size: 0.5rem;
+    font-weight: 600;
+  }
+
+  .sst-files {
+    display: flex;
+    gap: 3px;
+    flex-wrap: wrap;
+  }
+  .sst-file {
+    padding: 3px 6px;
+    background: rgba(16,185,129,0.15);
+    border: 1px solid rgba(16,185,129,0.4);
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.5rem;
+    color: #86efac;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    transition: all 0.3s;
+    cursor: pointer;
+  }
+  .sst-file:hover { background: rgba(16,185,129,0.3); }
+  .sst-file.new-file {
+    animation: fileAppear 0.6s cubic-bezier(.68,-0.55,.27,1.55);
+  }
+  @keyframes fileAppear {
+    0% { transform: scale(0.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .sst-file.compacting {
+    border-color: #f59e0b;
+    background: rgba(245,158,11,0.3);
+    color: #fde047;
+    box-shadow: 0 0 12px rgba(245,158,11,0.7);
+    animation: fileCompact 0.5s ease-in-out infinite alternate;
+  }
+  @keyframes fileCompact {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.08); }
+  }
+  .sst-file.L0 { background: rgba(34,211,238,0.15); border-color: rgba(34,211,238,0.4); color: #67e8f9; }
+  .sst-file.L1 { background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.4); color: #d8b4fe; }
+  .sst-file.L2 { background: rgba(236,72,153,0.15); border-color: rgba(236,72,153,0.4); color: #f9a8d4; }
+  .sst-file.L3 { background: rgba(244,63,94,0.15); border-color: rgba(244,63,94,0.4); color: #fda4af; }
+
+  /* BOTTOM: BLOCK DIAGRAM OF COMPACTION */
+  .bottom-panels {
+    display: flex;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+  }
+  .info-panel {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #334155;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .info-panel.oplog { border-color: #f59e0b; }
+  .info-panel.stats { border-color: #10b981; }
+  .info-panel.narrative { border-color: #a855f7; }
+
+  .info-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .info-panel.oplog .info-title { color: #fcd34d; }
+  .info-panel.stats .info-title { color: #6ee7b7; }
+  .info-panel.narrative .info-title { color: #d8b4fe; }
+
+  .info-body {
+    flex: 1;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.58rem;
+    line-height: 1.5;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 5px;
+    padding: 6px;
+    min-height: 0;
+  }
+
+  .info-line {
+    padding: 2px 4px;
+    border-left: 2px solid transparent;
+    margin-bottom: 1px;
+    animation: lineIn 0.3s ease;
+  }
+  @keyframes lineIn {
+    from { transform: translateX(-6px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .info-line.write { border-left-color: #22d3ee; color: #a5f3fc; }
+  .info-line.flush { border-left-color: #a855f7; color: #d8b4fe; }
+  .info-line.compact { border-left-color: #f59e0b; color: #fcd34d; }
+  .info-line.read { border-left-color: #10b981; color: #86efac; }
+  .info-line.warn { border-left-color: #ef4444; color: #fca5a5; }
+  .info-line.ok { border-left-color: #22c55e; color: #86efac; font-weight: 700; }
+  .info-line.dim { color: #64748b; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+  .stat-cell {
+    background: rgba(30,41,59,0.4);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-family: monospace;
+  }
+  .stat-cell .lbl {
+    color: #64748b;
+    font-size: 0.48rem;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 1px;
+  }
+  .stat-cell .val {
+    color: #86efac;
+    font-size: 0.78rem;
+    font-weight: 900;
+  }
+  .stat-cell .val.warn { color: #fbbf24; }
+  .stat-cell .val.bad { color: #ef4444; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(245,158,11,0.06);
+    border: 1px solid rgba(245,158,11,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fcd34d;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #67e8f9; text-shadow: 0 0 10px rgba(6,182,212,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 260px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f59e0b;
+    background: rgba(245,158,11,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #22d3ee; background: rgba(34,211,238,0.05); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(34,211,238,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Spec card */
+  .spec-card {
+    background: linear-gradient(145deg, rgba(245,158,11,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.58rem;
+  }
+  .spec-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .spec-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .spec-row:last-child { border-bottom: none; }
+  .spec-row .lbl { color: #94a3b8; }
+  .spec-row .val { color: #fcd34d; font-weight: 800; }
+  .spec-row .val.bad { color: #fca5a5; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1.5px solid;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f59e0b;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(245,158,11,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Status banner */
+  .status-banner {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #f59e0b;
+    border-radius: 30px;
+    padding: 8px 24px;
+    font-family: monospace;
+    font-size: 0.7rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fcd34d;
+    z-index: 12;
+    box-shadow: 0 0 25px rgba(245,158,11,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.compact { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+  .status-banner.flush { border-color: #a855f7; color: #d8b4fe; box-shadow: 0 0 25px rgba(168,85,247,0.5); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>LSM-TREE LOG COMPACTION</h1>
+    <span class="sub">WAL · MEMTABLE · SSTABLE · COMPACTION</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Write Operations</h3>
+      <input type="number" id="keyInput" placeholder="Key" value="42" min="1" max="999" style="width:48%; display:inline-block;">
+      <input type="number" id="valInput" placeholder="Value" value="100" min="1" max="999" style="width:48%; display:inline-block; margin-left:2%;">
+      <button class="btn primary" id="btnPut">✍️ PUT key=value</button>
+      <button class="btn danger" id="btnDelete">🗑️ DELETE key</button>
+      <button class="btn" id="btnGet">🔍 GET key</button>
+    </div>
+
+    <div class="panel">
+      <h3>Bulk Workloads</h3>
+      <button class="btn success" id="btnBurst">⚡ Burst 20 Writes</button>
+      <button class="btn success" id="btnHotKey">🔥 Hot-Key Overwrite</button>
+      <button class="btn warn" id="btnTombstone">💀 Mass Delete</button>
+    </div>
+
+    <div class="panel">
+      <h3>Compaction Control</h3>
+      <button class="btn primary" id="btnCompact">⚙️ Force Compact L0→L1</button>
+      <button class="btn" id="btnMajorCompact">🔧 Major Compaction</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset DB</button>
+    </div>
+
+    <div class="panel">
+      <h3>Config</h3>
+      <div class="slider-row"><span>Memtable capacity</span><span class="value" id="capVal">8</span></div>
+      <input type="range" id="capRange" min="4" max="16" value="8">
+      <div class="slider-row"><span>L0 → L1 trigger</span><span class="value" id="l0Val">4</span></div>
+      <input type="range" id="l0Range" min="2" max="8" value="4">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#f97316; background:rgba(249,115,22,0.15);"></div>WAL (durability)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#facc15; background:rgba(250,204,21,0.15);"></div>Memtable (active)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#a855f7; background:rgba(168,85,247,0.15);"></div>Immutable memtable</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#10b981; background:rgba(16,185,129,0.15);"></div>SSTable (sorted on disk)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#ef4444; background:rgba(239,68,68,0.15);"></div>Tombstone (deleted)</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">WRITES GO TO MEMORY FIRST · FLUSH TO DISK IN SORTED FILES · COMPACT TO RECLAIM</div>
+
+      <div class="main-split">
+        <!-- WRITE PATH -->
+        <div class="write-pane">
+          <div class="write-title">
+            <span>📨 WRITE PATH (every put/delete goes through here)</span>
+            <span class="hint" id="writePathHint">—</span>
+          </div>
+          <div class="write-path">
+            <div class="path-stage wal" id="stageWal">
+              <div class="lbl">1. WAL</div>
+              <div class="desc" id="walDesc">append-only</div>
+            </div>
+            <span class="path-arrow">→</span>
+            <div class="path-stage memtable" id="stageMem">
+              <div class="lbl">2. MEMTABLE</div>
+              <div class="desc" id="memDesc">in memory</div>
+            </div>
+            <span class="path-arrow">→</span>
+            <div class="path-stage immutable" id="stageImm">
+              <div class="lbl">3. IMMUTABLE</div>
+              <div class="desc" id="immDesc">being flushed</div>
+            </div>
+            <span class="path-arrow">→</span>
+            <div class="path-stage sst" id="stageSst">
+              <div class="lbl">4. SSTABLE</div>
+              <div class="desc" id="sstDesc">sorted on disk</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MEMTABLES + SSTABLES -->
+        <div class="memtable-row">
+          <div class="memtable-box" id="activeMemBox">
+            <div class="mt-title">
+              <span>🟡 ACTIVE MEMTABLE</span>
+              <span class="cap" id="memCap">0 / 8</span>
+            </div>
+            <div class="mt-content" id="memContent">
+              <div class="mt-empty">empty — start writing</div>
+            </div>
+          </div>
+
+          <div class="memtable-box immutable-box" id="immutableMemBox">
+            <div class="mt-title">
+              <span>🟣 IMMUTABLE MEMTABLE</span>
+              <span class="cap" id="immCap">none</span>
+            </div>
+            <div class="mt-content" id="immContent">
+              <div class="mt-empty">none</div>
+            </div>
+          </div>
+
+          <div class="sst-box">
+            <div class="sst-title">
+              <span>📁 SSTABLES (LevelDB-style L0..L3)</span>
+              <span class="cap" id="sstCount">0 files</span>
+            </div>
+            <div class="sst-list" id="sstList">
+              <div class="mt-empty">No SSTables yet — write enough to fill a memtable</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BOTTOM PANELS -->
+        <div class="bottom-panels">
+          <div class="info-panel oplog">
+            <div class="info-title">
+              <span>📋 OPERATION LOG</span>
+              <span class="hint" style="font-size:0.5rem; color:#64748b;" id="opHint">—</span>
+            </div>
+            <div class="info-body" id="opLog">
+              <div class="info-line dim">Ready. Start writing keys.</div>
+            </div>
+          </div>
+
+          <div class="info-panel stats">
+            <div class="info-title">
+              <span>📊 LIVE STATISTICS</span>
+              <span class="hint" style="font-size:0.5rem; color:#64748b;">live</span>
+            </div>
+            <div class="info-body">
+              <div class="stats-grid">
+                <div class="stat-cell"><span class="lbl">PUTS</span><span class="val" id="statPuts">0</span></div>
+                <div class="stat-cell"><span class="lbl">DELETES</span><span class="val" id="statDels">0</span></div>
+                <div class="stat-cell"><span class="lbl">FLUSHES</span><span class="val warn" id="statFlush">0</span></div>
+                <div class="stat-cell"><span class="lbl">COMPACTIONS</span><span class="val warn" id="statComp">0</span></div>
+                <div class="stat-cell"><span class="lbl">SSTABLES</span><span class="val" id="statSsts">0</span></div>
+                <div class="stat-cell"><span class="lbl">READ AMP</span><span class="val bad" id="statRA">1×</span></div>
+                <div class="stat-cell"><span class="lbl">WRITE AMP</span><span class="val bad" id="statWA">1×</span></div>
+                <div class="stat-cell"><span class="lbl">TOMBSTONES</span><span class="val bad" id="statTomb">0</span></div>
+              </div>
+              <div style="margin-top:6px; padding:4px 6px; background:rgba(245,158,11,0.08); border-radius:4px; font-size:0.55rem; color:#fcd34d; line-height:1.5;">
+                ⚠️ <strong>Read amplification</strong>: how many SSTables a GET may need to check.<br>
+                ⚠️ <strong>Write amplification</strong>: how many times data gets rewritten by compaction.
+              </div>
+            </div>
+          </div>
+
+          <div class="info-panel narrative">
+            <div class="info-title">
+              <span>💡 WHY LSM-TREES WIN</span>
+              <span class="hint" style="font-size:0.5rem; color:#64748b;">narrative</span>
+            </div>
+            <div class="info-body">
+              <div class="info-line write">1. Writes are ALWAYS sequential (WAL + append).</div>
+              <div class="info-line write">2. Memtable absorbs bursts at RAM speed.</div>
+              <div class="info-line flush">3. Flush writes sorted SSTables — sequential I/O.</div>
+              <div class="info-line compact">4. Background compaction merges files.</div>
+              <div class="info-line read">5. Reads hit memtable first, then SSTables top-down.</div>
+              <div class="info-line warn">6. Trade-off: read amplification + write amplification.</div>
+              <div class="info-line dim">Used by: RocksDB, LevelDB, Cassandra, ScyllaDB, HBase, BadgerDB, TiKV.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="status-banner" id="statusBanner"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Memtable</div>
+        <div class="metric-value info" id="mMem">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">L0 Files</div>
+        <div class="metric-value warn" id="mL0">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Total SSTs</div>
+        <div class="metric-value" id="mSsts">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Compactions</div>
+        <div class="metric-value warn" id="mComp">0</div>
+      </div>
+    </div>
+
+    <div class="spec-card">
+      <div class="spec-title">🌲 LSM-Tree vs B+ Tree</div>
+      <div class="spec-row"><span class="lbl">Write path</span><span class="val">append + sort later</span></div>
+      <div class="spec-row"><span class="lbl">Read path</span><span class="val bad">multiple files</span></div>
+      <div class="spec-row"><span class="lbl">Write throughput</span><span class="val">very high</span></div>
+      <div class="spec-row"><span class="lbl">Point read</span><span class="val bad">check many files</span></div>
+      <div class="spec-row"><span class="lbl">Range scan</span><span class="val">efficient with merging</span></div>
+      <div class="spec-row"><span class="lbl">Space amp</span><span class="val bad">higher (multiple copies)</span></div>
+      <div class="spec-row"><span class="lbl">Used by</span><span class="val">RocksDB, Cassandra</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  memtableCapacity: 8,
+  l0Trigger: 4,
+  // Active memtable: array of { key, value, op, seq }
+  memtable: [],
+  // Immutable memtable being flushed
+  immutable: null,
+  // SSTables organized by level
+  sstables: {
+    L0: [],
+    L1: [],
+    L2: [],
+    L3: []
+  },
+  nextFileId: 1,
+  nextSeq: 1,
+  // Stats
+  puts: 0,
+  deletes: 0,
+  flushes: 0,
+  compactions: 0,
+  tombstones: 0,
+  // WAL size (simulated)
+  walEntries: 0,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  // Write path
+  stageWal: document.getElementById('stageWal'),
+  stageMem: document.getElementById('stageMem'),
+  stageImm: document.getElementById('stageImm'),
+  stageSst: document.getElementById('stageSst'),
+  walDesc: document.getElementById('walDesc'),
+  memDesc: document.getElementById('memDesc'),
+  immDesc: document.getElementById('immDesc'),
+  sstDesc: document.getElementById('sstDesc'),
+  writePathHint: document.getElementById('writePathHint'),
+  // Memtables
+  memContent: document.getElementById('memContent'),
+  memCap: document.getElementById('memCap'),
+  immContent: document.getElementById('immContent'),
+  immCap: document.getElementById('immCap'),
+  // SSTables
+  sstList: document.getElementById('sstList'),
+  sstCount: document.getElementById('sstCount'),
+  // Panels
+  opLog: document.getElementById('opLog'),
+  opHint: document.getElementById('opHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Stats
+  statPuts: document.getElementById('statPuts'),
+  statDels: document.getElementById('statDels'),
+  statFlush: document.getElementById('statFlush'),
+  statComp: document.getElementById('statComp'),
+  statSsts: document.getElementById('statSsts'),
+  statRA: document.getElementById('statRA'),
+  statWA: document.getElementById('statWA'),
+  statTomb: document.getElementById('statTomb'),
+  // Input
+  keyInput: document.getElementById('keyInput'),
+  valInput: document.getElementById('valInput'),
+  btnPut: document.getElementById('btnPut'),
+  btnDelete: document.getElementById('btnDelete'),
+  btnGet: document.getElementById('btnGet'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnHotKey: document.getElementById('btnHotKey'),
+  btnTombstone: document.getElementById('btnTombstone'),
+  btnCompact: document.getElementById('btnCompact'),
+  btnMajorCompact: document.getElementById('btnMajorCompact'),
+  btnReset: document.getElementById('btnReset'),
+  capRange: document.getElementById('capRange'),
+  capVal: document.getElementById('capVal'),
+  l0Range: document.getElementById('l0Range'),
+  l0Val: document.getElementById('l0Val'),
+  // Teaching
+  mMem: document.getElementById('mMem'),
+  mL0: document.getElementById('mL0'),
+  mSsts: document.getElementById('mSsts'),
+  mComp: document.getElementById('mComp'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 1800);
+}
+
+function logOp(text, kind = 'dim') {
+  const el = document.createElement('div');
+  el.className = `info-line ${kind}`;
+  el.textContent = text;
+  DOM.opLog.appendChild(el);
+  while (DOM.opLog.children.length > 40) DOM.opLog.firstChild.remove();
+  DOM.opLog.scrollTop = DOM.opLog.scrollHeight;
+}
+
+function clearOpLog() {
+  DOM.opLog.innerHTML = '';
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining LSM tree log compaction.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   WRITE PATH — the core of LSM trees
+   ============================================================ */
+function put(key, value) {
+  clearOpLog();
+
+  // Step 1: WAL (just simulates durability)
+  STATE.walEntries++;
+  DOM.stageWal.classList.add('active');
+  setTimeout(() => DOM.stageWal.classList.remove('active'), 400);
+  logOp(`WAL append: PUT key=${key} value=${value}`, 'write');
+  updateWritePathHint(`PUT ${key}=${value}`);
+
+  // Step 2: Active memtable
+  STATE.memtable.push({
+    key: String(key),
+    value: String(value),
+    op: 'PUT',
+    seq: STATE.nextSeq++,
+    ts: Date.now()
+  });
+  STATE.puts++;
+
+  DOM.stageMem.classList.add('active');
+  setTimeout(() => DOM.stageMem.classList.remove('active'), 400);
+
+  logOp(`Memtable insert: key=${key} value=${value} (sorted on flush)`, 'write');
+
+  teach('PUT',
+    `PUT key=${key} value=${value}. Notice what happened: we appended to the WAL (sequential I/O), then inserted into the memtable (RAM). No disk seeks. No page reads. No tree rebalancing. This is why LSM writes are fast.`,
+    'cyan', false
+  );
+
+  // Check memtable overflow
+  if (STATE.memtable.length >= STATE.memtableCapacity) {
+    flushMemtable();
+  }
+
+  renderAll();
+}
+
+function del(key) {
+  clearOpLog();
+  STATE.walEntries++;
+
+  DOM.stageWal.classList.add('active');
+  setTimeout(() => DOM.stageWal.classList.remove('active'), 400);
+
+  // Tombstone: a special value marking deletion
+  STATE.memtable.push({
+    key: String(key),
+    value: 'TOMBSTONE',
+    op: 'DEL',
+    seq: STATE.nextSeq++,
+    ts: Date.now()
+  });
+  STATE.deletes++;
+  STATE.tombstones++;
+
+  logOp(`WAL append: DELETE key=${key}`, 'write');
+  logOp(`Memtable insert: TOMBSTONE for key=${key}`, 'warn');
+
+  teach('DELETE',
+    `DELETE key=${key}. Notice: LSM trees don't actually remove data. They write a TOMBSTONE — a marker that says "this key is deleted." The actual bytes are only removed later when compaction encounters the tombstone and can safely drop it (when no older version of the key remains in older SSTables).`,
+    'warn', false
+  );
+
+  if (STATE.memtable.length >= STATE.memtableCapacity) {
+    flushMemtable();
+  }
+
+  renderAll();
+}
+
+function get(key) {
+  clearOpLog();
+  logOp(`GET key=${key}`, 'read');
+
+  // Step 1: Check active memtable (most recent write wins)
+  const activeHit = [...STATE.memtable].reverse().find(e => e.key === String(key));
+  if (activeHit) {
+    if (activeHit.op === 'DEL') {
+      logOp(`Found in active memtable: TOMBSTONE — key is deleted`, 'ok');
+      showStatus(`🔍 GET ${key} → NOT FOUND (tombstone)`, 'flush');
+      teach('GET HIT',
+        `Found key=${key} in active memtable, but it's a tombstone. Answer: NOT FOUND. The memtable always wins because it has the most recent write.`,
+        'ok', false
+      );
+      return;
+    }
+    logOp(`✔ FOUND in active memtable: value=${activeHit.value}`, 'ok');
+    showStatus(`🔍 GET ${key} → ${activeHit.value} (memtable)`, 'flush');
+    teach('GET HIT (memtable)',
+      `Found key=${key} in the active memtable with value=${activeHit.value}. Zero disk I/O — the fastest possible read.`,
+      'ok', false
+    );
+    return;
+  }
+
+  // Step 2: Check immutable memtable
+  if (STATE.immutable) {
+    const immHit = [...STATE.immutable.entries].reverse().find(e => e.key === String(key));
+    if (immHit) {
+      if (immHit.op === 'DEL') {
+        logOp(`Found in immutable: TOMBSTONE — key is deleted`, 'ok');
+        showStatus(`🔍 GET ${key} → NOT FOUND (tombstone)`, 'flush');
+        return;
+      }
+      logOp(`✔ FOUND in immutable memtable: value=${immHit.value}`, 'ok');
+      showStatus(`🔍 GET ${key} → ${immHit.value} (immutable)`, 'flush');
+      return;
+    }
+  }
+
+  // Step 3: Search SSTables — newest first (L0 → L1 → L2 → L3)
+  logOp(`Not in memtable. Searching SSTables newest → oldest...`, 'read');
+
+  const searchOrder = [
+    ...STATE.sstables.L0,
+    ...STATE.sstables.L1,
+    ...STATE.sstables.L2,
+    ...STATE.sstables.L3
+  ];
+
+  if (searchOrder.length === 0) {
+    logOp(`No SSTables exist. GET MISS.`, 'warn');
+    showStatus(`🔍 GET ${key} → NOT FOUND`, '');
+    return;
+  }
+
+  for (const sst of searchOrder) {
+    // "Search" the SST — simulated by checking its data
+    const hit = sst.data.find(e => e.key === String(key));
+    if (hit) {
+      if (hit.op === 'DEL') {
+        logOp(`SST ${sst.name} (${sst.level}): TOMBSTONE — key is deleted`, 'ok');
+        showStatus(`🔍 GET ${key} → NOT FOUND (tombstone in ${sst.name})`, '');
+        teach('GET HIT (tombstone)',
+          `Searched ${sst.name} in level ${sst.level} and found a tombstone. Answer: NOT FOUND. Reads must check from newest to oldest because tombstones block older values.`,
+          'ok', false
+        );
+        return;
+      }
+      logOp(`✔ FOUND in ${sst.name} (${sst.level}): value=${hit.value}`, 'ok');
+      showStatus(`🔍 GET ${key} → ${hit.value} (${sst.name})`, '');
+      teach('GET HIT (SSTable)',
+        `Searched the memtable, then walked SSTables newest → oldest until we found key=${key} in ${sst.name} (${sst.level}). This is why LSM reads are more expensive than writes — we may check several files before finding the key.`,
+        'ok', false
+      );
+      return;
+    }
+  }
+
+  logOp(`Searched all ${searchOrder.length} SSTables — NOT FOUND`, 'warn');
+  showStatus(`🔍 GET ${key} → NOT FOUND`, '');
+  teach('GET MISS',
+    `Searched the memtable AND all ${searchOrder.length} SSTables without finding key=${key}. This is the worst case for LSM reads — every level was touched. Bloom filters help here: they can skip most SSTables instantly.`,
+    'warn', false
+  );
+}
+
+function updateWritePathHint(text) {
+  DOM.writePathHint.textContent = `— ${text} —`;
+  setTimeout(() => { DOM.writePathHint.textContent = '—'; }, 1500);
+}
+
+/* ============================================================
+   FLUSH — memtable → SSTable
+   ============================================================ */
+function flushMemtable() {
+  // Move active memtable to immutable
+  const entries = [...STATE.memtable];
+  STATE.memtable = [];
+
+  STATE.immutable = {
+    entries,
+    name: `immutable-${STATE.nextFileId}`
+  };
+  const immName = STATE.immutable.name;
+
+  DOM.stageImm.classList.add('active');
+  DOM.immutableMemBox.classList.add('active');
+  setTimeout(() => {
+    DOM.stageImm.classList.remove('active');
+    DOM.immutableMemBox.classList.remove('active');
+  }, 600);
+
+  logOp(`Memtable full → becomes IMMUTABLE: ${immName}`, 'flush');
+  showStatus(`⚡ FLUSH — memtable full (${entries.length} entries)`, 'flush');
+
+  teach('FLUSH TRIGGER',
+    `Memtable hit its capacity (${entries.length} entries). It becomes IMMUTABLE — read-only. A new empty memtable is created to receive writes. The immutable memtable is being flushed to disk in the background. Writes never block.`,
+    'purple'
+  );
+
+  // Simulate background flush with a delay
+  setTimeout(() => {
+    flushImmutableToSSTable();
+  }, 800);
+
+  renderAll();
+}
+
+function flushImmutableToSSTable() {
+  if (!STATE.immutable) return;
+  const entries = STATE.immutable.entries;
+  const immName = STATE.immutable.name;
+
+  // Sort by key (SSTables are sorted!)
+  const sorted = [...entries].sort((a, b) => a.key.localeCompare(b.key));
+
+  // Dedupe: latest seq wins per key
+  const dedup = {};
+  for (const e of sorted) {
+    if (!dedup[e.key] || dedup[e.key].seq < e.seq) dedup[e.key] = e;
+  }
+  const finalEntries = Object.values(dedup).sort((a, b) => a.key.localeCompare(b.key));
+
+  // Create SSTable in L0
+  const sst = {
+    id: STATE.nextFileId++,
+    name: `L0-${String(STATE.nextFileId - 1).padStart(3, '0')}.sst`,
+    level: 'L0',
+    data: finalEntries,
+    createdAt: Date.now()
+  };
+  STATE.sstables.L0.push(sst);
+
+  STATE.immutable = null;
+  STATE.flushes++;
+
+  logOp(`Flushed ${immName} → ${sst.name} (${finalEntries.length} sorted entries)`, 'ok');
+  logOp(`SSTable written sequentially — no random I/O`, 'flush');
+
+  DOM.stageSst.classList.add('active');
+  setTimeout(() => DOM.stageSst.classList.remove('active'), 500);
+
+  teach('FLUSH COMPLETE',
+    `Flushed immutable memtable to ${sst.name}. The SSTable is SORTED by key and written sequentially — this is fast, sequential disk I/O. Once flushed, the corresponding WAL segment can be discarded.`,
+    'ok'
+  );
+
+  // Check if L0 needs compaction
+  checkCompaction();
+
+  renderAll();
+}
+
+/* ============================================================
+   COMPACTION
+   ============================================================ */
+function checkCompaction() {
+  if (STATE.sstables.L0.length >= STATE.l0Trigger) {
+    setTimeout(() => compactL0ToL1(), 700);
+  }
+}
+
+function compactL0ToL1() {
+  if (STATE.sstables.L0.length < 2) {
+    showToast('⚠ Not enough L0 files to compact');
+    return;
+  }
+
+  const l0Files = [...STATE.sstables.L0];
+  STATE.sstables.L0 = [];
+
+  logOp(`COMPACTION L0 → L1: merging ${l0Files.length} L0 files`, 'compact');
+  showStatus(`⚙️ COMPACTING — merging ${l0Files.length} L0 files → L1`, 'compact');
+
+  teach('COMPACTION BEGINS',
+    `L0 has ${l0Files.length} files — over the trigger of ${STATE.l0Trigger}. Compaction merges them: (1) read all files, (2) merge-sort by key, (3) keep only the newest version of each key, (4) drop tombstones that are older than everything below, (5) write a single new file to L1.`,
+    'purple'
+  );
+
+  // Merge all entries
+  const all = [];
+  for (const f of l0Files) {
+    for (const e of f.data) all.push(e);
+  }
+
+  // Sort by key, then by seq desc (newest first)
+  all.sort((a, b) => {
+    if (a.key !== b.key) return a.key.localeCompare(b.key);
+    return b.seq - a.seq;
+  });
+
+  // Dedupe: keep only newest per key
+  const merged = {};
+  for (const e of all) {
+    if (!merged[e.key] || merged[e.key].seq < e.seq) merged[e.key] = e;
+  }
+
+  // Also merge with existing L1
+  if (STATE.sstables.L1.length > 0) {
+    const existingL1 = [];
+    for (const f of STATE.sstables.L1) {
+      for (const e of f.data) existingL1.push(e);
+    }
+    for (const e of existingL1) {
+      if (!merged[e.key] || merged[e.key].seq < e.seq) merged[e.key] = e;
+    }
+    STATE.sstables.L1 = [];
+  }
+
+  // Drop tombstones that are safe to drop (this is the "delete the actual bytes" moment)
+  const finalEntries = [];
+  let tombstonesDropped = 0;
+  for (const k of Object.keys(merged).sort()) {
+    const e = merged[k];
+    if (e.op === 'DEL') {
+      // Drop the tombstone entirely — nobody needs this key anymore
+      tombstonesDropped++;
+    } else {
+      finalEntries.push(e);
+    }
+  }
+
+  // Create new L1 file
+  const newL1 = {
+    id: STATE.nextFileId++,
+    name: `L1-${String(STATE.nextFileId - 1).padStart(3, '0')}.sst`,
+    level: 'L1',
+    data: finalEntries,
+    createdAt: Date.now()
+  };
+  STATE.sstables.L1.push(newL1);
+
+  STATE.compactions++;
+  STATE.tombstones = Math.max(0, STATE.tombstones - tombstonesDropped);
+
+  logOp(`Merged into ${newL1.name}: ${finalEntries.length} keys (dropped ${tombstonesDropped} tombstones)`, 'ok');
+  logOp(`Wrote ${newL1.name} sequentially`, 'compact');
+
+  teach('COMPACTION COMPLETE',
+    `Wrote ${newL1.name} with ${finalEntries.length} keys. Dropped ${tombstonesDropped} tombstones — this is where deleted data actually disappears. Every unique key now exists exactly once in L1. Read amplification is reduced because future reads only need to check L1, not the ${l0Files.length} L0 files.`,
+    'ok'
+  );
+
+  // Check cascading compaction
+  if (STATE.sstables.L1.length >= 4) {
+    setTimeout(() => compactL1ToL2(), 900);
+  }
+
+  renderAll();
+}
+
+function compactL1ToL2() {
+  const l1Files = [...STATE.sstables.L1];
+  if (l1Files.length < 2) return;
+
+  logOp(`CASCADE: L1 has ${l1Files.length} files — compacting to L2`, 'compact');
+  showStatus(`⚙️ CASCADE — compacting L1 → L2`, 'compact');
+
+  teach('CASCADE',
+    `L1 also hit its threshold. Compaction cascades DOWN the tree: L0 → L1 → L2 → L3. Each level is typically 10x the size of the level above. This is why LSM trees stay manageable — data flows down as it ages.`,
+    'warn'
+  );
+
+  const all = [];
+  for (const f of l1Files) for (const e of f.data) all.push(e);
+  if (STATE.sstables.L2.length > 0) {
+    for (const f of STATE.sstables.L2) for (const e of f.data) all.push(e);
+    STATE.sstables.L2 = [];
+  }
+
+  all.sort((a, b) => {
+    if (a.key !== b.key) return a.key.localeCompare(b.key);
+    return b.seq - a.seq;
+  });
+
+  const merged = {};
+  for (const e of all) {
+    if (!merged[e.key] || merged[e.key].seq < e.seq) merged[e.key] = e;
+  }
+
+  const finalEntries = Object.keys(merged).sort().map(k => merged[k]).filter(e => e.op !== 'DEL');
+  const newL2 = {
+    id: STATE.nextFileId++,
+    name: `L2-${String(STATE.nextFileId - 1).padStart(3, '0')}.sst`,
+    level: 'L2',
+    data: finalEntries,
+    createdAt: Date.now()
+  };
+  STATE.sstables.L1 = [];
+  STATE.sstables.L2.push(newL2);
+
+  logOp(`Cascade: wrote ${newL2.name} with ${finalEntries.length} keys`, 'ok');
+
+  renderAll();
+}
+
+function majorCompaction() {
+  logOp(`MAJOR COMPACTION: forcing all levels → L3`, 'compact');
+  showStatus(`⚙️ MAJOR COMPACTION — merging ALL files`, 'compact');
+
+  teach('MAJOR COMPACTION',
+    `Major compaction merges ALL SSTables into a single sorted file at the bottom level. This is expensive (rewrites the entire dataset) but has huge benefits: (1) read amplification drops to 1, (2) all tombstones are finally dropped, (3) space is reclaimed. Real systems do this rarely, usually during low-traffic windows.`,
+    'warn'
+  );
+
+  // Collect all entries from all levels
+  const all = [];
+  for (const level of ['L0', 'L1', 'L2', 'L3']) {
+    for (const f of STATE.sstables[level]) {
+      for (const e of f.data) all.push(e);
+    }
+    STATE.sstables[level] = [];
+  }
+
+  if (all.length === 0) {
+    showToast('⚠ No SSTables to compact');
+    return;
+  }
+
+  // Merge
+  all.sort((a, b) => {
+    if (a.key !== b.key) return a.key.localeCompare(b.key);
+    return b.seq - a.seq;
+  });
+
+  const merged = {};
+  for (const e of all) {
+    if (!merged[e.key] || merged[e.key].seq < e.seq) merged[e.key] = e;
+  }
+
+  const finalEntries = Object.keys(merged).sort().map(k => merged[k]).filter(e => e.op !== 'DEL');
+
+  // One big file
+  const bigFile = {
+    id: STATE.nextFileId++,
+    name: `L3-major-${String(STATE.nextFileId - 1).padStart(3, '0')}.sst`,
+    level: 'L3',
+    data: finalEntries,
+    createdAt: Date.now()
+  };
+  STATE.sstables.L3.push(bigFile);
+  STATE.compactions++;
+
+  logOp(`Major compaction complete: ${finalEntries.length} keys in 1 file`, 'ok');
+
+  renderAll();
+}
+
+/* ============================================================
+   BULK WORKLOADS
+   ============================================================ */
+function burstWrites() {
+  clearOpLog();
+  logOp(`Burst: 20 PUTs`, 'write');
+  teach('BURST',
+    `Running a burst of 20 PUTs. Watch how the memtable fills quickly and triggers multiple flushes. Because writes just append to memory + WAL, they fly through — this is LSM's superpower.`,
+    'cyan'
+  );
+
+  for (let i = 1; i <= 20; i++) {
+    setTimeout(() => {
+      const k = Math.floor(Math.random() * 900) + 100;
+      put(k, k * 10);
+    }, i * 120);
+  }
+}
+
+function hotKeyOverwrite() {
+  clearOpLog();
+  logOp(`Hot-key test: PUT key=42 ten times`, 'write');
+  teach('HOT KEY',
+    `Writing to key=42 ten times. In an LSM tree, each PUT appends a NEW version — the previous version isn't overwritten, it stays in the memtable or SSTable. Compaction later resolves all the versions down to one. This is why LSM writes are so fast: they never do read-modify-write.`,
+    'purple'
+  );
+
+  for (let i = 0; i < 10; i++) {
+    setTimeout(() => put(42, 100 + i), i * 250);
+  }
+}
+
+function massDelete() {
+  clearOpLog();
+  logOp(`Mass delete: 10 DELETEs`, 'warn');
+  teach('MASS DELETE',
+    `Writing 10 DELETEs. Each becomes a TOMBSTONE in the memtable. Watch the tombstone counter climb. When compaction runs, tombstones are dropped only if no older version exists below — otherwise they need to stick around to hide the older data.`,
+    'warn'
+  );
+
+  const keys = [];
+  for (let i = 0; i < 10; i++) {
+    keys.push(Math.floor(Math.random() * 900) + 100);
+  }
+  for (let i = 0; i < keys.length; i++) {
+    setTimeout(() => del(keys[i]), i * 200);
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderAll() {
+  renderMemtables();
+  renderSSTables();
+  updateStats();
+}
+
+function renderMemtables() {
+  // Active memtable
+  DOM.memCap.textContent = `${STATE.memtable.length} / ${STATE.memtableCapacity}`;
+
+  if (STATE.memtable.length === 0) {
+    DOM.memContent.innerHTML = `<div class="mt-empty">empty — start writing</div>`;
+  } else {
+    let html = '';
+    for (const e of [...STATE.memtable].reverse()) {
+      const cls = e.op === 'DEL' ? 'tombstone' : '';
+      const valDisplay = e.op === 'DEL' ? 'TOMBSTONE' : e.value;
+      html += `
+        <div class="kv-row ${cls}">
+          <span class="k">${e.key}</span>
+          <span class="op">${e.op}</span>
+          <span class="v">${valDisplay}</span>
+        </div>
+      `;
+    }
+    DOM.memContent.innerHTML = html;
+  }
+
+  // Immutable memtable
+  if (!STATE.immutable) {
+    DOM.immCap.textContent = 'none';
+    DOM.immContent.innerHTML = `<div class="mt-empty">none</div>`;
+  } else {
+    DOM.immCap.textContent = `${STATE.immutable.entries.length} entries`;
+    let html = '';
+    for (const e of [...STATE.immutable.entries].reverse()) {
+      const cls = e.op === 'DEL' ? 'tombstone' : '';
+      const valDisplay = e.op === 'DEL' ? 'TOMBSTONE' : e.value;
+      html += `
+        <div class="kv-row ${cls}">
+          <span class="k">${e.key}</span>
+          <span class="op">${e.op}</span>
+          <span class="v">${valDisplay}</span>
+        </div>
+      `;
+    }
+    DOM.immContent.innerHTML = html;
+  }
+}
+
+function renderSSTables() {
+  const allFiles = [];
+  for (const level of ['L0', 'L1', 'L2', 'L3']) {
+    for (const f of STATE.sstables[level]) allFiles.push(f);
+  }
+
+  DOM.sstCount.textContent = `${allFiles.length} file${allFiles.length === 1 ? '' : 's'}`;
+
+  if (allFiles.length === 0) {
+    DOM.sstList.innerHTML = `<div class="mt-empty">No SSTables yet — write enough to fill a memtable</div>`;
+    return;
+  }
+
+  let html = '';
+  for (const level of ['L0', 'L1', 'L2', 'L3']) {
+    const files = STATE.sstables[level];
+    if (files.length === 0) continue;
+
+    html += `
+      <div class="sst-level ${level}">
+        <div class="sst-level-header">
+          <span class="lbl">${level}</span>
+          <span class="count">${files.length} file${files.length === 1 ? '' : 's'}</span>
+        </div>
+        <div class="sst-files">
+    `;
+    for (const f of files) {
+      html += `<span class="sst-file ${level}" title="${f.data.length} keys">${f.name} (${f.data.length})</span>`;
+    }
+    html += `
+        </div>
+      </div>
+    `;
+  }
+  DOM.sstList.innerHTML = html;
+}
+
+/* ============================================================
+   STATS
+   ============================================================ */
+function updateStats() {
+  DOM.statPuts.textContent = STATE.puts;
+  DOM.statDels.textContent = STATE.deletes;
+  DOM.statFlush.textContent = STATE.flushes;
+  DOM.statComp.textContent = STATE.compactions;
+
+  const totalSsts = Object.values(STATE.sstables).reduce((a, arr) => a + arr.length, 0);
+  DOM.statSsts.textContent = totalSsts;
+
+  // Read amplification: how many files we might check on a get
+  const ra = 1 + totalSsts; // memtable + all SSTables in worst case
+  DOM.statRA.textContent = ra + '×';
+  DOM.statRA.className = 'val ' + (ra > 6 ? 'bad' : ra > 3 ? 'warn' : '');
+
+  // Write amplification: how many times data is rewritten by compaction
+  const wa = STATE.compactions > 0
+    ? (1 + Math.round(STATE.compactions * 1.5))
+    : 1;
+  DOM.statWA.textContent = wa + '×';
+  DOM.statWA.className = 'val ' + (wa > 5 ? 'bad' : wa > 3 ? 'warn' : '');
+
+  DOM.statTomb.textContent = STATE.tombstones;
+  DOM.statTomb.className = 'val ' + (STATE.tombstones > 0 ? 'warn' : '');
+
+  // Right-side metrics
+  DOM.mMem.textContent = STATE.memtable.length;
+  DOM.mL0.textContent = STATE.sstables.L0.length;
+  DOM.mSsts.textContent = totalSsts;
+  DOM.mComp.textContent = STATE.compactions;
+
+  // Update write path desc
+  DOM.walDesc.textContent = `${STATE.walEntries} entries`;
+  DOM.memDesc.textContent = `${STATE.memtable.length} / ${STATE.memtableCapacity}`;
+  DOM.immDesc.textContent = STATE.immutable ? `${STATE.immutable.entries.length} flushing` : 'idle';
+  DOM.sstDesc.textContent = `${totalSsts} files on disk`;
+
+  // Check L0 over trigger
+  if (STATE.sstables.L0.length >= STATE.l0Trigger) {
+    DOM.mL0.className = 'metric-value bad';
+  } else if (STATE.sstables.L0.length >= STATE.l0Trigger - 1) {
+    DOM.mL0.className = 'metric-value warn';
+  } else {
+    DOM.mL0.className = 'metric-value warn';
+  }
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.memtable = [];
+  STATE.immutable = null;
+  STATE.sstables = { L0: [], L1: [], L2: [], L3: [] };
+  STATE.nextFileId = 1;
+  STATE.nextSeq = 1;
+  STATE.puts = 0;
+  STATE.deletes = 0;
+  STATE.flushes = 0;
+  STATE.compactions = 0;
+  STATE.tombstones = 0;
+  STATE.walEntries = 0;
+
+  clearOpLog();
+  logOp('Database reset — clean slate.', 'dim');
+
+  renderAll();
+  teach('RESET', 'Database cleared. Memtable empty, no SSTables, no WAL.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnPut.addEventListener('click', () => {
+  const k = parseInt(DOM.keyInput.value);
+  const v = parseInt(DOM.valInput.value);
+  if (isNaN(k) || isNaN(v)) { showToast('⚠ Enter valid key and value'); return; }
+  put(k, v);
+});
+
+DOM.btnDelete.addEventListener('click', () => {
+  const k = parseInt(DOM.keyInput.value);
+  if (isNaN(k)) { showToast('⚠ Enter a valid key'); return; }
+  del(k);
+});
+
+DOM.btnGet.addEventListener('click', () => {
+  const k = parseInt(DOM.keyInput.value);
+  if (isNaN(k)) { showToast('⚠ Enter a valid key'); return; }
+  get(k);
+});
+
+DOM.btnBurst.addEventListener('click', burstWrites);
+DOM.btnHotKey.addEventListener('click', hotKeyOverwrite);
+DOM.btnTombstone.addEventListener('click', massDelete);
+DOM.btnCompact.addEventListener('click', compactL0ToL1);
+DOM.btnMajorCompact.addEventListener('click', majorCompaction);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.capRange.addEventListener('input', e => {
+  STATE.memtableCapacity = parseInt(e.target.value);
+  DOM.capVal.textContent = STATE.memtableCapacity;
+});
+DOM.l0Range.addEventListener('input', e => {
+  STATE.l0Trigger = parseInt(e.target.value);
+  DOM.l0Val.textContent = STATE.l0Trigger;
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to LSM-Tree Log Compaction. LSM — Log-Structured Merge — is the storage engine behind RocksDB, LevelDB, Cassandra, ScyllaDB, HBase, and TiKV. It optimizes for WRITE throughput by never doing in-place updates. Every write goes to a WAL and memtable, then gets flushed to sorted files (SSTables) and merged by compaction.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('WRITE PATH',
+      `Every PUT or DELETE follows the same path: (1) append to WAL for durability, (2) insert into the memtable (a sorted in-memory tree), (3) when the memtable fills, it becomes immutable and is flushed to disk as a sorted SSTable, (4) background compaction merges SSTables to reclaim space and drop overwritten data.`,
+      'ok'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE TRADE-OFF',
+      `LSM trees trade WRITE amplification for READ amplification. Writes are fast (sequential appends), but reads may need to check the memtable plus multiple SSTables across multiple levels. Compaction reduces read amplification by merging files, but costs WRITE amplification — data gets rewritten each time it moves down a level. This is the fundamental trade-off that distinguishes LSM from B+ trees.`,
+      'purple'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('TRY IT',
+      `Try this sequence: (1) PUT a few keys to see them land in the memtable, (2) run BURST 20 WRITES to trigger flushes, (3) watch L0 fill up and auto-compact to L1, (4) click HOT-KEY OVERWRITE to see how multiple versions of the same key coexist, (5) click MASS DELETE to see tombstones pile up, then click FORCE COMPACT to drop them.`,
+      'info'
+    );
+  }, 13500);
+
+  showToast('👋 Write a few keys, then BURST to see compaction', 4000);
+}, 600);
+</script>
+</body>
+</html>

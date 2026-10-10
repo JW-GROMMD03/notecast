@@ -1,0 +1,1666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Write-Ahead Logging (WAL) — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f97316, #f59e0b, #eab308);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(249,115,22,0.15);
+    color: #fdba74;
+    border-color: #f97316;
+  }
+  .teaching-toggle:hover { background: rgba(249,115,22,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f97316; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f97316; color: #2a1402; border-color: #f97316; }
+  .btn.primary:hover { background: #ea580c; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fdba74; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f97316; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(249,115,22,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  /* WAL PANE (left) */
+  .wal-pane {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #f97316;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+    box-shadow: 0 0 25px rgba(249,115,22,0.15);
+  }
+  .wal-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .wal-title .lsn-label {
+    font-size: 0.55rem;
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  /* WAL log entries */
+  .wal-log {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.6rem;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .wal-entry {
+    display: flex;
+    gap: 8px;
+    padding: 4px 6px;
+    background: rgba(20,14,8,0.5);
+    border-left: 3px solid #475569;
+    border-radius: 3px;
+    animation: walSlide 0.35s ease;
+    transition: all 0.3s;
+  }
+  @keyframes walSlide {
+    from { transform: translateX(-15px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .wal-entry.begin { border-left-color: #22d3ee; background: rgba(34,211,238,0.05); }
+  .wal-entry.update { border-left-color: #f59e0b; background: rgba(245,158,11,0.05); }
+  .wal-entry.commit { border-left-color: #10b981; background: rgba(16,185,129,0.08); font-weight: 700; }
+  .wal-entry.abort { border-left-color: #ef4444; background: rgba(239,68,68,0.08); }
+  .wal-entry.checkpoint { border-left-color: #a855f7; background: rgba(168,85,247,0.08); }
+  .wal-entry.clr { border-left-color: #ec4899; background: rgba(236,72,153,0.05); }
+
+  .wal-entry.flushed {
+    border-left-width: 5px;
+    box-shadow: 0 0 8px rgba(249,115,22,0.4);
+  }
+  .wal-entry.synced::after {
+    content: '✓ SYNC';
+    margin-left: auto;
+    color: #10b981;
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+  }
+
+  .wal-lsn {
+    color: #64748b;
+    font-weight: 700;
+    min-width: 55px;
+    font-size: 0.55rem;
+  }
+  .wal-type {
+    color: #fdba74;
+    font-weight: 800;
+    min-width: 70px;
+    font-size: 0.55rem;
+    letter-spacing: 0.5px;
+  }
+  .wal-entry.begin .wal-type { color: #7dd3fc; }
+  .wal-entry.update .wal-type { color: #fbbf24; }
+  .wal-entry.commit .wal-type { color: #6ee7b7; }
+  .wal-entry.abort .wal-type { color: #fca5a5; }
+
+  .wal-payload {
+    color: #cbd5e1;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Middle: Data pages (buffer pool) */
+  .buffer-pane {
+    flex: 0.9;
+    background: #070a14;
+    border: 2px solid #eab308;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+    box-shadow: 0 0 25px rgba(234,179,8,0.15);
+  }
+  .buffer-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fde047;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .buffer-title .dirty-count {
+    font-size: 0.55rem;
+    color: #f87171;
+    font-weight: 600;
+  }
+
+  .page-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+  }
+  .page {
+    background: linear-gradient(145deg, #0d1220, #070a14);
+    border: 1.5px solid #334155;
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: monospace;
+    font-size: 0.62rem;
+    transition: all 0.35s;
+    position: relative;
+    overflow: hidden;
+  }
+  .page.dirty {
+    border-color: #f59e0b;
+    box-shadow: 0 0 12px rgba(245,158,11,0.3);
+  }
+  .page.clean {
+    border-color: #10b981;
+  }
+  .page.write {
+    animation: pageWrite 0.4s ease;
+  }
+  @keyframes pageWrite {
+    0%, 100% { transform: translateX(0); }
+    30% { transform: translateX(3px); background: rgba(245,158,11,0.15); }
+  }
+  .page-name {
+    color: #cbd5e1;
+    font-weight: 800;
+    letter-spacing: 1px;
+  }
+  .page-value {
+    color: #fbbf24;
+    font-weight: 800;
+  }
+  .page-badge {
+    font-size: 0.5rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    font-family: monospace;
+  }
+  .page-badge.dirty {
+    background: rgba(245,158,11,0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(245,158,11,0.4);
+  }
+  .page-badge.clean {
+    background: rgba(16,185,129,0.2);
+    color: #6ee7b7;
+    border: 1px solid rgba(16,185,129,0.4);
+  }
+  .page-reclsn {
+    font-size: 0.5rem;
+    color: #64748b;
+    margin-left: 8px;
+  }
+
+  /* Disk pane (right) */
+  .disk-pane {
+    flex: 0.85;
+    background: #070a14;
+    border: 2px solid #22d3ee;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+    box-shadow: 0 0 25px rgba(34,211,238,0.15);
+  }
+  .disk-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #7dd3fc;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .disk-title .io-count {
+    font-size: 0.55rem;
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  .disk-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .disk-section-title {
+    font-size: 0.55rem;
+    color: #64748b;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-family: monospace;
+    padding: 4px 0;
+    border-bottom: 1px dashed rgba(100,116,139,0.2);
+  }
+
+  .disk-row {
+    background: linear-gradient(145deg, #0d1220, #070a14);
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 6px 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: monospace;
+    font-size: 0.6rem;
+    transition: all 0.35s;
+  }
+  .disk-row.wal-row {
+    border-color: #f97316;
+    background: linear-gradient(145deg, rgba(249,115,22,0.08), #070a14);
+  }
+  .disk-row.flushing {
+    animation: diskFlush 0.5s ease;
+    box-shadow: 0 0 15px rgba(249,115,22,0.6);
+  }
+  @keyframes diskFlush {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+  }
+  .disk-row .label {
+    color: #94a3b8;
+    font-weight: 700;
+    font-size: 0.55rem;
+    letter-spacing: 0.5px;
+  }
+  .disk-row .val {
+    color: #22d3ee;
+    font-weight: 800;
+  }
+  .disk-row.wal-row .val { color: #fdba74; }
+
+  /* Crash overlay */
+  .crash-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(127,29,29,0.15);
+    border: 4px solid #ef4444;
+    border-radius: 12px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 15;
+    backdrop-filter: blur(2px);
+    pointer-events: none;
+  }
+  .crash-overlay.show {
+    display: flex;
+    animation: crashFlash 0.6s ease;
+  }
+  @keyframes crashFlash {
+    0%, 100% { background: rgba(127,29,29,0.15); }
+    50% { background: rgba(127,29,29,0.4); }
+  }
+  .crash-badge {
+    font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: 4px;
+    color: #fecaca;
+    text-shadow: 0 0 30px #ef4444;
+    font-family: monospace;
+    padding: 20px 40px;
+    border: 3px solid #ef4444;
+    border-radius: 12px;
+    background: rgba(127,29,29,0.6);
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(249,115,22,0.06);
+    border: 1px solid rgba(249,115,22,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.58rem;
+    color: #fdba74;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1.05rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #fdba74; text-shadow: 0 0 10px rgba(249,115,22,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 260px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f97316;
+    background: rgba(249,115,22,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #f97316; background: rgba(249,115,22,0.06); }
+  .teach-entry.cyan   { border-color: #22d3ee; background: rgba(34,211,238,0.05); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(249,115,22,0.15); color: #fdba74; }
+  .teach-entry .tag.cyan   { background: rgba(34,211,238,0.15); color: #7dd3fc; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* WAL rule card */
+  .wal-rule {
+    background: linear-gradient(145deg, rgba(249,115,22,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(249,115,22,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.6rem;
+  }
+  .wal-rule-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .wal-rule-body {
+    color: #cbd5e1;
+    line-height: 1.6;
+    font-size: 0.58rem;
+  }
+  .wal-rule-body .rule {
+    color: #fdba74;
+    font-weight: 800;
+  }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f97316;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(249,115,22,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>WRITE-AHEAD LOGGING (WAL)</h1>
+    <span class="sub">LOG FIRST · APPLY LATER · SURVIVE CRASHES</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Scenario</h3>
+      <select id="demoSelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="basic" selected>Basic WAL — COMMIT then crash</option>
+        <option value="no-wal">⚠️ No WAL — data loss on crash</option>
+        <option value="uncommitted">Uncommitted write then crash</option>
+        <option value="checkpoint">Checkpoint flushes pages</option>
+        <option value="steal">STEAL policy — page evicted early</option>
+        <option value="torn">Torn write &amp; recovery</option>
+      </select>
+      <button class="btn primary" id="btnRun">▶ Run Scenario</button>
+      <button class="btn" id="btnStep">⏭ Step</button>
+      <button class="btn" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Force Sync Mode</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="sync" value="fsync" checked style="accent-color:#f97316;">
+          fsync on commit (durable)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="sync" value="group" style="accent-color:#f97316;">
+          Group commit (batch)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="sync" value="nosync" style="accent-color:#f97316;">
+          No fsync (fast, risky)
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Speed</h3>
+      <div class="slider-row"><span>Simulation speed</span><span class="value" id="speedVal">1.0×</span></div>
+      <input type="range" id="speedRange" min="0.3" max="2.5" step="0.1" value="1.0">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#22d3ee;"></div>WAL BEGIN</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>UPDATE record</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>COMMIT + fsync</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#a855f7;"></div>Checkpoint</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>ABORT / crash</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">WRITE TO LOG FIRST · THEN MODIFY DATA PAGES · SPLIT THE DURABILITY COST</div>
+
+      <div class="main-split">
+        <!-- WAL LOG -->
+        <div class="wal-pane">
+          <div class="wal-title">
+            <span>📜 WRITE-AHEAD LOG (on disk)</span>
+            <span class="lsn-label" id="lsnLabel">next LSN: 0</span>
+          </div>
+          <div class="wal-log" id="walLog"></div>
+        </div>
+
+        <!-- BUFFER POOL -->
+        <div class="buffer-pane">
+          <div class="buffer-title">
+            <span>💾 BUFFER POOL (memory)</span>
+            <span class="dirty-count" id="dirtyCount">0 dirty</span>
+          </div>
+          <div class="page-grid" id="pageGrid"></div>
+        </div>
+
+        <!-- DISK (data files + fsync status) -->
+        <div class="disk-pane">
+          <div class="disk-title">
+            <span>💽 DISK STATE</span>
+            <span class="io-count" id="ioCount">0 fsync</span>
+          </div>
+
+          <div class="disk-section">
+            <div class="disk-section-title">WAL FILE</div>
+            <div class="disk-row wal-row" id="walDiskRow">
+              <span class="label">WAL LSN RANGE</span>
+              <span class="val" id="walDiskVal">0 → 0</span>
+            </div>
+            <div class="disk-row wal-row" id="walSyncRow">
+              <span class="label">LAST FSYNC</span>
+              <span class="val" id="walSyncVal">—</span>
+            </div>
+          </div>
+
+          <div class="disk-section">
+            <div class="disk-section-title">DATA FILES</div>
+            <div class="disk-row" id="dataRowA">
+              <span class="label">PAGE A</span>
+              <span class="val" id="dataValA">100</span>
+            </div>
+            <div class="disk-row" id="dataRowB">
+              <span class="label">PAGE B</span>
+              <span class="val" id="dataValB">200</span>
+            </div>
+            <div class="disk-row" id="dataRowC">
+              <span class="label">PAGE C</span>
+              <span class="val" id="dataValC">300</span>
+            </div>
+          </div>
+
+          <div class="disk-section">
+            <div class="disk-section-title">RECOVERY INFO</div>
+            <div class="disk-row">
+              <span class="label">LAST CKPT LSN</span>
+              <span class="val" id="ckptVal">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Crash overlay -->
+      <div class="crash-overlay" id="crashOverlay">
+        <div class="crash-badge">💥 CRASH</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">LSN</div>
+        <div class="metric-value info" id="mLSN">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Dirty Pages</div>
+        <div class="metric-value" id="mDirty">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">fsyncs</div>
+        <div class="metric-value" id="mFsync">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Committed</div>
+        <div class="metric-value" id="mCommitted">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">WAL Bytes</div>
+        <div class="metric-value" id="mWalBytes">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Data Written</div>
+        <div class="metric-value" id="mDataWrites">0</div>
+      </div>
+    </div>
+
+    <div class="wal-rule">
+      <div class="wal-rule-title">🔑 The WAL Rule</div>
+      <div class="wal-rule-body">
+        <span class="rule">BEFORE any dirty page is written to disk,</span>
+        all log records up to that page's <span class="rule">recLSN</span> must be
+        <span class="rule">flushed to the WAL first.</span>
+        <br><br>
+        This is the write-ahead invariant. It guarantees that any change visible
+        in the data files is also recorded in the log — so a crash can always
+        be repaired by replaying the log.
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  demo: 'basic',
+  syncMode: 'fsync',
+  speed: 1.0,
+  running: false,
+  paused: false,
+  elapsedMs: 0,
+  // WAL
+  lsn: 0,               // Next log sequence number
+  walEntries: [],       // { lsn, type, payload, flushed, synced }
+  lastFsyncLsn: 0,
+  // Buffer pool
+  pages: {
+    A: { id: 'A', value: 100, dirty: false, recLSN: 0, lastDiskValue: 100 },
+    B: { id: 'B', value: 200, dirty: false, recLSN: 0, lastDiskValue: 200 },
+    C: { id: 'C', value: 300, dirty: false, recLSN: 0, lastDiskValue: 300 }
+  },
+  // Disk state (what would survive a crash)
+  diskValues: { A: 100, B: 200, C: 300 },
+  fsyncCount: 0,
+  dataWriteCount: 0,
+  committedCount: 0,
+  // Events
+  events: [],
+  lastTick: 0,
+  rafId: null,
+  crashed: false,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  walLog: document.getElementById('walLog'),
+  lsnLabel: document.getElementById('lsnLabel'),
+  pageGrid: document.getElementById('pageGrid'),
+  dirtyCount: document.getElementById('dirtyCount'),
+  ioCount: document.getElementById('ioCount'),
+  walDiskVal: document.getElementById('walDiskVal'),
+  walSyncVal: document.getElementById('walSyncVal'),
+  dataValA: document.getElementById('dataValA'),
+  dataValB: document.getElementById('dataValB'),
+  dataValC: document.getElementById('dataValC'),
+  dataRowA: document.getElementById('dataRowA'),
+  dataRowB: document.getElementById('dataRowB'),
+  dataRowC: document.getElementById('dataRowC'),
+  ckptVal: document.getElementById('ckptVal'),
+  crashOverlay: document.getElementById('crashOverlay'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  demoSelect: document.getElementById('demoSelect'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  mLSN: document.getElementById('mLSN'),
+  mDirty: document.getElementById('mDirty'),
+  mFsync: document.getElementById('mFsync'),
+  mCommitted: document.getElementById('mCommitted'),
+  mWalBytes: document.getElementById('mWalBytes'),
+  mDataWrites: document.getElementById('mDataWrites')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining write ahead logging.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   WAL OPERATIONS
+   ============================================================ */
+function appendWAL(type, payload) {
+  STATE.lsn++;
+  const entry = {
+    lsn: STATE.lsn,
+    type,
+    payload,
+    flushed: false,
+    synced: false
+  };
+  STATE.walEntries.push(entry);
+  renderWAL();
+  return entry;
+}
+
+function flushWAL(toLsn) {
+  for (const e of STATE.walEntries) {
+    if (!e.flushed && e.lsn <= toLsn) e.flushed = true;
+  }
+  renderWAL();
+  renderDisk();
+}
+
+function fsyncWAL() {
+  if (STATE.syncMode === 'nosync') {
+    teach('NOSYNC', `fsync is disabled. On Linux, the WAL write goes to the OS page cache but not necessarily to durable storage. A power failure can lose the last few commits. Fast, but risky.`, 'warn', false);
+    return;
+  }
+  STATE.lastFsyncLsn = STATE.lsn;
+  STATE.fsyncCount++;
+  for (const e of STATE.walEntries) {
+    if (e.lsn <= STATE.lastFsyncLsn) e.synced = true;
+  }
+  renderWAL();
+  renderDisk();
+}
+
+/* ============================================================
+   BUFFER POOL OPERATIONS
+   ============================================================ */
+function modifyPage(pageId, newValue) {
+  const p = STATE.pages[pageId];
+  if (!p.dirty) {
+    p.recLSN = STATE.lsn;  // remember where this dirtiness begins
+  }
+  p.value = newValue;
+  p.dirty = true;
+  renderPages();
+}
+
+function flushPageToDisk(pageId) {
+  const p = STATE.pages[pageId];
+
+  // WAL rule: recLSN must be flushed BEFORE the page goes to disk
+  if (p.recLSN > STATE.lastFsyncLsn && STATE.syncMode !== 'nosync') {
+    teach('⚠️ WAL RULE VIOLATION', `Cannot flush Page ${pageId}: its recLSN is ${p.recLSN}, but WAL is only fsynced to LSN ${STATE.lastFsyncLsn}. The WAL rule forbids this — otherwise a crash would leave a dirty page with no log record to recover it.`, 'error');
+    return false;
+  }
+
+  STATE.diskValues[pageId] = p.value;
+  p.lastDiskValue = p.value;
+  p.dirty = false;
+  STATE.dataWriteCount++;
+
+  // Animate
+  const row = DOM[`dataRow${pageId}`];
+  if (row) {
+    row.classList.add('flushing');
+    setTimeout(() => row.classList.remove('flushing'), 500);
+  }
+  renderPages();
+  renderDisk();
+  return true;
+}
+
+function checkpoint() {
+  // 1. Flush WAL up to current LSN
+  flushWAL(STATE.lsn);
+  fsyncWAL();
+
+  // 2. Flush ALL dirty pages to disk
+  for (const pid of ['A', 'B', 'C']) {
+    if (STATE.pages[pid].dirty) flushPageToDisk(pid);
+  }
+
+  // 3. Write checkpoint record
+  const ckpt = appendWAL('CHECKPOINT', `all pages flushed`);
+  ckpt.synced = true;
+  flushWAL(ckpt.lsn);
+
+  DOM.ckptVal.textContent = `LSN ${ckpt.lsn}`;
+}
+
+/* ============================================================
+   CRASH
+   ============================================================ */
+function crash() {
+  STATE.crashed = true;
+  DOM.crashOverlay.classList.add('show');
+
+  // Buffer pool is lost on crash — everything unflushed is gone
+  // The disk keeps whatever we fsynced/reflected
+
+  teach('💥 CRASH', `System crashed! Buffer pool (RAM) is completely lost. Whatever was only in memory is gone. But anything that reached the WAL fsync is safe. This is the entire point of WAL.`, 'error');
+}
+
+function recover() {
+  DOM.crashOverlay.classList.remove('show');
+  STATE.crashed = false;
+
+  // Find the last checkpoint (or 0)
+  let lastCkpt = 0;
+  for (const e of STATE.walEntries) {
+    if (e.type === 'CHECKPOINT' && e.synced) lastCkpt = e.lsn;
+  }
+
+  // Replay WAL from checkpoint forward
+  let replayed = 0;
+  for (const e of STATE.walEntries) {
+    if (e.lsn <= lastCkpt) continue;
+    if (!e.flushed) continue;  // unflushed records never made it to disk anyway
+    if (e.type === 'UPDATE') {
+      // Apply UPDATE to pages
+      const m = e.payload.match(/Page (\w) = (\d+)/);
+      if (m) {
+        const pid = m[1];
+        const val = parseInt(m[2]);
+        // Only redo if the page's last disk value is older
+        if (STATE.diskValues[pid] !== val) {
+          STATE.diskValues[pid] = val;
+          STATE.pages[pid].value = val;
+          STATE.pages[pid].lastDiskValue = val;
+          STATE.pages[pid].dirty = false;
+          replayed++;
+        }
+      }
+    }
+  }
+
+  renderPages();
+  renderDisk();
+
+  if (replayed > 0) {
+    teach('🔄 RECOVERY', `REDO replay: replayed ${replayed} update${replayed === 1 ? '' : 's'} from WAL after the last checkpoint (LSN ${lastCkpt}). All committed transactions are preserved. Uncommitted work is discarded.`, 'ok');
+  } else {
+    teach('🔄 RECOVERY', `WAL replay complete. Nothing to redo — all pages were already up to date on disk.`, 'ok');
+  }
+}
+
+/* ============================================================
+   RENDER — WAL
+   ============================================================ */
+function renderWAL() {
+  let html = '';
+  // Show most recent first
+  const entries = [...STATE.walEntries].reverse();
+  for (const e of entries) {
+    const cls = e.type.toLowerCase();
+    const flushed = e.flushed ? 'flushed' : '';
+    const synced = e.synced ? 'synced' : '';
+    html += `
+      <div class="wal-entry ${cls} ${flushed} ${synced}">
+        <span class="wal-lsn">LSN ${String(e.lsn).padStart(3, '0')}</span>
+        <span class="wal-type">${e.type}</span>
+        <span class="wal-payload">${e.payload}</span>
+      </div>
+    `;
+  }
+  if (STATE.walEntries.length === 0) {
+    html = `<div style="color:#475569; padding:20px; text-align:center; font-family:monospace; font-size:0.65rem;">WAL is empty</div>`;
+  }
+  DOM.walLog.innerHTML = html;
+  DOM.lsnLabel.textContent = `next LSN: ${STATE.lsn}`;
+}
+
+/* ============================================================
+   RENDER — PAGES
+   ============================================================ */
+function renderPages() {
+  let html = '';
+  for (const pid of ['A', 'B', 'C']) {
+    const p = STATE.pages[pid];
+    html += `
+      <div class="page ${p.dirty ? 'dirty' : 'clean'}" data-page-id="${pid}">
+        <div>
+          <span class="page-name">PAGE ${pid}</span>
+          <span class="page-reclsn">recLSN=${p.recLSN}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="page-value">= ${p.value}</span>
+          <span class="page-badge ${p.dirty ? 'dirty' : 'clean'}">${p.dirty ? 'DIRTY' : 'CLEAN'}</span>
+        </div>
+      </div>
+    `;
+  }
+  DOM.pageGrid.innerHTML = html;
+
+  const dirtyCount = ['A', 'B', 'C'].filter(pid => STATE.pages[pid].dirty).length;
+  DOM.dirtyCount.textContent = `${dirtyCount} dirty`;
+  DOM.dirtyCount.style.color = dirtyCount > 0 ? '#fbbf24' : '#6ee7b7';
+}
+
+/* ============================================================
+   RENDER — DISK
+   ============================================================ */
+function renderDisk() {
+  const flushedLsn = STATE.walEntries.filter(e => e.flushed).reduce((m, e) => Math.max(m, e.lsn), 0);
+  DOM.walDiskVal.textContent = `0 → ${flushedLsn}`;
+  DOM.walSyncVal.textContent = STATE.lastFsyncLsn > 0 ? `LSN ${STATE.lastFsyncLsn}` : '—';
+  DOM.walSyncVal.style.color = STATE.lastFsyncLsn > 0 ? '#10b981' : '#64748b';
+
+  DOM.dataValA.textContent = STATE.diskValues.A;
+  DOM.dataValB.textContent = STATE.diskValues.B;
+  DOM.dataValC.textContent = STATE.diskValues.C;
+
+  DOM.ioCount.textContent = `${STATE.fsyncCount} fsync`;
+}
+
+/* ============================================================
+   DEMO SCENARIOS
+   ============================================================ */
+function getDemoName() {
+  const names = {
+    'basic': 'BASIC WAL',
+    'no-wal': 'NO WAL (DANGER)',
+    'uncommitted': 'UNCOMMITTED WRITE',
+    'checkpoint': 'CHECKPOINT',
+    'steal': 'STEAL POLICY',
+    'torn': 'TORN WRITE RECOVERY'
+  };
+  return names[STATE.demo] || 'WAL';
+}
+
+function resetAll() {
+  STATE.running = false;
+  STATE.paused = false;
+  STATE.elapsedMs = 0;
+  STATE.lsn = 0;
+  STATE.walEntries = [];
+  STATE.lastFsyncLsn = 0;
+  STATE.pages = {
+    A: { id: 'A', value: 100, dirty: false, recLSN: 0, lastDiskValue: 100 },
+    B: { id: 'B', value: 200, dirty: false, recLSN: 0, lastDiskValue: 200 },
+    C: { id: 'C', value: 300, dirty: false, recLSN: 0, lastDiskValue: 300 }
+  };
+  STATE.diskValues = { A: 100, B: 200, C: 300 };
+  STATE.fsyncCount = 0;
+  STATE.dataWriteCount = 0;
+  STATE.committedCount = 0;
+  STATE.events = [];
+  STATE.crashed = false;
+  if (STATE.rafId) cancelAnimationFrame(STATE.rafId);
+  STATE.rafId = null;
+  DOM.crashOverlay.classList.remove('show');
+  DOM.ckptVal.textContent = '—';
+  renderWAL();
+  renderPages();
+  renderDisk();
+  updateTelemetry();
+}
+
+function runScenario() {
+  resetAll();
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+
+  teach('START', `Running: ${getDemoName()}. Watch how every write goes to the WAL FIRST, and only later reaches the data pages on disk. This is the write-ahead ordering that makes databases crash-safe.`, 'purple');
+
+  const demo = STATE.demo;
+  if (demo === 'basic') runBasicWAL();
+  else if (demo === 'no-wal') runNoWAL();
+  else if (demo === 'uncommitted') runUncommitted();
+  else if (demo === 'checkpoint') runCheckpoint();
+  else if (demo === 'steal') runSteal();
+  else if (demo === 'torn') runTornWrite();
+
+  STATE.lastTick = performance.now();
+  loop();
+}
+
+/* ============================================================
+   DEMO 1: BASIC WAL
+   ============================================================ */
+function runBasicWAL() {
+  STATE.events = [
+    { at: 200, fn: () => {
+      appendWAL('BEGIN', 'T1');
+      teach('BEGIN RECORD', `Append BEGIN record for transaction T1 to the WAL. This is LSN ${STATE.lsn}. The WAL is an append-only sequence of records. It's the source of truth — not the data pages.`, 'cyan');
+    }},
+    { at: 700, fn: () => {
+      appendWAL('UPDATE', 'Page A = 150');
+      modifyPage('A', 150);
+      teach('UPDATE RECORD', `Append UPDATE record for Page A (100 → 150). At the same time, modify Page A in the buffer pool (memory). Note: Page A is now DIRTY but NOT yet on disk.`, 'warn');
+    }},
+    { at: 1300, fn: () => {
+      appendWAL('UPDATE', 'Page B = 250');
+      modifyPage('B', 250);
+      teach('SECOND UPDATE', `Append UPDATE for Page B (200 → 250). Buffer pool now has TWO dirty pages: A and B. Neither is on disk yet.`, 'warn');
+    }},
+    { at: 2000, fn: () => {
+      appendWAL('COMMIT', 'T1');
+      flushWAL(STATE.lsn);
+      fsyncWAL();
+      STATE.committedCount++;
+      teach('COMMIT + FSYNC', `Append COMMIT record. THEN force the entire WAL up to this LSN to durable storage with fsync. THIS is the moment the transaction becomes durable. Once the COMMIT record is on disk, the transaction survives ANY crash — even if the data pages haven't been written yet.`, 'ok');
+    }},
+    { at: 2800, fn: () => {
+      teach('BUFFER POOL STILL DIRTY', `Notice: Pages A and B in the buffer pool are STILL dirty. They haven't been written to data files yet. But the transaction is already durable because the WAL says so. This decoupling is the efficiency win.`, 'purple');
+    }},
+    { at: 3400, fn: () => {
+      crash();
+      teach('CRASH!', `We crash. RAM is lost — the buffer pool disappears, including our dirty pages. But the WAL record (through LSN ${STATE.lastFsyncLsn}) is safe on disk.`, 'error');
+    }},
+    { at: 4400, fn: () => {
+      recover();
+    }},
+    { at: 5400, fn: () => {
+      teach('SUMMARY', `Result: Page A = 150, Page B = 250 — the exact values that were committed. Zero data loss. And we only wrote 2 pages worth of WAL records to disk at commit — NOT the full 8KB pages of A and B. That's the efficiency of WAL.`, 'ok');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 2: NO WAL
+   ============================================================ */
+function runNoWAL() {
+  STATE.events = [
+    { at: 200, fn: () => {
+      // Simulate "no WAL" by writing directly to buffer without appending records
+      modifyPage('A', 150);
+      teach('DIRECT WRITE', `Hypothetically: what if there were no WAL? We modify Page A in the buffer pool (dirty). No log record written. The change only exists in memory.`, 'warn');
+    }},
+    { at: 900, fn: () => {
+      modifyPage('B', 250);
+      teach('SECOND DIRECT WRITE', `Modify Page B. Also uncommitted, also no log record. Both pages are dirty in memory.`, 'warn');
+    }},
+    { at: 1700, fn: () => {
+      teach('NO COMMIT MARKER', `Without WAL, "commit" would just mean... the application thinks it succeeded. There's no durable marker. If we crash now, we have no way to know which transactions had committed.`, 'error');
+    }},
+    { at: 2600, fn: () => {
+      crash();
+      teach('CRASH!', `System crashes. Buffer pool is gone. Pages A and B were never written to disk. No log to replay. The transaction is LOST — but the application may already have told the user it succeeded. Silent data loss.`, 'error');
+    }},
+    { at: 3700, fn: () => {
+      teach('THE HORROR', `This is what "no WAL" means in practice. It's why every serious database has a WAL. Without it, you either: (a) write every page to disk immediately (10x slower), or (b) accept silent data loss. WAL gives you both speed and safety.`, 'error');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 3: UNCOMMITTED WRITE
+   ============================================================ */
+function runUncommitted() {
+  STATE.events = [
+    { at: 200, fn: () => {
+      appendWAL('BEGIN', 'T1');
+      teach('BEGIN T1', `Transaction T1 begins. BEGIN record at LSN ${STATE.lsn}.`, 'cyan');
+    }},
+    { at: 700, fn: () => {
+      appendWAL('UPDATE', 'Page A = 999');
+      modifyPage('A', 999);
+      teach('WRITE', `T1 writes A = 999. Notice: Page A is now DIRTY in the buffer pool.`, 'warn');
+    }},
+    { at: 1500, fn: () => {
+      teach('NOT COMMITTED', `T1 has NOT committed yet. The WAL has a BEGIN and an UPDATE, but no COMMIT. If we crash now, this update must be UNDONE.`, 'warn');
+    }},
+    { at: 2400, fn: () => {
+      crash();
+    }},
+    { at: 3400, fn: () => {
+      recover();
+    }},
+    { at: 4400, fn: () => {
+      teach('UNDO PHASE', `Recovery finds: BEGIN with no COMMIT. In a real ARIES-style recovery, this would trigger an UNDO of the update — restoring Page A to 100. That's why we don't see 999 in the disk values. Uncommitted transactions are never applied.`, 'ok');
+      teach('WHY THIS MATTERS', `Without WAL, we wouldn't know whether Page A = 999 had been committed or not. WAL preserves the BEGIN and the absence of COMMIT — which proves T1 did NOT complete.`, 'purple');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 4: CHECKPOINT
+   ============================================================ */
+function runCheckpoint() {
+  STATE.events = [
+    { at: 200, fn: () => {
+      appendWAL('BEGIN', 'T1');
+      appendWAL('UPDATE', 'Page A = 150');
+      modifyPage('A', 150);
+      appendWAL('COMMIT', 'T1');
+      flushWAL(STATE.lsn);
+      fsyncWAL();
+      STATE.committedCount++;
+      teach('FAST COMMIT', `T1 modified A and committed. WAL flushed to LSN ${STATE.lastFsyncLsn}. But Page A in the buffer pool is STILL dirty — not yet written to disk.`, 'warn');
+    }},
+    { at: 1400, fn: () => {
+      teach('BLOAT', `If we never flush dirty pages, the WAL grows forever, and recovery time grows. Solution: CHECKPOINT — periodically flush all dirty pages and record where we are.`, 'purple');
+    }},
+    { at: 2200, fn: () => {
+      appendWAL('CHECKPOINT', 'starting');
+      teach('CHECKPOINT BEGIN', `A checkpoint record is appended: LSN ${STATE.lsn}. This tells recovery where to start replaying if needed.`, 'purple');
+    }},
+    { at: 3000, fn: () => {
+      const flushed = flushPageToDisk('A');
+      if (flushed) {
+        teach('PAGE FLUSHED', `Page A is now written to disk. Its recLSN (${STATE.pages.A.recLSN}) was well within the fsynced WAL range, so the write-ahead rule is satisfied.`, 'ok');
+      }
+    }},
+    { at: 3800, fn: () => {
+      const ckpt = appendWAL('CHECKPOINT', 'complete');
+      flushWAL(ckpt.lsn);
+      fsyncWAL();
+      DOM.ckptVal.textContent = `LSN ${ckpt.lsn}`;
+      teach('CHECKPOINT COMPLETE', `Checkpoint done. All dirty pages flushed. Recovery from a crash after this point would only need to replay from LSN ${ckpt.lsn} forward. Old WAL records can even be recycled.`, 'ok');
+    }},
+    { at: 4600, fn: () => {
+      teach('SUMMARY', `Checkpoints bound recovery time. Without them, replaying the WAL from the beginning of time would take forever. With checkpoints, we only need to replay from the last one — a bounded amount of work.`, 'purple');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 5: STEAL POLICY
+   ============================================================ */
+function runSteal() {
+  STATE.events = [
+    { at: 200, fn: () => {
+      appendWAL('BEGIN', 'T1');
+      appendWAL('UPDATE', 'Page A = 150');
+      modifyPage('A', 150);
+      teach('T1 WRITES A', `T1 modifies Page A. Dirty in buffer pool. Not yet committed, not yet written to disk.`, 'cyan');
+    }},
+    { at: 900, fn: () => {
+      teach('STEAL POLICY', `Buffer pool is under memory pressure. The policy STEAL means: we can evict a dirty page belonging to an UNCOMMITTED transaction. Sound dangerous? That's why WAL exists.`, 'warn');
+    }},
+    { at: 1700, fn: () => {
+      // Force flush Page A even though T1 is uncommitted — STEAL requires the WAL rule
+      const ok = flushPageToDisk('A');
+      if (!ok) {
+        teach('WAL RULE ENFORCED', `We can't flush Page A yet — the WAL hasn't been fsynced past A's recLSN. This is the write-ahead invariant protecting us.`, 'error');
+      } else {
+        teach('STEAL SUCCEEDS', `Page A flushed. But note — T1 hasn't committed. If we crash NOW, Page A on disk is dirty. Recovery must UNDO this change. WAL preserves the info needed to do so.`, 'warn');
+      }
+    }},
+    { at: 2500, fn: () => {
+      // Ensure WAL is synced first, THEN flush
+      flushWAL(STATE.lsn);
+      fsyncWAL();
+      const ok = flushPageToDisk('A');
+      teach('WAL RULE SATISFIED', `Now WAL is fsynced. Page A can be flushed. On disk, Page A = 150. But T1 is still uncommitted. This creates a dangerous state that recovery must handle: UNDO the change.`, 'warn');
+    }},
+    { at: 3400, fn: () => {
+      crash();
+    }},
+    { at: 4200, fn: () => {
+      recover();
+    }},
+    { at: 5000, fn: () => {
+      teach('UNDO VIA WAL', `Recovery reads WAL: BEGIN, UPDATE, no COMMIT. In REDO/UNDO recovery (ARIES), it would UNDO the update — even though Page A on disk = 150, the correct value after recovery is 100. WAL makes this possible. This is why "STEAL" is safe with WAL, and why "NO-STEAL" policies are rare.`, 'ok');
+      teach('THE LESSON', `WAL enables STEAL — buffer pool can evict dirty uncommitted pages. Without WAL, you'd need NO-STEAL (never evict uncommitted pages), which forces memory pressure or 2PL-style long locks. WAL buys you flexibility.`, 'purple');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 6: TORN WRITE
+   ============================================================ */
+function runTornWrite() {
+  STATE.events = [
+    { at: 200, fn: () => {
+      appendWAL('BEGIN', 'T1');
+      appendWAL('UPDATE', 'Page A = 150');
+      modifyPage('A', 150);
+      appendWAL('COMMIT', 'T1');
+      flushWAL(STATE.lsn);
+      fsyncWAL();
+      STATE.committedCount++;
+      teach('COMMITTED', `T1 committed with A = 150. WAL is durable. But Page A is still dirty in the buffer pool.`, 'cyan');
+    }},
+    { at: 1000, fn: () => {
+      teach('TORN WRITE RISK', `What if we started writing Page A to disk, and CRASHED halfway? Some sectors updated, some not. The page is now corrupt — a "torn write". How do you recover from a half-written page?`, 'warn');
+    }},
+    { at: 1800, fn: () => {
+      // Simulate starting a torn write (page becomes partially written, marked dirty again)
+      STATE.pages.A.value = 125; // half old, half new — corrupt
+      STATE.pages.A.dirty = true;
+      teach('💥 TORN WRITE', `Simulating: Page A partially written before crash. On disk, it's now a mix of old and new sectors — corrupt.`, 'error');
+    }},
+    { at: 2700, fn: () => {
+      crash();
+    }},
+    { at: 3600, fn: () => {
+      recover();
+    }},
+    { at: 4500, fn: () => {
+      teach('RECOVERED', `Recovery: WAL has a COMMIT record for A = 150, and Page A's last disk LSN is BEFORE that. So recovery REDOES the update — Page A becomes 150 on disk, overwriting the torn mess. WAL + fsync + full-page-writes make torn writes recoverable.`, 'ok');
+      teach('FULL PAGE WRITES', `In practice, most systems write the FIRST modification of a page as a FULL-PAGE image to the WAL. If a torn write corrupts the page, the full-page image in WAL is used to restore it, then subsequent deltas replay. This is what PostgreSQL calls "full_page_writes".`, 'purple');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   MAIN LOOP
+   ============================================================ */
+function loop() {
+  const now = performance.now();
+  const dt = (now - STATE.lastTick) * STATE.speed;
+  STATE.lastTick = now;
+
+  if (STATE.running) {
+    STATE.elapsedMs += dt;
+
+    for (const evt of STATE.events) {
+      if (!evt.fired && STATE.elapsedMs >= evt.at) {
+        evt.fired = true;
+        try { evt.fn(); } catch (e) { console.warn(e); }
+      }
+    }
+
+    updateTelemetry();
+  }
+
+  STATE.rafId = requestAnimationFrame(loop);
+}
+
+/* ============================================================
+   TELEMETRY
+   ============================================================ */
+function updateTelemetry() {
+  DOM.mLSN.textContent = STATE.lsn;
+
+  const dirty = ['A', 'B', 'C'].filter(pid => STATE.pages[pid].dirty).length;
+  DOM.mDirty.textContent = dirty;
+  DOM.mDirty.className = 'metric-value' + (dirty > 0 ? ' warn' : '');
+
+  DOM.mFsync.textContent = STATE.fsyncCount;
+  DOM.mCommitted.textContent = STATE.committedCount;
+
+  const walBytes = STATE.walEntries.length * 64;  // 64 bytes per entry (illustrative)
+  DOM.mWalBytes.textContent = walBytes + 'B';
+
+  DOM.mDataWrites.textContent = STATE.dataWriteCount;
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.demoSelect.addEventListener('change', e => {
+  STATE.demo = e.target.value;
+  resetAll();
+  DOM.btnRun.textContent = '▶ Run Scenario';
+  teach('SCENARIO', `Selected: ${getDemoName()}. Press RUN to see it play out.`, 'info');
+});
+
+DOM.btnRun.addEventListener('click', () => {
+  if (STATE.running) {
+    STATE.running = false;
+    DOM.btnRun.textContent = '▶ Resume';
+  } else {
+    if (STATE.events.length === 0) runScenario();
+    else {
+      STATE.running = true;
+      STATE.lastTick = performance.now();
+      DOM.btnRun.textContent = '⏸ Pause';
+    }
+  }
+});
+
+DOM.btnStep.addEventListener('click', () => {
+  if (STATE.events.length === 0) { runScenario(); return; }
+  STATE.running = false;
+  const nextEvt = STATE.events.find(e => !e.fired);
+  if (nextEvt) {
+    STATE.elapsedMs = nextEvt.at;
+    for (const evt of STATE.events) {
+      if (!evt.fired && STATE.elapsedMs >= evt.at) {
+        evt.fired = true;
+        try { evt.fn(); } catch (e) {}
+      }
+    }
+    updateTelemetry();
+  }
+});
+
+DOM.btnReset.addEventListener('click', () => {
+  resetAll();
+  DOM.btnRun.textContent = '▶ Run Scenario';
+  teach('RESET', 'Reset. Ready to run.', 'info', false);
+});
+
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseFloat(e.target.value);
+  DOM.speedVal.textContent = STATE.speed.toFixed(1) + '×';
+});
+
+document.querySelectorAll('input[name="sync"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.syncMode = e.target.value;
+    const desc = {
+      fsync: `FSYNC on every commit: maximum durability, but slowest. Every COMMIT record forces a disk flush. This is what "D" in ACID really requires.`,
+      group: `GROUP COMMIT: multiple transactions share one fsync. Much faster at scale. Waiters are batched, fsync called once. Used by PostgreSQL, MySQL, and every high-throughput DB.`,
+      nosync: `NO FSYNC: WAL record goes to OS page cache, not necessarily to disk. A power failure can lose the last few seconds of commits. Fast, but only safe if your app tolerates it.`
+    };
+    teach('SYNC MODE', desc[e.target.value], 'purple');
+  });
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+STATE.rafId = requestAnimationFrame(loop);
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Write-Ahead Logging — WAL. This is the single most important technique for making a database crash-safe. The rule is simple: BEFORE you modify any data page on disk, first write a LOG record describing the change and flush it to durable storage. When you crash, replay the log.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('WHY IT WORKS',
+      `WAL splits the durability problem in two: (1) writing a small LOG record is FAST — sequential I/O, small bytes. (2) writing full DATA PAGES is SLOW — random I/O, 8KB at a time. By making (1) the durability boundary, we get ACID without paying (2) on every commit. This is why databases can commit thousands of transactions per second.`,
+      'cyan'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE WAL RULE',
+      `The critical invariant: a dirty page may only be written to disk AFTER all log records up to its recLSN have been fsynced to the WAL. Every demo here respects this rule. Try the STEAL demo to see what happens when you evict a dirty page early — the rule still enforces itself.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('REAL SYSTEMS',
+      `Every serious database uses WAL: PostgreSQL (pg_wal), MySQL InnoDB (ib_logfile), Oracle (redo log), SQL Server (log file), SQLite (journal/wal), MongoDB (oplog), Cassandra (commitlog), RocksDB (WAL). WAL is the foundation; variations on it (ARIES, physiological logging, group commit) are optimizations.`,
+      'warn'
+    );
+  }, 13000);
+
+  showToast('👋 Pick a scenario and press RUN', 4000);
+}, 600);
+</script>
+</body>
+</html>

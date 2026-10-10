@@ -1,0 +1,1848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Two-Phase Locking (2PL) — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #eab308, #f59e0b, #f97316);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(234,179,8,0.15);
+    color: #fde047;
+    border-color: #eab308;
+  }
+  .teaching-toggle:hover { background: rgba(234,179,8,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fde047;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #eab308; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #eab308; color: #2a1f04; border-color: #eab308; }
+  .btn.primary:hover { background: #ca8a04; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fde047; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #eab308; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(234,179,8,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* 2PL PHASE INDICATOR */
+  .phase-indicator {
+    position: absolute;
+    top: 42px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 4px;
+    z-index: 8;
+    background: rgba(10,14,25,0.95);
+    padding: 5px 8px;
+    border-radius: 20px;
+    border: 1px solid #1e293b;
+  }
+  .phase-pill {
+    padding: 4px 14px;
+    border-radius: 14px;
+    font-size: 0.6rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    font-family: monospace;
+    color: #64748b;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: all 0.3s;
+    text-transform: uppercase;
+  }
+  .phase-pill.active-growing {
+    background: rgba(16,185,129,0.2);
+    border-color: #10b981;
+    color: #6ee7b7;
+    box-shadow: 0 0 15px rgba(16,185,129,0.5);
+  }
+  .phase-pill.active-shrinking {
+    background: rgba(239,68,68,0.2);
+    border-color: #ef4444;
+    color: #fca5a5;
+    box-shadow: 0 0 15px rgba(239,68,68,0.5);
+  }
+  .phase-arrow {
+    color: #475569;
+    align-self: center;
+    font-size: 0.7rem;
+  }
+
+  /* MAIN LAYOUT: versions left, txns right */
+  .main-split {
+    position: absolute;
+    top: 90px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  /* LOCK TABLE (left) */
+  .lock-table-pane {
+    flex: 1.1;
+    background: #070a14;
+    border: 2px solid #eab308;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    box-shadow: 0 0 25px rgba(234,179,8,0.15);
+  }
+  .lock-table-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fde047;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .lock-table-title .clock {
+    font-size: 0.55rem;
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  /* Resource row */
+  .resource {
+    background: #0a0e19;
+    border: 1.5px solid #334155;
+    border-radius: 8px;
+    padding: 8px 10px;
+    transition: all 0.3s;
+  }
+  .resource.held-s {
+    border-color: #22d3ee;
+    box-shadow: 0 0 12px rgba(34,211,238,0.3);
+  }
+  .resource.held-x {
+    border-color: #f43f5e;
+    box-shadow: 0 0 12px rgba(244,63,94,0.3);
+  }
+  .resource.contested {
+    border-color: #ef4444;
+    animation: contestPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes contestPulse {
+    0%, 100% { box-shadow: 0 0 12px rgba(239,68,68,0.4); }
+    50%      { box-shadow: 0 0 25px rgba(239,68,68,0.9); }
+  }
+
+  .resource-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    font-family: monospace;
+    font-size: 0.65rem;
+  }
+  .resource-name {
+    color: #cbd5e1;
+    font-weight: 800;
+    letter-spacing: 1px;
+    font-size: 0.7rem;
+  }
+  .resource-value {
+    color: #fbbf24;
+    font-weight: 800;
+    font-size: 0.7rem;
+  }
+
+  /* Lock chips */
+  .lock-chips {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    min-height: 22px;
+  }
+  .lock-chip {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    font-family: monospace;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.3s;
+  }
+  .lock-chip.s {
+    background: rgba(34,211,238,0.18);
+    color: #7dd3fc;
+    border: 1px solid rgba(34,211,238,0.4);
+  }
+  .lock-chip.x {
+    background: rgba(244,63,94,0.2);
+    color: #fda4af;
+    border: 1px solid rgba(244,63,94,0.5);
+  }
+  .lock-chip.waiting {
+    background: rgba(245,158,11,0.15);
+    color: #fbbf24;
+    border: 1px dashed #f59e0b;
+    animation: waitBlink 1s infinite;
+  }
+  @keyframes waitBlink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.6; }
+  }
+  .lock-chip .icon {
+    font-size: 0.6rem;
+  }
+
+  /* Wait-for queue */
+  .wait-queue {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px dashed rgba(100,116,139,0.3);
+    align-items: center;
+  }
+  .wait-queue-label {
+    font-size: 0.5rem;
+    color: #64748b;
+    letter-spacing: 0.8px;
+    font-family: monospace;
+  }
+
+  /* Compatibility matrix */
+  .compat-matrix {
+    margin-top: auto;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.6rem;
+  }
+  .compat-title {
+    color: #fde047;
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-weight: 800;
+    margin-bottom: 6px;
+    text-align: center;
+  }
+  .compat-grid {
+    display: grid;
+    grid-template-columns: auto 1fr 1fr;
+    gap: 3px;
+    align-items: center;
+  }
+  .compat-cell {
+    padding: 4px;
+    text-align: center;
+    border-radius: 3px;
+    font-weight: 800;
+    font-size: 0.55rem;
+    letter-spacing: 0.5px;
+  }
+  .compat-cell.header {
+    background: transparent;
+    color: #64748b;
+  }
+  .compat-cell.compat {
+    background: rgba(16,185,129,0.15);
+    color: #6ee7b7;
+    border: 1px solid rgba(16,185,129,0.3);
+  }
+  .compat-cell.conflict {
+    background: rgba(239,68,68,0.15);
+    color: #fca5a5;
+    border: 1px solid rgba(239,68,68,0.3);
+  }
+  .compat-cell.label {
+    color: #94a3b8;
+    text-align: left;
+    font-size: 0.55rem;
+  }
+
+  /* TRANSACTIONS (right) */
+  .transactions-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .txn-card {
+    background: #070a14;
+    border: 2px solid #334155;
+    border-radius: 12px;
+    padding: 10px 12px;
+    transition: all 0.4s;
+    position: relative;
+    overflow: hidden;
+  }
+  .txn-card.growing {
+    border-color: #10b981;
+    box-shadow: 0 0 20px rgba(16,185,129,0.25);
+  }
+  .txn-card.shrinking {
+    border-color: #ef4444;
+    box-shadow: 0 0 20px rgba(239,68,68,0.25);
+  }
+  .txn-card.waiting {
+    border-color: #f59e0b;
+    animation: waitCard 1.2s ease-in-out infinite;
+  }
+  @keyframes waitCard {
+    0%, 100% { box-shadow: 0 0 15px rgba(245,158,11,0.3); }
+    50%      { box-shadow: 0 0 30px rgba(245,158,11,0.8); }
+  }
+  .txn-card.committed {
+    border-color: #10b981;
+    background: linear-gradient(145deg, rgba(16,185,129,0.08), rgba(7,10,20,0.8));
+    opacity: 0.85;
+  }
+  .txn-card.aborted {
+    border-color: #ef4444;
+    background: linear-gradient(145deg, rgba(239,68,68,0.05), rgba(7,10,20,0.8));
+    opacity: 0.7;
+  }
+
+  /* Phase bar inside each txn */
+  .phase-bar {
+    display: flex;
+    gap: 2px;
+    height: 4px;
+    margin-bottom: 6px;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .phase-bar .growing-segment {
+    flex: 1;
+    background: linear-gradient(90deg, #10b981, #34d399);
+    transition: all 0.4s;
+  }
+  .phase-bar .shrinking-segment {
+    flex: 1;
+    background: linear-gradient(90deg, #ef4444, #f87171);
+    transition: all 0.4s;
+  }
+  .phase-bar .inactive-segment {
+    flex: 1;
+    background: rgba(51,65,85,0.4);
+    transition: all 0.4s;
+  }
+
+  .txn-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .txn-name {
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    color: var(--txn-color, #5eead4);
+    font-family: monospace;
+  }
+  .txn-badge {
+    font-size: 0.5rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    font-family: monospace;
+  }
+  .txn-badge.growing {
+    background: rgba(16,185,129,0.2);
+    color: #6ee7b7;
+    border: 1px solid rgba(16,185,129,0.4);
+  }
+  .txn-badge.shrinking {
+    background: rgba(239,68,68,0.2);
+    color: #fca5a5;
+    border: 1px solid rgba(239,68,68,0.4);
+  }
+  .txn-badge.waiting {
+    background: rgba(245,158,11,0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(245,158,11,0.4);
+  }
+  .txn-badge.committed {
+    background: rgba(16,185,129,0.2);
+    color: #6ee7b7;
+  }
+  .txn-badge.aborted {
+    background: rgba(239,68,68,0.2);
+    color: #fca5a5;
+  }
+
+  /* Held locks summary */
+  .txn-locks {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+    min-height: 20px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .txn-lock-chip {
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .txn-lock-chip.s {
+    background: rgba(34,211,238,0.15);
+    color: #7dd3fc;
+  }
+  .txn-lock-chip.x {
+    background: rgba(244,63,94,0.15);
+    color: #fda4af;
+  }
+
+  /* Operations log */
+  .txn-ops {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-family: monospace;
+    font-size: 0.58rem;
+    max-height: 140px;
+    overflow-y: auto;
+  }
+  .txn-op {
+    padding: 3px 6px;
+    border-radius: 4px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    background: rgba(30,41,59,0.4);
+    color: #94a3b8;
+    border-left: 3px solid transparent;
+    animation: opAppear 0.3s ease;
+  }
+  @keyframes opAppear {
+    from { transform: translateX(-10px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .txn-op.lock-s { border-left-color: #22d3ee; color: #7dd3fc; }
+  .txn-op.lock-x { border-left-color: #f43f5e; color: #fda4af; }
+  .txn-op.wait { border-left-color: #f59e0b; color: #fbbf24; }
+  .txn-op.unlock { border-left-color: #a855f7; color: #c4b5fd; }
+  .txn-op.commit { border-left-color: #10b981; color: #6ee7b7; }
+  .txn-op.abort { border-left-color: #ef4444; color: #fca5a5; }
+  .txn-op.phase-switch { border-left-color: #eab308; color: #fde047; font-weight: 800; background: rgba(234,179,8,0.08); }
+  .txn-op .icon { font-weight: 800; }
+  .txn-op .ts {
+    margin-left: auto;
+    color: #475569;
+    font-size: 0.5rem;
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(234,179,8,0.06);
+    border: 1px solid rgba(234,179,8,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.58rem;
+    color: #fde047;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1.05rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #fde047; text-shadow: 0 0 10px rgba(234,179,8,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 260px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #eab308;
+    background: rgba(234,179,8,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #eab308; background: rgba(234,179,8,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(234,179,8,0.15); color: #fde047; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Guarantee card */
+  .guarantee-card {
+    background: linear-gradient(145deg, rgba(234,179,8,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(234,179,8,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.62rem;
+    color: #cbd5e1;
+  }
+  .guarantee-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fde047;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .guarantee-item {
+    padding: 3px 0;
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+  }
+  .guarantee-item .icon {
+    color: #eab308;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .guarantee-item .txt { color: #94a3b8; font-size: 0.58rem; line-height: 1.4; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #eab308;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(234,179,8,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>TWO-PHASE LOCKING (2PL)</h1>
+    <span class="sub">GROWING PHASE · SHRINKING PHASE · SERIALIZABILITY</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Demo Scenarios</h3>
+      <select id="demoSelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="basic-2pl" selected>Basic 2PL (grow then shrink)</option>
+        <option value="strict" selected>Strict 2PL (hold all until commit)</option>
+        <option value="upgrade">Lock Upgrade (S → X)</option>
+        <option value="conversion-deadlock">Conversion Deadlock</option>
+        <option value="cascading">Cascading Abort (Non-Strict)</option>
+        <option value="serializability">Serializability Proof</option>
+      </select>
+      <button class="btn primary" id="btnRun">▶ Run Demo</button>
+      <button class="btn" id="btnStep">⏭ Step</button>
+      <button class="btn" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Locking Mode</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="mode" value="basic" checked style="accent-color:#eab308;">
+          Basic 2PL
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="mode" value="strict" style="accent-color:#eab308;">
+          Strict 2PL (rigorous)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="mode" value="conservative" style="accent-color:#eab308;">
+          Conservative 2PL
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Speed</h3>
+      <div class="slider-row"><span>Simulation speed</span><span class="value" id="speedVal">1.0×</span></div>
+      <input type="range" id="speedRange" min="0.3" max="2.5" step="0.1" value="1.0">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>Growing phase (acquire)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>Shrinking phase (release)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#22d3ee;"></div>Shared lock (S)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f43f5e;"></div>Exclusive lock (X)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>Waiting for lock</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">LOCK VIA 2PL: ACQUIRE ALL, THEN RELEASE ALL</div>
+
+      <!-- Phase indicator -->
+      <div class="phase-indicator">
+        <div class="phase-pill" id="phaseGrowing">GROWING</div>
+        <div class="phase-arrow">→</div>
+        <div class="phase-pill" id="phaseShrinking">SHRINKING</div>
+      </div>
+
+      <div class="main-split">
+        <!-- LOCK TABLE -->
+        <div class="lock-table-pane">
+          <div class="lock-table-title">
+            <span>🔒 LOCK TABLE</span>
+            <span class="clock" id="clockLabel">t=0.0s</span>
+          </div>
+          <div id="resourcesContainer"></div>
+
+          <!-- Compatibility matrix -->
+          <div class="compat-matrix">
+            <div class="compat-title">Lock Compatibility Matrix</div>
+            <div class="compat-grid">
+              <div class="compat-cell header"></div>
+              <div class="compat-cell header">S</div>
+              <div class="compat-cell header">X</div>
+              <div class="compat-cell label">S (shared)</div>
+              <div class="compat-cell compat">✓</div>
+              <div class="compat-cell conflict">✗</div>
+              <div class="compat-cell label">X (exclusive)</div>
+              <div class="compat-cell conflict">✗</div>
+              <div class="compat-cell conflict">✗</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TRANSACTIONS -->
+        <div class="transactions-pane" id="txnsPane"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Elapsed</div>
+        <div class="metric-value info" id="mElapsed">0.0s</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Growing</div>
+        <div class="metric-value" id="mGrowing">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Shrinking</div>
+        <div class="metric-value" id="mShrinking">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Held Locks</div>
+        <div class="metric-value info" id="mHeldLocks">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Waiting</div>
+        <div class="metric-value warn" id="mWaiting">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Committed</div>
+        <div class="metric-value" id="mCommitted">0</div>
+      </div>
+    </div>
+
+    <div class="guarantee-card">
+      <div class="guarantee-title">✓ 2PL Guarantees</div>
+      <div class="guarantee-item">
+        <span class="icon">◆</span>
+        <span class="txt"><strong>Serializability</strong> — Any schedule where all txns follow 2PL is conflict-serializable.</span>
+      </div>
+      <div class="guarantee-item">
+        <span class="icon">◆</span>
+        <span class="txt"><strong>Growing phase</strong> — Every lock acquired BEFORE any release.</span>
+      </div>
+      <div class="guarantee-item">
+        <span class="icon">◆</span>
+        <span class="txt"><strong>Shrinking phase</strong> — Once you release ANY lock, you can never acquire another.</span>
+      </div>
+      <div class="guarantee-item">
+        <span class="icon">✗</span>
+        <span class="txt"><strong>Deadlocks possible</strong> — 2PL does NOT prevent deadlocks. Only conservative 2PL avoids them (at the cost of needing to predeclare all locks).</span>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  demo: 'basic-2pl',
+  mode: 'basic',
+  speed: 1.0,
+  running: false,
+  paused: false,
+  elapsedMs: 0,
+  // Resources with lock state
+  resources: {
+    A: { id: 'A', name: 'Row A', value: 100, locks: [], waitQueue: [] },
+    B: { id: 'B', name: 'Row B', value: 200, locks: [], waitQueue: [] }
+  },
+  txns: [],
+  events: [],
+  committed: 0,
+  aborted: 0,
+  lastTick: 0,
+  rafId: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  resourcesContainer: document.getElementById('resourcesContainer'),
+  txnsPane: document.getElementById('txnsPane'),
+  phaseGrowing: document.getElementById('phaseGrowing'),
+  phaseShrinking: document.getElementById('phaseShrinking'),
+  clockLabel: document.getElementById('clockLabel'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  demoSelect: document.getElementById('demoSelect'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  mElapsed: document.getElementById('mElapsed'),
+  mGrowing: document.getElementById('mGrowing'),
+  mShrinking: document.getElementById('mShrinking'),
+  mHeldLocks: document.getElementById('mHeldLocks'),
+  mWaiting: document.getElementById('mWaiting'),
+  mCommitted: document.getElementById('mCommitted')
+};
+
+const COLORS = {
+  T1: '#22d3ee',
+  T2: '#f59e0b',
+  T3: '#a855f7',
+  T4: '#ec4899',
+  T5: '#10b981'
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining two phase locking.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING FEED
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   LOCK MANAGER
+   ============================================================ */
+// Compatibility check: S+S = OK, S+X = conflict, X+X = conflict
+function canAcquire(resource, txn, type) {
+  for (const lock of resource.locks) {
+    if (lock.txnName === txn.name) continue; // Same txn — handled as upgrade
+    if (type === 'S' && lock.type === 'S') continue; // S + S = OK
+    return false; // Any X, or S when requesting X = conflict
+  }
+  return true;
+}
+
+function acquireLock(txn, resourceId, type) {
+  const r = STATE.resources[resourceId];
+
+  // Check if this txn already has a lock on this resource
+  const existing = r.locks.find(l => l.txnName === txn.name);
+  if (existing) {
+    if (existing.type === type) return { granted: true, upgraded: false, already: true };
+    if (existing.type === 'S' && type === 'X') {
+      // Upgrade attempt
+      return upgradeLock(txn, resourceId);
+    }
+  }
+
+  if (canAcquire(r, txn, type)) {
+    r.locks.push({ txnName: txn.name, type, color: txn.color });
+    txn.heldLocks.push({ resource: resourceId, type });
+    return { granted: true, upgraded: false };
+  } else {
+    // Wait — queue
+    r.waitQueue.push({ txnName: txn.name, type, color: txn.color });
+    txn.status = 'waiting';
+    txn.waitingFor = resourceId;
+    return { granted: false };
+  }
+}
+
+function upgradeLock(txn, resourceId) {
+  const r = STATE.resources[resourceId];
+  // Try upgrade if no OTHER txn holds a lock
+  const otherLocks = r.locks.filter(l => l.txnName !== txn.name);
+  if (otherLocks.length === 0) {
+    // Upgrade granted
+    const myLock = r.locks.find(l => l.txnName === txn.name);
+    if (myLock) myLock.type = 'X';
+    const held = txn.heldLocks.find(h => h.resource === resourceId);
+    if (held) held.type = 'X';
+    return { granted: true, upgraded: true };
+  } else {
+    // Wait for others to release
+    r.waitQueue.push({ txnName: txn.name, type: 'X', color: txn.color, upgrade: true });
+    txn.status = 'waiting';
+    txn.waitingFor = resourceId;
+    return { granted: false, upgrading: true };
+  }
+}
+
+function releaseAllLocks(txn) {
+  for (const rid of ['A', 'B']) {
+    const r = STATE.resources[rid];
+    r.locks = r.locks.filter(l => l.txnName !== txn.name);
+    // Grant queued locks now
+    processWaitQueue(rid);
+  }
+  txn.heldLocks = [];
+}
+
+function processWaitQueue(resourceId) {
+  const r = STATE.resources[resourceId];
+  if (r.waitQueue.length === 0) return;
+
+  // Try to grant the first waiter if compatible
+  const next = r.waitQueue[0];
+  const txn = STATE.txns.find(t => t.name === next.txnName);
+  if (!txn) { r.waitQueue.shift(); return; }
+
+  if (canAcquire(r, txn, next.type)) {
+    r.waitQueue.shift();
+    r.locks.push({ txnName: txn.name, type: next.type, color: txn.color });
+    txn.heldLocks.push({ resource: resourceId, type: next.type });
+    txn.status = 'active';
+    delete txn.waitingFor;
+    logOp(txn, 'lock-' + next.type.toLowerCase(), next.type === 'X' ? '🔒' : '👁',
+      `GRANTED ${next.type}-lock on ${resourceId}`);
+    teach('GRANTED', `${txn.name} finally acquires ${next.type}-lock on Row ${resourceId}. It can now proceed.`, 'ok', false);
+    // Continue granting more if compatible
+    processWaitQueue(resourceId);
+  }
+}
+
+/* ============================================================
+   TRANSACTION HELPERS
+   ============================================================ */
+function createTxn(name) {
+  const txn = {
+    name,
+    color: COLORS[name] || '#eab308',
+    status: 'active',
+    phase: 'growing',
+    heldLocks: [],
+    ops: [],
+    readSet: [],
+    writeSet: []
+  };
+  STATE.txns.push(txn);
+  renderTxns();
+  return txn;
+}
+
+function logOp(txn, cls, icon, text) {
+  txn.ops.push({ cls, icon, text, t: Math.round(STATE.elapsedMs) });
+  renderTxns();
+}
+
+function switchToShrinking(txn) {
+  if (txn.phase === 'shrinking') return;
+  txn.phase = 'shrinking';
+  logOp(txn, 'phase-switch', '🔄', 'PHASE SWITCH: growing → shrinking');
+  teach('PHASE SWITCH',
+    `${txn.name} enters its SHRINKING phase. From this moment on, it can RELEASE locks but NEVER acquire new ones. This is the fundamental 2PL invariant.`,
+    'purple', false
+  );
+  renderTxns();
+}
+
+/* ============================================================
+   RENDER — LOCK TABLE
+   ============================================================ */
+function renderResources() {
+  let html = '';
+  for (const rid of ['A', 'B']) {
+    const r = STATE.resources[rid];
+    const hasX = r.locks.some(l => l.type === 'X');
+    const hasS = r.locks.some(l => l.type === 'S');
+    const heldCount = r.locks.length;
+    const waitingCount = r.waitQueue.length;
+
+    let cls = '';
+    if (hasX) cls = 'held-x';
+    else if (hasS) cls = 'held-s';
+    if (waitingCount > 0) cls += ' contested';
+
+    html += `
+      <div class="resource ${cls}">
+        <div class="resource-header">
+          <span class="resource-name">Row ${r.id} — ${r.name}</span>
+          <span class="resource-value">val = ${r.value}</span>
+        </div>
+        <div class="lock-chips">
+          ${r.locks.length === 0 ? `<span style="color:#475569; font-size:0.55rem; font-family:monospace;">— no locks held —</span>` : ''}
+          ${r.locks.map(l => `
+            <span class="lock-chip ${l.type.toLowerCase()}" style="border-color:${l.color}80;">
+              <span class="icon">${l.type === 'S' ? '👁' : '🔒'}</span>
+              ${l.type}-LOCK ${l.txnName}
+            </span>
+          `).join('')}
+        </div>
+        ${waitingCount > 0 ? `
+          <div class="wait-queue">
+            <span class="wait-queue-label">WAITING:</span>
+            ${r.waitQueue.map(w => `
+              <span class="lock-chip waiting">⏳ ${w.txnName} wants ${w.type}${w.upgrade ? ' (upgrade)' : ''}</span>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+  DOM.resourcesContainer.innerHTML = html;
+}
+
+/* ============================================================
+   RENDER — TRANSACTIONS
+   ============================================================ */
+function renderTxns() {
+  if (STATE.txns.length === 0) {
+    DOM.txnsPane.innerHTML = `
+      <div style="color:#475569; font-family:monospace; font-size:0.7rem; text-align:center; padding:20px;">
+        No active transactions. Press RUN to start.
+      </div>
+    `;
+    return;
+  }
+
+  let html = '';
+  for (const txn of STATE.txns) {
+    // Phase badge
+    let badgeCls = txn.status;
+    let badgeTxt = txn.status.toUpperCase();
+    if (txn.status === 'active') {
+      badgeTxt = txn.phase === 'growing' ? 'GROWING' : 'SHRINKING';
+      badgeCls = txn.phase;
+    }
+
+    // Phase bar (growing green → shrinking red)
+    const phaseBar = txn.phase === 'growing'
+      ? `<div class="growing-segment"></div><div class="inactive-segment"></div>`
+      : `<div class="inactive-segment"></div><div class="shrinking-segment"></div>`;
+
+    html += `
+      <div class="txn-card ${badgeCls}" style="--txn-color:${txn.color};">
+        <div class="phase-bar">${phaseBar}</div>
+        <div class="txn-header">
+          <span class="txn-name" style="color:${txn.color};">${txn.name}</span>
+          <span class="txn-badge ${badgeCls}">${badgeTxt}</span>
+        </div>
+        <div class="txn-locks">
+          ${txn.heldLocks.length === 0
+            ? `<span style="color:#475569;">no locks held</span>`
+            : txn.heldLocks.map(h => `
+              <span class="txn-lock-chip ${h.type.toLowerCase()}">
+                ${h.type}(${h.resource})
+              </span>
+            `).join('')}
+        </div>
+        <div class="txn-ops">
+          ${txn.ops.map(op => `
+            <div class="txn-op ${op.cls}">
+              <span class="icon">${op.icon}</span>
+              <span>${op.text}</span>
+              <span class="ts">t=${op.t}ms</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  DOM.txnsPane.innerHTML = html;
+}
+
+/* ============================================================
+   DEMO SCENARIOS
+   ============================================================ */
+function getDemoName() {
+  const names = {
+    'basic-2pl': 'BASIC 2PL',
+    'strict': 'STRICT 2PL',
+    'upgrade': 'LOCK UPGRADE',
+    'conversion-deadlock': 'CONVERSION DEADLOCK',
+    'cascading': 'CASCADING ABORT',
+    'serializability': 'SERIALIZABILITY PROOF'
+  };
+  return names[STATE.demo] || '2PL';
+}
+
+function resetAll() {
+  STATE.running = false;
+  STATE.paused = false;
+  STATE.elapsedMs = 0;
+  STATE.txns = [];
+  STATE.events = [];
+  STATE.committed = 0;
+  STATE.aborted = 0;
+  STATE.resources.A = { id: 'A', name: 'Row A', value: 100, locks: [], waitQueue: [] };
+  STATE.resources.B = { id: 'B', name: 'Row B', value: 200, locks: [], waitQueue: [] };
+  if (STATE.rafId) cancelAnimationFrame(STATE.rafId);
+  STATE.rafId = null;
+  renderResources();
+  renderTxns();
+  updateTelemetry();
+}
+
+function runDemo() {
+  resetAll();
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+
+  teach('START', `Running: ${getDemoName()}. Mode: ${STATE.mode.toUpperCase()}. Watch each transaction's phase bar — green means growing (acquiring locks), red means shrinking (releasing locks). The rule is simple: once you switch to shrinking, you can NEVER acquire a new lock.`, 'purple');
+
+  const demo = STATE.demo;
+  if (demo === 'basic-2pl') runBasic2PL();
+  else if (demo === 'strict') runStrict2PL();
+  else if (demo === 'upgrade') runUpgradeDemo();
+  else if (demo === 'conversion-deadlock') runConversionDeadlock();
+  else if (demo === 'cascading') runCascadingAbort();
+  else if (demo === 'serializability') runSerializabilityProof();
+
+  STATE.lastTick = performance.now();
+  loop();
+}
+
+/* ============================================================
+   DEMO 1: BASIC 2PL
+   ============================================================ */
+function runBasic2PL() {
+  const t1 = createTxn('T1');
+  const t2 = createTxn('T2');
+
+  STATE.events = [
+    { at: 200, fn: () => {
+      logOp(t1, 'lock-s', '👁', 'LOCK-S(A) — growing');
+      acquireLock(t1, 'A', 'S');
+      renderResources();
+      teach('GROWING PHASE', `${t1.name} acquires SHARED lock on Row A. It's in its GROWING phase — acquiring locks. S-locks are compatible with other S-locks, so T2 can also read A.`, 'purple');
+    }},
+    { at: 600, fn: () => {
+      logOp(t2, 'lock-s', '👁', 'LOCK-S(A) — growing');
+      acquireLock(t2, 'A', 'S');
+      renderResources();
+      teach('S + S = COMPATIBLE', `${t2.name} also requests an S-lock on Row A. Because S + S is COMPATIBLE, both can hold S-locks at the same time. No blocking.`, 'ok');
+    }},
+    { at: 1100, fn: () => {
+      logOp(t1, 'lock-x', '🔒', 'LOCK-X(B) — growing');
+      acquireLock(t1, 'B', 'X');
+      renderResources();
+      teach('X-LOCK', `${t1.name} acquires EXCLUSIVE lock on Row B. No other transaction can read or write B while T1 holds this X-lock.`, 'purple');
+    }},
+    { at: 1500, fn: () => {
+      logOp(t1, 'unlock', '🔓', 'UNLOCK(A)');
+      // Release A
+      const r = STATE.resources.A;
+      r.locks = r.locks.filter(l => l.txnName !== t1.name);
+      t1.heldLocks = t1.heldLocks.filter(h => h.resource !== 'A');
+      switchToShrinking(t1);
+      processWaitQueue('A');
+      renderResources();
+      teach('SHRINKING BEGINS', `${t1.name} releases its S-lock on A and switches to its SHRINKING phase. From this moment on, ${t1.name} cannot acquire ANY new lock — it can only release. This is the fundamental 2PL rule.`, 'warn');
+    }},
+    { at: 2100, fn: () => {
+      logOp(t2, 'unlock', '🔓', 'UNLOCK(A)');
+      const r = STATE.resources.A;
+      r.locks = r.locks.filter(l => l.txnName !== t2.name);
+      t2.heldLocks = t2.heldLocks.filter(h => h.resource !== 'A');
+      switchToShrinking(t2);
+      processWaitQueue('A');
+      renderResources();
+    }},
+    { at: 2600, fn: () => {
+      logOp(t1, 'unlock', '🔓', 'UNLOCK(B)');
+      const r = STATE.resources.B;
+      r.locks = r.locks.filter(l => l.txnName !== t1.name);
+      t1.heldLocks = t1.heldLocks.filter(h => h.resource !== 'B');
+      processWaitQueue('B');
+      logOp(t1, 'commit', '✓', 'COMMIT');
+      t1.status = 'committed';
+      STATE.committed++;
+      renderTxns();
+      teach('COMMIT', `${t1.name} commits. In BASIC 2PL, locks are released before commit — this allows other transactions to proceed sooner, but at the cost of possible cascading aborts.`, 'ok');
+    }},
+    { at: 3200, fn: () => {
+      logOp(t2, 'commit', '✓', 'COMMIT');
+      t2.status = 'committed';
+      STATE.committed++;
+      renderTxns();
+      teach('DONE', `Both transactions completed following 2PL rules. The resulting schedule is CONFLICT-SERIALIZABLE — equivalent to some serial order. This is the guarantee 2PL provides.`, 'ok');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 2: STRICT 2PL
+   ============================================================ */
+function runStrict2PL() {
+  const t1 = createTxn('T1');
+  const t2 = createTxn('T2');
+
+  STATE.events = [
+    { at: 200, fn: () => {
+      logOp(t1, 'lock-x', '🔒', 'LOCK-X(A) — growing');
+      acquireLock(t1, 'A', 'X');
+      renderResources();
+      teach('STRICT 2PL', `STRICT 2PL means: hold ALL locks until COMMIT or ABORT. Never release early. ${t1.name} acquires X-lock on A.`, 'purple');
+    }},
+    { at: 700, fn: () => {
+      logOp(t2, 'wait', '⏳', 'WAIT — X-lock held by T1');
+      acquireLock(t2, 'A', 'X');
+      renderResources();
+      teach('BLOCKING', `${t2.name} requests X-lock on A, but ${t1.name} holds it. X + X = CONFLICT. ${t2.name} BLOCKS and waits.`, 'warn');
+    }},
+    { at: 1400, fn: () => {
+      logOp(t1, 'lock-x', '🔒', 'LOCK-X(B) — growing');
+      acquireLock(t1, 'B', 'X');
+      renderResources();
+      teach('MULTIPLE LOCKS', `${t1.name} acquires X-lock on B as well. It now holds both A and B. In STRICT 2PL, it will hold BOTH until commit.`, 'purple');
+    }},
+    { at: 2100, fn: () => {
+      logOp(t1, 'commit', '✓', 'COMMIT — release ALL locks');
+      releaseAllLocks(t1);
+      t1.status = 'committed';
+      STATE.committed++;
+      processWaitQueue('A');
+      processWaitQueue('B');
+      renderTxns();
+      renderResources();
+      teach('COMMIT RELEASES ALL', `${t1.name} commits. It releases ALL its locks atomically. ${t2.name}'s queued request for A can now be granted. In STRICT 2PL, commit and release are essentially the same moment.`, 'ok');
+    }},
+    { at: 2800, fn: () => {
+      logOp(t2, 'lock-x', '🔒', 'LOCK-X(A) — GRANTED');
+      renderResources();
+    }},
+    { at: 3300, fn: () => {
+      logOp(t2, 'commit', '✓', 'COMMIT');
+      releaseAllLocks(t2);
+      t2.status = 'committed';
+      STATE.committed++;
+      renderTxns();
+      renderResources();
+      teach('DONE', `Both committed. STRICT 2PL is the practical default in commercial DBs (SQL Server, DB2). It PREVENTS cascading aborts because no other txn ever sees uncommitted data — locks are held until the moment of commit.`, 'ok');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 3: LOCK UPGRADE
+   ============================================================ */
+function runUpgradeDemo() {
+  const t1 = createTxn('T1');
+
+  STATE.events = [
+    { at: 200, fn: () => {
+      logOp(t1, 'lock-s', '👁', 'LOCK-S(A) — growing');
+      acquireLock(t1, 'A', 'S');
+      renderResources();
+      teach('START S-LOCK', `${t1.name} reads Row A and acquires a SHARED lock. It's still in the growing phase.`, 'purple');
+    }},
+    { at: 800, fn: () => {
+      logOp(t1, 'read', '👁', 'READ A → 100');
+      teach('READ', `${t1.name} reads A = 100. Now it wants to modify A. It needs to UPGRADE its S-lock to an X-lock.`, 'info');
+    }},
+    { at: 1400, fn: () => {
+      const res = upgradeLock(t1, 'A');
+      if (res.granted) {
+        logOp(t1, 'lock-x', '🔒', 'UPGRADE S → X on A');
+        renderResources();
+        teach('UPGRADE GRANTED', `${t1.name}'s lock on A is UPGRADED from S to X. Because no other transaction held a lock on A, the upgrade was immediate.`, 'ok');
+      }
+    }},
+    { at: 2100, fn: () => {
+      STATE.resources.A.value += 50;
+      logOp(t1, 'write', '✏️', 'UPDATE A = 150');
+      teach('WRITE', `${t1.name} writes A = 150. Now it holds an X-lock on A — no other transaction can read or write it.`, 'purple');
+    }},
+    { at: 2800, fn: () => {
+      logOp(t1, 'commit', '✓', 'COMMIT — release');
+      releaseAllLocks(t1);
+      t1.status = 'committed';
+      STATE.committed++;
+      renderTxns();
+      renderResources();
+      teach('DONE', `Committed. UPGRADES are one-way in 2PL — you can go S → X but never X → S. Once you've downgraded or released, you're in the shrinking phase.`, 'ok');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 4: CONVERSION DEADLOCK
+   ============================================================ */
+function runConversionDeadlock() {
+  const t1 = createTxn('T1');
+  const t2 = createTxn('T2');
+
+  STATE.events = [
+    { at: 200, fn: () => {
+      logOp(t1, 'lock-s', '👁', 'LOCK-S(A)');
+      acquireLock(t1, 'A', 'S');
+      renderResources();
+    }},
+    { at: 500, fn: () => {
+      logOp(t2, 'lock-s', '👁', 'LOCK-S(A)');
+      acquireLock(t2, 'A', 'S');
+      renderResources();
+      teach('SHARED HOLD', `Both ${t1.name} and ${t2.name} hold SHARED locks on Row A. This is fine — S + S is compatible.`, 'info');
+    }},
+    { at: 1200, fn: () => {
+      logOp(t1, 'lock-x', '🔒', 'UPGRADE S → X on A');
+      const r = upgradeLock(t1, 'A');
+      renderResources();
+      teach('T1 WANTS UPGRADE', `${t1.name} tries to UPGRADE its S-lock to X. But ${t2.name} still holds an S-lock! S + X = CONFLICT. ${t1.name} must WAIT for ${t2.name} to release.`, 'warn');
+    }},
+    { at: 1900, fn: () => {
+      logOp(t2, 'lock-x', '🔒', 'UPGRADE S → X on A');
+      const r = upgradeLock(t2, 'A');
+      renderResources();
+      teach('⚠️ CONVERSION DEADLOCK', `${t2.name} also tries to UPGRADE its S-lock to X. Now BOTH are waiting for each other. ${t1.name} needs ${t2.name} to release, ${t2.name} needs ${t1.name} to release. This is a CONVERSION DEADLOCK. Unlike classic deadlock (different resources), this is on the SAME resource.`, 'error');
+    }},
+    { at: 3000, fn: () => {
+      teach('DEADLOCK DETECTOR FIRES', `The database detects the cycle and chooses a victim — say ${t1.name}. It will be aborted and its S-lock released. ${t2.name}'s upgrade will then succeed.`, 'error');
+    }},
+    { at: 3500, fn: () => {
+      logOp(t1, 'abort', '✗', 'ABORTED — deadlock victim');
+      releaseAllLocks(t1);
+      t1.status = 'aborted';
+      STATE.aborted++;
+      processWaitQueue('A');
+      renderTxns();
+      renderResources();
+      teach('ABORT + RESOLVE', `${t1.name} aborts, releasing its S-lock. Now ${t2.name} is the only lock holder. Its upgrade to X is granted.`, 'warn');
+    }},
+    { at: 4200, fn: () => {
+      logOp(t2, 'commit', '✓', 'COMMIT — release X');
+      releaseAllLocks(t2);
+      t2.status = 'committed';
+      STATE.committed++;
+      renderTxns();
+      renderResources();
+      teach('LESSON', `Conversion deadlocks are a specific hazard of lock upgrades. Fix: use UPDATE ... WHERE with SELECT FOR UPDATE, which acquires X directly (never needs upgrade). Or use consistent lock ordering + update-lock modes.`, 'purple');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 5: CASCADING ABORT
+   ============================================================ */
+function runCascadingAbort() {
+  const t1 = createTxn('T1');
+  const t2 = createTxn('T2');
+  const t3 = createTxn('T3');
+
+  STATE.events = [
+    { at: 200, fn: () => {
+      logOp(t1, 'lock-x', '🔒', 'LOCK-X(A) — writes A = 500');
+      acquireLock(t1, 'A', 'X');
+      STATE.resources.A.value = 500;
+      renderResources();
+      teach('UNCOMMITTED WRITE', `${t1.name} acquires X-lock on A and writes A = 500. It has NOT committed yet.`, 'purple');
+    }},
+    { at: 700, fn: () => {
+      logOp(t1, 'unlock', '🔓', 'RELEASE X(A) — NOT strict!');
+      const r = STATE.resources.A;
+      r.locks = r.locks.filter(l => l.txnName !== t1.name);
+      switchToShrinking(t1);
+      processWaitQueue('A');
+      renderResources();
+      teach('⚠️ NON-STRICT RELEASE', `${t1.name} releases its X-lock on A BEFORE COMMITTING. This is allowed in BASIC 2PL but not STRICT 2PL. Other transactions can now read the UNCOMMITTED value 500.`, 'warn');
+    }},
+    { at: 1200, fn: () => {
+      logOp(t2, 'lock-s', '👁', 'LOCK-S(A) — reads 500');
+      acquireLock(t2, 'A', 'S');
+      logOp(t2, 'read', '👁', 'READ A → 500 (uncommitted!)');
+      renderResources();
+      teach('DIRTY READ', `${t2.name} reads A = 500. This is a DIRTY READ — the value was written by ${t1.name} but not yet committed. If ${t1.name} aborts, the value was never real.`, 'error');
+    }},
+    { at: 1800, fn: () => {
+      logOp(t3, 'lock-s', '👁', 'LOCK-S(A) — reads 500');
+      acquireLock(t3, 'A', 'S');
+      logOp(t3, 'read', '👁', 'READ A → 500');
+      renderResources();
+      teach('MORE DIRTY READS', `${t3.name} also reads A = 500. Now TWO transactions depend on ${t1.name}'s uncommitted write.`, 'warn');
+    }},
+    { at: 2600, fn: () => {
+      logOp(t1, 'abort', '✗', 'ABORT');
+      t1.status = 'aborted';
+      STATE.aborted++;
+      renderTxns();
+      teach('⚠️ CASCADING ABORT', `${t1.name} ABORTS. Its write of A = 500 was never real. But ${t2.name} and ${t3.name} read that value and possibly made decisions based on it. THEY MUST ALSO ABORT — they were poisoned by reading uncommitted data. This is called a CASCADING ABORT.`, 'error');
+    }},
+    { at: 3400, fn: () => {
+      logOp(t2, 'abort', '✗', 'FORCED ABORT (cascaded)');
+      releaseAllLocks(t2);
+      t2.status = 'aborted';
+      STATE.aborted++;
+      logOp(t3, 'abort', '✗', 'FORCED ABORT (cascaded)');
+      releaseAllLocks(t3);
+      t3.status = 'aborted';
+      STATE.aborted++;
+      renderTxns();
+      renderResources();
+      teach('LESSON', `This is why commercial DBs default to STRICT 2PL, not BASIC 2PL. Strict 2PL prevents cascading aborts entirely by holding ALL locks until commit — no other txn ever sees uncommitted data.`, 'purple');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   DEMO 6: SERIALIZABILITY PROOF
+   ============================================================ */
+function runSerializabilityProof() {
+  const t1 = createTxn('T1');
+  const t2 = createTxn('T2');
+
+  STATE.events = [
+    { at: 200, fn: () => {
+      logOp(t1, 'lock-x', '🔒', 'LOCK-X(A)');
+      acquireLock(t1, 'A', 'X');
+      STATE.resources.A.value = 150;
+      renderResources();
+      teach('PRELUDE', `Every 2PL schedule is conflict-serializable. Watch how the LOCK ORDER between ${t1.name} and ${t2.name} determines the equivalent serial order.`, 'purple');
+    }},
+    { at: 800, fn: () => {
+      logOp(t2, 'wait', '⏳', 'WAIT for A (T1 holds X)');
+      acquireLock(t2, 'A', 'X');
+      renderResources();
+      teach('BLOCKED', `${t2.name} wants A but ${t1.name} holds the X-lock. ${t2.name} waits. This blocking is what creates the serial order.`, 'warn');
+    }},
+    { at: 1400, fn: () => {
+      logOp(t1, 'unlock', '🔓', 'UNLOCK A — enters shrinking');
+      const r = STATE.resources.A;
+      r.locks = r.locks.filter(l => l.txnName !== t1.name);
+      switchToShrinking(t1);
+      processWaitQueue('A');
+      renderResources();
+      teach('T1 GOES FIRST', `${t1.name} releases A. Only now can ${t2.name} proceed. This means the conflict order is: T1's operations on A happen BEFORE T2's operations on A.`, 'purple');
+    }},
+    { at: 2000, fn: () => {
+      logOp(t2, 'lock-x', '🔒', 'GRANTED X(A)');
+      logOp(t2, 'write', '✏️', 'UPDATE A = 200');
+      STATE.resources.A.value = 200;
+      renderResources();
+    }},
+    { at: 2600, fn: () => {
+      logOp(t1, 'commit', '✓', 'COMMIT');
+      t1.status = 'committed';
+      STATE.committed++;
+      renderTxns();
+      teach('SERIAL ORDER', `The conflict order is T1 → T2. If we ran them serially as ${t1.name} then ${t2.name}, we would get the SAME final state. This is conflict-serializability — the guarantee 2PL provides.`, 'ok');
+    }},
+    { at: 3200, fn: () => {
+      logOp(t2, 'commit', '✓', 'COMMIT');
+      releaseAllLocks(t2);
+      t2.status = 'committed';
+      STATE.committed++;
+      renderTxns();
+      renderResources();
+      teach('PROOF COMPLETE', `Final value of A: 200. Same as if we'd run ${t1.name} then ${t2.name} serially. 2PL constructed this serial order automatically by BLOCKING ${t2.name} until ${t1.name} released its X-lock.`, 'ok');
+      teach('SUMMARY', `Two-Phase Locking works because it FORCES any schedule to be equivalent to a serial one. The cost: blocking (waiting) and possible deadlocks. Real DBs combine 2PL with MVCC or use strict 2PL by default to avoid cascading aborts.`, 'purple');
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }}
+  ];
+}
+
+/* ============================================================
+   MAIN LOOP
+   ============================================================ */
+function loop() {
+  const now = performance.now();
+  const dt = (now - STATE.lastTick) * STATE.speed;
+  STATE.lastTick = now;
+
+  if (STATE.running) {
+    STATE.elapsedMs += dt;
+
+    for (const evt of STATE.events) {
+      if (!evt.fired && STATE.elapsedMs >= evt.at) {
+        evt.fired = true;
+        try { evt.fn(); } catch (e) { console.warn(e); }
+      }
+    }
+
+    updateTelemetry();
+  }
+
+  STATE.rafId = requestAnimationFrame(loop);
+}
+
+/* ============================================================
+   TELEMETRY
+   ============================================================ */
+function updateTelemetry() {
+  DOM.mElapsed.textContent = (STATE.elapsedMs / 1000).toFixed(1) + 's';
+  DOM.clockLabel.textContent = `t=${(STATE.elapsedMs / 1000).toFixed(1)}s`;
+
+  DOM.mGrowing.textContent = STATE.txns.filter(t => t.status === 'active' && t.phase === 'growing').length;
+  DOM.mShrinking.textContent = STATE.txns.filter(t => t.status === 'active' && t.phase === 'shrinking').length;
+
+  let held = 0;
+  for (const rid of ['A', 'B']) held += STATE.resources[rid].locks.length;
+  DOM.mHeldLocks.textContent = held;
+
+  let waiting = 0;
+  for (const rid of ['A', 'B']) waiting += STATE.resources[rid].waitQueue.length;
+  DOM.mWaiting.textContent = waiting;
+  DOM.mWaiting.className = 'metric-value' + (waiting > 0 ? ' warn' : '');
+
+  DOM.mCommitted.textContent = STATE.committed;
+
+  // Update phase indicator pills
+  const anyGrowing = STATE.txns.some(t => t.status === 'active' && t.phase === 'growing');
+  const anyShrinking = STATE.txns.some(t => t.status === 'active' && t.phase === 'shrinking');
+  DOM.phaseGrowing.className = 'phase-pill' + (anyGrowing ? ' active-growing' : '');
+  DOM.phaseShrinking.className = 'phase-pill' + (anyShrinking ? ' active-shrinking' : '');
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.demoSelect.addEventListener('change', e => {
+  STATE.demo = e.target.value;
+  resetAll();
+  DOM.btnRun.textContent = '▶ Run Demo';
+  teach('DEMO', `Selected: ${getDemoName()}. Press RUN to see it play out.`, 'info');
+});
+
+DOM.btnRun.addEventListener('click', () => {
+  if (STATE.running) {
+    STATE.running = false;
+    DOM.btnRun.textContent = '▶ Resume';
+  } else {
+    if (STATE.txns.length === 0) runDemo();
+    else {
+      STATE.running = true;
+      STATE.lastTick = performance.now();
+      DOM.btnRun.textContent = '⏸ Pause';
+    }
+  }
+});
+
+DOM.btnStep.addEventListener('click', () => {
+  if (STATE.txns.length === 0) { runDemo(); return; }
+  STATE.running = false;
+  const nextEvt = STATE.events.find(e => !e.fired);
+  if (nextEvt) {
+    STATE.elapsedMs = nextEvt.at;
+    for (const evt of STATE.events) {
+      if (!evt.fired && STATE.elapsedMs >= evt.at) {
+        evt.fired = true;
+        try { evt.fn(); } catch (e) {}
+      }
+    }
+    updateTelemetry();
+  }
+});
+
+DOM.btnReset.addEventListener('click', () => {
+  resetAll();
+  DOM.btnRun.textContent = '▶ Run Demo';
+  teach('RESET', 'Reset. Ready to run.', 'info', false);
+});
+
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseFloat(e.target.value);
+  DOM.speedVal.textContent = STATE.speed.toFixed(1) + '×';
+});
+
+document.querySelectorAll('input[name="mode"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.mode = e.target.value;
+    const desc = {
+      basic: `BASIC 2PL: locks can be released before commit. Faster concurrency, but cascading aborts possible.`,
+      strict: `STRICT 2PL: hold ALL locks until commit/abort. Prevents cascading aborts. The commercial default.`,
+      conservative: `CONSERVATIVE 2PL: acquire ALL locks at the start. Deadlock-free, but requires predeclaring lock set.`
+    };
+    teach('MODE', desc[e.target.value], 'purple');
+  });
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+STATE.rafId = requestAnimationFrame(loop);
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Two-Phase Locking — 2PL. This is the theoretical foundation of database serializability. The rule is simple: every transaction has a GROWING phase where it acquires locks, and a SHRINKING phase where it releases them. NEVER acquire after you start releasing.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('WHY 2PL WORKS',
+      `2PL guarantees CONFLICT SERIALIZABILITY: any schedule produced under 2PL is equivalent to some serial schedule. Proof sketch: order transactions by their lock point (the moment they hold their final lock). This order is a valid serialization. The blocking that 2PL imposes is what forces the serial order.`,
+      'info'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE COST',
+      `2PL's costs: (1) BLOCKING — readers wait for writers, writers wait for readers. (2) DEADLOCKS possible, including conversion deadlocks (S→X on same resource). (3) CASCADING ABORTS in non-strict variants. This is why MVCC was invented — to avoid blocking readers entirely. Try the demos to see each hazard.`,
+      'warn'
+    );
+  }, 8000);
+
+  showToast('👋 Pick a demo and press RUN', 4000);
+}, 600);
+</script>
+</body>
+</html>

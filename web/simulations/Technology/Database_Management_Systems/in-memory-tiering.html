@@ -1,0 +1,1550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>In-Memory Data Tiering — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #a855f7, #d946ef, #ec4899);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(168,85,247,0.15);
+    color: #d8b4fe;
+    border-color: #a855f7;
+  }
+  .teaching-toggle:hover { background: rgba(168,85,247,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #d8b4fe;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #a855f7; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #a855f7; color: #fff; border-color: #a855f7; }
+  .btn.primary:hover { background: #9333ea; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.info { background: #1e3a8a; color: #bfdbfe; border-color: #3b82f6; }
+  .btn.info:hover { background: #1e40af; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #d8b4fe; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #a855f7; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(168,85,247,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  /* TIER STACK (left) */
+  .tiers-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  .tier {
+    flex: 1;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s;
+  }
+  .tier.dram {
+    border: 2px solid #22d3ee;
+    background: linear-gradient(135deg, rgba(34,211,238,0.08), rgba(6,182,212,0.03));
+    box-shadow: 0 0 25px rgba(34,211,238,0.15);
+  }
+  .tier.nvme {
+    border: 2px solid #a855f7;
+    background: linear-gradient(135deg, rgba(168,85,247,0.08), rgba(139,92,246,0.03));
+    box-shadow: 0 0 25px rgba(168,85,247,0.15);
+  }
+  .tier.ssd {
+    border: 2px solid #f59e0b;
+    background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(217,119,6,0.03));
+    box-shadow: 0 0 25px rgba(245,158,11,0.15);
+  }
+  .tier.hdd {
+    border: 2px solid #ef4444;
+    background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(220,38,38,0.03));
+    box-shadow: 0 0 25px rgba(239,68,68,0.15);
+  }
+  .tier.active {
+    transform: scale(1.01);
+    filter: brightness(1.15);
+  }
+
+  .tier-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .tier-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-family: monospace;
+  }
+  .tier.dram .tier-title { color: #67e8f9; }
+  .tier.nvme .tier-title { color: #d8b4fe; }
+  .tier.ssd .tier-title { color: #fcd34d; }
+  .tier.hdd .tier-title { color: #fca5a5; }
+
+  .tier-icon { font-size: 1rem; }
+
+  .tier-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 0.52rem;
+    color: #64748b;
+    font-family: monospace;
+    letter-spacing: 0.5px;
+  }
+  .tier-meta .kv { display: flex; gap: 4px; }
+  .tier-meta .kv .k { color: #475569; }
+  .tier-meta .kv .v { color: #cbd5e1; font-weight: 700; }
+  .tier.dram .tier-meta .kv .v { color: #a5f3fc; }
+  .tier.nvme .tier-meta .kv .v { color: #e9d5ff; }
+  .tier.ssd .tier-meta .kv .v { color: #fef08a; }
+  .tier.hdd .tier-meta .kv .v { color: #fecaca; }
+
+  .tier-body {
+    flex: 1;
+    display: flex;
+    gap: 8px;
+    min-height: 0;
+  }
+
+  .tier-blocks {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+    grid-auto-rows: 24px;
+    gap: 3px;
+    padding: 4px;
+    background: #02040a;
+    border-radius: 6px;
+    overflow-y: auto;
+    min-height: 0;
+    border: 1px solid #1e293b;
+  }
+
+  .block {
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    cursor: pointer;
+    position: relative;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  }
+  .block.hot {
+    background: linear-gradient(145deg, #f43f5e, #dc2626);
+    box-shadow: 0 0 8px rgba(244,63,94,0.6);
+  }
+  .block.warm {
+    background: linear-gradient(145deg, #f59e0b, #d97706);
+    box-shadow: 0 0 6px rgba(245,158,11,0.5);
+  }
+  .block.cold {
+    background: linear-gradient(145deg, #3b82f6, #1d4ed8);
+    box-shadow: 0 0 4px rgba(59,130,246,0.4);
+  }
+  .block.frozen {
+    background: linear-gradient(145deg, #64748b, #334155);
+  }
+  .block.just-moved {
+    animation: blockMove 0.7s ease;
+    z-index: 10;
+  }
+  @keyframes blockMove {
+    0%, 100% { transform: scale(1); }
+    30% { transform: scale(1.4); filter: brightness(1.5); box-shadow: 0 0 20px currentColor; }
+  }
+  .block.block-access {
+    animation: blockAccess 0.4s ease;
+  }
+  @keyframes blockAccess {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); box-shadow: 0 0 12px #fff; }
+  }
+
+  .tier-stats-side {
+    width: 110px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    justify-content: center;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .tier-stat {
+    background: rgba(30,41,59,0.4);
+    border-radius: 5px;
+    padding: 4px 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tier-stat .lbl { color: #64748b; font-size: 0.48rem; letter-spacing: 0.3px; }
+  .tier-stat .val { color: #cbd5e1; font-weight: 900; font-size: 0.6rem; }
+  .tier.dram .tier-stat .val { color: #67e8f9; }
+  .tier.nvme .tier-stat .val { color: #d8b4fe; }
+  .tier.ssd .tier-stat .val { color: #fcd34d; }
+  .tier.hdd .tier-stat .val { color: #fca5a5; }
+
+  /* RIGHT: COST MODEL */
+  .cost-pane {
+    flex: 0.9;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    min-width: 340px;
+  }
+
+  .cost-box {
+    background: #070a14;
+    border: 2px solid #10b981;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(16,185,129,0.15);
+    min-height: 0;
+  }
+  .cost-box.simulation { border-color: #facc15; box-shadow: 0 0 25px rgba(250,204,21,0.15); flex: 1; }
+
+  .cost-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .cost-box .cost-title { color: #6ee7b7; }
+  .cost-box.simulation .cost-title { color: #fde047; }
+
+  .latency-table {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 8px;
+    font-family: monospace;
+    font-size: 0.58rem;
+  }
+  .latency-row {
+    display: contents;
+  }
+  .latency-row .lbl {
+    padding: 4px 0;
+    color: #94a3b8;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .latency-row .val {
+    padding: 4px 0;
+    text-align: right;
+    font-weight: 900;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.6rem;
+  }
+  .latency-row.dram .val { color: #67e8f9; }
+  .latency-row.nvme .val { color: #d8b4fe; }
+  .latency-row.ssd .val { color: #fcd34d; }
+  .latency-row.hdd .val { color: #fca5a5; }
+  .latency-row .val small { color: #64748b; font-size: 0.48rem; margin-left: 3px; font-weight: 600; }
+
+  /* Simulation log */
+  .sim-log {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.55rem;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+  }
+  .sim-line {
+    padding: 2px 4px;
+    border-radius: 3px;
+    display: flex;
+    gap: 6px;
+    animation: simIn 0.3s ease;
+  }
+  @keyframes simIn {
+    from { transform: translateX(-6px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .sim-line .time {
+    color: #475569;
+    font-size: 0.5rem;
+    min-width: 44px;
+  }
+  .sim-line .msg { color: #cbd5e1; flex: 1; }
+  .sim-line.hit-dram { background: rgba(34,211,238,0.06); border-left: 2px solid #22d3ee; }
+  .sim-line.hit-dram .msg { color: #a5f3fc; }
+  .sim-line.hit-nvme { background: rgba(168,85,247,0.06); border-left: 2px solid #a855f7; }
+  .sim-line.hit-nvme .msg { color: #e9d5ff; }
+  .sim-line.hit-ssd { background: rgba(245,158,11,0.06); border-left: 2px solid #f59e0b; }
+  .sim-line.hit-ssd .msg { color: #fef08a; }
+  .sim-line.hit-hdd { background: rgba(239,68,68,0.06); border-left: 2px solid #ef4444; }
+  .sim-line.hit-hdd .msg { color: #fecaca; }
+  .sim-line.migrate-up { background: rgba(16,185,129,0.08); border-left: 2px solid #10b981; }
+  .sim-line.migrate-up .msg { color: #a7f3d0; font-weight: 700; }
+  .sim-line.migrate-down { background: rgba(100,116,139,0.1); border-left: 2px solid #64748b; }
+  .sim-line.migrate-down .msg { color: #94a3b8; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(168,85,247,0.06);
+    border: 1px solid rgba(168,85,247,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #d8b4fe;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #67e8f9; text-shadow: 0 0 10px rgba(6,182,212,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 260px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #a855f7;
+    background: rgba(168,85,247,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.06); }
+  .teach-entry.cyan   { border-color: #22d3ee; background: rgba(34,211,238,0.05); }
+  .teach-entry.pink   { border-color: #ec4899; background: rgba(236,72,153,0.05); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(34,211,238,0.15); color: #67e8f9; }
+  .teach-entry .tag.pink   { background: rgba(236,72,153,0.15); color: #f9a8d4; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Legend card */
+  .legend-card {
+    background: linear-gradient(145deg, rgba(168,85,247,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(168,85,247,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .legend-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #d8b4fe;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .legend-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .legend-row:last-child { border-bottom: none; }
+  .legend-row .lbl { color: #94a3b8; }
+  .legend-row .val { color: #cbd5e1; font-weight: 800; }
+
+  /* Legend items */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #a855f7;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(168,85,247,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Status banner */
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #a855f7;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #d8b4fe;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(168,85,247,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.migrate { border-color: #10b981; color: #a7f3d0; box-shadow: 0 0 20px rgba(16,185,129,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>IN-MEMORY DATA TIERING</h1>
+    <span class="sub">DRAM · NVME · SSD · HDD · HOT/COLD PLACEMENT</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Workload</h3>
+      <select id="workloadSelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="zipf" selected>📈 Zipfian (80/20 hot/cold)</option>
+        <option value="timeseries">⏰ Time-series append</option>
+        <option value="hot">🔥 Single hot key</option>
+        <option value="uniform">🎲 Uniform random</option>
+        <option value="skew">📊 Heavy skew (1% hot)</option>
+      </select>
+      <button class="btn primary" id="btnRun">▶ Run Workload</button>
+      <button class="btn danger" id="btnStop">⏸ Stop</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Tier Capacities</h3>
+      <div class="slider-row"><span>DRAM blocks</span><span class="value" id="dramVal">12</span></div>
+      <input type="range" id="dramRange" min="4" max="24" value="12">
+      <div class="slider-row"><span>NVMe blocks</span><span class="value" id="nvmeVal">16</span></div>
+      <input type="range" id="nvmeRange" min="4" max="32" value="16">
+      <div class="slider-row"><span>SSD blocks</span><span class="value" id="ssdVal">24</span></div>
+      <input type="range" id="ssdRange" min="8" max="48" value="24">
+      <div style="font-size:0.55rem; color:#64748b; font-family:monospace; margin-top:-4px;">
+        HDD is the overflow tier — no limit.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Tiering Policy</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.7rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="policy" value="hotness" checked style="accent-color:#a855f7;">
+          Hotness (access count)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="policy" value="recency" style="accent-color:#a855f7;">
+          Recency (LRU)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="policy" value="frequency" style="accent-color:#a855f7;">
+          Frequency (LFU)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="policy" value="static" style="accent-color:#a855f7;">
+          Static (manual)
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Migration Triggers</h3>
+      <div class="slider-row"><span>Promote threshold</span><span class="value" id="promoVal">5</span></div>
+      <input type="range" id="promoRange" min="2" max="15" value="5">
+      <div class="slider-row"><span>Demote after idle</span><span class="value" id="demoVal">20</span></div>
+      <input type="range" id="demoRange" min="5" max="60" value="20">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#f43f5e;"></div>Hot block</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>Warm block</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#3b82f6;"></div>Cold block</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#64748b;"></div>Frozen block</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">HOT DATA GOES HIGH · COLD DATA SINKS · THE ENGINE DECIDES</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <!-- TIER STACK -->
+        <div class="tiers-pane">
+          <div class="tier dram" id="tierDram">
+            <div class="tier-header">
+              <div class="tier-title"><span class="tier-icon">⚡</span> DRAM — HOT TIER</div>
+              <div class="tier-meta">
+                <div class="kv"><span class="k">LATENCY</span><span class="v">100 ns</span></div>
+                <div class="kv"><span class="k">COST</span><span class="v">$$$$</span></div>
+                <div class="kv"><span class="k">CAP</span><span class="v" id="dramCap">12</span></div>
+              </div>
+            </div>
+            <div class="tier-body">
+              <div class="tier-blocks" id="dramBlocks"></div>
+              <div class="tier-stats-side">
+                <div class="tier-stat"><span class="lbl">HITS</span><span class="val" id="dramHits">0</span></div>
+                <div class="tier-stat"><span class="lbl">FILL</span><span class="val" id="dramFill">0%</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tier nvme" id="tierNvme">
+            <div class="tier-header">
+              <div class="tier-title"><span class="tier-icon">🚀</span> NVME — WARM TIER</div>
+              <div class="tier-meta">
+                <div class="kv"><span class="k">LATENCY</span><span class="v">100 µs</span></div>
+                <div class="kv"><span class="k">COST</span><span class="v">$$$</span></div>
+                <div class="kv"><span class="k">CAP</span><span class="v" id="nvmeCap">16</span></div>
+              </div>
+            </div>
+            <div class="tier-body">
+              <div class="tier-blocks" id="nvmeBlocks"></div>
+              <div class="tier-stats-side">
+                <div class="tier-stat"><span class="lbl">HITS</span><span class="val" id="nvmeHits">0</span></div>
+                <div class="tier-stat"><span class="lbl">FILL</span><span class="val" id="nvmeFill">0%</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tier ssd" id="tierSsd">
+            <div class="tier-header">
+              <div class="tier-title"><span class="tier-icon">💾</span> SSD — COOL TIER</div>
+              <div class="tier-meta">
+                <div class="kv"><span class="k">LATENCY</span><span class="v">100 µs-1ms</span></div>
+                <div class="kv"><span class="k">COST</span><span class="v">$$</span></div>
+                <div class="kv"><span class="k">CAP</span><span class="v" id="ssdCap">24</span></div>
+              </div>
+            </div>
+            <div class="tier-body">
+              <div class="tier-blocks" id="ssdBlocks"></div>
+              <div class="tier-stats-side">
+                <div class="tier-stat"><span class="lbl">HITS</span><span class="val" id="ssdHits">0</span></div>
+                <div class="tier-stat"><span class="lbl">FILL</span><span class="val" id="ssdFill">0%</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tier hdd" id="tierHdd">
+            <div class="tier-header">
+              <div class="tier-title"><span class="tier-icon">🖴</span> HDD — COLD TIER</div>
+              <div class="tier-meta">
+                <div class="kv"><span class="k">LATENCY</span><span class="v">10 ms</span></div>
+                <div class="kv"><span class="k">COST</span><span class="v">$</span></div>
+                <div class="kv"><span class="k">CAP</span><span class="v">∞</span></div>
+              </div>
+            </div>
+            <div class="tier-body">
+              <div class="tier-blocks" id="hddBlocks"></div>
+              <div class="tier-stats-side">
+                <div class="tier-stat"><span class="lbl">HITS</span><span class="val" id="hddHits">0</span></div>
+                <div class="tier-stat"><span class="lbl">FILL</span><span class="val" id="hddFill">0%</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- COST + SIM -->
+        <div class="cost-pane">
+          <div class="cost-box">
+            <div class="cost-title">
+              <span>⏱️ LATENCY LADDER</span>
+              <span style="font-size:0.5rem; color:#64748b;">relative cost</span>
+            </div>
+            <div class="latency-table">
+              <div class="latency-row dram"><div class="lbl">⚡ DRAM</div><div class="val">100 ns <small>1×</small></div></div>
+              <div class="latency-row nvme"><div class="lbl">🚀 NVMe</div><div class="val">100 µs <small>1000×</small></div></div>
+              <div class="latency-row ssd"><div class="lbl">💾 SSD</div><div class="val">500 µs <small>5000×</small></div></div>
+              <div class="latency-row hdd"><div class="lbl">🖴 HDD</div><div class="val">10 ms <small>100000×</small></div></div>
+            </div>
+          </div>
+
+          <div class="cost-box simulation">
+            <div class="cost-title">
+              <span>📊 SIMULATION LOG</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="simHint">idle</span>
+            </div>
+            <div class="sim-log" id="simLog">
+              <div style="color:#475569; text-align:center; padding:16px; font-size:0.6rem;">Press RUN to start the workload</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Total Blocks</div>
+        <div class="metric-value info" id="mBlocks">40</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Accesses</div>
+        <div class="metric-value" id="mAccess">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Avg Latency</div>
+        <div class="metric-value warn" id="mLatency">—</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Migrations</div>
+        <div class="metric-value warn" id="mMigrations">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Tier Cost</div>
+        <div class="metric-value" id="mCost">$0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Hit in DRAM</div>
+        <div class="metric-value" id="mDramPct">0%</div>
+      </div>
+    </div>
+
+    <div class="legend-card">
+      <div class="legend-title">🎯 Tiering Rules</div>
+      <div class="legend-row"><span class="lbl">Hot (frequent)</span><span class="val">→ DRAM</span></div>
+      <div class="legend-row"><span class="lbl">Warm (recent)</span><span class="val">→ NVMe</span></div>
+      <div class="legend-row"><span class="lbl">Cool (occasional)</span><span class="val">→ SSD</span></div>
+      <div class="legend-row"><span class="lbl">Cold (rare/never)</span><span class="val">→ HDD</span></div>
+      <div class="legend-row"><span class="lbl">Access cost</span><span class="val">Latency × frequency</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  workload: 'zipf',
+  policy: 'hotness',
+  dramCap: 12,
+  nvmeCap: 16,
+  ssdCap: 24,
+  promoteThreshold: 5,
+  demoteIdle: 20,
+  // Tiers: each is an array of block objects { id, accesses, lastAccess, heat }
+  tiers: {
+    dram: [],
+    nvme: [],
+    ssd: [],
+    hdd: []
+  },
+  totalBlocks: 40,
+  // Stats
+  accesses: 0,
+  migrations: 0,
+  totalLatencyMs: 0,
+  dramHits: 0,
+  nvmeHits: 0,
+  ssdHits: 0,
+  hddHits: 0,
+  // Tier costs per access (relative units)
+  latencyNs: { dram: 100, nvme: 100000, ssd: 500000, hdd: 10000000 },
+  costPer: { dram: 100, nvme: 10, ssd: 1, hdd: 0.1 },  // $ per block per unit time
+  // Simulation
+  running: false,
+  autoTimer: null,
+  tickCount: 0,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  workloadSelect: document.getElementById('workloadSelect'),
+  btnRun: document.getElementById('btnRun'),
+  btnStop: document.getElementById('btnStop'),
+  btnReset: document.getElementById('btnReset'),
+  dramRange: document.getElementById('dramRange'),
+  dramVal: document.getElementById('dramVal'),
+  nvmeRange: document.getElementById('nvmeRange'),
+  nvmeVal: document.getElementById('nvmeVal'),
+  ssdRange: document.getElementById('ssdRange'),
+  ssdVal: document.getElementById('ssdVal'),
+  promoRange: document.getElementById('promoRange'),
+  promoVal: document.getElementById('promoVal'),
+  demoRange: document.getElementById('demoRange'),
+  demoVal: document.getElementById('demoVal'),
+  // Tiers
+  dramBlocks: document.getElementById('dramBlocks'),
+  nvmeBlocks: document.getElementById('nvmeBlocks'),
+  ssdBlocks: document.getElementById('ssdBlocks'),
+  hddBlocks: document.getElementById('hddBlocks'),
+  dramCap: document.getElementById('dramCap'),
+  nvmeCap: document.getElementById('nvmeCap'),
+  ssdCap: document.getElementById('ssdCap'),
+  dramHits: document.getElementById('dramHits'),
+  nvmeHits: document.getElementById('nvmeHits'),
+  ssdHits: document.getElementById('ssdHits'),
+  hddHits: document.getElementById('hddHits'),
+  dramFill: document.getElementById('dramFill'),
+  nvmeFill: document.getElementById('nvmeFill'),
+  ssdFill: document.getElementById('ssdFill'),
+  hddFill: document.getElementById('hddFill'),
+  tierDram: document.getElementById('tierDram'),
+  tierNvme: document.getElementById('tierNvme'),
+  tierSsd: document.getElementById('tierSsd'),
+  tierHdd: document.getElementById('tierHdd'),
+  // Sim
+  simLog: document.getElementById('simLog'),
+  simHint: document.getElementById('simHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Metrics
+  mBlocks: document.getElementById('mBlocks'),
+  mAccess: document.getElementById('mAccess'),
+  mLatency: document.getElementById('mLatency'),
+  mMigrations: document.getElementById('mMigrations'),
+  mCost: document.getElementById('mCost'),
+  mDramPct: document.getElementById('mDramPct'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 1400);
+}
+
+function fmtLatency(ns) {
+  if (ns < 1000) return Math.round(ns) + ' ns';
+  if (ns < 1e6) return (ns / 1000).toFixed(1) + ' µs';
+  if (ns < 1e9) return (ns / 1e6).toFixed(1) + ' ms';
+  return (ns / 1e9).toFixed(2) + ' s';
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining in memory data tiering.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   INITIALIZATION
+   ============================================================ */
+function initTiers() {
+  STATE.tiers = { dram: [], nvme: [], ssd: [], hdd: [] };
+  STATE.accesses = 0;
+  STATE.migrations = 0;
+  STATE.totalLatencyMs = 0;
+  STATE.dramHits = 0;
+  STATE.nvmeHits = 0;
+  STATE.ssdHits = 0;
+  STATE.hddHits = 0;
+  STATE.tickCount = 0;
+
+  // Create blocks with initial hotness (some hot, some cold)
+  for (let i = 0; i < STATE.totalBlocks; i++) {
+    const block = {
+      id: i,
+      accesses: 0,
+      lastAccess: 0,
+      heat: 0
+    };
+    // Initial placement: first N go to DRAM, next to NVMe, etc.
+    if (i < STATE.dramCap) STATE.tiers.dram.push(block);
+    else if (i < STATE.dramCap + STATE.nvmeCap) STATE.tiers.nvme.push(block);
+    else if (i < STATE.dramCap + STATE.nvmeCap + STATE.ssdCap) STATE.tiers.ssd.push(block);
+    else STATE.tiers.hdd.push(block);
+  }
+
+  renderAll();
+  clearSimLog();
+}
+
+function clearSimLog() {
+  DOM.simLog.innerHTML = '<div style="color:#475569; text-align:center; padding:16px; font-size:0.6rem;">Press RUN to start the workload</div>';
+}
+
+/* ============================================================
+   WORKLOAD GENERATION
+   ============================================================ */
+function generateAccess() {
+  STATE.tickCount++;
+  let blockId;
+
+  switch (STATE.workload) {
+    case 'zipf': {
+      // Zipfian: heavily favor low IDs, occasionally high
+      const r = Math.random();
+      blockId = Math.min(STATE.totalBlocks - 1, Math.floor(Math.pow(r, 2.5) * STATE.totalBlocks));
+      break;
+    }
+    case 'timeseries': {
+      // Recent blocks favored (the "new" data)
+      blockId = Math.max(0, STATE.totalBlocks - 1 - Math.floor(Math.pow(Math.random(), 3) * 15));
+      break;
+    }
+    case 'hot': {
+      // Single hot key + occasional cold
+      blockId = Math.random() < 0.8 ? 0 : Math.floor(Math.random() * STATE.totalBlocks);
+      break;
+    }
+    case 'uniform': {
+      blockId = Math.floor(Math.random() * STATE.totalBlocks);
+      break;
+    }
+    case 'skew': {
+      // 1% hot set
+      if (Math.random() < 0.9) {
+        blockId = Math.floor(Math.random() * 2);  // blocks 0-1 are hot
+      } else {
+        blockId = Math.floor(Math.random() * STATE.totalBlocks);
+      }
+      break;
+    }
+    default:
+      blockId = Math.floor(Math.random() * STATE.totalBlocks);
+  }
+
+  return blockId;
+}
+
+/* ============================================================
+   FIND BLOCK IN TIERS
+   ============================================================ */
+function findBlock(blockId) {
+  for (const tierName of ['dram', 'nvme', 'ssd', 'hdd']) {
+    const idx = STATE.tiers[tierName].findIndex(b => b.id === blockId);
+    if (idx !== -1) return { tierName, tier: STATE.tiers[tierName], idx, block: STATE.tiers[tierName][idx] };
+  }
+  return null;
+}
+
+/* ============================================================
+   ACCESS A BLOCK
+   ============================================================ */
+function accessBlock(blockId) {
+  const found = findBlock(blockId);
+  if (!found) return;
+
+  const { tierName, block } = found;
+
+  // Update block stats
+  block.accesses++;
+  block.lastAccess = STATE.tickCount;
+  STATE.accesses++;
+
+  // Count hit
+  if (tierName === 'dram') STATE.dramHits++;
+  else if (tierName === 'nvme') STATE.nvmeHits++;
+  else if (tierName === 'ssd') STATE.ssdHits++;
+  else if (tierName === 'hdd') STATE.hddHits++;
+
+  // Add latency
+  const latency = STATE.latencyNs[tierName];
+  STATE.totalLatencyMs += latency / 1e6;
+
+  // Visual highlight
+  highlightBlock(tierName, blockId);
+
+  // Log
+  const tierLabels = { dram: 'DRAM', nvme: 'NVMe', ssd: 'SSD', hdd: 'HDD' };
+  const tierCls = { dram: 'hit-dram', nvme: 'hit-nvme', ssd: 'hit-ssd', hdd: 'hit-hdd' };
+  logSim(tierCls[tierName], `Access #${STATE.tickCount}: block ${blockId} → ${tierLabels[tierName]} (${fmtLatency(latency)})`);
+
+  // Consider promotion (for hotness / frequency policies)
+  considerPromotion(block, tierName);
+
+  // Periodic demotion check
+  if (STATE.tickCount % 10 === 0) {
+    demoteIdleBlocks();
+  }
+
+  renderAll();
+}
+
+function highlightBlock(tierName, blockId) {
+  const container = document.getElementById(tierName + 'Blocks');
+  if (!container) return;
+  const el = container.querySelector(`[data-block-id="${blockId}"]`);
+  if (el) {
+    el.classList.add('block-access');
+    setTimeout(() => el.classList.remove('block-access'), 400);
+  }
+}
+
+/* ============================================================
+   PROMOTION — move hot blocks up
+   ============================================================ */
+function considerPromotion(block, currentTier) {
+  // Never promote already-hot
+  if (currentTier === 'dram') return;
+
+  // Compute heat score
+  const recency = STATE.tickCount - block.lastAccess;
+  let heat = 0;
+  if (STATE.policy === 'hotness' || STATE.policy === 'frequency') {
+    heat = block.accesses;
+  } else if (STATE.policy === 'recency') {
+    heat = 1 / (1 + recency);
+  } else {
+    return; // static policy — no auto-promotion
+  }
+
+  // Simple threshold: if accesses > promoteThreshold, promote one tier
+  if (block.accesses >= STATE.promoteThreshold) {
+    const currentIdx = ['dram', 'nvme', 'ssd', 'hdd'].indexOf(currentTier);
+    if (currentIdx <= 0) return; // already at DRAM
+    const targetTierName = ['dram', 'nvme', 'ssd', 'hdd'][currentIdx - 1];
+
+    // Check if target has space
+    const targetCap = targetTierName === 'dram' ? STATE.dramCap :
+                     targetTierName === 'nvme' ? STATE.nvmeCap :
+                     targetTierName === 'ssd' ? STATE.ssdCap : Infinity;
+
+    if (STATE.tiers[targetTierName].length >= targetCap) {
+      // Need to demote someone from the target tier
+      const victim = STATE.tiers[targetTierName].reduce((oldest, b) =>
+        b.lastAccess < oldest.lastAccess ? b : oldest
+      );
+      // Move victim down one tier
+      const victimIdx = STATE.tiers[targetTierName].indexOf(victim);
+      STATE.tiers[targetTierName].splice(victimIdx, 1);
+      const victimTarget = ['dram', 'nvme', 'ssd', 'hdd'][currentIdx]; // one tier down from target
+      STATE.tiers[victimTarget].push(victim);
+      logSim('migrate-down', `↓ Block ${victim.id} demoted ${targetTierName.toUpperCase()} → ${victimTarget.toUpperCase()}`);
+      STATE.migrations++;
+    }
+
+    // Move block up
+    const idx = STATE.tiers[currentTier].indexOf(block);
+    if (idx !== -1) {
+      STATE.tiers[currentTier].splice(idx, 1);
+      STATE.tiers[targetTierName].push(block);
+      STATE.migrations++;
+
+      logSim('migrate-up', `↑ Block ${block.id} promoted ${currentTier.toUpperCase()} → ${targetTierName.toUpperCase()} (accesses=${block.accesses})`);
+
+      // Visual
+      showStatus(`↑ Block ${block.id} promoted to ${targetTierName.toUpperCase()}`, 'migrate');
+
+      // Reset accesses once promoted to keep the counter meaningful
+      if (block.accesses >= STATE.promoteThreshold * 2) {
+        block.accesses = STATE.promoteThreshold;  // partial reset
+      }
+    }
+  }
+}
+
+/* ============================================================
+   DEMOTION — move idle blocks down
+   ============================================================ */
+function demoteIdleBlocks() {
+  for (const tierName of ['dram', 'nvme', 'ssd']) {
+    const targetTierName = ['nvme', 'ssd', 'hdd'][['dram', 'nvme', 'ssd'].indexOf(tierName)];
+    const idle = STATE.tiers[tierName].filter(b => STATE.tickCount - b.lastAccess > STATE.demoteIdle);
+    for (const block of idle) {
+      const idx = STATE.tiers[tierName].indexOf(block);
+      STATE.tiers[tierName].splice(idx, 1);
+      STATE.tiers[targetTierName].push(block);
+      STATE.migrations++;
+      logSim('migrate-down', `↓ Block ${block.id} demoted ${tierName.toUpperCase()} → ${targetTierName.toUpperCase()} (idle ${STATE.tickCount - block.lastAccess} ticks)`);
+    }
+  }
+}
+
+/* ============================================================
+   LOGGING
+   ============================================================ */
+function logSim(cls, msg) {
+  const line = document.createElement('div');
+  line.className = `sim-line ${cls}`;
+  line.innerHTML = `<span class="time">t=${String(STATE.tickCount).padStart(4, '0')}</span><span class="msg">${msg}</span>`;
+  DOM.simLog.prepend(line);
+  while (DOM.simLog.children.length > 40) DOM.simLog.lastChild.remove();
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderAll() {
+  renderTier('dram', DOM.dramBlocks);
+  renderTier('nvme', DOM.nvmeBlocks);
+  renderTier('ssd', DOM.ssdBlocks);
+  renderTier('hdd', DOM.hddBlocks);
+  updateStats();
+}
+
+function renderTier(tierName, container) {
+  const blocks = STATE.tiers[tierName];
+
+  // Sort by heat (most accessed first) for display
+  const sorted = [...blocks].sort((a, b) => b.accesses - a.accesses);
+
+  let html = '';
+  for (const b of sorted) {
+    // Determine heat class
+    let cls = 'frozen';
+    if (b.accesses > 10) cls = 'hot';
+    else if (b.accesses > 5) cls = 'warm';
+    else if (b.accesses > 0) cls = 'cold';
+
+    html += `<div class="block ${cls}" data-block-id="${b.id}" title="block ${b.id} · ${b.accesses} accesses">${b.id}</div>`;
+  }
+  container.innerHTML = html;
+
+  // Fill %
+  const cap = tierName === 'dram' ? STATE.dramCap :
+              tierName === 'nvme' ? STATE.nvmeCap :
+              tierName === 'ssd' ? STATE.ssdCap : Math.max(blocks.length, 1);
+  const fillPct = Math.round((blocks.length / cap) * 100);
+  document.getElementById(tierName + 'Fill').textContent = fillPct + '%';
+
+  // Hits
+  const hitsMap = { dram: STATE.dramHits, nvme: STATE.nvmeHits, ssd: STATE.ssdHits, hdd: STATE.hddHits };
+  document.getElementById(tierName + 'Hits').textContent = hitsMap[tierName];
+}
+
+/* ============================================================
+   STATS
+   ============================================================ */
+function updateStats() {
+  DOM.dramCap.textContent = STATE.dramCap;
+  DOM.nvmeCap.textContent = STATE.nvmeCap;
+  DOM.ssdCap.textContent = STATE.ssdCap;
+
+  DOM.mBlocks.textContent = STATE.totalBlocks;
+  DOM.mAccess.textContent = STATE.accesses;
+  DOM.mMigrations.textContent = STATE.migrations;
+
+  // Avg latency
+  if (STATE.accesses > 0) {
+    const avgNs = (STATE.totalLatencyMs * 1e6) / STATE.accesses;
+    DOM.mLatency.textContent = fmtLatency(avgNs);
+    DOM.mLatency.className = 'metric-value ' + (avgNs > 1e6 ? 'bad' : avgNs > 1e4 ? 'warn' : '');
+  }
+
+  // Cost (rough): DRAM=$100/block, NVMe=$10, SSD=$1, HDD=$0.1
+  const cost =
+    STATE.tiers.dram.length * 100 +
+    STATE.tiers.nvme.length * 10 +
+    STATE.tiers.ssd.length * 1 +
+    STATE.tiers.hdd.length * 0.1;
+  DOM.mCost.textContent = '$' + cost.toFixed(1);
+
+  // DRAM hit %
+  const dramPct = STATE.accesses > 0
+    ? Math.round((STATE.dramHits / STATE.accesses) * 100)
+    : 0;
+  DOM.mDramPct.textContent = dramPct + '%';
+  DOM.mDramPct.className = 'metric-value ' + (dramPct > 60 ? '' : dramPct > 30 ? 'warn' : 'bad');
+}
+
+/* ============================================================
+   SIMULATION LOOP
+   ============================================================ */
+function tick() {
+  if (!STATE.running) return;
+  const blockId = generateAccess();
+  accessBlock(blockId);
+}
+
+function startRun() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+  DOM.simHint.textContent = 'running...';
+
+  STATE.autoTimer = setInterval(tick, 350);
+
+  const workloadName = {
+    zipf: 'Zipfian (80/20 hot/cold)',
+    timeseries: 'Time-series append',
+    hot: 'Single hot key',
+    uniform: 'Uniform random',
+    skew: 'Heavy skew (1% hot)'
+  }[STATE.workload];
+
+  teach('RUNNING',
+    `Running workload: ${workloadName}. Watch blocks migrate between tiers as their access patterns emerge. Hot blocks are pulled up to DRAM, cold blocks sink to HDD. Every migration is a real cost — moving data between tiers takes time and I/O.`,
+    'cyan'
+  );
+}
+
+function stopRun() {
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Run Workload';
+  DOM.simHint.textContent = 'paused';
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  STATE.autoTimer = null;
+  teach('STOPPED', `Paused. ${STATE.accesses} accesses, ${STATE.migrations} migrations.`, 'info', false);
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  stopRun();
+  initTiers();
+  DOM.btnRun.textContent = '▶ Run Workload';
+  DOM.simHint.textContent = 'idle';
+  teach('RESET', 'Tiering reset. All blocks back in their initial placement.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.workloadSelect.addEventListener('change', e => {
+  STATE.workload = e.target.value;
+  resetAll();
+});
+
+DOM.btnRun.addEventListener('click', () => {
+  if (STATE.running) stopRun();
+  else startRun();
+});
+DOM.btnStop.addEventListener('click', stopRun);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.dramRange.addEventListener('input', e => {
+  STATE.dramCap = parseInt(e.target.value);
+  DOM.dramVal.textContent = STATE.dramCap;
+  resetAll();
+});
+DOM.nvmeRange.addEventListener('input', e => {
+  STATE.nvmeCap = parseInt(e.target.value);
+  DOM.nvmeVal.textContent = STATE.nvmeCap;
+  resetAll();
+});
+DOM.ssdRange.addEventListener('input', e => {
+  STATE.ssdCap = parseInt(e.target.value);
+  DOM.ssdVal.textContent = STATE.ssdCap;
+  resetAll();
+});
+DOM.promoRange.addEventListener('input', e => {
+  STATE.promoteThreshold = parseInt(e.target.value);
+  DOM.promoVal.textContent = STATE.promoteThreshold;
+});
+DOM.demoRange.addEventListener('input', e => {
+  STATE.demoteIdle = parseInt(e.target.value);
+  DOM.demoVal.textContent = STATE.demoteIdle;
+});
+
+document.querySelectorAll('input[name="policy"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.policy = e.target.value;
+    const desc = {
+      hotness: 'Hotness policy: promote by raw access count. Simple and effective for stable workloads.',
+      recency: 'Recency policy: promote by last-access time. Great for bursty workloads.',
+      frequency: 'Frequency policy (LFU): promote by total access count. Good for stable hot sets but slow to adapt.',
+      static: 'Static policy: no auto-migration. You decide placement manually. Used for pinned hot tables.'
+    };
+    teach('POLICY', desc[e.target.value], 'purple');
+  });
+});
+
+window.addEventListener('resize', () => {});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+initTiers();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to In-Memory Data Tiering. The core idea: put your HOTTEST data in the FASTEST, most EXPENSIVE tier (DRAM), and your coldest data in the SLOWEST, cheapest tier (HDD). The engine's job is to decide, continuously, what stays hot and what should sink.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('THE LATENCY LADDER',
+      `The numbers are dramatic: DRAM is 100 nanoseconds. NVMe is 100 microseconds — 1,000× slower. SSD is 500 microseconds. HDD is 10 milliseconds — 100,000× slower than DRAM. Getting a hot key wrong by one tier costs you 3 orders of magnitude in latency. That's why tiering decisions matter so much.`,
+      'cyan'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('WHAT DRIVES MIGRATION',
+      `Real databases use different signals: access count (LFU), recency (LRU), composite scores, and explicit hints (like ` + '`ALTER TABLE ... PIN IN MEMORY`' + `). The trigger is usually a ratio: promote if a block has more than X accesses; demote if idle for more than Y seconds. Tune these and you shape the tier distribution.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('THE COST EQUATION',
+      `Every block's cost has two parts: STORAGE cost (DRAM is 100× more expensive per GB than SSD) plus ACCESS cost (misses hurt latency and throughput). The optimal placement minimizes: storage_cost × tier_size + access_cost × miss_rate. This is why hot data goes to DRAM even though it's expensive — the access savings dominate.`,
+      'warn'
+    );
+  }, 13500);
+
+  setTimeout(() => {
+    teach('REAL SYSTEMS',
+      `Examples: Oracle Database In-Memory (DRAM + flash), SAP HANA (all in-memory + tiering to SSD), SQL Server (buffer pool + columnstore + memory-optimized tables), MongoDB WiredTiger (in-memory + SSD), Redis Enterprise (DRAM + Flash tiering), Aerospike (DRAM + NVMe + SSD + HDD). Every serious database ships tiering.`,
+      'purple'
+    );
+  }, 18000);
+
+  showToast('👋 Pick a workload and press RUN', 4000);
+}, 600);
+</script>
+</body>
+</html>

@@ -1,0 +1,1889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transaction Deadlock Detection — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #ef4444, #f97316, #facc15);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(239,68,68,0.15);
+    color: #fca5a5;
+    border-color: #ef4444;
+  }
+  .teaching-toggle:hover { background: rgba(239,68,68,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fca5a5;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #ef4444; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #ef4444; color: #fff; border-color: #ef4444; }
+  .btn.primary:hover { background: #dc2626; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fca5a5; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #ef4444; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(239,68,68,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  /* LEFT: WAIT-FOR GRAPH */
+  .graph-pane {
+    flex: 1.3;
+    background: #070a14;
+    border: 2px solid #ef4444;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(239,68,68,0.15);
+    min-height: 0;
+  }
+  .graph-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fca5a5;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .graph-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .graph-canvas {
+    flex: 1;
+    position: relative;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .graph-edges {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .graph-edges path {
+    stroke: #64748b;
+    stroke-width: 1.8;
+    fill: none;
+    transition: all 0.4s;
+    marker-end: url(#arrow);
+  }
+  .graph-edges path.cycle {
+    stroke: #ef4444;
+    stroke-width: 3;
+    filter: drop-shadow(0 0 8px rgba(239,68,68,0.9));
+    animation: cycleFlash 0.6s ease-in-out infinite alternate;
+  }
+  @keyframes cycleFlash {
+    0% { stroke-opacity: 0.6; }
+    100% { stroke-opacity: 1; }
+  }
+  .graph-edges path.active {
+    stroke: #facc15;
+    stroke-width: 2.4;
+    filter: drop-shadow(0 0 6px rgba(250,204,21,0.9));
+  }
+
+  .txn-node {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    z-index: 2;
+    border: 3px solid;
+    background: linear-gradient(145deg, #0a1220, #050810);
+    transform: translate(-50%, -50%);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    cursor: pointer;
+  }
+  .txn-node.active {
+    border-color: #22c55e;
+    box-shadow: 0 0 15px rgba(34,197,94,0.4);
+  }
+  .txn-node.waiting {
+    border-color: #facc15;
+    box-shadow: 0 0 20px rgba(250,204,21,0.6);
+    animation: nodeWait 1.2s ease-in-out infinite;
+  }
+  @keyframes nodeWait {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.05); }
+  }
+  .txn-node.in-cycle {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 30px rgba(239,68,68,1);
+    animation: nodeCycle 0.5s ease-in-out infinite alternate;
+  }
+  @keyframes nodeCycle {
+    0% { transform: translate(-50%, -50%) scale(1); }
+    100% { transform: translate(-50%, -50%) scale(1.08); }
+  }
+  .txn-node.victim {
+    border-color: #a855f7 !important;
+    box-shadow: 0 0 40px rgba(168,85,247,1);
+    animation: nodeVictim 0.7s ease-in-out infinite alternate;
+  }
+  @keyframes nodeVictim {
+    0% { transform: translate(-50%, -50%) scale(1) rotate(-3deg); }
+    100% { transform: translate(-50%, -50%) scale(1.1) rotate(3deg); }
+  }
+  .txn-node.aborting {
+    animation: nodeAbort 0.7s ease-in forwards;
+  }
+  @keyframes nodeAbort {
+    0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    40% { transform: translate(-50%, -50%) scale(1.15); filter: brightness(2); }
+    100% { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
+  }
+
+  .txn-name {
+    font-size: 0.9rem;
+    font-weight: 900;
+    letter-spacing: 1px;
+  }
+  .txn-node.active .txn-name { color: #86efac; }
+  .txn-node.waiting .txn-name { color: #fde047; }
+  .txn-node.in-cycle .txn-name { color: #fca5a5; }
+  .txn-node.victim .txn-name { color: #d8b4fe; }
+
+  .txn-status {
+    font-size: 0.45rem;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    font-weight: 800;
+    margin-top: 3px;
+  }
+  .txn-node.active .txn-status { color: #4ade80; }
+  .txn-node.waiting .txn-status { color: #fbbf24; }
+  .txn-node.in-cycle .txn-status { color: #f87171; }
+  .txn-node.victim .txn-status { color: #c084fc; }
+
+  /* MIDDLE: LOCK TABLE */
+  .lock-pane {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #facc15;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(250,204,21,0.15);
+    min-height: 0;
+  }
+  .lock-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fde047;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .lock-table {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  .resource {
+    background: #02040a;
+    border: 1.5px solid #334155;
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    transition: all 0.4s;
+  }
+  .resource.contested {
+    border-color: #ef4444;
+    box-shadow: 0 0 15px rgba(239,68,68,0.4);
+  }
+
+  .resource-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: monospace;
+    font-size: 0.6rem;
+  }
+  .resource-name {
+    color: #cbd5e1;
+    font-weight: 800;
+    letter-spacing: 1px;
+    font-size: 0.65rem;
+  }
+  .resource-value {
+    color: #fbbf24;
+    font-weight: 800;
+  }
+  .resource-lock-info {
+    color: #64748b;
+    font-size: 0.5rem;
+    letter-spacing: 0.5px;
+  }
+
+  .lock-holder-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    background: rgba(34,197,94,0.08);
+    border-left: 3px solid #22c55e;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.55rem;
+    color: #86efac;
+  }
+  .lock-waiter-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    background: rgba(250,204,21,0.08);
+    border-left: 3px solid #facc15;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.55rem;
+    color: #fde047;
+    animation: waiterPulse 1s ease-in-out infinite;
+  }
+  @keyframes waiterPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+  .lock-badge {
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    margin-right: 4px;
+  }
+  .lock-badge.holder {
+    background: rgba(34,197,94,0.2);
+    color: #6ee7b7;
+  }
+  .lock-badge.waiter {
+    background: rgba(250,204,21,0.2);
+    color: #fde047;
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(239,68,68,0.06);
+    border: 1px solid rgba(239,68,68,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fca5a5;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #67e8f9; text-shadow: 0 0 10px rgba(6,182,212,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 260px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #ef4444;
+    background: rgba(239,68,68,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #22d3ee; background: rgba(34,211,238,0.05); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(34,211,238,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Victim selection card */
+  .victim-card {
+    background: linear-gradient(145deg, rgba(239,68,68,0.08), rgba(30,41,59,0.2));
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .victim-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fca5a5;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .victim-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .victim-row:last-child { border-bottom: none; }
+  .victim-row .lbl { color: #94a3b8; }
+  .victim-row .val { color: #fca5a5; font-weight: 800; }
+
+  /* Bottom event panel */
+  .bottom-panel {
+    position: absolute;
+    bottom: 30px;
+    left: 16px;
+    right: 356px;
+    background: rgba(10,14,25,0.95);
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-family: monospace;
+    font-size: 0.6rem;
+    z-index: 8;
+    max-height: 80px;
+    overflow-y: auto;
+    box-shadow: 0 0 25px rgba(0,0,0,0.6);
+    display: none;
+  }
+  .bottom-panel.show { display: block; }
+  .bottom-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fde047;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .event-line {
+    padding: 2px 4px;
+    border-radius: 3px;
+    display: flex;
+    gap: 8px;
+    animation: eventIn 0.4s ease;
+  }
+  @keyframes eventIn {
+    from { transform: translateX(-8px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .event-line .ts {
+    color: #475569;
+    font-size: 0.5rem;
+    min-width: 46px;
+  }
+  .event-line .msg { color: #cbd5e1; flex: 1; }
+  .event-line.wait { border-left: 2px solid #facc15; }
+  .event-line.wait .msg { color: #fde047; }
+  .event-line.grant { border-left: 2px solid #22c55e; }
+  .event-line.grant .msg { color: #86efac; }
+  .event-line.cycle { border-left: 2px solid #ef4444; background: rgba(239,68,68,0.08); }
+  .event-line.cycle .msg { color: #fca5a5; font-weight: 700; }
+  .event-line.victim { border-left: 2px solid #a855f7; background: rgba(168,85,247,0.08); }
+  .event-line.victim .msg { color: #d8b4fe; font-weight: 700; }
+  .event-line.abort { border-left: 2px solid #ef4444; }
+  .event-line.abort .msg { color: #fca5a5; font-weight: 800; }
+  .event-line.resume { border-left: 2px solid #10b981; }
+  .event-line.resume .msg { color: #6ee7b7; font-weight: 700; }
+
+  /* Status banner */
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #ef4444;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fca5a5;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(239,68,68,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.cycle { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.8); animation: bannerFlash 0.6s ease-in-out infinite alternate; }
+  @keyframes bannerFlash {
+    0% { box-shadow: 0 0 20px rgba(239,68,68,0.5); }
+    100% { box-shadow: 0 0 40px rgba(239,68,68,1); }
+  }
+  .status-banner.victim { border-color: #a855f7; color: #d8b4fe; box-shadow: 0 0 25px rgba(168,85,247,0.7); }
+  .status-banner.resolved { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 2px solid;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #ef4444;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(239,68,68,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>TRANSACTION DEADLOCK DETECTION</h1>
+    <span class="sub">WAIT-FOR GRAPH · CYCLE · VICTIM · ABORT</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Scenarios</h3>
+      <select id="scenarioSelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="classic" selected>💀 Classic 2-way deadlock</option>
+        <option value="three">🔺 3-way cycle (T1→T2→T3→T1)</option>
+        <option value="chain">🔗 Long chain (5 way)</option>
+        <option value="conversion">🔒 Lock conversion deadlock</option>
+        <option value="nocycle">✅ No deadlock (T1 waits, T2 finishes)</option>
+        <option value="costbased">💰 Victim selection by cost</option>
+      </select>
+      <button class="btn primary" id="btnRun">▶ Run Scenario</button>
+      <button class="btn" id="btnStep">⏭ Step</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Detection</h3>
+      <button class="btn warn" id="btnDetect">🔍 Detect Cycle Now</button>
+      <button class="btn" id="btnAutoDetect">🔄 Auto-Detect: ON</button>
+    </div>
+
+    <div class="panel">
+      <h3>Victim Selection</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.7rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="victim" value="youngest" checked style="accent-color:#ef4444;">
+          Youngest (least work)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="victim" value="fewest" style="accent-color:#ef4444;">
+          Fewest locks held
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="victim" value="cheapest" style="accent-color:#ef4444;">
+          Cheapest to rollback
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="victim" value="random" style="accent-color:#ef4444;">
+          Random
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Detection Interval</h3>
+      <div class="slider-row"><span>Check every</span><span class="value" id="intervalVal">2s</span></div>
+      <input type="range" id="intervalRange" min="1" max="10" value="2">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#22c55e;"></div>Active transaction</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#facc15;"></div>Waiting for lock</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#ef4444;"></div>In cycle (deadlock)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#a855f7;"></div>Chosen victim</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">EVERY WAIT IS AN EDGE · EVERY CYCLE IS A DEADLOCK</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <!-- WAIT-FOR GRAPH -->
+        <div class="graph-pane">
+          <div class="graph-title">
+            <span>🕸️ WAIT-FOR GRAPH</span>
+            <span class="hint" id="graphHint">— no waits —</span>
+          </div>
+          <div class="graph-canvas" id="graphCanvas">
+            <svg class="graph-edges" id="graphEdges">
+              <defs>
+                <marker id="arrow" viewBox="0 0 10 10" refX="20" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+                </marker>
+                <marker id="arrowCycle" viewBox="0 0 10 10" refX="20" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" />
+                </marker>
+              </defs>
+            </svg>
+          </div>
+        </div>
+
+        <!-- LOCK TABLE -->
+        <div class="lock-pane">
+          <div class="lock-title">
+            <span>🔒 LOCK TABLE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="lockHint">—</span>
+          </div>
+          <div class="lock-table" id="lockTable"></div>
+        </div>
+      </div>
+
+      <div class="bottom-panel" id="bottomPanel">
+        <div class="bottom-title">📋 EVENT LOG</div>
+        <div id="eventLog"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Transactions</div>
+        <div class="metric-value info" id="mTxns">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Waiting</div>
+        <div class="metric-value warn" id="mWaiting">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Cycles Detected</div>
+        <div class="metric-value bad" id="mCycles">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Victims Aborted</div>
+        <div class="metric-value warn" id="mAborts">0</div>
+      </div>
+    </div>
+
+    <div class="victim-card">
+      <div class="victim-title">🎯 Victim Selection</div>
+      <div class="victim-row"><span class="lbl">Strategy</span><span class="val" id="vStrategy">youngest</span></div>
+      <div class="victim-row"><span class="lbl">Last victim</span><span class="val" id="vLast">—</span></div>
+      <div class="victim-row"><span class="lbl">Reason</span><span class="val" id="vReason">—</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  scenario: 'classic',
+  victimStrategy: 'youngest',
+  detectionInterval: 2,
+  // Transactions
+  txns: [],           // { id, name, status, startTime, heldLocks, waitingFor, workDone }
+  // Resources (rows) in the lock table
+  resources: [],      // { id, name, value, lockHolder, waiters: [] }
+  // Graph
+  edges: [],          // { from, to }  (txnId → txnId)
+  cycleNodes: new Set(),
+  victimId: null,
+  // Simulation
+  running: false,
+  elapsed: 0,
+  autoDetect: true,
+  autoTimer: null,
+  detectTimer: null,
+  stepTimer: null,
+  // Stats
+  cyclesDetected: 0,
+  victimsAborted: 0,
+  // Events
+  events: [],
+  currentEventIndex: 0,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  // UI
+  lastVictim: null,
+  victimReason: ''
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  graphCanvas: document.getElementById('graphCanvas'),
+  graphEdges: document.getElementById('graphEdges'),
+  graphHint: document.getElementById('graphHint'),
+  lockTable: document.getElementById('lockTable'),
+  lockHint: document.getElementById('lockHint'),
+  bottomPanel: document.getElementById('bottomPanel'),
+  eventLog: document.getElementById('eventLog'),
+  statusBanner: document.getElementById('statusBanner'),
+  scenarioSelect: document.getElementById('scenarioSelect'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnDetect: document.getElementById('btnDetect'),
+  btnAutoDetect: document.getElementById('btnAutoDetect'),
+  intervalRange: document.getElementById('intervalRange'),
+  intervalVal: document.getElementById('intervalVal'),
+  // Metrics
+  mTxns: document.getElementById('mTxns'),
+  mWaiting: document.getElementById('mWaiting'),
+  mCycles: document.getElementById('mCycles'),
+  mAborts: document.getElementById('mAborts'),
+  // Victim
+  vStrategy: document.getElementById('vStrategy'),
+  vLast: document.getElementById('vLast'),
+  vReason: document.getElementById('vReason'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2400);
+}
+
+function logEvent(type, msg) {
+  const line = document.createElement('div');
+  line.className = `event-line ${type}`;
+  line.innerHTML = `<span class="ts">t=${String(STATE.elapsed).padStart(3, '0')}</span><span class="msg">${msg}</span>`;
+  DOM.eventLog.prepend(line);
+  while (DOM.eventLog.children.length > 30) DOM.eventLog.lastChild.remove();
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining transaction deadlock detection.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   INITIALIZATION
+   ============================================================ */
+function resetAll() {
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  if (STATE.detectTimer) clearInterval(STATE.detectTimer);
+  if (STATE.stepTimer) clearInterval(STATE.stepTimer);
+  STATE.running = false;
+  STATE.elapsed = 0;
+  STATE.txns = [];
+  STATE.resources = [];
+  STATE.edges = [];
+  STATE.cycleNodes = new Set();
+  STATE.victimId = null;
+  STATE.cyclesDetected = 0;
+  STATE.victimsAborted = 0;
+  STATE.events = [];
+  STATE.currentEventIndex = 0;
+  STATE.lastVictim = null;
+  STATE.victimReason = '';
+
+  DOM.eventLog.innerHTML = '';
+  DOM.btnRun.textContent = '▶ Run Scenario';
+  DOM.statusBanner.classList.remove('show');
+
+  buildScenario();
+  renderAll();
+  updateMetrics();
+
+  DOM.vLast.textContent = '—';
+  DOM.vReason.textContent = '—';
+  DOM.vStrategy.textContent = STATE.victimStrategy;
+}
+
+/* ============================================================
+   SCENARIOS
+   Each scenario builds:
+    - transactions
+    - resources
+    - events (what happens when)
+   ============================================================ */
+function buildScenario() {
+  switch (STATE.scenario) {
+    case 'classic': buildClassic(); break;
+    case 'three': buildThree(); break;
+    case 'chain': buildChain(); break;
+    case 'conversion': buildConversion(); break;
+    case 'nocycle': buildNoCycle(); break;
+    case 'costbased': buildCostBased(); break;
+  }
+}
+
+function makeTxn(name) {
+  return {
+    id: name,
+    name,
+    status: 'active',
+    startTime: STATE.elapsed,
+    heldLocks: [],       // resource ids
+    waitingFor: null,    // resource id
+    workDone: 0,
+    rowCount: 0
+  };
+}
+
+function makeResource(id, name) {
+  return {
+    id,
+    name,
+    value: Math.floor(Math.random() * 900) + 100,
+    lockHolder: null,   // txn name
+    lockType: null,     // 'X' or 'S'
+    waiters: []         // array of txn names
+  };
+}
+
+/* ---------- Scenario 1: Classic 2-way deadlock ---------- */
+function buildClassic() {
+  const t1 = makeTxn('T1');
+  const t2 = makeTxn('T2');
+  STATE.txns = [t1, t2];
+
+  STATE.resources = [
+    makeResource('A', 'Row A'),
+    makeResource('B', 'Row B')
+  ];
+
+  STATE.events = [
+    { at: 1, action: () => lockAcquire('T1', 'A') },
+    { at: 2, action: () => lockAcquire('T2', 'B') },
+    { at: 3, action: () => lockAcquire('T1', 'B') },   // T1 waits for T2
+    { at: 4, action: () => lockAcquire('T2', 'A') },   // T2 waits for T1 → DEADLOCK
+    // Detection at t=5
+    { at: 5, action: () => detectCycle() },
+    // Kill victim
+    { at: 6, action: () => abortVictim() },
+    // Other txn can proceed
+    { at: 7, action: () => resumeAfterVictim() }
+  ];
+}
+
+/* ---------- Scenario 2: 3-way cycle ---------- */
+function buildThree() {
+  const t1 = makeTxn('T1');
+  const t2 = makeTxn('T2');
+  const t3 = makeTxn('T3');
+  STATE.txns = [t1, t2, t3];
+
+  STATE.resources = [
+    makeResource('A', 'Row A'),
+    makeResource('B', 'Row B'),
+    makeResource('C', 'Row C')
+  ];
+
+  STATE.events = [
+    { at: 1, action: () => lockAcquire('T1', 'A') },
+    { at: 2, action: () => lockAcquire('T2', 'B') },
+    { at: 3, action: () => lockAcquire('T3', 'C') },
+    { at: 4, action: () => lockAcquire('T1', 'B') },   // T1 waits for T2
+    { at: 5, action: () => lockAcquire('T2', 'C') },   // T2 waits for T3
+    { at: 6, action: () => lockAcquire('T3', 'A') },   // T3 waits for T1 → CYCLE
+    { at: 7, action: () => detectCycle() },
+    { at: 8, action: () => abortVictim() },
+    { at: 9, action: () => resumeAfterVictim() }
+  ];
+}
+
+/* ---------- Scenario 3: Chain of 5 ---------- */
+function buildChain() {
+  const names = ['T1', 'T2', 'T3', 'T4', 'T5'];
+  STATE.txns = names.map(n => makeTxn(n));
+
+  const resources = [];
+  for (let i = 0; i < 5; i++) {
+    resources.push(makeResource(String.fromCharCode(65 + i), `Row ${String.fromCharCode(65 + i)}`));
+  }
+  STATE.resources = resources;
+
+  STATE.events = [];
+  // Each Tn locks Rn
+  for (let i = 0; i < 5; i++) {
+    STATE.events.push({ at: i + 1, action: () => lockAcquire(`T${i + 1}`, String.fromCharCode(65 + i)) });
+  }
+  // Each Tn waits for Tn+1's resource (T5 wraps to T1)
+  for (let i = 0; i < 5; i++) {
+    const next = (i + 1) % 5;
+    STATE.events.push({ at: 6 + i, action: () => lockAcquire(`T${i + 1}`, String.fromCharCode(65 + next)) });
+  }
+  // Detect
+  STATE.events.push({ at: 12, action: () => detectCycle() });
+  STATE.events.push({ at: 13, action: () => abortVictim() });
+  STATE.events.push({ at: 14, action: () => resumeAfterVictim() });
+}
+
+/* ---------- Scenario 4: Lock conversion deadlock ---------- */
+function buildConversion() {
+  const t1 = makeTxn('T1');
+  const t2 = makeTxn('T2');
+  STATE.txns = [t1, t2];
+
+  STATE.resources = [makeResource('A', 'Row A')];
+
+  STATE.events = [
+    { at: 1, action: () => lockAcquire('T1', 'A', 'S') },   // T1 takes S
+    { at: 2, action: () => lockAcquire('T2', 'A', 'S') },   // T2 takes S (compatible)
+    { at: 3, action: () => lockUpgrade('T1', 'A') },        // T1 wants X — waits for T2's S
+    { at: 4, action: () => lockUpgrade('T2', 'A') },        // T2 wants X — waits for T1's S → DEADLOCK
+    { at: 5, action: () => detectCycle() },
+    { at: 6, action: () => abortVictim() },
+    { at: 7, action: () => resumeAfterVictim() }
+  ];
+}
+
+/* ---------- Scenario 5: No cycle ---------- */
+function buildNoCycle() {
+  const t1 = makeTxn('T1');
+  const t2 = makeTxn('T2');
+  STATE.txns = [t1, t2];
+
+  STATE.resources = [
+    makeResource('A', 'Row A'),
+    makeResource('B', 'Row B')
+  ];
+
+  STATE.events = [
+    { at: 1, action: () => lockAcquire('T1', 'A') },
+    { at: 2, action: () => lockAcquire('T2', 'B') },
+    { at: 3, action: () => lockAcquire('T1', 'B') },     // T1 waits for T2
+    { at: 4, action: () => detectCycle() },              // Detection runs: no cycle
+    { at: 5, action: () => releaseAll('T2') },           // T2 finishes, releases B
+    { at: 6, action: () => grantWaiters() },             // T1 acquires B
+    { at: 7, action: () => { } }                          // done
+  ];
+}
+
+/* ---------- Scenario 6: Victim selection by cost ---------- */
+function buildCostBased() {
+  const t1 = makeTxn('T1');
+  const t2 = makeTxn('T2');
+  STATE.txns = [t1, t2];
+
+  // Pre-populate T1 with a lot of work
+  t1.workDone = 500;
+  t1.startTime = -50;
+  t1.heldLocks = ['X', 'Y', 'Z', 'W'];
+  t1.rowCount = 500;
+
+  t2.workDone = 5;
+  t2.startTime = STATE.elapsed - 1;
+  t2.heldLocks = [];
+  t2.rowCount = 5;
+
+  STATE.resources = [
+    makeResource('A', 'Row A'),
+    makeResource('B', 'Row B'),
+    makeResource('X', 'Row X'),
+    makeResource('Y', 'Row Y'),
+    makeResource('Z', 'Row Z'),
+    makeResource('W', 'Row W')
+  ];
+
+  // Pre-set holders for X, Y, Z, W by T1
+  STATE.resources[2].lockHolder = 'T1';
+  STATE.resources[3].lockHolder = 'T1';
+  STATE.resources[4].lockHolder = 'T1';
+  STATE.resources[5].lockHolder = 'T1';
+
+  STATE.events = [
+    { at: 1, action: () => lockAcquire('T1', 'A') },
+    { at: 2, action: () => lockAcquire('T2', 'B') },
+    { at: 3, action: () => lockAcquire('T1', 'B') },     // T1 waits (T2 holds B)
+    { at: 4, action: () => lockAcquire('T2', 'A') },     // T2 waits → CYCLE
+    { at: 5, action: () => detectCycle() },
+    { at: 6, action: () => abortVictim() },
+    { at: 7, action: () => resumeAfterVictim() }
+  ];
+}
+
+/* ============================================================
+   LOCK OPERATIONS
+   ============================================================ */
+function lockAcquire(txnName, resourceId, type = 'X') {
+  const txn = STATE.txns.find(t => t.name === txnName);
+  const res = STATE.resources.find(r => r.id === resourceId);
+  if (!txn || !res) return;
+
+  if (txn.status === 'aborted' || txn.status === 'committed') return;
+
+  // If no holder, grant
+  if (!res.lockHolder) {
+    res.lockHolder = txnName;
+    res.lockType = type;
+    txn.heldLocks.push(resourceId);
+    txn.status = 'active';
+    txn.workDone += 50;
+
+    logEvent('grant', `${txnName} acquires ${type}-lock on ${res.name}`);
+    teach('GRANT', `${txnName} acquires ${type}-lock on ${res.name}. No contention — it can proceed.`, 'ok', false);
+  } else if (res.lockHolder === txnName) {
+    // Already holds — nothing to do
+    return;
+  } else {
+    // Wait
+    txn.status = 'waiting';
+    txn.waitingFor = resourceId;
+    if (!res.waiters.includes(txnName)) res.waiters.push(txnName);
+
+    logEvent('wait', `${txnName} WAITS for ${res.name} (held by ${res.lockHolder})`);
+    teach('WAIT', `${txnName} wants ${type}-lock on ${res.name}, but ${res.lockHolder} holds it. ${txnName} enters the wait queue. This adds an edge to the wait-for graph.`, 'warn', false);
+  }
+
+  rebuildEdges();
+  renderAll();
+}
+
+function lockUpgrade(txnName, resourceId) {
+  const txn = STATE.txns.find(t => t.name === txnName);
+  const res = STATE.resources.find(r => r.id === resourceId);
+  if (!txn || !res) return;
+
+  if (res.lockHolder !== txnName) return;
+
+  // Try to upgrade S → X. If others are also waiting/holding S, we wait.
+  // In our simplified model, another txn holding S on the same resource = conflict.
+  const otherSHolder = STATE.txns.find(t => t.name !== txnName && t.heldLocks.includes(resourceId));
+  if (otherSHolder) {
+    txn.status = 'waiting';
+    txn.waitingFor = resourceId;
+    res.waiters.push(txnName);
+    logEvent('wait', `${txnName} tries to UPGRADE S→X on ${res.name} but ${otherSHolder.name} holds S. Waits.`);
+    teach('UPGRADE WAIT', `${txnName} wants to upgrade its shared lock to exclusive on ${res.name}. But ${otherSHolder.name} still holds a shared lock — an upgrade conflict. ${txnName} must wait.`, 'warn', false);
+  } else {
+    res.lockType = 'X';
+    logEvent('grant', `${txnName} upgrades to X-lock on ${res.name}`);
+  }
+
+  rebuildEdges();
+  renderAll();
+}
+
+function releaseAll(txnName) {
+  const txn = STATE.txns.find(t => t.name === txnName);
+  if (!txn) return;
+
+  for (const resId of txn.heldLocks) {
+    const res = STATE.resources.find(r => r.id === resId);
+    if (!res) continue;
+    if (res.lockHolder === txnName) {
+      res.lockHolder = null;
+      res.lockType = null;
+    }
+  }
+  txn.heldLocks = [];
+  txn.status = 'committed';
+  logEvent('grant', `${txnName} COMMITS and releases all locks`);
+
+  rebuildEdges();
+  renderAll();
+}
+
+function grantWaiters() {
+  // Grant any waiting locks whose resources are now free
+  for (const txn of STATE.txns) {
+    if (txn.status !== 'waiting') continue;
+    const res = STATE.resources.find(r => r.id === txn.waitingFor);
+    if (!res) continue;
+    if (!res.lockHolder) {
+      res.lockHolder = txn.name;
+      res.lockType = 'X';
+      res.waiters = res.waiters.filter(w => w !== txn.name);
+      txn.heldLocks.push(res.id);
+      txn.status = 'active';
+      txn.waitingFor = null;
+      logEvent('resume', `${txn.name} acquires ${res.name} after wait — resumes`);
+      teach('RESUME', `${txn.name} finally acquires ${res.name} and resumes execution. The wait is over.`, 'ok', false);
+    }
+  }
+  rebuildEdges();
+  renderAll();
+}
+
+/* ============================================================
+   WAIT-FOR GRAPH CONSTRUCTION
+   ============================================================ */
+function rebuildEdges() {
+  STATE.edges = [];
+  for (const txn of STATE.txns) {
+    if (txn.status === 'waiting' && txn.waitingFor) {
+      const res = STATE.resources.find(r => r.id === txn.waitingFor);
+      if (res && res.lockHolder && res.lockHolder !== txn.name) {
+        STATE.edges.push({ from: txn.name, to: res.lockHolder });
+      }
+    }
+  }
+}
+
+/* ============================================================
+   CYCLE DETECTION — DFS on the wait-for graph
+   ============================================================ */
+function detectCycle() {
+  logEvent('detect', `Running cycle detection on wait-for graph...`);
+
+  // Build adjacency map
+  const adj = {};
+  for (const t of STATE.txns) adj[t.name] = [];
+  for (const e of STATE.edges) adj[e.from].push(e.to);
+
+  // DFS with color marking: 0=white, 1=gray, 2=black
+  const color = {};
+  const parent = {};
+  for (const t of STATE.txns) color[t.name] = 0;
+
+  let foundCycle = null;
+
+  function dfs(node) {
+    color[node] = 1;  // gray
+    for (const next of adj[node] || []) {
+      if (color[next] === 0) {
+        parent[next] = node;
+        const r = dfs(next);
+        if (r) return r;
+      } else if (color[next] === 1) {
+        // Back edge → cycle
+        // Reconstruct path
+        const path = [next];
+        let cur = node;
+        while (cur !== next) {
+          path.unshift(cur);
+          cur = parent[cur];
+        }
+        path.unshift(next);
+        return path;
+      }
+    }
+    color[node] = 2;
+    return null;
+  }
+
+  for (const t of STATE.txns) {
+    if (color[t.name] === 0) {
+      const c = dfs(t.name);
+      if (c) { foundCycle = c; break; }
+    }
+  }
+
+  if (foundCycle) {
+    STATE.cyclesDetected++;
+    STATE.cycleNodes = new Set(foundCycle);
+    // Remove duplicate last element if the path wraps
+    const cycleDisplay = foundCycle.join(' → ');
+
+    showStatus(`⚠️ DEADLOCK DETECTED — Cycle: ${cycleDisplay}`, 'cycle');
+    logEvent('cycle', `🔴 CYCLE DETECTED: ${cycleDisplay}`);
+    teach('DEADLOCK',
+      `Cycle detected: ${cycleDisplay}. Every transaction in this cycle is waiting for the next one. No progress is possible without intervention. The database must choose a victim to abort.`,
+      'error'
+    );
+
+    // Mark all cycle nodes
+    for (const name of foundCycle) {
+      const t = STATE.txns.find(x => x.name === name);
+      if (t) t.inCycle = true;
+    }
+    renderAll();
+    updateMetrics();
+    return foundCycle;
+  } else {
+    logEvent('grant', `✔ No cycle — wait-for graph is a DAG`);
+    showStatus('✔ No cycle detected — DAG', 'resolved');
+    teach('NO CYCLE',
+      `No cycle detected. The wait-for graph is a DAG (directed acyclic graph). Some transaction will eventually release its lock and the others will proceed.`,
+      'ok', false
+    );
+    return null;
+  }
+}
+
+/* ============================================================
+   VICTIM SELECTION
+   ============================================================ */
+function selectVictim() {
+  const cycleTxns = STATE.txns.filter(t => t.inCycle);
+  if (cycleTxns.length === 0) return null;
+
+  let victim = null;
+  let reason = '';
+
+  switch (STATE.victimStrategy) {
+    case 'youngest': {
+      // Smallest workDone = least invested work
+      victim = cycleTxns.reduce((a, b) => a.workDone < b.workDone ? a : b);
+      reason = `Least work invested (workDone=${victim.workDone})`;
+      break;
+    }
+    case 'fewest': {
+      victim = cycleTxns.reduce((a, b) => a.heldLocks.length < b.heldLocks.length ? a : b);
+      reason = `Fewest locks held (${victim.heldLocks.length})`;
+      break;
+    }
+    case 'cheapest': {
+      victim = cycleTxns.reduce((a, b) => a.rowCount < b.rowCount ? a : b);
+      reason = `Cheapest to rollback (rows=${victim.rowCount})`;
+      break;
+    }
+    case 'random': {
+      victim = cycleTxns[Math.floor(Math.random() * cycleTxns.length)];
+      reason = `Randomly selected`;
+      break;
+    }
+  }
+
+  STATE.victimId = victim.name;
+  STATE.lastVictim = victim.name;
+  STATE.victimReason = reason;
+
+  DOM.vLast.textContent = victim.name;
+  DOM.vReason.textContent = reason;
+
+  return victim;
+}
+
+function abortVictim() {
+  const victim = selectVictim();
+  if (!victim) return;
+
+  victim.status = 'aborted';
+
+  showStatus(`💀 Aborting victim: ${victim.name} — ${STATE.victimReason}`, 'victim');
+  logEvent('victim', `💀 Selected victim: ${victim.name} — ${STATE.victimReason}`);
+  logEvent('abort', `✗ Aborting ${victim.name}, releasing all its locks`);
+
+  teach('VICTIM CHOSEN',
+    `Chosen victim: ${victim.name}. Reason: ${STATE.victimReason}. The database will now roll back ${victim.name}, release all its locks, and let the remaining transactions proceed. The aborted transaction may be automatically retried by the application.`,
+    'purple'
+  );
+
+  // Release victim's locks
+  for (const resId of victim.heldLocks) {
+    const res = STATE.resources.find(r => r.id === resId);
+    if (!res) continue;
+    if (res.lockHolder === victim.name) {
+      res.lockHolder = null;
+      res.lockType = null;
+    }
+  }
+  victim.heldLocks = [];
+  victim.waitingFor = null;
+  victim.inCycle = false;
+
+  STATE.victimsAborted++;
+
+  // Remove victim from all waiters lists
+  for (const res of STATE.resources) {
+    res.waiters = res.waiters.filter(w => w !== victim.name);
+  }
+
+  // Clear cycle markers
+  for (const t of STATE.txns) t.inCycle = false;
+  STATE.cycleNodes = new Set();
+
+  rebuildEdges();
+  renderAll();
+  updateMetrics();
+
+  // Mark visual abort
+  const node = document.querySelector(`[data-txn="${victim.name}"]`);
+  if (node) {
+    node.classList.add('aborting');
+    setTimeout(() => {
+      renderGraph();
+    }, 900);
+  }
+
+  setTimeout(() => {
+    // After abort, other txns can proceed
+    grantWaiters();
+    // Clear cycle markers
+    for (const t of STATE.txns) t.inCycle = false;
+    STATE.cycleNodes = new Set();
+    renderAll();
+    updateMetrics();
+
+    showStatus(`✔ Deadlock resolved — ${victim.name} aborted`, 'resolved');
+    logEvent('resume', `✔ Deadlock resolved. Remaining transactions proceed.`);
+    teach('RESOLVED',
+      `Deadlock resolved. ${victim.name} was aborted and its locks released. The other transactions acquired what they were waiting for and continued. The database is unblocked.`,
+      'ok'
+    );
+  }, 1200);
+}
+
+function resumeAfterVictim() {
+  // Called after abort — grant all waiters now possible
+  grantWaiters();
+  renderAll();
+  updateMetrics();
+}
+
+/* ============================================================
+   STEP EXECUTION
+   ============================================================ */
+function runNextStep() {
+  if (STATE.currentEventIndex >= STATE.events.length) {
+    logEvent('resume', `✔ Scenario complete`);
+    STATE.running = false;
+    DOM.btnRun.textContent = '▶ Run Again';
+    return;
+  }
+
+  const evt = STATE.events[STATE.currentEventIndex];
+  STATE.elapsed = evt.at;
+  evt.action();
+  STATE.currentEventIndex++;
+
+  updateMetrics();
+}
+
+function runAll() {
+  if (STATE.running) {
+    // Stop
+    STATE.running = false;
+    if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+    STATE.autoTimer = null;
+    DOM.btnRun.textContent = '▶ Resume';
+    return;
+  }
+
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+  DOM.bottomPanel.classList.add('show');
+
+  STATE.autoTimer = setInterval(() => {
+    runNextStep();
+    if (STATE.currentEventIndex >= STATE.events.length) {
+      clearInterval(STATE.autoTimer);
+      STATE.autoTimer = null;
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+    }
+  }, 1100);
+}
+
+function stepOnce() {
+  runNextStep();
+  DOM.bottomPanel.classList.add('show');
+}
+
+/* ============================================================
+   RENDER — GRAPH
+   ============================================================ */
+function renderGraph() {
+  // Remove old nodes
+  document.querySelectorAll('.txn-node').forEach(el => el.remove());
+
+  const canvas = DOM.graphCanvas;
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+
+  // Only render active/waiting txns
+  const activeTxns = STATE.txns.filter(t => t.status !== 'aborted');
+  const N = activeTxns.length;
+
+  // Layout: spread around center
+  const cx = W / 2;
+  const cy = H / 2;
+  const radius = Math.min(W, H) * 0.32;
+
+  const positions = {};
+
+  for (let i = 0; i < N; i++) {
+    const t = activeTxns[i];
+    const angle = (i / N) * Math.PI * 2 - Math.PI / 2;
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy + Math.sin(angle) * radius;
+    positions[t.name] = { x, y };
+
+    const el = document.createElement('div');
+    let cls = 'txn-node';
+    if (t.inCycle) cls += ' in-cycle';
+    else if (t.name === STATE.victimId && t.status === 'waiting') cls += ' victim';
+    else if (t.status === 'waiting') cls += ' waiting';
+    else if (t.status === 'active') cls += ' active';
+    else cls += ' active';
+
+    el.className = cls;
+    el.dataset.txn = t.name;
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+
+    el.innerHTML = `
+      <div class="txn-name">${t.name}</div>
+      <div class="txn-status">${t.status}</div>
+    `;
+    canvas.appendChild(el);
+  }
+
+  // Render edges
+  let html = '';
+  for (const e of STATE.edges) {
+    const from = positions[e.from];
+    const to = positions[e.to];
+    if (!from || !to) continue;
+
+    // Compute offset for arrow start/end (radius 40px)
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 1) continue;
+    const ux = dx / dist;
+    const uy = dy / dist;
+    const r = 44;
+    const x1 = from.x + ux * r;
+    const y1 = from.y + uy * r;
+    const x2 = to.x - ux * (r + 4);
+    const y2 = to.y - uy * (r + 4);
+
+    // Curved path
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    // Perpendicular offset for curve
+    const perpX = -uy * 20;
+    const perpY = ux * 20;
+    const qx = mx + perpX;
+    const qy = my + perpY;
+
+    const isCycle = STATE.cycleNodes.has(e.from) && STATE.cycleNodes.has(e.to);
+    const cls = isCycle ? 'cycle' : 'active';
+
+    html += `<path class="${cls}" d="M ${x1} ${y1} Q ${qx} ${qy} ${x2} ${y2}" />`;
+  }
+  DOM.graphEdges.innerHTML = `
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+      </marker>
+      <marker id="arrowCycle" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" />
+      </marker>
+    </defs>
+    ${html}
+  `;
+
+  // Update hint
+  DOM.graphHint.textContent = `— ${STATE.edges.length} edge${STATE.edges.length === 1 ? '' : 's'}${STATE.cycleNodes.size > 0 ? ' · CYCLE' : ''} —`;
+}
+
+/* ============================================================
+   RENDER — LOCK TABLE
+   ============================================================ */
+function renderLockTable() {
+  let html = '';
+  for (const res of STATE.resources) {
+    const contested = res.lockHolder && res.waiters.length > 0;
+    html += `
+      <div class="resource ${contested ? 'contested' : ''}">
+        <div class="resource-header">
+          <span class="resource-name">${res.name}</span>
+          <span class="resource-value">= ${res.value}</span>
+        </div>
+    `;
+    if (res.lockHolder) {
+      html += `
+        <div class="lock-holder-row">
+          <span class="lock-badge holder">${res.lockType || 'X'}</span>
+          <span>held by <strong>${res.lockHolder}</strong></span>
+        </div>
+      `;
+    } else {
+      html += `<div style="font-family:monospace; font-size:0.5rem; color:#475569; padding:2px 4px;">— unlocked —</div>`;
+    }
+    if (res.waiters.length > 0) {
+      for (const w of res.waiters) {
+        html += `
+          <div class="lock-waiter-row">
+            <span class="lock-badge waiter">WAIT</span>
+            <span><strong>${w}</strong> is waiting for this lock</span>
+          </div>
+        `;
+      }
+    }
+    html += `</div>`;
+  }
+  DOM.lockTable.innerHTML = html;
+  DOM.lockHint.textContent = `${STATE.resources.length} resources · ${STATE.edges.length} waits`;
+}
+
+/* ============================================================
+   RENDER ALL
+   ============================================================ */
+function renderAll() {
+  renderGraph();
+  renderLockTable();
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.mTxns.textContent = STATE.txns.filter(t => t.status !== 'aborted' && t.status !== 'committed').length;
+  DOM.mWaiting.textContent = STATE.txns.filter(t => t.status === 'waiting').length;
+  DOM.mCycles.textContent = STATE.cyclesDetected;
+  DOM.mAborts.textContent = STATE.victimsAborted;
+  DOM.mWaiting.className = 'metric-value' + (STATE.txns.filter(t => t.status === 'waiting').length > 0 ? ' warn' : '');
+  DOM.mCycles.className = 'metric-value' + (STATE.cyclesDetected > 0 ? ' bad' : '');
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.scenarioSelect.addEventListener('change', e => {
+  STATE.scenario = e.target.value;
+  resetAll();
+  const names = {
+    'classic': 'Classic 2-way deadlock: T1 holds A wants B, T2 holds B wants A. The simplest cycle.',
+    'three': '3-way cycle: T1→T2→T3→T1. Cycle detection must traverse 3 edges.',
+    'chain': 'Long chain: 5 transactions forming a chain. Detection cost grows with cycle length.',
+    'conversion': 'Conversion deadlock: two transactions both hold S-locks and both try to upgrade to X. Classic upgrade conflict.',
+    'nocycle': 'No deadlock: T1 waits for T2, but T2 finishes normally. Graph is a DAG — no cycle, no abort.',
+    'costbased': 'Cost-based victim selection: T1 has done a lot of work, T2 has done very little. Which to abort?'
+  };
+  teach('SCENARIO', names[STATE.scenario], 'cyan');
+});
+
+DOM.btnRun.addEventListener('click', runAll);
+DOM.btnStep.addEventListener('click', stepOnce);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.btnDetect.addEventListener('click', () => {
+  detectCycle();
+});
+
+DOM.btnAutoDetect.addEventListener('click', () => {
+  STATE.autoDetect = !STATE.autoDetect;
+  DOM.btnAutoDetect.textContent = `🔄 Auto-Detect: ${STATE.autoDetect ? 'ON' : 'OFF'}`;
+  teach('DETECTION MODE',
+    STATE.autoDetect
+      ? 'Auto-detection is ON. The database runs cycle detection periodically.'
+      : 'Auto-detection is OFF. Cycle detection must be triggered manually.',
+    'info', false
+  );
+});
+
+DOM.intervalRange.addEventListener('input', e => {
+  STATE.detectionInterval = parseInt(e.target.value);
+  DOM.intervalVal.textContent = STATE.detectionInterval + 's';
+});
+
+document.querySelectorAll('input[name="victim"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.victimStrategy = e.target.value;
+    DOM.vStrategy.textContent = e.target.value;
+    const desc = {
+      youngest: 'Youngest (least work): aborts the transaction with the least invested work. Minimal wasted CPU. Very common in real DBs.',
+      fewest: 'Fewest locks held: aborts the transaction holding the fewest locks. Minimizes lock release cost.',
+      cheapest: 'Cheapest to rollback: based on estimated undo cost (rows modified, log size). Used by Oracle and DB2.',
+      random: 'Random: simplest to implement, but worst-case behavior. Rarely used in production.'
+    };
+    teach('VICTIM POLICY', desc[e.target.value], 'purple');
+  });
+});
+
+window.addEventListener('resize', () => {
+  renderGraph();
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+DOM.bottomPanel.classList.add('show');
+logEvent('grant', 'Ready. Press RUN to execute the scenario step by step.');
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Transaction Deadlock Detection. A deadlock happens when two or more transactions each hold a lock the other needs. They wait forever — unless the database detects the cycle and breaks it. The tool: a wait-for graph, where an edge T1 → T2 means "T1 is waiting for T2". Any cycle is a deadlock.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE DETECTION',
+      `Cycle detection runs periodically (every few seconds) as a background job. The algorithm is a simple DFS on the wait-for graph. Time complexity is O(V + E) where V = active transactions and E = wait edges. When a back edge is found, we have a cycle.`,
+      'info'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE VICTIM',
+      `Once a cycle is found, one transaction must be aborted. The database picks the cheapest one — the one with the least work done, fewest locks held, or smallest undo log. This minimizes the cost of the abort and preserves the most progress. Real databases use cost models tuned to their workload.`,
+      'purple'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('THE PREVENTION',
+      `Detection is reactive. Real systems also use PREVENTION techniques: (1) timeout — abort any wait over N seconds, (2) wait-die — older txns wait, younger abort, (3) wound-wait — older txns wound (abort) younger, (4) consistent lock ordering — always lock in the same order. Prevention avoids the detection cost entirely.`,
+      'ok'
+    );
+  }, 13500);
+
+  showToast('👋 Pick a scenario and press RUN', 4000);
+}, 600);
+</script>
+</body>
+</html>

@@ -1,0 +1,1598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MVCC vs 2PL vs OCC Comparison — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #06b6d4, #a855f7, #ec4899);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(6,182,212,0.15);
+    color: #67e8f9;
+    border-color: #06b6d4;
+  }
+  .teaching-toggle:hover { background: rgba(6,182,212,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #06b6d4; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #06b6d4; color: #032028; border-color: #06b6d4; }
+  .btn.primary:hover { background: #0891b2; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #67e8f9; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #06b6d4; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(6,182,212,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* THREE COLUMNS: MVCC, 2PL, OCC */
+  .compare-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  .engine-col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+  }
+
+  .engine-header {
+    background: #070a14;
+    border: 2px solid;
+    border-radius: 10px;
+    padding: 8px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .engine-header.mvcc { border-color: #22c55e; }
+  .engine-header.tpl { border-color: #a855f7; }
+  .engine-header.occ { border-color: #f59e0b; }
+
+  .engine-name {
+    font-size: 0.85rem;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-family: monospace;
+  }
+  .engine-header.mvcc .engine-name { color: #86efac; }
+  .engine-header.tpl .engine-name { color: #d8b4fe; }
+  .engine-header.occ .engine-name { color: #fde047; }
+
+  .engine-subtitle {
+    font-size: 0.5rem;
+    color: #64748b;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+
+  /* Timeline viz */
+  .timeline-box {
+    background: #070a14;
+    border: 2px solid;
+    border-radius: 10px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+  }
+  .timeline-box.mvcc { border-color: #22c55e; box-shadow: 0 0 15px rgba(34,197,94,0.15); }
+  .timeline-box.tpl { border-color: #a855f7; box-shadow: 0 0 15px rgba(168,85,247,0.15); }
+  .timeline-box.occ { border-color: #f59e0b; box-shadow: 0 0 15px rgba(245,158,11,0.15); }
+
+  .timeline-title {
+    font-size: 0.55rem;
+    letter-spacing: 1.5px;
+    color: #94a3b8;
+    font-family: monospace;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+  }
+  .timeline-title .hint {
+    font-size: 0.48rem;
+    color: #475569;
+  }
+
+  .timeline-canvas {
+    flex: 1;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    position: relative;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* Rows inside timeline (one per txn) */
+  .txn-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 24px;
+    transition: all 0.3s;
+    border-bottom: 1px solid rgba(30,41,59,0.4);
+  }
+
+  .txn-label {
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    font-size: 0.55rem;
+    font-weight: 800;
+    color: #cbd5e1;
+    font-family: monospace;
+    letter-spacing: 0.5px;
+    z-index: 3;
+  }
+
+  /* Blocks inside the timeline */
+  .op-block {
+    position: absolute;
+    top: 4px;
+    height: 16px;
+    border-radius: 3px;
+    font-size: 0.48rem;
+    font-weight: 700;
+    font-family: monospace;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.8);
+    white-space: nowrap;
+    overflow: hidden;
+    padding: 0 3px;
+    transition: all 0.3s;
+    opacity: 0;
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  .op-block.visible {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  .op-block.read    { background: #0891b2; }
+  .op-block.write   { background: #dc2626; }
+  .op-block.lock    { background: #7c3aed; }
+  .op-block.wait    { background: #b45309; border: 1px dashed #fcd34d; }
+  .op-block.validate { background: #d97706; }
+  .op-block.commit  { background: #059669; }
+  .op-block.abort   { background: #991b1b; text-decoration: line-through; }
+  .op-block.begin   { background: #475569; }
+  .op-block.mvcc-read { background: #0891b2; }
+  .op-block.mvcc-write { background: #dc2626; }
+
+  /* Stats box under each timeline */
+  .stats-box {
+    background: #070a14;
+    border: 2px solid;
+    border-radius: 10px;
+    padding: 8px 10px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .stats-box.mvcc { border-color: #22c55e; }
+  .stats-box.tpl { border-color: #a855f7; }
+  .stats-box.occ { border-color: #f59e0b; }
+
+  .stat-cell {
+    background: rgba(30,41,59,0.4);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-family: monospace;
+  }
+  .stat-cell .lbl {
+    color: #64748b;
+    font-size: 0.45rem;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 1px;
+    text-transform: uppercase;
+  }
+  .stat-cell .val {
+    color: #cbd5e1;
+    font-size: 0.7rem;
+    font-weight: 900;
+  }
+  .stat-cell .val.good { color: #6ee7b7; }
+  .stat-cell .val.warn { color: #fbbf24; }
+  .stat-cell .val.bad { color: #f87171; }
+
+  /* Winner banner */
+  .winner-banner {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: linear-gradient(90deg, #065f46, #047857);
+    border: 2px solid #10b981;
+    border-radius: 30px;
+    padding: 10px 30px;
+    font-family: monospace;
+    font-size: 0.8rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #a7f3d0;
+    z-index: 12;
+    box-shadow: 0 0 40px rgba(16,185,129,0.7);
+    transition: all 0.5s cubic-bezier(.68,-0.55,.27,1.55);
+    opacity: 0;
+    pointer-events: none;
+    text-align: center;
+  }
+  .winner-banner.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(6,182,212,0.06);
+    border: 1px solid rgba(6,182,212,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #67e8f9;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #67e8f9; text-shadow: 0 0 10px rgba(6,182,212,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 260px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #06b6d4;
+    background: rgba(6,182,212,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry.green  { border-color: #22c55e; background: rgba(34,197,94,0.06); }
+  .teach-entry.yellow { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .tag.green  { background: rgba(34,197,94,0.15); color: #86efac; }
+  .teach-entry .tag.yellow { background: rgba(245,158,11,0.15); color: #fde047; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Info card */
+  .info-card {
+    background: linear-gradient(145deg, rgba(6,182,212,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(6,182,212,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.green { color: #86efac; }
+  .info-row .val.purple { color: #d8b4fe; }
+  .info-row .val.yellow { color: #fde047; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #06b6d4;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(6,182,212,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>MVCC vs 2PL vs OCC</h1>
+    <span class="sub">SIDE-BY-SIDE COMPARISON · SAME WORKLOAD · DIFFERENT OUTCOMES</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Workload</h3>
+      <select id="workloadSelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="low" selected>🌱 Low Contention (90% disjoint)</option>
+        <option value="mixed">🎯 Mixed (50% hot keys)</option>
+        <option value="high">🔥 High Contention (99% same keys)</option>
+        <option value="readheavy">📖 Read-Heavy (95% reads)</option>
+        <option value="writeheavy">✏️ Write-Heavy (80% writes)</option>
+      </select>
+      <button class="btn primary" id="btnRun">▶ Run Benchmark</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Benchmark Params</h3>
+      <div class="slider-row"><span>Transactions</span><span class="value" id="txnVal">12</span></div>
+      <input type="range" id="txnRange" min="4" max="24" value="12">
+      <div class="slider-row"><span>Concurrency</span><span class="value" id="concVal">6</span></div>
+      <input type="range" id="concRange" min="2" max="12" value="6">
+      <div class="slider-row"><span>Speed</span><span class="value" id="speedVal">1.0×</span></div>
+      <input type="range" id="speedRange" min="0.5" max="3" step="0.1" value="1">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:6px;background:#0891b2;border-radius:2px;margin-right:6px;"></span>Read op</div>
+        <div><span style="display:inline-block;width:10px;height:6px;background:#dc2626;border-radius:2px;margin-right:6px;"></span>Write op</div>
+        <div><span style="display:inline-block;width:10px;height:6px;background:#7c3aed;border-radius:2px;margin-right:6px;"></span>Lock acquisition</div>
+        <div><span style="display:inline-block;width:10px;height:6px;background:#b45309;border-radius:2px;margin-right:6px;"></span>Waiting (blocked)</div>
+        <div><span style="display:inline-block;width:10px;height:6px;background:#059669;border-radius:2px;margin-right:6px;"></span>Commit</div>
+        <div><span style="display:inline-block;width:10px;height:6px;background:#991b1b;border-radius:2px;margin-right:6px;"></span>Abort</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">SAME WORKLOAD · SAME DATA · DIFFERENT CONCURRENCY CONTROL</div>
+
+      <div class="main-split">
+        <div class="compare-grid">
+          <!-- MVCC COLUMN -->
+          <div class="engine-col">
+            <div class="engine-header mvcc">
+              <div>
+                <div class="engine-name">🌳 MVCC</div>
+                <div class="engine-subtitle">Snapshot isolation · Postgres, Oracle</div>
+              </div>
+            </div>
+            <div class="timeline-box mvcc">
+              <div class="timeline-title">
+                <span>⏱️ Timeline</span>
+                <span class="hint" id="mvccHint">— idle —</span>
+              </div>
+              <div class="timeline-canvas" id="mvccTimeline"></div>
+            </div>
+            <div class="stats-box mvcc">
+              <div class="stat-cell"><span class="lbl">Throughput</span><span class="val good" id="mvccThroughput">0</span></div>
+              <div class="stat-cell"><span class="lbl">Avg Latency</span><span class="val" id="mvccLatency">0ms</span></div>
+              <div class="stat-cell"><span class="lbl">Committed</span><span class="val good" id="mvccCommitted">0</span></div>
+              <div class="stat-cell"><span class="lbl">Aborted</span><span class="val bad" id="mvccAborted">0</span></div>
+              <div class="stat-cell"><span class="lbl">Blocked</span><span class="val good" id="mvccBlocked">0</span></div>
+              <div class="stat-cell"><span class="lbl">Deadlocks</span><span class="val good" id="mvccDeadlocks">0</span></div>
+            </div>
+          </div>
+
+          <!-- 2PL COLUMN -->
+          <div class="engine-col">
+            <div class="engine-header tpl">
+              <div>
+                <div class="engine-name">🔒 2PL</div>
+                <div class="engine-subtitle">Two-phase locking · InnoDB, SQL Server</div>
+              </div>
+            </div>
+            <div class="timeline-box tpl">
+              <div class="timeline-title">
+                <span>⏱️ Timeline</span>
+                <span class="hint" id="tplHint">— idle —</span>
+              </div>
+              <div class="timeline-canvas" id="tplTimeline"></div>
+            </div>
+            <div class="stats-box tpl">
+              <div class="stat-cell"><span class="lbl">Throughput</span><span class="val purple" id="tplThroughput">0</span></div>
+              <div class="stat-cell"><span class="lbl">Avg Latency</span><span class="val" id="tplLatency">0ms</span></div>
+              <div class="stat-cell"><span class="lbl">Committed</span><span class="val good" id="tplCommitted">0</span></div>
+              <div class="stat-cell"><span class="lbl">Aborted</span><span class="val bad" id="tplAborted">0</span></div>
+              <div class="stat-cell"><span class="lbl">Blocked</span><span class="val warn" id="tplBlocked">0</span></div>
+              <div class="stat-cell"><span class="lbl">Deadlocks</span><span class="val warn" id="tplDeadlocks">0</span></div>
+            </div>
+          </div>
+
+          <!-- OCC COLUMN -->
+          <div class="engine-col">
+            <div class="engine-header occ">
+              <div>
+                <div class="engine-name">⚡ OCC</div>
+                <div class="engine-subtitle">Optimistic · Redis, MongoDB</div>
+              </div>
+            </div>
+            <div class="timeline-box occ">
+              <div class="timeline-title">
+                <span>⏱️ Timeline</span>
+                <span class="hint" id="occHint">— idle —</span>
+              </div>
+              <div class="timeline-canvas" id="occTimeline"></div>
+            </div>
+            <div class="stats-box occ">
+              <div class="stat-cell"><span class="lbl">Throughput</span><span class="val yellow" id="occThroughput">0</span></div>
+              <div class="stat-cell"><span class="lbl">Avg Latency</span><span class="val" id="occLatency">0ms</span></div>
+              <div class="stat-cell"><span class="lbl">Committed</span><span class="val good" id="occCommitted">0</span></div>
+              <div class="stat-cell"><span class="lbl">Aborted</span><span class="val bad" id="occAborted">0</span></div>
+              <div class="stat-cell"><span class="lbl">Blocked</span><span class="val good" id="occBlocked">0</span></div>
+              <div class="stat-cell"><span class="lbl">Deadlocks</span><span class="val good" id="occDeadlocks">0</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="winner-banner" id="winnerBanner">🏆 WINNER</div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Run</div>
+        <div class="metric-value info" id="mStatus">Idle</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Workload</div>
+        <div class="metric-value" id="mWorkload" style="font-size:0.75rem;">Low</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Best Throughput</div>
+        <div class="metric-value" id="mBestThroughput">—</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Fastest</div>
+        <div class="metric-value" id="mFastest">—</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">⚖️ Concurrency Control Cheat Sheet</div>
+      <div class="info-row"><span class="lbl">MVCC</span><span class="val green">Readers don't block</span></div>
+      <div class="info-row"><span class="lbl">2PL</span><span class="val purple">Writers block writers</span></div>
+      <div class="info-row"><span class="lbl">OCC</span><span class="val yellow">No blocking, aborts</span></div>
+      <div class="info-row"><span class="lbl">MVCC cost</span><span class="val">Storage (versions)</span></div>
+      <div class="info-row"><span class="lbl">2PL cost</span><span class="val">Blocking + deadlocks</span></div>
+      <div class="info-row"><span class="lbl">OCC cost</span><span class="val">Retry rate</span></div>
+      <div class="info-row"><span class="lbl">Best for</span><span class="val">Read-heavy · Write-heavy · Low-contention</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  workload: 'low',
+  txnCount: 12,
+  concurrency: 6,
+  speed: 1.0,
+  running: false,
+  // Shared resource simulation — 3 hot rows + 3 cold rows
+  keys: ['A', 'B', 'C', 'D', 'E', 'F'],
+  // Per-engine state
+  engines: {
+    mvcc: null,
+    tpl: null,
+    occ: null
+  },
+  // Global run metrics
+  startTime: 0,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  workloadSelect: document.getElementById('workloadSelect'),
+  btnRun: document.getElementById('btnRun'),
+  btnReset: document.getElementById('btnReset'),
+  txnRange: document.getElementById('txnRange'),
+  txnVal: document.getElementById('txnVal'),
+  concRange: document.getElementById('concRange'),
+  concVal: document.getElementById('concVal'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  winnerBanner: document.getElementById('winnerBanner'),
+  // MVCC
+  mvccTimeline: document.getElementById('mvccTimeline'),
+  mvccHint: document.getElementById('mvccHint'),
+  mvccThroughput: document.getElementById('mvccThroughput'),
+  mvccLatency: document.getElementById('mvccLatency'),
+  mvccCommitted: document.getElementById('mvccCommitted'),
+  mvccAborted: document.getElementById('mvccAborted'),
+  mvccBlocked: document.getElementById('mvccBlocked'),
+  mvccDeadlocks: document.getElementById('mvccDeadlocks'),
+  // 2PL
+  tplTimeline: document.getElementById('tplTimeline'),
+  tplHint: document.getElementById('tplHint'),
+  tplThroughput: document.getElementById('tplThroughput'),
+  tplLatency: document.getElementById('tplLatency'),
+  tplCommitted: document.getElementById('tplCommitted'),
+  tplAborted: document.getElementById('tplAborted'),
+  tplBlocked: document.getElementById('tplBlocked'),
+  tplDeadlocks: document.getElementById('tplDeadlocks'),
+  // OCC
+  occTimeline: document.getElementById('occTimeline'),
+  occHint: document.getElementById('occHint'),
+  occThroughput: document.getElementById('occThroughput'),
+  occLatency: document.getElementById('occLatency'),
+  occCommitted: document.getElementById('occCommitted'),
+  occAborted: document.getElementById('occAborted'),
+  occBlocked: document.getElementById('occBlocked'),
+  occDeadlocks: document.getElementById('occDeadlocks'),
+  // Metrics
+  mStatus: document.getElementById('mStatus'),
+  mWorkload: document.getElementById('mWorkload'),
+  mBestThroughput: document.getElementById('mBestThroughput'),
+  mFastest: document.getElementById('mFastest'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Comparing MVCC, two phase locking, and optimistic concurrency control.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   WORKLOAD GENERATOR
+   ============================================================ */
+function generateWorkload() {
+  // Generate a shared workload: N transactions, each with ops
+  const workload = [];
+  const txnCount = STATE.txnCount;
+  const hotKeys = ['A', 'B'];   // heavily shared
+  const coldKeys = ['C', 'D', 'E', 'F'];
+
+  let disjointRatio = 0.9;
+  let readRatio = 0.8;
+  let writeRatio = 0.2;
+
+  switch (STATE.workload) {
+    case 'low':
+      disjointRatio = 0.9;
+      readRatio = 0.8;
+      break;
+    case 'mixed':
+      disjointRatio = 0.5;
+      readRatio = 0.7;
+      break;
+    case 'high':
+      disjointRatio = 0.05;
+      readRatio = 0.5;
+      break;
+    case 'readheavy':
+      disjointRatio = 0.7;
+      readRatio = 0.95;
+      break;
+    case 'writeheavy':
+      disjointRatio = 0.7;
+      readRatio = 0.2;
+      break;
+  }
+
+  for (let i = 0; i < txnCount; i++) {
+    const ops = [];
+    const opCount = 3 + Math.floor(Math.random() * 4);  // 3-6 ops
+    for (let j = 0; j < opCount; j++) {
+      const isRead = Math.random() < readRatio;
+      let key;
+      if (Math.random() < disjointRatio) {
+        key = coldKeys[Math.floor(Math.random() * coldKeys.length)];
+      } else {
+        key = hotKeys[Math.floor(Math.random() * hotKeys.length)];
+      }
+      ops.push({
+        type: isRead ? 'read' : 'write',
+        key
+      });
+    }
+    workload.push({ id: i, ops });
+  }
+  return workload;
+}
+
+/* ============================================================
+   ENGINE SIMULATORS
+   Each returns:
+     - timeline: array of { txnId, opIndex, startTime, endTime, type, label }
+     - stats: committed, aborted, blocked, deadlocks, throughput, avgLatency
+   ============================================================ */
+
+/* ============================================================
+   MVCC SIMULATOR
+   No reads block. Writes create new versions. Conflicts → abort at commit.
+   ============================================================ */
+function simulateMVCC(workload) {
+  const timeline = [];
+  const committedRows = {};   // key → latest version number
+  const txnReads = {};        // txnId → { key: version }
+  const txnWrites = {};       // txnId → { key: version }
+  const startTimes = {};
+  let committed = 0, aborted = 0, blocked = 0, deadlocks = 0;
+  let t = 0;
+  const activeTxn = [];
+
+  for (const txn of workload) {
+    // Compute when this txn starts (concurrency)
+    let startTime = t * 0.5;
+    // Simulate MVCC: reads never block, writes buffer
+    let currentTime = startTime;
+    txnReads[txn.id] = {};
+    txnWrites[txn.id] = {};
+
+    for (const op of txn.ops) {
+      const opDuration = op.type === 'read' ? 0.3 : 0.5;
+      timeline.push({
+        txnId: txn.id,
+        startTime: currentTime,
+        endTime: currentTime + opDuration,
+        type: op.type === 'read' ? 'read' : 'write',
+        label: op.type === 'read' ? `R ${op.key}` : `W ${op.key}`
+      });
+
+      if (op.type === 'read') {
+        // Snapshot read — no lock
+        txnReads[txn.id][op.key] = committedRows[op.key] || 0;
+      } else {
+        // Buffer write
+        txnWrites[txn.id][op.key] = (committedRows[op.key] || 0) + 1;
+      }
+      currentTime += opDuration;
+    }
+
+    // Validate at commit: any write conflict?
+    let conflict = false;
+    for (const key in txnWrites[txn.id]) {
+      if (committedRows[key] && txnReads[txn.id][key] !== undefined) {
+        // If another txn wrote to a key we read, and it changed
+        if (committedRows[key] > txnReads[txn.id][key]) {
+          conflict = true;
+          break;
+        }
+      }
+    }
+
+    if (conflict && STATE.workload === 'high') {
+      aborted++;
+      timeline.push({
+        txnId: txn.id,
+        startTime: currentTime,
+        endTime: currentTime + 0.3,
+        type: 'abort',
+        label: 'ABORT'
+      });
+    } else {
+      committed++;
+      for (const key in txnWrites[txn.id]) {
+        committedRows[key] = txnWrites[txn.id][key];
+      }
+      timeline.push({
+        txnId: txn.id,
+        startTime: currentTime,
+        endTime: currentTime + 0.3,
+        type: 'commit',
+        label: 'COMMIT'
+      });
+    }
+    t += 0.8;
+  }
+
+  // Track latencies
+  const latencies = {};
+  for (const txn of workload) {
+    const txnOps = timeline.filter(x => x.txnId === txn.id);
+    if (txnOps.length > 0) {
+      const last = txnOps.reduce((a, b) => a.endTime > b.endTime ? a : b);
+      const first = txnOps.reduce((a, b) => a.startTime < b.startTime ? a : b);
+      latencies[txn.id] = last.endTime - first.startTime;
+    }
+  }
+  const avgLat = Object.values(latencies).reduce((a, b) => a + b, 0) / Object.keys(latencies).length;
+
+  return {
+    timeline,
+    stats: {
+      committed,
+      aborted,
+      blocked,
+      deadlocks,
+      throughput: (committed / t).toFixed(1),
+      avgLatency: avgLat.toFixed(2)
+    },
+    maxTime: t
+  };
+}
+
+/* ============================================================
+   2PL SIMULATOR
+   Readers and writers acquire locks. Conflicts block. Deadlocks possible.
+   ============================================================ */
+function simulate2PL(workload) {
+  const timeline = [];
+  const locks = {};     // key → txnId holding lock
+  const lockQueue = {}; // key → [txnId, ...]
+  const startTimes = {};
+  let committed = 0, aborted = 0, blocked = 0, deadlocks = 0;
+  let t = 0;
+
+  for (const txn of workload) {
+    let currentTime = t * 0.5;
+    const heldLocks = [];
+
+    for (const op of txn.ops) {
+      const opDuration = op.type === 'read' ? 0.3 : 0.5;
+      const lockType = op.type === 'read' ? 'S' : 'X';
+
+      // Check lock
+      const holder = locks[op.key];
+      const isConflict = holder !== undefined && holder !== txn.id;
+
+      if (isConflict) {
+        // BLOCKED
+        blocked++;
+        const waitDuration = 0.5 + Math.random() * 1.5;
+        timeline.push({
+          txnId: txn.id,
+          startTime: currentTime,
+          endTime: currentTime + waitDuration,
+          type: 'wait',
+          label: `WAIT ${op.key}`
+        });
+        currentTime += waitDuration;
+
+        // Possible deadlock
+        if (STATE.workload === 'high' && Math.random() < 0.2) {
+          deadlocks++;
+          aborted++;
+          timeline.push({
+            txnId: txn.id,
+            startTime: currentTime,
+            endTime: currentTime + 0.3,
+            type: 'abort',
+            label: 'DEADLOCK'
+          });
+          break;
+        }
+      }
+
+      // Acquire lock (or assume deadlock resolved)
+      locks[op.key] = txn.id;
+      heldLocks.push(op.key);
+
+      timeline.push({
+        txnId: txn.id,
+        startTime: currentTime,
+        endTime: currentTime + 0.15,
+        type: 'lock',
+        label: `${lockType} ${op.key}`
+      });
+      currentTime += 0.15;
+
+      timeline.push({
+        txnId: txn.id,
+        startTime: currentTime,
+        endTime: currentTime + opDuration,
+        type: op.type,
+        label: op.type === 'read' ? `R ${op.key}` : `W ${op.key}`
+      });
+      currentTime += opDuration;
+    }
+
+    // Commit releases all locks
+    if (timeline.filter(x => x.txnId === txn.id && x.type === 'abort').length === 0) {
+      for (const key of heldLocks) {
+        if (locks[key] === txn.id) delete locks[key];
+      }
+      committed++;
+      timeline.push({
+        txnId: txn.id,
+        startTime: currentTime,
+        endTime: currentTime + 0.3,
+        type: 'commit',
+        label: 'COMMIT'
+      });
+    }
+    t += 0.8;
+  }
+
+  // Compute avg latency
+  const latencies = {};
+  for (const txn of workload) {
+    const txnOps = timeline.filter(x => x.txnId === txn.id);
+    if (txnOps.length > 0) {
+      const last = txnOps.reduce((a, b) => a.endTime > b.endTime ? a : b);
+      const first = txnOps.reduce((a, b) => a.startTime < b.startTime ? a : b);
+      latencies[txn.id] = last.endTime - first.startTime;
+    }
+  }
+  const avgLat = Object.values(latencies).reduce((a, b) => a + b, 0) / Math.max(1, Object.keys(latencies).length);
+
+  return {
+    timeline,
+    stats: {
+      committed,
+      aborted,
+      blocked,
+      deadlocks,
+      throughput: (committed / t).toFixed(1),
+      avgLatency: avgLat.toFixed(2)
+    },
+    maxTime: t
+  };
+}
+
+/* ============================================================
+   OCC SIMULATOR
+   No locks. Reads and writes happen freely. Validation at commit.
+   Conflicts → abort + retry.
+   ============================================================ */
+function simulateOCC(workload) {
+  const timeline = [];
+  const committedRows = {};
+  const txnReadSet = {};
+  const txnWriteSet = {};
+  let committed = 0, aborted = 0, blocked = 0, deadlocks = 0;
+  let t = 0;
+
+  for (const txn of workload) {
+    let currentTime = t * 0.5;
+    txnReadSet[txn.id] = {};
+    txnWriteSet[txn.id] = {};
+
+    for (const op of txn.ops) {
+      const opDuration = op.type === 'read' ? 0.25 : 0.35;  // Slightly faster (no locks)
+      timeline.push({
+        txnId: txn.id,
+        startTime: currentTime,
+        endTime: currentTime + opDuration,
+        type: op.type,
+        label: op.type === 'read' ? `R ${op.key}` : `W ${op.key}`
+      });
+
+      if (op.type === 'read') {
+        txnReadSet[txn.id][op.key] = committedRows[op.key] || 0;
+      } else {
+        txnWriteSet[txn.id][op.key] = (committedRows[op.key] || 0) + 1;
+      }
+      currentTime += opDuration;
+    }
+
+    // Validation
+    let conflict = false;
+    for (const key in txnWriteSet[txn.id]) {
+      if (committedRows[key] !== undefined && txnReadSet[txn.id][key] !== undefined) {
+        if (committedRows[key] > txnReadSet[txn.id][key]) {
+          conflict = true;
+          break;
+        }
+      }
+    }
+
+    // Also check write-write conflict (if key was modified since we read)
+    for (const key in txnReadSet[txn.id]) {
+      if (committedRows[key] !== undefined && txnReadSet[txn.id][key] !== committedRows[key]) {
+        conflict = true;
+        break;
+      }
+    }
+
+    const conflictRate = STATE.workload === 'high' ? 0.5 : STATE.workload === 'mixed' ? 0.15 : 0.02;
+
+    if (conflict && Math.random() < conflictRate) {
+      aborted++;
+      timeline.push({
+        txnId: txn.id,
+        startTime: currentTime,
+        endTime: currentTime + 0.3,
+        type: 'abort',
+        label: 'ABORT'
+      });
+    } else {
+      committed++;
+      for (const key in txnWriteSet[txn.id]) {
+        committedRows[key] = txnWritesetSafe(txnWriteSet, txn.id, key);
+      }
+      // Actually set committed
+      for (const key in txnWriteSet[txn.id]) {
+        committedRows[key] = (committedRows[key] || 0) + 1;
+      }
+      timeline.push({
+        txnId: txn.id,
+        startTime: currentTime,
+        endTime: currentTime + 0.3,
+        type: 'commit',
+        label: 'COMMIT'
+      });
+    }
+    t += 0.7;
+  }
+
+  const latencies = {};
+  for (const txn of workload) {
+    const txnOps = timeline.filter(x => x.txnId === txn.id);
+    if (txnOps.length > 0) {
+      const last = txnOps.reduce((a, b) => a.endTime > b.endTime ? a : b);
+      const first = txnOps.reduce((a, b) => a.startTime < b.startTime ? a : b);
+      latencies[txn.id] = last.endTime - first.startTime;
+    }
+  }
+  const avgLat = Object.values(latencies).reduce((a, b) => a + b, 0) / Math.max(1, Object.keys(latencies).length);
+
+  return {
+    timeline,
+    stats: {
+      committed,
+      aborted,
+      blocked,
+      deadlocks,
+      throughput: (committed / t).toFixed(1),
+      avgLatency: avgLat.toFixed(2)
+    },
+    maxTime: t
+  };
+}
+
+function txnWritesetSafe(ws, id, key) {
+  return (ws[id][key] || 0);
+}
+
+/* ============================================================
+   RUN BENCHMARK
+   ============================================================ */
+function runBenchmark() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏳ Running...';
+  DOM.mStatus.textContent = 'Running';
+
+  // Generate one shared workload
+  const workload = generateWorkload();
+
+  // Run all three simulators
+  const mvccResult = simulateMVCC(workload);
+  const tplResult = simulate2PL(workload);
+  const occResult = simulateOCC(workload);
+
+  // Store
+  STATE.engines.mvcc = mvccResult;
+  STATE.engines.tpl = tplResult;
+  STATE.engines.occ = occResult;
+
+  // Animate timeline (draw blocks progressively)
+  animateTimeline('mvcc', mvccResult, () => {
+    animateTimeline('tpl', tplResult, () => {
+      animateTimeline('occ', occResult, () => {
+        finishBenchmark();
+      });
+    });
+  });
+
+  // Narrate
+  teach('BENCHMARK START',
+    `Running ${workload.length} transactions through all three engines. Workload: ${getWorkloadLabel(STATE.workload)}. Each engine handles the SAME ops on the SAME data — only the concurrency control differs.`,
+    'cyan'
+  );
+}
+
+function getWorkloadLabel(w) {
+  return {
+    low: 'LOW CONTENTION (90% disjoint keys)',
+    mixed: 'MIXED (50% hot keys)',
+    high: 'HIGH CONTENTION (99% same keys)',
+    readheavy: 'READ-HEAVY (95% reads)',
+    writeheavy: 'WRITE-HEAVY (80% writes)'
+  }[w] || 'UNKNOWN';
+}
+
+/* ============================================================
+   ANIMATE TIMELINE
+   ============================================================ */
+function animateTimeline(engineName, result, onComplete) {
+  const container = DOM[`${engineName}Timeline`];
+  container.innerHTML = '';
+
+  // Compute max time
+  const maxTime = result.maxTime || 1;
+
+  // Build rows for each txn
+  const txnCount = Math.max(...result.timeline.map(x => x.txnId)) + 1;
+  const rowHeight = container.clientHeight / txnCount;
+
+  // Add rows
+  const txnIds = [...new Set(result.timeline.map(x => x.txnId))].sort((a, b) => a - b);
+
+  for (const txnId of txnIds) {
+    const row = document.createElement('div');
+    row.className = 'txn-row';
+    row.style.top = (txnId * rowHeight) + 'px';
+    row.style.height = rowHeight + 'px';
+    const label = document.createElement('div');
+    label.className = 'txn-label';
+    label.textContent = 'T' + (txnId + 1);
+    row.appendChild(label);
+    container.appendChild(row);
+  }
+
+  // Add op blocks progressively
+  let i = 0;
+  const totalDuration = 600 / STATE.speed;   // ms to animate full timeline
+  const stepDelay = totalDuration / result.timeline.length;
+
+  const animTimer = setInterval(() => {
+    if (i >= result.timeline.length) {
+      clearInterval(animTimer);
+      onComplete();
+      return;
+    }
+
+    const op = result.timeline[i];
+    const row = container.querySelectorAll('.txn-row')[op.txnId];
+    if (row) {
+      const block = document.createElement('div');
+      block.className = `op-block ${op.type} visible`;
+      const leftPct = (op.startTime / maxTime) * 100;
+      const widthPct = ((op.endTime - op.startTime) / maxTime) * 100;
+      block.style.left = `calc(${leftPct}% + 30px)`;
+      block.style.width = `calc(${widthPct}% - 2px)`;
+      block.textContent = op.label;
+      block.title = op.label;
+      row.appendChild(block);
+    }
+
+    i++;
+  }, stepDelay);
+}
+
+/* ============================================================
+   FINISH — Show final stats, determine winner
+   ============================================================ */
+function finishBenchmark() {
+  const mvcc = STATE.engines.mvcc.stats;
+  const tpl = STATE.engines.tpl.stats;
+  const occ = STATE.engines.occ.stats;
+
+  DOM.mvccThroughput.textContent = mvcc.throughput;
+  DOM.mvccLatency.textContent = mvcc.avgLatency + 's';
+  DOM.mvccCommitted.textContent = mvcc.committed;
+  DOM.mvccAborted.textContent = mvcc.aborted;
+  DOM.mvccBlocked.textContent = mvcc.blocked;
+  DOM.mvccDeadlocks.textContent = mvcc.deadlocks;
+
+  DOM.tplThroughput.textContent = tpl.throughput;
+  DOM.tplLatency.textContent = tpl.avgLatency + 's';
+  DOM.tplCommitted.textContent = tpl.committed;
+  DOM.tplAborted.textContent = tpl.aborted;
+  DOM.tplBlocked.textContent = tpl.blocked;
+  DOM.tplDeadlocks.textContent = tpl.deadlocks;
+
+  DOM.occThroughput.textContent = occ.throughput;
+  DOM.occLatency.textContent = occ.avgLatency + 's';
+  DOM.occCommitted.textContent = occ.committed;
+  DOM.occAborted.textContent = occ.aborted;
+  DOM.occBlocked.textContent = occ.blocked;
+  DOM.occDeadlocks.textContent = occ.deadlocks;
+
+  // Determine winner by throughput
+  const throughputs = { mvcc: parseFloat(mvcc.throughput), tpl: parseFloat(tpl.throughput), occ: parseFloat(occ.throughput) };
+  let winner = 'mvcc';
+  let maxT = 0;
+  for (const k in throughputs) {
+    if (throughputs[k] > maxT) { maxT = throughputs[k]; winner = k; }
+  }
+
+  const winnerNames = { mvcc: 'MVCC', tpl: '2PL', occ: 'OCC' };
+  DOM.winnerBanner.textContent = `🏆 WINNER: ${winnerNames[winner]} (throughput ${maxT.toFixed(1)})`;
+  DOM.winnerBanner.classList.add('show');
+  setTimeout(() => DOM.winnerBanner.classList.remove('show'), 3500);
+
+  DOM.mBestThroughput.textContent = maxT.toFixed(1);
+  DOM.mFastest.textContent = winnerNames[winner];
+
+  // Teaching narrative based on workload
+  const narratives = {
+    low: {
+      title: 'LOW CONTENTION',
+      mvcc: `MVCC: ${mvcc.committed} committed, ~${mvcc.avgLatency}s avg. Snapshots make reads free — no blocking.`,
+      tpl: `2PL: ${tpl.committed} committed, ${tpl.blocked} blocked, ${tpl.deadlocks} deadlocks. Locks are cheap here since almost no conflicts.`,
+      occ: `OCC: ${occ.committed} committed, ${occ.aborted} aborted. Almost no retries — validation always succeeds.`,
+      winner: 'All three perform similarly. When conflicts are rare, all strategies work well.'
+    },
+    mixed: {
+      title: 'MIXED CONTENTION',
+      mvcc: `MVCC: ${mvcc.committed} committed. Reads still don't block, some write conflicts abort.`,
+      tpl: `2PL: ${tpl.committed} committed, ${tpl.blocked} blocked. Some writers wait — the cost starts appearing.`,
+      occ: `OCC: ${occ.committed} committed, ${occ.aborted} aborted. Some retries kick in as hot keys collide.`,
+      winner: 'MVCC starts to pull ahead — its snapshot isolation handles readers better than 2PL.'
+    },
+    high: {
+      title: 'HIGH CONTENTION',
+      mvcc: `MVCC: ${mvcc.committed} committed, ${mvcc.aborted} aborted. Snapshots handle readers but write-write still aborts.`,
+      tpl: `2PL: ${tpl.committed} committed, ${tpl.blocked} blocked, ${tpl.deadlocks} deadlocks. Everyone waits — cascade of lock contention.`,
+      occ: `OCC: ${occ.committed} committed, ${occ.aborted} aborted. Retry storm — every concurrent write aborts the other.`,
+      winner: '2PL and OCC both suffer badly. MVCC handles it best because readers are unaffected by writes.'
+    },
+    readheavy: {
+      title: 'READ-HEAVY',
+      mvcc: `MVCC: ${mvcc.committed} committed — reads are completely unobstructed by writers.`,
+      tpl: `2PL: ${tpl.committed} committed, ${tpl.blocked} blocked. Readers still need S-locks — they can conflict with writers.`,
+      occ: `OCC: ${occ.committed} committed — but every txn must still validate, adding small overhead.`,
+      winner: 'MVCC wins decisively. Snapshot reads = zero blocking for readers, which is 95% of this workload.'
+    },
+    writeheavy: {
+      title: 'WRITE-HEAVY',
+      mvcc: `MVCC: ${mvcc.committed} committed — but each write creates a version, storage grows fast.`,
+      tpl: `2PL: ${tpl.committed} committed, ${tpl.blocked} blocked. Writers serialize — bounded throughput.`,
+      occ: `OCC: ${occ.committed} committed, ${occ.aborted} aborted. Writers abort constantly since validation always fails.`,
+      winner: '2PL often wins here — it naturally serializes writers without the retry storm of OCC or the version bloat of MVCC.'
+    }
+  };
+
+  const n = narratives[STATE.workload];
+  setTimeout(() => {
+    teach('MVCC RESULT', n.mvcc, 'green');
+    setTimeout(() => {
+      teach('2PL RESULT', n.tpl, 'purple');
+      setTimeout(() => {
+        teach('OCC RESULT', n.occ, 'yellow');
+        setTimeout(() => {
+          teach('VERDICT', n.winner, 'cyan');
+        }, 900);
+      }, 900);
+    }, 900);
+  }, 400);
+
+  // Reset button
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Run Benchmark';
+  DOM.mStatus.textContent = 'Done';
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  DOM.mvccTimeline.innerHTML = '';
+  DOM.tplTimeline.innerHTML = '';
+  DOM.occTimeline.innerHTML = '';
+
+  ['mvcc', 'tpl', 'occ'].forEach(e => {
+    DOM[`${e}Throughput`].textContent = '0';
+    DOM[`${e}Latency`].textContent = '0s';
+    DOM[`${e}Committed`].textContent = '0';
+    DOM[`${e}Aborted`].textContent = '0';
+    DOM[`${e}Blocked`].textContent = '0';
+    DOM[`${e}Deadlocks`].textContent = '0';
+  });
+
+  DOM.winnerBanner.classList.remove('show');
+  DOM.mStatus.textContent = 'Idle';
+  DOM.mBestThroughput.textContent = '—';
+  DOM.mFastest.textContent = '—';
+
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Run Benchmark';
+  DOM.mWorkload.textContent = STATE.workload.toUpperCase();
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.workloadSelect.addEventListener('change', e => {
+  STATE.workload = e.target.value;
+  DOM.mWorkload.textContent = STATE.workload.toUpperCase();
+  resetAll();
+  teach('WORKLOAD', `Selected: ${getWorkloadLabel(STATE.workload)}. Press RUN to see how each engine handles it.`, 'cyan');
+});
+
+DOM.btnRun.addEventListener('click', runBenchmark);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.txnRange.addEventListener('input', e => {
+  STATE.txnCount = parseInt(e.target.value);
+  DOM.txnVal.textContent = STATE.txnCount;
+});
+DOM.concRange.addEventListener('input', e => {
+  STATE.concurrency = parseInt(e.target.value);
+  DOM.concVal.textContent = STATE.concurrency;
+});
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseFloat(e.target.value);
+  DOM.speedVal.textContent = STATE.speed.toFixed(1) + '×';
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to the ultimate concurrency control comparison. This simulator runs the SAME workload through three engines side-by-side: MVCC (PostgreSQL), 2PL (InnoDB), and OCC (optimistic). Watch how each one handles the same operations differently.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('MVCC',
+      `MVCC (Multi-Version Concurrency Control): readers never block writers, writers never block readers. Each transaction sees a SNAPSHOT of the data from when it started. Cost: storage grows with versions. Used by PostgreSQL, Oracle, MySQL InnoDB for reads.`,
+      'green'
+    );
+  }, 4000);
+
+  setTimeout(() => {
+    teach('2PL',
+      `2PL (Two-Phase Locking): transactions acquire locks before accessing data. Readers take SHARED locks, writers take EXCLUSIVE locks. Cost: blocking + possible deadlocks. Used by SQL Server, DB2, MySQL InnoDB for writes.`,
+      'purple'
+    );
+  }, 8000);
+
+  setTimeout(() => {
+    teach('OCC',
+      `OCC (Optimistic Concurrency Control): no locks on read. Transactions run freely, buffer their writes, and VALIDATE at commit. If validation fails, they abort and retry. Cost: retries under contention. Used by Redis, MongoDB, and many in-memory DBs.`,
+      'yellow'
+    );
+  }, 12000);
+
+  setTimeout(() => {
+    teach('THE WORKLOADS',
+      `Try each workload: LOW CONTENTION shows all three performing similarly. MIXED separates them slightly. HIGH CONTENTION reveals the dramatic differences. READ-HEAVY shows MVCC's superpower. WRITE-HEAVY shows 2PL's stability. Press RUN to see it happen.`,
+      'cyan'
+    );
+  }, 16000);
+
+  showToast('👋 Pick a workload and press RUN', 4500);
+}, 600);
+</script>
+</body>
+</html>

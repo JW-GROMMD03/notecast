@@ -1,0 +1,1757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Composite Partitioning — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #8b5cf6, #ec4899, #f59e0b, #10b981);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(139,92,246,0.15);
+    color: #c4b5fd;
+    border-color: #8b5cf6;
+  }
+  .teaching-toggle:hover { background: rgba(139,92,246,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #8b5cf6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+  .btn.primary:hover { background: #7c3aed; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.purple { background: #6d28d9; color: #fff; border-color: #6d28d9; }
+  .btn.purple:hover { background: #5b21b6; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #c4b5fd; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #8b5cf6; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(139,92,246,0.06) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* Clients */
+  .clients-row {
+    position: absolute;
+    top: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    z-index: 5;
+  }
+  .client {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    border: 2px solid #334155;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.9rem;
+    transition: all 0.25s;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .client.active { transform: scale(1.1); }
+  .client.active.insert { border-color: #f59e0b; box-shadow: 0 0 20px rgba(245,158,11,0.7); }
+  .client.active.read   { border-color: #22d3ee; box-shadow: 0 0 20px rgba(34,211,238,0.7); }
+
+  /* Router header */
+  .router-wrap {
+    position: absolute;
+    top: 92px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    text-align: center;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .router {
+    padding: 10px 22px;
+    background: linear-gradient(145deg, #2a1a4a, #150e26);
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    box-shadow: 0 0 25px rgba(139,92,246,0.4);
+    transition: all 0.2s;
+  }
+  .router.busy { animation: routerPulse 0.3s ease; }
+  @keyframes routerPulse {
+    0%, 100% { box-shadow: 0 0 25px rgba(139,92,246,0.4); }
+    50%      { box-shadow: 0 0 60px rgba(139,92,246,1); }
+  }
+  .router .title {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-family: monospace;
+  }
+  .router .formula {
+    font-size: 0.58rem;
+    color: #94a3b8;
+    font-family: monospace;
+    margin-top: 3px;
+  }
+
+  /* Two-level route display */
+  .route-two-level {
+    position: absolute;
+    top: 165px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 92%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 5;
+  }
+  .level-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(10, 14, 25, 0.9);
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    transition: all 0.3s;
+  }
+  .level-row.level-1 { border-color: rgba(139,92,246,0.4); }
+  .level-row.level-2 { border-color: rgba(236,72,153,0.4); }
+  .level-row.active {
+    background: rgba(139,92,246,0.1);
+    box-shadow: 0 0 20px rgba(139,92,246,0.4);
+    border-color: #8b5cf6;
+  }
+  .level-row.level-2.active {
+    background: rgba(236,72,153,0.1);
+    box-shadow: 0 0 20px rgba(236,72,153,0.5);
+    border-color: #ec4899;
+  }
+  .level-badge {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+  }
+  .level-badge.l1 { background: rgba(139,92,246,0.2); color: #c4b5fd; }
+  .level-badge.l2 { background: rgba(236,72,153,0.2); color: #f9a8d4; }
+  .level-formula {
+    color: #64748b;
+    font-size: 0.6rem;
+  }
+  .level-formula .k { color: #fbbf24; font-weight: 700; }
+  .level-formula .p { color: #c4b5fd; font-weight: 700; }
+  .level-formula .s { color: #f9a8d4; font-weight: 700; }
+  .level-formula .r { color: #10b981; font-weight: 800; }
+
+  /* Composite grid — the 2-level tree visualization */
+  .grid-wrap {
+    position: absolute;
+    top: 260px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 96%;
+    bottom: 20px;
+    overflow: hidden;
+    z-index: 3;
+    display: flex;
+    gap: 14px;
+    padding: 6px 10px;
+    flex-wrap: wrap;
+    align-content: flex-start;
+  }
+
+  /* Level-1 group (e.g., by region/range) */
+  .l1-group {
+    border: 2px solid #8b5cf6;
+    border-radius: 10px;
+    padding: 8px;
+    background: rgba(139,92,246,0.04);
+    transition: all 0.4s;
+    position: relative;
+  }
+  .l1-group.hot { border-color: #ef4444; box-shadow: 0 0 25px rgba(239,68,68,0.5); }
+  .l1-group.busy { animation: l1Busy 0.3s ease; }
+  @keyframes l1Busy {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.02); box-shadow: 0 0 40px rgba(139,92,246,0.8); }
+  }
+  .l1-group.new { animation: groupSpawn 0.55s cubic-bezier(.68,-0.55,.27,1.55); }
+  @keyframes groupSpawn {
+    0%   { transform: scale(0); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .l1-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-family: monospace;
+    font-size: 0.6rem;
+  }
+  .l1-title {
+    color: #c4b5fd;
+    font-weight: 800;
+    letter-spacing: 1px;
+  }
+  .l1-range {
+    color: #64748b;
+    font-size: 0.55rem;
+  }
+  .l1-load-mini {
+    display: inline-block;
+    width: 40px;
+    height: 4px;
+    background: #0a0e19;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-left: 4px;
+  }
+  .l1-load-mini > div {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #8b5cf6);
+    transition: width 0.4s;
+  }
+  .l1-group.hot .l1-load-mini > div {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+  }
+
+  /* Level-2 shards inside an L1 group */
+  .l2-row {
+    display: flex;
+    gap: 4px;
+  }
+
+  .l2-shard {
+    width: 68px;
+    background: linear-gradient(160deg, #1a1028 0%, #070a14 100%);
+    border: 1.5px solid #ec4899;
+    border-radius: 6px;
+    padding: 5px 4px;
+    font-family: monospace;
+    font-size: 0.5rem;
+    text-align: center;
+    transition: all 0.35s;
+    position: relative;
+    cursor: pointer;
+  }
+  .l2-shard.hot {
+    border-color: #ef4444;
+    box-shadow: 0 0 15px rgba(239,68,68,0.6);
+    animation: shardFlash 1.5s ease-in-out infinite;
+  }
+  @keyframes shardFlash {
+    0%, 100% { box-shadow: 0 0 15px rgba(239,68,68,0.6); }
+    50%      { box-shadow: 0 0 30px rgba(239,68,68,0.9); }
+  }
+  .l2-shard.warm { border-color: #f59e0b; }
+  .l2-shard.cold { border-color: #10b981; }
+  .l2-shard.offline {
+    border-color: #7f1d1d;
+    opacity: 0.4;
+    filter: grayscale(0.7);
+    animation: none;
+  }
+  .l2-shard.busy {
+    animation: shardBusy 0.3s ease;
+  }
+  @keyframes shardBusy {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-3px); }
+  }
+
+  .l2-name {
+    color: #f9a8d4;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    font-size: 0.5rem;
+  }
+  .l2-shard.hot .l2-name { color: #fca5a5; }
+  .l2-shard.offline .l2-name { color: #f87171; }
+
+  .l2-hash-range {
+    color: #64748b;
+    font-size: 0.45rem;
+    margin-top: 2px;
+  }
+  .l2-load-bar {
+    height: 3px;
+    background: #0a0e19;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .l2-load-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #ec4899);
+    transition: width 0.3s;
+  }
+  .l2-shard.hot .l2-load-fill {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+  }
+
+  /* Particle */
+  .particle {
+    position: absolute;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 6;
+  }
+  .particle.read    { background: #22d3ee; box-shadow: 0 0 10px #22d3ee; }
+  .particle.insert  { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+  .particle.route   { background: #c4b5fd; box-shadow: 0 0 10px #c4b5fd; }
+  .particle.l2hop   { background: #f9a8d4; box-shadow: 0 0 10px #f9a8d4; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(139,92,246,0.06);
+    border: 1px solid rgba(139,92,246,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.58rem;
+    color: #c4b5fd;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1.05rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #8b5cf6;
+    background: rgba(139,92,246,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #8b5cf6; background: rgba(139,92,246,0.06); }
+  .teach-entry.pink   { border-color: #ec4899; background: rgba(236,72,153,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(139,92,246,0.15); color: #c4b5fd; }
+  .teach-entry .tag.pink   { background: rgba(236,72,153,0.15); color: #f9a8d4; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Scheme diagram panel */
+  .scheme-diagram {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.6rem;
+    line-height: 1.6;
+    color: #94a3b8;
+  }
+  .scheme-line {
+    padding: 3px 0;
+  }
+  .scheme-line .lv {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 800;
+    font-size: 0.55rem;
+    margin-right: 6px;
+  }
+  .scheme-line .lv.l1 { background: rgba(139,92,246,0.2); color: #c4b5fd; }
+  .scheme-line .lv.l2 { background: rgba(236,72,153,0.2); color: #f9a8d4; }
+  .scheme-line .k { color: #fbbf24; }
+  .scheme-line .op { color: #64748b; margin: 0 4px; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #8b5cf6;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(139,92,246,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>COMPOSITE PARTITIONING</h1>
+    <span class="sub">MULTI-LEVEL · MULTI-DIMENSION · HYBRID</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Traffic Control</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 100 Queries</button>
+      <button class="btn warn" id="btnHotRegion">🔥 Hot Region</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Profile</h3>
+      <div class="slider-row"><span>Queries / sec</span><span class="value" id="qpsVal">80</span></div>
+      <input type="range" id="qpsRange" min="1" max="300" value="80">
+      <div class="slider-row"><span>Read Ratio</span><span class="value" id="readVal">65%</span></div>
+      <input type="range" id="readRange" min="0" max="100" value="65">
+    </div>
+
+    <div class="panel">
+      <h3>Composite Scheme</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="scheme" value="range_hash" checked style="accent-color:#8b5cf6;">
+          RANGE(region) → HASH(user_id)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="scheme" value="range_range" style="accent-color:#8b5cf6;">
+          RANGE(time) → RANGE(amount)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="scheme" value="list_hash" style="accent-color:#8b5cf6;">
+          LIST(tier) → HASH(tenant_id)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="scheme" value="hash_hash" style="accent-color:#8b5cf6;">
+          HASH(x) → HASH(y)
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Operations</h3>
+      <button class="btn success" id="btnAddL1">+ Add L1 Group</button>
+      <button class="btn warn" id="btnSplitL2">✂ Split Hottest L2</button>
+      <button class="btn danger" id="btnKillL2">💥 Kill an L2 Shard</button>
+      <button class="btn success" id="btnRecover">🔄 Recover All</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#22d3ee;"></div>Read</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>Write</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6;"></div>L1 group (region)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ec4899;"></div>L2 shard (hash)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>Hot shard</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">LEVEL 1 SPLITS FIRST · LEVEL 2 SPLITS AGAIN · COMPOSITE KEY</div>
+
+      <div class="clients-row" id="clientsRow">
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+      </div>
+
+      <div class="router-wrap">
+        <div class="router" id="router">
+          <div class="title">COMPOSITE ROUTER</div>
+          <div class="formula" id="routerFormula">l1 = range(key1) → l2 = hash(key2) mod N</div>
+        </div>
+      </div>
+
+      <div class="route-two-level">
+        <div class="level-row level-1" id="level1Row">
+          <span class="level-badge l1">L1</span>
+          <span class="level-formula" id="level1Formula">waiting...</span>
+        </div>
+        <div class="level-row level-2" id="level2Row">
+          <span class="level-badge l2">L2</span>
+          <span class="level-formula" id="level2Formula">waiting...</span>
+        </div>
+      </div>
+
+      <svg class="connections" id="connections" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:1;"></svg>
+
+      <div class="grid-wrap" id="gridWrap"></div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">L1 Groups</div>
+        <div class="metric-value" id="mL1">4</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">L2 Shards</div>
+        <div class="metric-value" id="mL2">12</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Total Cells</div>
+        <div class="metric-value" id="mCells">12</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">QPS</div>
+        <div class="metric-value" id="mQps">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Hottest Cell</div>
+        <div class="metric-value" id="mHottest">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Read L1 Fanout</div>
+        <div class="metric-value" id="mFanout">1</div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:6px;">📐 Scheme Diagram</h3>
+      <div class="scheme-diagram" id="schemeDiagram"></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  running: false,
+  qps: 80,
+  readRatio: 0.65,
+  scheme: 'range_hash',  // range_hash | range_range | list_hash | hash_hash
+  l1Groups: [],          // [{ id, name, rangeStart, rangeEnd, listValues?, shards: [], load, ops }]
+  nextL1Id: 1,
+  nextL2Id: 1,
+  totalQueries: 0,
+  totalWrites: 0,
+  latencySamples: [],
+  tickTimer: null,
+  teaching: true,
+  voiceEnabled: false,
+  hotKey1: null,          // hot L1 group (region)
+  // Tracking
+  cellHits: {},           // key: "l1id-l2id" → count
+  lastAnnouncedCells: 0
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  gridWrap: document.getElementById('gridWrap'),
+  router: document.getElementById('router'),
+  routerFormula: document.getElementById('routerFormula'),
+  level1Row: document.getElementById('level1Row'),
+  level1Formula: document.getElementById('level1Formula'),
+  level2Row: document.getElementById('level2Row'),
+  level2Formula: document.getElementById('level2Formula'),
+  schemeDiagram: document.getElementById('schemeDiagram'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnHotRegion: document.getElementById('btnHotRegion'),
+  btnAddL1: document.getElementById('btnAddL1'),
+  btnSplitL2: document.getElementById('btnSplitL2'),
+  btnKillL2: document.getElementById('btnKillL2'),
+  btnRecover: document.getElementById('btnRecover'),
+  qpsRange: document.getElementById('qpsRange'),
+  qpsVal: document.getElementById('qpsVal'),
+  readRange: document.getElementById('readRange'),
+  readVal: document.getElementById('readVal'),
+  mL1: document.getElementById('mL1'),
+  mL2: document.getElementById('mL2'),
+  mCells: document.getElementById('mCells'),
+  mQps: document.getElementById('mQps'),
+  mHottest: document.getElementById('mHottest'),
+  mFanout: document.getElementById('mFanout'),
+  clientsRow: document.getElementById('clientsRow')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function simpleHash(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h);
+}
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining composite partitioning.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING FEED
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   SCHEME INITIALIZATION
+   ============================================================ */
+function initializeScheme(schemeType) {
+  STATE.scheme = schemeType;
+  STATE.l1Groups = [];
+  STATE.nextL1Id = 1;
+  STATE.nextL2Id = 1;
+  STATE.cellHits = {};
+
+  const schemeDef = getSchemeDefinition(schemeType);
+  DOM.routerFormula.textContent = schemeDef.formula;
+  renderSchemeDiagram(schemeDef);
+
+  // Build L1 groups based on scheme
+  if (schemeType === 'range_hash') {
+    // 4 regions by range
+    const regions = [
+      { id: 1, name: 'R_AMERICAS', rangeStart: 0, rangeEnd: 30 },
+      { id: 2, name: 'R_EMEA',     rangeStart: 30, rangeEnd: 60 },
+      { id: 3, name: 'R_APAC',     rangeStart: 60, rangeEnd: 85 },
+      { id: 4, name: 'R_OTHER',    rangeStart: 85, rangeEnd: 100 }
+    ];
+    for (const r of regions) {
+      STATE.l1Groups.push({
+        id: STATE.nextL1Id++,
+        name: r.name,
+        rangeStart: r.rangeStart,
+        rangeEnd: r.rangeEnd,
+        load: 0,
+        ops: 0,
+        shards: createShards(3)  // 3 hash shards per region
+      });
+    }
+  } else if (schemeType === 'range_range') {
+    // Time ranges, each with amount sub-ranges
+    const times = [
+      { id: 1, name: 'T_2024', rangeStart: 0, rangeEnd: 25 },
+      { id: 2, name: 'T_2025_Q1', rangeStart: 25, rangeEnd: 50 },
+      { id: 3, name: 'T_2025_Q2', rangeStart: 50, rangeEnd: 75 },
+      { id: 4, name: 'T_2025_Q3', rangeStart: 75, rangeEnd: 100 }
+    ];
+    for (const t of times) {
+      STATE.l1Groups.push({
+        id: STATE.nextL1Id++,
+        name: t.name,
+        rangeStart: t.rangeStart,
+        rangeEnd: t.rangeEnd,
+        load: 0,
+        ops: 0,
+        shards: createRangeShards(3)  // 3 amount ranges per time range
+      });
+    }
+  } else if (schemeType === 'list_hash') {
+    // Tiers by list, hash inside
+    const tiers = [
+      { id: 1, name: 'TIER_FREE', values: ['FREE'], color: '#10b981' },
+      { id: 2, name: 'TIER_PRO', values: ['PRO'], color: '#3b82f6' },
+      { id: 3, name: 'TIER_ENTERPRISE', values: ['ENT'], color: '#8b5cf6' },
+      { id: 4, name: 'TIER_TRIAL', values: ['TRIAL'], color: '#f59e0b' }
+    ];
+    for (const t of tiers) {
+      STATE.l1Groups.push({
+        id: STATE.nextL1Id++,
+        name: t.name,
+        listValues: t.values,
+        load: 0,
+        ops: 0,
+        shards: createShards(3)
+      });
+    }
+  } else if (schemeType === 'hash_hash') {
+    // Two-level hash — the "1024 virtual shards" pattern
+    // 4 top-level hash groups, each with 4 sub-hash shards
+    for (let i = 0; i < 4; i++) {
+      STATE.l1Groups.push({
+        id: STATE.nextL1Id++,
+        name: `H_TOP_${i}`,
+        hashSlot: i,
+        load: 0,
+        ops: 0,
+        shards: createShards(4)
+      });
+    }
+  }
+
+  renderGrid();
+  updateTelemetry();
+
+  teach('INIT',
+    `Composite partitioning initialized with scheme: ${schemeDef.name}. This scheme layers ${schemeDef.l1Type} ` +
+    `at the top level with ${schemeDef.l2Type} at the second level. Every row has a composite key — for example ` +
+    `(region, user_id). The router computes L1 first, then routes within that L1 group to an L2 shard. ` +
+    `The result: ${STATE.l1Groups.length} L1 groups × ${STATE.l1Groups[0].shards.length} L2 shards = ` +
+    `${STATE.l1Groups.length * STATE.l1Groups[0].shards.length} total partitions.`,
+    'ok'
+  );
+}
+
+function createShards(n) {
+  const shards = [];
+  for (let i = 0; i < n; i++) {
+    shards.push({
+      id: STATE.nextL2Id++,
+      name: `S_${String(i).padStart(2, '0')}`,
+      hashSlot: i,
+      load: 0,
+      ops: 0,
+      online: true
+    });
+  }
+  return shards;
+}
+
+function createRangeShards(n) {
+  const shards = [];
+  const step = 100 / n;
+  for (let i = 0; i < n; i++) {
+    shards.push({
+      id: STATE.nextL2Id++,
+      name: `R_${i * step}-${(i + 1) * step}`,
+      rangeStart: i * step,
+      rangeEnd: (i + 1) * step,
+      load: 0,
+      ops: 0,
+      online: true
+    });
+  }
+  return shards;
+}
+
+function getSchemeDefinition(schemeType) {
+  const defs = {
+    range_hash: {
+      name: 'RANGE(region) → HASH(user_id)',
+      formula: 'l1 = range_key(key1) → l2 = hash(key2) mod N',
+      l1Type: 'RANGE',
+      l2Type: 'HASH',
+      l1Key: 'region_code',
+      l2Key: 'user_id'
+    },
+    range_range: {
+      name: 'RANGE(time) → RANGE(amount)',
+      formula: 'l1 = range_key(time) → l2 = range_key(amount)',
+      l1Type: 'RANGE',
+      l2Type: 'RANGE',
+      l1Key: 'order_date',
+      l2Key: 'order_amount'
+    },
+    list_hash: {
+      name: 'LIST(tier) → HASH(tenant_id)',
+      formula: 'l1 = list_match(tier) → l2 = hash(tenant_id) mod N',
+      l1Type: 'LIST',
+      l2Type: 'HASH',
+      l1Key: 'tier',
+      l2Key: 'tenant_id'
+    },
+    hash_hash: {
+      name: 'HASH(x) → HASH(y)',
+      formula: 'l1 = hash(x) mod 4 → l2 = hash(y) mod 4',
+      l1Type: 'HASH',
+      l2Type: 'HASH',
+      l1Key: 'customer_id',
+      l2Key: 'order_id'
+    }
+  };
+  return defs[schemeType] || defs.range_hash;
+}
+
+function renderSchemeDiagram(def) {
+  DOM.schemeDiagram.innerHTML = `
+    <div class="scheme-line">
+      <span class="lv l1">L1</span>
+      ${def.l1Type}(<span class="k">${def.l1Key}</span>)
+      <span class="op">→</span> picks an L1 group
+    </div>
+    <div class="scheme-line" style="padding-left:20px; color:#475569;">↓</div>
+    <div class="scheme-line">
+      <span class="lv l2">L2</span>
+      ${def.l2Type}(<span class="k">${def.l2Key}</span>)
+      <span class="op">→</span> picks an L2 shard within that group
+    </div>
+    <div class="scheme-line" style="padding-left:20px; color:#475569;">↓</div>
+    <div class="scheme-line" style="color:#10b981; font-weight:700;">
+      final cell = [L1 group][L2 shard]
+    </div>
+    <div class="scheme-line" style="margin-top:6px; color:#64748b; font-size:0.55rem;">
+      total cells = ${STATE.l1Groups.length} L1 × ${STATE.l1Groups[0]?.shards.length || 0} L2
+    </div>
+  `;
+}
+
+/* ============================================================
+   ROUTING — TWO LEVELS
+   ============================================================ */
+function routeKey(key1, key2) {
+  // Level 1
+  const l1 = pickL1(key1);
+  if (!l1) return null;
+  // Level 2
+  const l2 = pickL2(l1, key2);
+  if (!l2) return null;
+  return { l1, l2, l1Key: key1, l2Key: key2 };
+}
+
+function pickL1(key1) {
+  const online = STATE.l1Groups.filter(g => g.shards.some(s => s.online));
+  if (online.length === 0) return null;
+
+  switch (STATE.scheme) {
+    case 'range_hash':
+    case 'range_range': {
+      // Range lookup on key1 % 100
+      const k = ((key1 % 100) + 100) % 100;
+      for (const g of online) {
+        if (k >= g.rangeStart && k < g.rangeEnd) return g;
+      }
+      return online[online.length - 1];
+    }
+    case 'list_hash': {
+      // Find group whose list contains key1
+      for (const g of online) {
+        if (g.listValues && g.listValues.includes(key1)) return g;
+      }
+      return online[online.length - 1]; // default
+    }
+    case 'hash_hash': {
+      const h = simpleHash(String(key1));
+      return online[h % online.length];
+    }
+  }
+  return online[0];
+}
+
+function pickL2(l1Group, key2) {
+  const online = l1Group.shards.filter(s => s.online);
+  if (online.length === 0) return null;
+
+  switch (STATE.scheme) {
+    case 'range_hash':
+    case 'list_hash':
+    case 'hash_hash': {
+      // Hash key2 into an L2 shard
+      const h = simpleHash(String(key2));
+      return online[h % online.length];
+    }
+    case 'range_range': {
+      // Range lookup on key2 % 100
+      const k = ((key2 % 100) + 100) % 100;
+      for (const s of online) {
+        if (k >= s.rangeStart && k < s.rangeEnd) return s;
+      }
+      return online[online.length - 1];
+    }
+  }
+  return online[0];
+}
+
+/* ============================================================
+   KEY GENERATION
+   ============================================================ */
+function generateKeys() {
+  // Returns [key1, key2] based on scheme
+  let key1, key2;
+  if (STATE.hotKey1 !== null && Math.random() < 0.6) {
+    key1 = STATE.hotKey1;
+  }
+
+  switch (STATE.scheme) {
+    case 'range_hash':
+      if (key1 === undefined) key1 = randInt(0, 99);        // region code 0-99
+      key2 = randInt(1, 1_000_000);                          // user id
+      break;
+    case 'range_range':
+      if (key1 === undefined) key1 = randInt(0, 99);         // time bucket
+      key2 = randInt(0, 99);                                 // amount bucket
+      break;
+    case 'list_hash': {
+      if (key1 === undefined) {
+        const tiers = ['FREE', 'PRO', 'ENT', 'TRIAL', 'FREE', 'PRO'];  // weighted
+        key1 = tiers[randInt(0, tiers.length - 1)];
+      }
+      key2 = randInt(1, 100000);                             // tenant id
+      break;
+    }
+    case 'hash_hash':
+      if (key1 === undefined) key1 = randInt(1, 9999);
+      key2 = randInt(1, 9999);
+      break;
+  }
+  return [key1, key2];
+}
+
+/* ============================================================
+   DISPATCH
+   ============================================================ */
+function dispatchQuery() {
+  const [key1, key2] = generateKeys();
+  const route = routeKey(key1, key2);
+  if (!route) return;
+
+  const isRead = Math.random() < STATE.readRatio;
+
+  // Track hit on the specific cell
+  const cellKey = `${route.l1.id}-${route.l2.id}`;
+  STATE.cellHits[cellKey] = (STATE.cellHits[cellKey] || 0) + 1;
+
+  route.l1.ops++;
+  route.l2.ops++;
+  route.l2.load = clamp(route.l2.load + 0.06, 0, 1);
+  // L1 load = max of children
+  route.l1.load = Math.max(...route.l1.shards.map(s => s.load));
+
+  STATE.totalQueries++;
+  if (!isRead) STATE.totalWrites++;
+
+  // Router flash
+  DOM.router.classList.remove('busy');
+  void DOM.router.offsetWidth;
+  DOM.router.classList.add('busy');
+
+  // Level 1 display
+  const def = getSchemeDefinition(STATE.scheme);
+  let l1Desc = '';
+  if (STATE.scheme === 'range_hash' || STATE.scheme === 'range_range') {
+    l1Desc = `RANGE(<span class="k">${key1}</span>) → falls in [${route.l1.rangeStart}, ${route.l1.rangeEnd}) → <span class="p">${route.l1.name}</span>`;
+  } else if (STATE.scheme === 'list_hash') {
+    l1Desc = `LIST(<span class="k">'${key1}'</span>) → matched list [${route.l1.listValues.join(', ')}] → <span class="p">${route.l1.name}</span>`;
+  } else {
+    l1Desc = `HASH(<span class="k">${key1}</span>) = ${simpleHash(String(key1))} mod 4 = ${simpleHash(String(key1)) % 4} → <span class="p">${route.l1.name}</span>`;
+  }
+  DOM.level1Formula.innerHTML = l1Desc;
+  DOM.level1Row.classList.add('active');
+  setTimeout(() => DOM.level1Row.classList.remove('active'), 400);
+
+  // Level 2 display
+  let l2Desc = '';
+  if (STATE.scheme === 'range_range') {
+    l2Desc = `RANGE(<span class="k">${key2}</span>) → falls in [${route.l2.rangeStart}, ${route.l2.rangeEnd}) → <span class="s">${route.l2.name}</span>`;
+  } else {
+    const h = simpleHash(String(key2));
+    l2Desc = `HASH(<span class="k">${key2}</span>) = ${h} mod ${route.l1.shards.length} = ${h % route.l1.shards.length} → <span class="s">${route.l2.name}</span>`;
+  }
+  DOM.level2Formula.innerHTML = l2Desc;
+  DOM.level2Row.classList.add('active');
+  setTimeout(() => DOM.level2Row.classList.remove('active'), 400);
+
+  // Client highlight
+  const clientEls = DOM.clientsRow.querySelectorAll('.client');
+  const client = clientEls[randInt(0, clientEls.length - 1)];
+  client.classList.add('active', isRead ? 'read' : 'insert');
+  setTimeout(() => client.classList.remove('active', 'read', 'insert'), 220);
+
+  // Pulse visuals
+  pulseL1(route.l1.id);
+  pulseL2(route.l1.id, route.l2.id);
+
+  // Particles
+  animateTwoLevelParticle(client, route.l1, route.l2, isRead);
+
+  // Latency
+  const ownLoad = route.l2.load;
+  const latency = 4 + Math.pow(ownLoad, 3) * 220 + rand(-2, 2);
+  STATE.latencySamples.push(latency);
+  if (STATE.latencySamples.length > 400) STATE.latencySamples.shift();
+
+  renderGridVisuals();
+  updateTelemetry();
+}
+
+/* ============================================================
+   PULSE + PARTICLES
+   ============================================================ */
+function pulseL1(l1Id) {
+  const el = DOM.gridWrap.querySelector(`[data-l1-id="${l1Id}"]`);
+  if (!el) return;
+  el.classList.remove('busy');
+  void el.offsetWidth;
+  el.classList.add('busy');
+}
+
+function pulseL2(l1Id, l2Id) {
+  const el = DOM.gridWrap.querySelector(`[data-l1-id="${l1Id}"][data-l2-id="${l2Id}"]`);
+  if (!el) return;
+  el.classList.remove('busy');
+  void el.offsetWidth;
+  el.classList.add('busy');
+}
+
+function animateTwoLevelParticle(client, l1, l2, isRead) {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const cr = client.getBoundingClientRect();
+  const rr = DOM.router.getBoundingClientRect();
+  const l1El = DOM.gridWrap.querySelector(`[data-l1-id="${l1.id}"]`);
+  const l2El = DOM.gridWrap.querySelector(`[data-l1-id="${l1.id}"][data-l2-id="${l2.id}"]`);
+  if (!l1El || !l2El) return;
+  const l1r = l1El.getBoundingClientRect();
+  const l2r = l2El.getBoundingClientRect();
+
+  // Hop 1: client → router
+  const hop1 = document.createElement('div');
+  hop1.className = 'particle route';
+  const sx = cr.left - stageRect.left + cr.width / 2 - 4;
+  const sy = cr.top - stageRect.top + cr.height - 4;
+  const mx = rr.left - stageRect.left + rr.width / 2 - 4;
+  const my = rr.top - stageRect.top + rr.height - 4;
+  hop1.style.left = sx + 'px';
+  hop1.style.top = sy + 'px';
+  DOM.stage.appendChild(hop1);
+
+  const t0 = performance.now();
+  (function hop(now) {
+    const t = Math.min(1, (now - t0) / 180);
+    const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    hop1.style.transform = `translate(${(mx - sx) * e}px, ${(my - sy) * e}px)`;
+    hop1.style.opacity = String(1 - t * 0.3);
+    if (t < 1) requestAnimationFrame(hop);
+    else {
+      hop1.remove();
+      // Hop 2: router → L1 group
+      const hop2 = document.createElement('div');
+      hop2.className = 'particle route';
+      hop2.style.left = mx + 'px';
+      hop2.style.top = my + 'px';
+      DOM.stage.appendChild(hop2);
+
+      const l1cx = l1r.left - stageRect.left + l1r.width / 2 - 4;
+      const l1cy = l1r.top - stageRect.top + 12;
+
+      const t1 = performance.now();
+      (function h2(now2) {
+        const t = Math.min(1, (now2 - t1) / 200);
+        const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+        hop2.style.transform = `translate(${(l1cx - mx) * e}px, ${(l1cy - my) * e}px)`;
+        hop2.style.opacity = String(1 - t * 0.3);
+        if (t < 1) requestAnimationFrame(h2);
+        else {
+          hop2.remove();
+          // Hop 3: L1 group → specific L2 shard
+          const hop3 = document.createElement('div');
+          hop3.className = `particle ${isRead ? 'read' : 'insert'}`;
+          hop3.style.left = l1cx + 'px';
+          hop3.style.top = l1cy + 'px';
+          DOM.stage.appendChild(hop3);
+
+          const l2cx = l2r.left - stageRect.left + l2r.width / 2 - 4;
+          const l2cy = l2r.top - stageRect.top + l2r.height / 2 - 4;
+
+          const t2 = performance.now();
+          (function h3(now3) {
+            const t = Math.min(1, (now3 - t2) / 220);
+            const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+            hop3.style.transform = `translate(${(l2cx - l1cx) * e}px, ${(l2cy - l1cy) * e}px)`;
+            hop3.style.opacity = String(1 - t * 0.4);
+            if (t < 1) requestAnimationFrame(h3);
+            else hop3.remove();
+          })(t2);
+        }
+      })(t1);
+    }
+  })(t0);
+}
+
+/* ============================================================
+   RENDER GRID
+   ============================================================ */
+function renderGrid() {
+  DOM.gridWrap.innerHTML = '';
+  for (const l1 of STATE.l1Groups) {
+    DOM.gridWrap.appendChild(buildL1Group(l1));
+  }
+}
+
+function buildL1Group(l1) {
+  const el = document.createElement('div');
+  el.className = 'l1-group new';
+  el.dataset.l1Id = l1.id;
+
+  const rangeLabel = l1.rangeStart !== undefined
+    ? `[${l1.rangeStart}, ${l1.rangeEnd})`
+    : l1.listValues
+      ? `[${l1.listValues.join(',')}]`
+      : `hash slot ${l1.hashSlot}`;
+
+  el.innerHTML = `
+    <div class="l1-header">
+      <span class="l1-title">${l1.name}</span>
+      <span class="l1-range">${rangeLabel}
+        <span class="l1-load-mini"><div style="width:0%"></div></span>
+      </span>
+    </div>
+    <div class="l2-row">
+      ${l1.shards.map(s => `
+        <div class="l2-shard cold" data-l1-id="${l1.id}" data-l2-id="${s.id}">
+          <div class="l2-name">${s.name}</div>
+          <div class="l2-hash-range">${s.hashSlot !== undefined ? `slot ${s.hashSlot}` : `[${s.rangeStart},${s.rangeEnd})`}</div>
+          <div class="l2-load-bar"><div class="l2-load-fill"></div></div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  return el;
+}
+
+function renderGridVisuals() {
+  for (const l1 of STATE.l1Groups) {
+    const l1El = DOM.gridWrap.querySelector(`[data-l1-id="${l1.id}"]`);
+    if (!l1El) continue;
+
+    // Update L1 load mini bar
+    const maxL2Load = Math.max(...l1.shards.map(s => s.load));
+    l1El.querySelector('.l1-load-mini > div').style.width = Math.round(maxL2Load * 100) + '%';
+    l1El.classList.toggle('hot', maxL2Load > 0.85);
+
+    // Update each L2 shard
+    for (const s of l1.shards) {
+      const l2El = DOM.gridWrap.querySelector(`[data-l1-id="${l1.id}"][data-l2-id="${s.id}"]`);
+      if (!l2El) continue;
+      const fill = l2El.querySelector('.l2-load-fill');
+      fill.style.width = Math.round(s.load * 100) + '%';
+      l2El.classList.toggle('hot', s.load > 0.85 && s.online);
+      l2El.classList.toggle('warm', s.load > 0.5 && s.load <= 0.85 && s.online);
+      l2El.classList.toggle('cold', s.load <= 0.5 && s.online);
+      l2El.classList.toggle('offline', !s.online);
+    }
+  }
+}
+
+/* ============================================================
+   TELEMETRY
+   ============================================================ */
+function updateTelemetry() {
+  const l1Count = STATE.l1Groups.length;
+  const l2Count = STATE.l1Groups.reduce((a, g) => a + g.shards.length, 0);
+  const onlineL2 = STATE.l1Groups.reduce((a, g) => a + g.shards.filter(s => s.online).length, 0);
+
+  DOM.mL1.textContent = l1Count;
+  DOM.mL2.textContent = onlineL2 + (l2Count !== onlineL2 ? `/${l2Count}` : '');
+  DOM.mCells.textContent = `${l1Count}×${STATE.l1Groups[0]?.shards.length || 0}`;
+  DOM.mQps.textContent = STATE.running ? STATE.qps : 0;
+
+  const allLoads = [];
+  for (const g of STATE.l1Groups) for (const s of g.shards) if (s.online) allLoads.push(s.load);
+  const hottest = allLoads.length ? Math.max(...allLoads) : 0;
+  DOM.mHottest.textContent = Math.round(hottest * 100) + '%';
+  DOM.mHottest.className = 'metric-value' + (hottest > 0.85 ? ' bad' : hottest > 0.6 ? ' warn' : '');
+
+  // Read fanout = number of L1 groups a query might need to touch. For a point query it's 1.
+  DOM.mFanout.textContent = '1';
+
+  // Update scheme diagram
+  renderSchemeDiagram(getSchemeDefinition(STATE.scheme));
+}
+
+/* ============================================================
+   DECAY
+   ============================================================ */
+setInterval(() => {
+  for (const g of STATE.l1Groups) {
+    for (const s of g.shards) {
+      s.load = Math.max(0, s.load - 0.03);
+    }
+    g.load = Math.max(0, ...g.shards.map(s => s.load));
+  }
+  renderGridVisuals();
+  updateTelemetry();
+}, 400);
+
+/* ============================================================
+   TRAFFIC
+   ============================================================ */
+function tick() {
+  if (!STATE.running) return;
+  const batch = Math.max(1, Math.round(STATE.qps / 10));
+  for (let i = 0; i < batch; i++) dispatchQuery();
+}
+
+function startTraffic() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+  STATE.tickTimer = setInterval(tick, 100);
+  teach('START',
+    `Traffic started at ${STATE.qps} q/s with ${Math.round(STATE.readRatio * 100)}% reads. Each query has a ` +
+    `composite key (key1, key2). Watch the two-level routing: L1 picks the group, L2 picks the shard inside it. ` +
+    `The particle animation shows the exact hop sequence: client → router → L1 group → L2 shard.`,
+    'ok'
+  );
+}
+
+function stopTraffic() {
+  STATE.running = false;
+  DOM.btnToggle.textContent = '▶ Start Traffic';
+  DOM.btnToggle.classList.add('primary');
+  DOM.btnToggle.classList.remove('danger');
+  clearInterval(STATE.tickTimer);
+  STATE.tickTimer = null;
+  teach('STOP', 'Traffic stopped.', 'info', false);
+}
+
+function burst() {
+  teach('BURST',
+    `100 queries dispatched. Under composite partitioning, a burst can localize to ONE cell — the intersection of ` +
+    `one L1 group and one L2 shard. That's the fundamental risk: a hot L1 × L2 combination is a small, specific, ` +
+    `scaling bottleneck even with a two-level scheme.`,
+    'info'
+  );
+  for (let i = 0; i < 100; i++) setTimeout(dispatchQuery, i * 8);
+  showToast('⚡ 100-query burst dispatched');
+}
+
+function injectHotRegion() {
+  // Pick a hot value for key1
+  if (STATE.scheme === 'range_hash' || STATE.scheme === 'range_range') {
+    STATE.hotKey1 = randInt(0, 99);
+  } else if (STATE.scheme === 'list_hash') {
+    STATE.hotKey1 = 'ENT';  // Enterprise tier hammered
+  } else {
+    STATE.hotKey1 = randInt(1, 9999);
+  }
+
+  // Highlight the affected L1 group
+  const affectedL1 = pickL1(STATE.hotKey1);
+  if (affectedL1) {
+    const el = DOM.gridWrap.querySelector(`[data-l1-id="${affectedL1.id}"]`);
+    if (el) el.classList.add('hot');
+  }
+
+  teach('HOT L1',
+    `Injected hotspot on L1 key = ${STATE.hotKey1}. 60% of all traffic now targets this value, and therefore ` +
+    `this specific L1 group. Inside that group, key2 still hashes uniformly across L2 shards — so the load within ` +
+    `the group is spread across L2 shards, but the GROUP itself is now the bottleneck. This shows the strength and ` +
+    `weakness of composite partitioning: L2 uniformity helps, but L1 skew is a top-level problem.`,
+    'error'
+  );
+
+  if (!STATE.running) startTraffic();
+
+  setTimeout(() => {
+    STATE.hotKey1 = null;
+    if (affectedL1) {
+      const el = DOM.gridWrap.querySelector(`[data-l1-id="${affectedL1.id}"]`);
+      if (el) el.classList.remove('hot');
+    }
+    teach('COOLDOWN', 'L1 hotspot cooled.', 'info', false);
+  }, 12000);
+  showToast('🔥 Hot L1 group injected');
+}
+
+/* ============================================================
+   OPERATIONS
+   ============================================================ */
+function addL1Group() {
+  if (STATE.l1Groups.length >= 8) { showToast('⚠ Max L1 groups'); return; }
+
+  const existing = STATE.l1Groups.map(g => g.name);
+  const candidates = [
+    { name: 'R_AFRICA', rangeStart: 100, rangeEnd: 110 },
+    { name: 'R_MIDEAST', rangeStart: 110, rangeEnd: 120 },
+    { name: 'R_ANTARCTICA', rangeStart: 120, rangeEnd: 130 }
+  ];
+  const next = candidates.find(c => !existing.includes(c.name));
+  if (!next) { showToast('⚠ No more predefined groups'); return; }
+
+  const newGroup = {
+    id: STATE.nextL1Id++,
+    name: next.name,
+    rangeStart: next.rangeStart,
+    rangeEnd: next.rangeEnd,
+    load: 0,
+    ops: 0,
+    shards: createShards(3)
+  };
+  STATE.l1Groups.push(newGroup);
+
+  renderGrid();
+  updateTelemetry();
+
+  teach('ADD L1',
+    `Added L1 group ${next.name} with range [${next.rangeStart}, ${next.rangeEnd}). It gets ${newGroup.shards.length} ` +
+    `fresh L2 hash shards. Note that adding an L1 group does NOT reshuffle existing keys — existing L1 groups keep ` +
+    `their ranges unchanged. This is a big advantage of range-based L1: growth is localized.`,
+    'ok'
+  );
+  showToast(`✅ Added ${next.name}`);
+}
+
+function splitHottestL2() {
+  // Find hottest L2 across all groups
+  let hottestL1 = null, hottestL2 = null, maxLoad = 0;
+  for (const g of STATE.l1Groups) {
+    for (const s of g.shards) {
+      if (s.online && s.load > maxLoad) { maxLoad = s.load; hottestL1 = g; hottestL2 = s; }
+    }
+  }
+  if (!hottestL2 || hottestL1.shards.length >= 6) {
+    showToast('⚠ Cannot split further');
+    return;
+  }
+  // Split the hottest L2 into two — simulate by adding a new shard and halving load
+  const newShard = {
+    id: STATE.nextL2Id++,
+    name: `S_${String(hottestL1.shards.length).padStart(2, '0')}`,
+    hashSlot: hottestL1.shards.length,
+    load: 0,
+    ops: 0,
+    online: true
+  };
+  // Rebalance load: original halves, new gets half
+  const halfLoad = hottestL2.load * 0.4;
+  hottestL2.load *= 0.6;
+  newShard.load = halfLoad;
+
+  hottestL1.shards.push(newShard);
+  renderGrid();
+  renderGridVisuals();
+  updateTelemetry();
+
+  teach('SPLIT L2',
+    `Split an L2 shard inside ${hottestL1.name}. Added a new L2 shard, halving the load. Because L2 is hash-based, ` +
+    `the split requires rehashing SOME of the group's keys — but only within this one L1 group. This is the beauty ` +
+    `of composite: L1 isolates rebalancing to a fraction of the whole cluster.`,
+    'ok'
+  );
+  showToast(`✂ Split L2 in ${hottestL1.name}`);
+}
+
+function killL2Shard() {
+  const onlineShards = [];
+  for (const g of STATE.l1Groups) {
+    for (const s of g.shards) if (s.online) onlineShards.push({ g, s });
+  }
+  if (onlineShards.length <= 1) { showToast('⚠ Too few shards'); return; }
+
+  const victim = onlineShards[randInt(0, onlineShards.length - 1)];
+  victim.s.online = false;
+  victim.s.load = 0;
+  victim.g.load = Math.max(0, ...victim.g.shards.map(s => s.load));
+
+  renderGridVisuals();
+  updateTelemetry();
+
+  teach('L2 DOWN',
+    `Killed L2 shard ${victim.s.name} inside ${victim.g.name}. Only keys that map to this specific cell are affected — ` +
+    `the rest of ${victim.g.name} continues serving. This is the tight blast radius that composite partitioning ` +
+    `provides. With flat hash partitioning, one shard failure affects 1/N of ALL keys; here it affects ` +
+    `1/(L1 × L2) of all keys.`,
+    'error'
+  );
+  showToast(`💥 ${victim.s.name} failed`);
+}
+
+function recoverAll() {
+  for (const g of STATE.l1Groups) {
+    for (const s of g.shards) {
+      s.online = true;
+      s.load = 0.03;
+    }
+  }
+  STATE.hotKey1 = null;
+  renderGrid();
+  updateTelemetry();
+  teach('RECOVERED', 'All L1 groups and L2 shards online.', 'ok');
+  showToast('🔄 All recovered');
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnToggle.addEventListener('click', () => STATE.running ? stopTraffic() : startTraffic());
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnHotRegion.addEventListener('click', injectHotRegion);
+DOM.btnAddL1.addEventListener('click', addL1Group);
+DOM.btnSplitL2.addEventListener('click', splitHottestL2);
+DOM.btnKillL2.addEventListener('click', killL2Shard);
+DOM.btnRecover.addEventListener('click', recoverAll);
+
+DOM.qpsRange.addEventListener('input', e => {
+  STATE.qps = parseInt(e.target.value);
+  DOM.qpsVal.textContent = STATE.qps;
+});
+DOM.readRange.addEventListener('input', e => {
+  STATE.readRatio = parseInt(e.target.value) / 100;
+  DOM.readVal.textContent = e.target.value + '%';
+});
+
+document.querySelectorAll('input[name="scheme"]').forEach(r => {
+  r.addEventListener('change', e => {
+    const def = getSchemeDefinition(e.target.value);
+    initializeScheme(e.target.value);
+    teach('SCHEME',
+      `Switched to ${def.name}. L1 uses ${def.l1Type} on '${def.l1Key}'. L2 uses ${def.l2Type} on '${def.l2Key}'. ` +
+      `Real systems pick their layers based on the dominant query pattern — if most queries filter by region, ` +
+      `region should be L1. If they filter by tenant, tenant should be L1.`,
+      'purple'
+    );
+  });
+});
+
+window.addEventListener('resize', () => {});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+initializeScheme('range_hash');
+
+setTimeout(() => {
+  teach('CONCEPT',
+    `Composite partitioning combines multiple partitioning strategies in a hierarchy. Level 1 partitions by one key ` +
+    `(region, time, tier). Level 2 partitions each L1 cell further by a different key (user_id, order_id, tenant_id). ` +
+    `The composite key determines the full path. Example: (region='US', user_id=42) → R_AMERICAS → S_01.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('WHY COMPOSITE',
+      `Composite partitioning exists for three reasons. (1) Multi-dimensional access: no single key partitions well ` +
+      `for all queries. (2) Bounded blast radius: an L2 failure affects only a cell, not the whole L1. ` +
+      `(3) Custom routing: L1 can be range (for locality), L2 can be hash (for uniformity) — the best of both. ` +
+      `Real systems: Bigtable (row key ranges + column families), Spanner (interleaved tables), ` +
+      `Cassandra (partition key + clustering key), DynamoDB (partition key + sort key), MongoDB (compound shard key).`,
+      'purple'
+    );
+  }, 3800);
+
+  setTimeout(() => {
+    teach('TRADE-OFFS',
+      `The costs of composite partitioning: (1) Every query must compute two routing decisions, not one. ` +
+      `(2) Cross-L1 queries become expensive (scatter-gather across top-level groups). (3) Configuration is ` +
+      `more complex — you must design BOTH keys carefully. (4) Rebalancing propagates through the tree. ` +
+      `The benefits usually outweigh the costs for large-scale systems, which is why every hyperscale database ` +
+      `uses some form of composite partitioning.`,
+      'warn'
+    );
+  }, 6800);
+
+  showToast('👋 Try HOT REGION or switch schemes', 4500);
+}, 800);
+</script>
+</body>
+</html>

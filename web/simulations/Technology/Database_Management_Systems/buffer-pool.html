@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buffer Pool Management — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #06b6d4, #0891b2, #14b8a6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(6,182,212,0.15);
+    color: #67e8f9;
+    border-color: #06b6d4;
+  }
+  .teaching-toggle:hover { background: rgba(6,182,212,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #06b6d4; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #06b6d4; color: #032028; border-color: #06b6d4; }
+  .btn.primary:hover { background: #0891b2; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.purple { background: #6d28d9; color: #fff; border-color: #6d28d9; }
+  .btn.purple:hover { background: #5b21b6; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #67e8f9; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #06b6d4; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(6,182,212,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  /* BUFFER POOL GRID (left, wide) */
+  .buffer-pane {
+    flex: 1.5;
+    background: #070a14;
+    border: 2px solid #06b6d4;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+    box-shadow: 0 0 25px rgba(6,182,212,0.15);
+  }
+  .buffer-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .buffer-title .stats {
+    font-size: 0.55rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+
+  .frames-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    overflow-y: auto;
+    padding: 4px;
+  }
+
+  .frame {
+    background: linear-gradient(145deg, #0a1220, #050810);
+    border: 1.5px solid #334155;
+    border-radius: 8px;
+    padding: 8px;
+    position: relative;
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    font-family: monospace;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 100px;
+    overflow: hidden;
+  }
+  .frame.pinned {
+    border-color: #a855f7;
+    box-shadow: 0 0 15px rgba(168,85,247,0.4);
+  }
+  .frame.dirty {
+    border-color: #f59e0b;
+    box-shadow: 0 0 15px rgba(245,158,11,0.3);
+  }
+  .frame.dirty.pinned {
+    border-color: #a855f7;
+    background: linear-gradient(145deg, rgba(168,85,247,0.08), rgba(245,158,11,0.05));
+  }
+  .frame.hit {
+    border-color: #10b981;
+    animation: hitFlash 0.6s ease;
+  }
+  @keyframes hitFlash {
+    0% { transform: scale(1); box-shadow: 0 0 30px rgba(16,185,129,0.9); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); box-shadow: 0 0 0 rgba(16,185,129,0); }
+  }
+  .frame.victim {
+    border-color: #ef4444;
+    animation: victimFlash 0.6s ease;
+  }
+  @keyframes victimFlash {
+    0% { transform: scale(1); box-shadow: 0 0 30px rgba(239,68,68,0.9); }
+    50% { transform: scale(0.95); background: rgba(239,68,68,0.15); }
+    100% { transform: scale(1); }
+  }
+  .frame.loading {
+    animation: loadIn 0.6s cubic-bezier(.68,-0.55,.27,1.55);
+  }
+  @keyframes loadIn {
+    0% { transform: scale(0.6); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .frame-idx {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    font-size: 0.5rem;
+    color: #475569;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+  }
+  .frame-page {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: #67e8f9;
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+  .frame-page.empty {
+    color: #475569;
+    font-style: italic;
+    font-weight: 600;
+  }
+  .frame-page-num {
+    font-size: 0.5rem;
+    color: #64748b;
+    letter-spacing: 0.5px;
+  }
+
+  .frame-badges {
+    display: flex;
+    gap: 3px;
+    flex-wrap: wrap;
+    margin-top: auto;
+  }
+  .frame-badge {
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.48rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+  }
+  .frame-badge.pin {
+    background: rgba(168,85,247,0.25);
+    color: #c4b5fd;
+    border: 1px solid rgba(168,85,247,0.4);
+  }
+  .frame-badge.dirty {
+    background: rgba(245,158,11,0.25);
+    color: #fcd34d;
+    border: 1px solid rgba(245,158,11,0.4);
+  }
+  .frame-badge.clean {
+    background: rgba(16,185,129,0.2);
+    color: #6ee7b7;
+    border: 1px solid rgba(16,185,129,0.4);
+  }
+  .frame-badge.refbit {
+    background: rgba(59,130,246,0.2);
+    color: #93c5fd;
+    border: 1px solid rgba(59,130,246,0.4);
+  }
+  .frame-badge.free {
+    background: rgba(100,116,139,0.15);
+    color: #64748b;
+    border: 1px solid rgba(100,116,139,0.3);
+  }
+
+  /* Right pane */
+  .info-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow: hidden;
+  }
+
+  .info-box {
+    background: #070a14;
+    border: 2px solid #334155;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .info-box.queue { border-color: #a855f7; }
+  .info-box.stats { border-color: #10b981; }
+  .info-box.access { border-color: #f59e0b; }
+
+  .info-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #cbd5e1;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .info-box.queue .info-title { color: #c4b5fd; }
+  .info-box.stats .info-title { color: #6ee7b7; }
+  .info-box.access .info-title { color: #fcd34d; }
+
+  .info-body {
+    font-family: 'Courier New', monospace;
+    font-size: 0.56rem;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    line-height: 1.5;
+  }
+
+  /* LRU queue visualization */
+  .lru-queue {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 4px 0;
+  }
+  .lru-item {
+    padding: 4px 8px;
+    border-radius: 5px;
+    background: rgba(168,85,247,0.12);
+    border: 1px solid rgba(168,85,247,0.3);
+    color: #c4b5fd;
+    font-size: 0.55rem;
+    font-weight: 800;
+    font-family: monospace;
+    transition: all 0.3s;
+    position: relative;
+  }
+  .lru-item.mru {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #6ee7b7;
+    box-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .lru-item.lru {
+    background: rgba(239,68,68,0.15);
+    border-color: #ef4444;
+    color: #fca5a5;
+  }
+  .lru-item.pinned {
+    background: rgba(168,85,247,0.25);
+    border-color: #a855f7;
+  }
+  .lru-item .pin-icon {
+    position: absolute;
+    top: -6px;
+    right: -4px;
+    font-size: 0.5rem;
+  }
+  .lru-label {
+    color: #64748b;
+    font-size: 0.55rem;
+    font-family: monospace;
+    letter-spacing: 1px;
+  }
+
+  /* Clock visualization */
+  .clock-viz {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding: 6px;
+  }
+  .clock-slot {
+    height: 30px;
+    background: rgba(30,41,59,0.6);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    font-size: 0.5rem;
+    font-weight: 800;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    position: relative;
+    transition: all 0.3s;
+  }
+  .clock-slot .page-lbl {
+    font-size: 0.55rem;
+    color: #67e8f9;
+  }
+  .clock-slot .ref-bit {
+    position: absolute;
+    top: 2px;
+    right: 3px;
+    font-size: 0.5rem;
+    color: #475569;
+    font-weight: 900;
+  }
+  .clock-slot.ref1 {
+    background: rgba(59,130,246,0.15);
+    border-color: #3b82f6;
+  }
+  .clock-slot.ref1 .ref-bit { color: #93c5fd; }
+  .clock-slot.hand {
+    border-color: #f97316;
+    box-shadow: 0 0 12px rgba(249,115,22,0.8);
+    animation: handPulse 0.6s ease;
+  }
+  @keyframes handPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+  }
+
+  /* Stats table */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .stat-item {
+    background: rgba(30,41,59,0.4);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-family: monospace;
+  }
+  .stat-item .lbl {
+    color: #64748b;
+    font-size: 0.5rem;
+    letter-spacing: 0.8px;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .stat-item .val {
+    color: #6ee7b7;
+    font-size: 0.85rem;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+  }
+  .stat-item .val.warn { color: #f59e0b; }
+  .stat-item .val.bad { color: #ef4444; }
+
+  /* Access log */
+  .access-log-entry {
+    display: flex;
+    gap: 6px;
+    padding: 3px 5px;
+    border-radius: 3px;
+    border-left: 2px solid transparent;
+    animation: opAppear 0.3s ease;
+    font-size: 0.55rem;
+    margin-bottom: 2px;
+  }
+  @keyframes opAppear {
+    from { transform: translateX(-8px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .access-log-entry.hit { border-left-color: #10b981; background: rgba(16,185,129,0.06); }
+  .access-log-entry.miss { border-left-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .access-log-entry.evict { border-left-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .access-log-entry.flush { border-left-color: #a855f7; background: rgba(168,85,247,0.06); }
+  .access-log-entry .ts { color: #475569; min-width: 45px; font-size: 0.5rem; }
+  .access-log-entry .ic { font-weight: 800; }
+  .access-log-entry .msg { color: #cbd5e1; flex: 1; }
+
+  /* Hit rate gauge */
+  .gauge {
+    position: relative;
+    height: 12px;
+    background: #0a0e19;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #1e293b;
+    margin-top: 4px;
+  }
+  .gauge-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+    transition: width 0.5s;
+  }
+  .gauge-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    font-size: 0.55rem;
+    font-weight: 800;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(6,182,212,0.06);
+    border: 1px solid rgba(6,182,212,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #67e8f9;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #67e8f9; text-shadow: 0 0 10px rgba(6,182,212,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 240px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #06b6d4;
+    background: rgba(6,182,212,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #c4b5fd; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Policy info card */
+  .policy-card {
+    background: linear-gradient(145deg, rgba(6,182,212,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(6,182,212,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.6rem;
+  }
+  .policy-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .policy-item {
+    display: flex;
+    gap: 8px;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.56rem;
+  }
+  .policy-item:last-child { border-bottom: none; }
+  .policy-item .icon {
+    font-weight: 800;
+    color: #6ee7b7;
+    flex-shrink: 0;
+    min-width: 12px;
+  }
+  .policy-item .lbl {
+    color: #94a3b8;
+    min-width: 55px;
+    font-weight: 700;
+  }
+  .policy-item .txt {
+    color: #cbd5e1;
+    font-size: 0.55rem;
+    line-height: 1.4;
+  }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #06b6d4;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(6,182,212,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>BUFFER POOL MANAGEMENT</h1>
+    <span class="sub">RAM CACHE · EVICTION · PIN · DIRTY · HIT RATE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Workload Scenario</h3>
+      <select id="demoSelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="sequential" selected>📊 Sequential Scan (bad locality)</option>
+        <option value="hotset">🔥 Working Set (80/20 rule)</option>
+        <option value="mixed">🎯 Mixed Read/Write Workload</option>
+        <option value="thrash">💥 Thrashing (pool too small)</option>
+        <option value="scan-pollution">⚠️ Scan Pollution (LRU eviction)</option>
+        <option value="clock">🔄 Clock Algorithm Comparison</option>
+      </select>
+      <button class="btn primary" id="btnRun">▶ Run Workload</button>
+      <button class="btn" id="btnSingle">⚡ Single Access</button>
+      <button class="btn" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Eviction Policy</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="policy" value="lru" checked style="accent-color:#06b6d4;">
+          LRU (Least Recently Used)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="policy" value="clock" style="accent-color:#06b6d4;">
+          Clock (Second Chance)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="policy" value="mru" style="accent-color:#06b6d4;">
+          MRU (Most Recently Used)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="policy" value="fifo" style="accent-color:#06b6d4;">
+          FIFO (insertion order)
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Pool Configuration</h3>
+      <div class="slider-row"><span>Pool size (frames)</span><span class="value" id="poolSizeVal">8</span></div>
+      <input type="range" id="poolSizeRange" min="4" max="16" value="8">
+      <div class="slider-row"><span>Access rate (ops/s)</span><span class="value" id="rateVal">5</span></div>
+      <input type="range" id="rateRange" min="1" max="20" value="5">
+      <div class="slider-row"><span>Write ratio</span><span class="value" id="writeVal">30%</span></div>
+      <input type="range" id="writeRange" min="0" max="100" value="30">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>Clean &amp; referenced</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>Dirty (needs flush)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#a855f7;"></div>Pinned (in use)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>Victim / evicted</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#475569;"></div>Empty frame</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">BUFFER POOL: RAM CACHE FOR DISK PAGES · PIN · DIRTY · EVICT</div>
+
+      <div class="main-split">
+        <!-- BUFFER POOL GRID -->
+        <div class="buffer-pane">
+          <div class="buffer-title">
+            <span>💾 BUFFER POOL FRAMES (RAM)</span>
+            <span class="stats" id="poolStats">8 frames · 0 pinned · 0 dirty</span>
+          </div>
+          <div class="frames-grid" id="framesGrid"></div>
+        </div>
+
+        <!-- RIGHT: LRU QUEUE + STATS + LOG -->
+        <div class="info-pane">
+          <div class="info-box queue">
+            <div class="info-title">
+              <span id="queueTitle">🔗 LRU QUEUE</span>
+              <span style="font-size:0.5rem; color:#64748b;">← LRU side · MRU side →</span>
+            </div>
+            <div class="info-body" id="queueBody">
+              <div class="lru-label">(idle)</div>
+            </div>
+          </div>
+
+          <div class="info-box stats">
+            <div class="info-title">
+              <span>📊 STATS</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="clockHandLabel"></span>
+            </div>
+            <div class="info-body">
+              <div class="stats-grid">
+                <div class="stat-item">
+                  <span class="lbl">HIT RATE</span>
+                  <span class="val" id="hitRate">—</span>
+                </div>
+                <div class="stat-item">
+                  <span class="lbl">ACCESSES</span>
+                  <span class="val" id="accessCount">0</span>
+                </div>
+                <div class="stat-item">
+                  <span class="lbl">HITS</span>
+                  <span class="val" id="hitsCount">0</span>
+                </div>
+                <div class="stat-item">
+                  <span class="lbl">MISSES</span>
+                  <span class="val" id="missesCount">0</span>
+                </div>
+                <div class="stat-item">
+                  <span class="lbl">EVICTIONS</span>
+                  <span class="val" id="evictCount">0</span>
+                </div>
+                <div class="stat-item">
+                  <span class="lbl">FLUSHES</span>
+                  <span class="val" id="flushCount">0</span>
+                </div>
+              </div>
+              <div class="gauge">
+                <div class="gauge-fill" id="hitGauge" style="width:0%"></div>
+                <div class="gauge-label" id="hitGaugeLabel">0%</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-box access">
+            <div class="info-title">
+              <span>📋 ACCESS LOG</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="opCount">0 ops</span>
+            </div>
+            <div class="info-body" id="accessLog"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Hit Rate</div>
+        <div class="metric-value" id="mHitRate">—</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Occupancy</div>
+        <div class="metric-value info" id="mOccupancy">0/8</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Dirty Frames</div>
+        <div class="metric-value warn" id="mDirty">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Pinned</div>
+        <div class="metric-value info" id="mPinned">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Free Frames</div>
+        <div class="metric-value" id="mFree">8</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Policy</div>
+        <div class="metric-value info" id="mPolicy" style="font-size:0.75rem;">LRU</div>
+      </div>
+    </div>
+
+    <div class="policy-card">
+      <div class="policy-card-title">🎛️ How Buffer Pools Work</div>
+      <div class="policy-item">
+        <span class="icon">●</span>
+        <span class="lbl">Frame</span>
+        <span class="txt">A fixed-size slot in RAM holding one disk page (e.g. 8KB).</span>
+      </div>
+      <div class="policy-item">
+        <span class="icon">●</span>
+        <span class="lbl">Pin Count</span>
+        <span class="txt">Number of active readers/writers. A pinned frame cannot be evicted.</span>
+      </div>
+      <div class="policy-item">
+        <span class="icon">●</span>
+        <span class="lbl">Dirty Bit</span>
+        <span class="txt">Set when a page is modified. Must be flushed to disk before eviction.</span>
+      </div>
+      <div class="policy-item">
+        <span class="icon">●</span>
+        <span class="lbl">Ref Bit</span>
+        <span class="txt">Set on every access. Cleared by Clock's hand to give second chances.</span>
+      </div>
+      <div class="policy-item">
+        <span class="icon">●</span>
+        <span class="lbl">Victim</span>
+        <span class="txt">Frame chosen for eviction. LRU = oldest unreferenced. Clock = next with ref=0.</span>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  demo: 'sequential',
+  policy: 'lru',         // lru | clock | mru | fifo
+  poolSize: 8,
+  accessRate: 5,
+  writeRatio: 0.3,
+  running: false,
+  paused: false,
+  frames: [],            // [{ pageId, pin, dirty, refBit, lastAccess, insertOrder }]
+  clockHand: 0,
+  // Stats
+  hits: 0,
+  misses: 0,
+  evictions: 0,
+  flushes: 0,
+  totalAccesses: 0,
+  // Access tracking
+  diskPagePool: 32,      // pages 0..31 exist on disk
+  workingSet: [0, 1, 2, 3, 4],  // hot set for demo
+  tickTimer: null,
+  // Access log
+  accessLog: [],
+  maxLogSize: 40,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  // Timers
+  runStartTime: 0,
+  runDurationMs: 10000,
+  nextPageToAccess: 0,
+  // For "clock" policy animation
+  currentVictimIdx: -1,
+  lastAccessWasHit: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  framesGrid: document.getElementById('framesGrid'),
+  poolStats: document.getElementById('poolStats'),
+  queueTitle: document.getElementById('queueTitle'),
+  queueBody: document.getElementById('queueBody'),
+  accessLog: document.getElementById('accessLog'),
+  opCount: document.getElementById('opCount'),
+  hitRate: document.getElementById('hitRate'),
+  accessCount: document.getElementById('accessCount'),
+  hitsCount: document.getElementById('hitsCount'),
+  missesCount: document.getElementById('missesCount'),
+  evictCount: document.getElementById('evictCount'),
+  flushCount: document.getElementById('flushCount'),
+  hitGauge: document.getElementById('hitGauge'),
+  hitGaugeLabel: document.getElementById('hitGaugeLabel'),
+  clockHandLabel: document.getElementById('clockHandLabel'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  demoSelect: document.getElementById('demoSelect'),
+  btnRun: document.getElementById('btnRun'),
+  btnSingle: document.getElementById('btnSingle'),
+  btnReset: document.getElementById('btnReset'),
+  poolSizeRange: document.getElementById('poolSizeRange'),
+  poolSizeVal: document.getElementById('poolSizeVal'),
+  rateRange: document.getElementById('rateRange'),
+  rateVal: document.getElementById('rateVal'),
+  writeRange: document.getElementById('writeRange'),
+  writeVal: document.getElementById('writeVal'),
+  mHitRate: document.getElementById('mHitRate'),
+  mOccupancy: document.getElementById('mOccupancy'),
+  mDirty: document.getElementById('mDirty'),
+  mPinned: document.getElementById('mPinned'),
+  mFree: document.getElementById('mFree'),
+  mPolicy: document.getElementById('mPolicy')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const nowTime = () => {
+  const d = new Date();
+  return d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0').slice(0, 1);
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining buffer pool management.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   FRAME MANAGEMENT
+   ============================================================ */
+function initFrames() {
+  STATE.frames = [];
+  for (let i = 0; i < STATE.poolSize; i++) {
+    STATE.frames.push({
+      idx: i,
+      pageId: null,
+      pin: 0,
+      dirty: false,
+      refBit: 0,
+      lastAccess: 0,
+      insertOrder: 0
+    });
+  }
+  STATE.clockHand = 0;
+  renderFrames();
+  renderQueue();
+  updateStats();
+}
+
+function findFrameByPage(pageId) {
+  return STATE.frames.find(f => f.pageId === pageId && f.pin >= 0);
+}
+
+function findEmptyFrame() {
+  return STATE.frames.find(f => f.pageId === null);
+}
+
+/* ============================================================
+   EVICTION POLICIES
+   ============================================================ */
+function selectVictim() {
+  // Cannot evict pinned frames
+  const evictable = STATE.frames.filter(f => f.pin === 0);
+  if (evictable.length === 0) return null;
+
+  switch (STATE.policy) {
+    case 'lru': {
+      // Least Recently Used: smallest lastAccess
+      return evictable.reduce((oldest, f) => f.lastAccess < oldest.lastAccess ? f : oldest, evictable[0]);
+    }
+    case 'mru': {
+      // Most Recently Used (used for scan-resistant strategies)
+      return evictable.reduce((newest, f) => f.lastAccess > newest.lastAccess ? f : newest, evictable[0]);
+    }
+    case 'fifo': {
+      // First-in-first-out: smallest insertOrder
+      return evictable.reduce((oldest, f) => f.insertOrder < oldest.insertOrder ? f : oldest, evictable[0]);
+    }
+    case 'clock': {
+      // Clock: find first frame from hand with refBit = 0
+      let tries = 0;
+      while (tries < STATE.frames.length * 2) {
+        const f = STATE.frames[STATE.clockHand];
+        STATE.clockHand = (STATE.clockHand + 1) % STATE.frames.length;
+        tries++;
+
+        if (f.pin > 0) continue;  // Skip pinned
+
+        if (f.refBit === 0) {
+          // Found victim
+          animateClockHand(f.idx);
+          return f;
+        } else {
+          // Second chance — clear refBit and continue
+          f.refBit = 0;
+          animateClockHand(f.idx, true);
+        }
+      }
+      // Fallback to any unpinned
+      return evictable[0];
+    }
+  }
+  return evictable[0];
+}
+
+function animateClockHand(idx, giveSecondChance = false) {
+  const el = document.querySelector(`[data-frame-idx="${idx}"]`);
+  if (el) {
+    el.classList.add('victim');
+    setTimeout(() => el.classList.remove('victim'), 700);
+  }
+  // Also update clock viz
+  const slot = document.querySelector(`[data-clock-slot="${idx}"]`);
+  if (slot) {
+    slot.classList.add('hand');
+    setTimeout(() => slot.classList.remove('hand'), 600);
+  }
+}
+
+/* ============================================================
+   MAIN ACCESS OPERATION
+   ============================================================ */
+function accessPage(pageId, isWrite = false) {
+  STATE.totalAccesses++;
+
+  // 1. Try to find in buffer pool (HIT)
+  const hitFrame = STATE.frames.find(f => f.pageId === pageId);
+
+  if (hitFrame) {
+    // HIT
+    STATE.hits++;
+    hitFrame.pin++;
+    hitFrame.refBit = 1;
+    hitFrame.lastAccess = STATE.totalAccesses;
+    if (isWrite) hitFrame.dirty = true;
+
+    // Visual
+    const el = document.querySelector(`[data-frame-idx="${hitFrame.idx}"]`);
+    if (el) {
+      el.classList.add('hit');
+      setTimeout(() => el.classList.remove('hit'), 700);
+    }
+
+    logAccess('hit', `HIT  Page ${pageId}${isWrite ? ' (write)' : ''}`);
+    updateStats();
+    renderFrames();
+    renderQueue();
+
+    // Unpin after a short delay (simulates work)
+    setTimeout(() => {
+      hitFrame.pin = Math.max(0, hitFrame.pin - 1);
+      renderFrames();
+    }, 300);
+
+    return { hit: true, frame: hitFrame };
+  }
+
+  // 2. MISS — need to load from disk
+  STATE.misses++;
+  logAccess('miss', `MISS Page ${pageId}${isWrite ? ' (write)' : ''} — loading from disk`);
+
+  // Find empty frame
+  let frame = findEmptyFrame();
+
+  if (!frame) {
+    // 3. No empty frame → need to EVICT
+    const victim = selectVictim();
+    if (!victim) {
+      // All frames pinned — would normally block
+      logAccess('evict', `⚠️ All frames pinned — cannot evict`);
+      teach('DEADLOCK', `All frames in the buffer pool are PINNED. A real database would either block the request, grow the pool, or abort a transaction.`, 'error');
+      updateStats();
+      return { hit: false, blocked: true };
+    }
+
+    // Handle dirty victim: flush to disk first
+    if (victim.dirty) {
+      STATE.flushes++;
+      logAccess('flush', `FLUSH Page ${victim.pageId} (dirty) → disk`);
+      victim.dirty = false;
+    }
+
+    STATE.evictions++;
+    logAccess('evict', `EVICT Page ${victim.pageId} from frame ${victim.idx}`);
+
+    // Clear the victim frame
+    victim.pageId = null;
+    victim.refBit = 0;
+    victim.pin = 0;
+
+    // Visual
+    const el = document.querySelector(`[data-frame-idx="${victim.idx}"]`);
+    if (el) {
+      el.classList.add('victim');
+      setTimeout(() => el.classList.remove('victim'), 700);
+    }
+
+    frame = victim;
+  }
+
+  // 4. Load the page into the frame
+  frame.pageId = pageId;
+  frame.pin = 1;
+  frame.dirty = !!isWrite;
+  frame.refBit = 1;
+  frame.lastAccess = STATE.totalAccesses;
+  frame.insertOrder = STATE.totalAccesses;
+
+  // Visual load
+  const el = document.querySelector(`[data-frame-idx="${frame.idx}"]`);
+  if (el) {
+    el.classList.add('loading');
+    setTimeout(() => el.classList.remove('loading'), 700);
+  }
+
+  // Unpin after a short delay
+  setTimeout(() => {
+    frame.pin = Math.max(0, frame.pin - 1);
+    renderFrames();
+  }, 300);
+
+  updateStats();
+  renderFrames();
+  renderQueue();
+
+  return { hit: false, frame };
+}
+
+/* ============================================================
+   LOGGING
+   ============================================================ */
+function logAccess(type, msg) {
+  STATE.accessLog.unshift({ type, msg, ts: nowTime() });
+  if (STATE.accessLog.length > STATE.maxLogSize) STATE.accessLog.pop();
+
+  let html = '';
+  for (const e of STATE.accessLog) {
+    let icon = '·';
+    if (e.type === 'hit') icon = '✓';
+    else if (e.type === 'miss') icon = '✗';
+    else if (e.type === 'evict') icon = '⬇';
+    else if (e.type === 'flush') icon = '↑';
+    html += `
+      <div class="access-log-entry ${e.type}">
+        <span class="ts">${e.ts}</span>
+        <span class="ic">${icon}</span>
+        <span class="msg">${e.msg}</span>
+      </div>
+    `;
+  }
+  DOM.accessLog.innerHTML = html;
+  DOM.opCount.textContent = `${STATE.totalAccesses} ops`;
+}
+
+/* ============================================================
+   RENDER — FRAMES
+   ============================================================ */
+function renderFrames() {
+  let html = '';
+  for (const f of STATE.frames) {
+    const isEmpty = f.pageId === null;
+    const cls = [];
+    if (f.pin > 0) cls.push('pinned');
+    if (f.dirty) cls.push('dirty');
+
+    html += `
+      <div class="frame ${cls.join(' ')}" data-frame-idx="${f.idx}">
+        <span class="frame-idx">FRAME ${f.idx}</span>
+        <div class="frame-page ${isEmpty ? 'empty' : ''}">
+          ${isEmpty ? '— empty —' : `PAGE ${f.pageId}`}
+        </div>
+        <div class="frame-page-num">${isEmpty ? 'no page loaded' : `slot ${f.idx} · lastAccess=${f.lastAccess || 0}`}</div>
+        <div class="frame-badges">
+          ${isEmpty
+            ? `<span class="frame-badge free">FREE</span>`
+            : `
+              ${f.pin > 0 ? `<span class="frame-badge pin">PIN ${f.pin}</span>` : ''}
+              ${f.dirty ? `<span class="frame-badge dirty">DIRTY</span>` : `<span class="frame-badge clean">CLEAN</span>`}
+              ${f.refBit ? `<span class="frame-badge refbit">REF=1</span>` : `<span class="frame-badge free">REF=0</span>`}
+            `
+          }
+        </div>
+      </div>
+    `;
+  }
+  DOM.framesGrid.innerHTML = html;
+}
+
+/* ============================================================
+   RENDER — QUEUE (LRU or Clock)
+   ============================================================ */
+function renderQueue() {
+  if (STATE.policy === 'clock') {
+    // Render clock visualization
+    DOM.queueTitle.textContent = '🕐 CLOCK ORDER (hand at ' + STATE.clockHand + ')';
+    let html = '<div class="clock-viz">';
+    for (const f of STATE.frames) {
+      const ref = f.refBit;
+      const isHand = f.idx === STATE.clockHand;
+      html += `
+        <div class="clock-slot ${ref ? 'ref1' : ''} ${isHand ? 'hand' : ''}" data-clock-slot="${f.idx}">
+          <span class="page-lbl">${f.pageId === null ? '—' : 'P' + f.pageId}</span>
+          <span class="ref-bit">${ref}</span>
+        </div>
+      `;
+    }
+    html += '</div>';
+    html += `<div class="lru-label" style="text-align:center; margin-top:6px;">Reference bit 1 = recently used → gets a second chance. Hand clears it and moves on.</div>`;
+    DOM.queueBody.innerHTML = html;
+  } else {
+    // LRU / MRU / FIFO queue
+    const titles = {
+      lru: '🔗 LRU QUEUE (evict from left)',
+      mru: '🔗 MRU ORDER (evict from right)',
+      fifo: '🔗 FIFO ORDER (evict from left)'
+    };
+    DOM.queueTitle.textContent = titles[STATE.policy] || '🔗 QUEUE';
+
+    // Sort frames
+    const filled = STATE.frames.filter(f => f.pageId !== null);
+    let sorted;
+    if (STATE.policy === 'lru') {
+      sorted = [...filled].sort((a, b) => a.lastAccess - b.lastAccess);
+    } else if (STATE.policy === 'mru') {
+      sorted = [...filled].sort((a, b) => b.lastAccess - a.lastAccess);
+    } else {
+      sorted = [...filled].sort((a, b) => a.insertOrder - b.insertOrder);
+    }
+
+    if (sorted.length === 0) {
+      DOM.queueBody.innerHTML = '<div class="lru-label">(idle)</div>';
+      return;
+    }
+
+    let html = '<div class="lru-queue">';
+    html += `<span class="lru-label">VICTIM →</span>`;
+    sorted.forEach((f, i) => {
+      const isFirst = i === 0;
+      const isLast = i === sorted.length - 1;
+      let cls = '';
+      if (f.pin > 0) cls += ' pinned';
+      if (STATE.policy === 'lru' && isFirst) cls += ' lru';
+      if (STATE.policy === 'lru' && isLast) cls += ' mru';
+      html += `
+        <div class="lru-item ${cls}">
+          ${f.pageId}
+          ${f.pin > 0 ? '<span class="pin-icon">📌</span>' : ''}
+        </div>
+      `;
+    });
+    html += `<span class="lru-label">← MOST RECENT</span>`;
+    html += '</div>';
+    DOM.queueBody.innerHTML = html;
+  }
+}
+
+/* ============================================================
+   TELEMETRY / STATS
+   ============================================================ */
+function updateStats() {
+  const hitRate = STATE.totalAccesses > 0
+    ? Math.round((STATE.hits / STATE.totalAccesses) * 100)
+    : 0;
+
+  DOM.hitRate.textContent = hitRate + '%';
+  DOM.hitRate.className = 'val ' + (hitRate >= 70 ? '' : hitRate >= 40 ? 'warn' : 'bad');
+  DOM.accessCount.textContent = STATE.totalAccesses;
+  DOM.hitsCount.textContent = STATE.hits;
+  DOM.missesCount.textContent = STATE.misses;
+  DOM.evictCount.textContent = STATE.evictions;
+  DOM.flushCount.textContent = STATE.flushes;
+
+  DOM.hitGauge.style.width = hitRate + '%';
+  DOM.hitGaugeLabel.textContent = hitRate + '%';
+
+  const pinned = STATE.frames.filter(f => f.pin > 0).length;
+  const dirty = STATE.frames.filter(f => f.dirty).length;
+  const filled = STATE.frames.filter(f => f.pageId !== null).length;
+  const free = STATE.poolSize - filled;
+
+  DOM.poolStats.textContent = `${STATE.poolSize} frames · ${pinned} pinned · ${dirty} dirty`;
+
+  DOM.mHitRate.textContent = STATE.totalAccesses > 0 ? hitRate + '%' : '—';
+  DOM.mHitRate.className = 'metric-value' + (hitRate >= 70 ? '' : hitRate >= 40 ? ' warn' : ' bad');
+  DOM.mOccupancy.textContent = `${filled}/${STATE.poolSize}`;
+  DOM.mDirty.textContent = dirty;
+  DOM.mDirty.className = 'metric-value' + (dirty > 0 ? ' warn' : '');
+  DOM.mPinned.textContent = pinned;
+  DOM.mFree.textContent = free;
+  DOM.mPolicy.textContent = STATE.policy.toUpperCase();
+}
+
+/* ============================================================
+   WORKLOAD SCENARIOS
+   ============================================================ */
+function getDemoName() {
+  const names = {
+    'sequential': 'SEQUENTIAL SCAN',
+    'hotset': 'WORKING SET (80/20)',
+    'mixed': 'MIXED READ/WRITE',
+    'thrash': 'THRASHING',
+    'scan-pollution': 'SCAN POLLUTION',
+    'clock': 'CLOCK ALGORITHM'
+  };
+  return names[STATE.demo] || 'WORKLOAD';
+}
+
+function nextPageForDemo() {
+  switch (STATE.demo) {
+    case 'sequential':
+      // Walk pages 0..31 in order, then repeat
+      STATE.nextPageToAccess = (STATE.nextPageToAccess + 1) % 32;
+      return STATE.nextPageToAccess;
+
+    case 'hotset':
+      // 80/20: 80% chance hit the hot set
+      if (Math.random() < 0.8) {
+        return STATE.workingSet[Math.floor(Math.random() * STATE.workingSet.length)];
+      }
+      return Math.floor(Math.random() * 32);
+
+    case 'mixed': {
+      // 60% hot, 40% random, occasionally write
+      if (Math.random() < 0.6) {
+        return STATE.workingSet[Math.floor(Math.random() * STATE.workingSet.length)];
+      }
+      return Math.floor(Math.random() * 32);
+    }
+
+    case 'thrash':
+      // Random over 20 pages — pool can't hold them
+      return Math.floor(Math.random() * 20);
+
+    case 'scan-pollution':
+      // Interleave: 3 hot pages accessed, then a sequential scan blows everything away
+      STATE.scanCounter = (STATE.scanCounter || 0) + 1;
+      if (STATE.scanCounter % 5 === 0) {
+        // Sequential scan sweep
+        const scanIdx = Math.floor(STATE.scanCounter / 5) % 32;
+        return scanIdx;
+      }
+      return STATE.workingSet[Math.floor(Math.random() * STATE.workingSet.length)];
+
+    case 'clock':
+      // Same as hotset — Clock vs LRU comparison
+      if (Math.random() < 0.8) {
+        return STATE.workingSet[Math.floor(Math.random() * STATE.workingSet.length)];
+      }
+      return Math.floor(Math.random() * 32);
+  }
+  return Math.floor(Math.random() * 10);
+}
+
+function doSingleAccess() {
+  const pageId = nextPageForDemo();
+  const isWrite = Math.random() < STATE.writeRatio;
+  accessPage(pageId, isWrite);
+}
+
+function runWorkload() {
+  if (STATE.running) {
+    STATE.running = false;
+    DOM.btnRun.textContent = '▶ Run Workload';
+    clearInterval(STATE.tickTimer);
+    return;
+  }
+
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause Workload';
+
+  // Descriptions per scenario
+  const descs = {
+    'sequential': `Sequential scan: accessing pages 0, 1, 2, 3... in order. With LRU and a pool smaller than the scan, every page becomes "most recent" — the previous pages get evicted before we come back to them. Classic LRU worst case.`,
+    'hotset': `Working set with 80/20 locality: 80% of accesses hit 5 hot pages. LRU handles this beautifully — the working set stays resident, evictions are rare.`,
+    'mixed': `Mixed read/write workload. Writes set the dirty bit. Dirty pages can't be evicted until flushed. Watch the flush counter climb.`,
+    'thrash': `Thrashing: pool too small for the working set. Every access misses, every miss evicts the page we'll need next. The hit rate stays near zero.`,
+    'scan-pollution': `Scan pollution: the working set gets evicted by an occasional big scan. This is why real databases use LRU-K or segmented LRU to protect the hot set.`,
+    'clock': `Clock algorithm (second chance): frames have a reference bit. The hand sweeps; if ref=1, clear it and give a second chance. Cheaper than LRU, similar behavior.`
+  };
+
+  teach('START', `Running: ${getDemoName()}. ${descs[STATE.demo]}`, 'cyan');
+
+  const intervalMs = Math.max(100, Math.round(1000 / STATE.accessRate));
+  STATE.tickTimer = setInterval(doSingleAccess, intervalMs);
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.running = false;
+  if (STATE.tickTimer) clearInterval(STATE.tickTimer);
+  STATE.tickTimer = null;
+  STATE.hits = 0;
+  STATE.misses = 0;
+  STATE.evictions = 0;
+  STATE.flushes = 0;
+  STATE.totalAccesses = 0;
+  STATE.accessLog = [];
+  STATE.nextPageToAccess = -1;
+  STATE.scanCounter = 0;
+  initFrames();
+  updateStats();
+  DOM.accessLog.innerHTML = '';
+  DOM.opCount.textContent = '0 ops';
+  DOM.btnRun.textContent = '▶ Run Workload';
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.demoSelect.addEventListener('change', e => {
+  STATE.demo = e.target.value;
+  resetAll();
+  teach('SCENARIO', `Selected: ${getDemoName()}. Press RUN to start.`, 'info');
+});
+
+DOM.btnRun.addEventListener('click', runWorkload);
+
+DOM.btnSingle.addEventListener('click', () => {
+  doSingleAccess();
+});
+
+DOM.btnReset.addEventListener('click', () => {
+  resetAll();
+  teach('RESET', 'Buffer pool reset. All frames empty, stats zeroed.', 'info', false);
+});
+
+DOM.poolSizeRange.addEventListener('input', e => {
+  STATE.poolSize = parseInt(e.target.value);
+  DOM.poolSizeVal.textContent = STATE.poolSize;
+  resetAll();
+});
+
+DOM.rateRange.addEventListener('input', e => {
+  STATE.accessRate = parseInt(e.target.value);
+  DOM.rateVal.textContent = STATE.accessRate;
+});
+
+DOM.writeRange.addEventListener('input', e => {
+  STATE.writeRatio = parseInt(e.target.value) / 100;
+  DOM.writeVal.textContent = e.target.value + '%';
+});
+
+document.querySelectorAll('input[name="policy"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.policy = e.target.value;
+    const desc = {
+      lru: 'LRU: evict the frame that was accessed longest ago. Good locality, but vulnerable to sequential scan pollution.',
+      clock: 'Clock: circular frames, each with a reference bit. On eviction, sweep; ref=1 → clear and skip. Ref=0 → evict. Cheaper than true LRU.',
+      mru: 'MRU: evict the MOST recently used frame. Surprisingly effective for scans — the just-touched pages won\'t be re-read.',
+      fifo: 'FIFO: evict the frame that was inserted first. Simple, but ignores usage patterns. Can evict hot pages.'
+    };
+    teach('POLICY', desc[e.target.value], 'cyan');
+    renderQueue();
+  });
+});
+
+window.addEventListener('resize', () => {});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+initFrames();
+updateStats();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Buffer Pool Management. Every database keeps a cache of disk pages in RAM called the buffer pool. Reading from RAM is 100,000x faster than from disk, so keeping the right pages resident is critical. This simulator shows the classic trade-offs.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE MECHANICS',
+      `Every page access follows the same path: (1) Is the page already in a frame? HIT — just mark it referenced and return. (2) MISS — find a free frame or EVICT a victim. (3) If the victim is DIRTY, flush it to disk first. (4) Load the requested page into the frame.`,
+      'info'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('WHY IT MATTERS',
+      `Buffer pool efficiency determines database performance more than almost anything else. A 95% hit rate means only 1 in 20 accesses goes to disk. Drop to 50% and the DB slows 10x. Real workloads rely on the 80/20 rule — 80% of accesses hit 20% of pages.`,
+      'ok'
+    );
+  }, 9000);
+
+  showToast('👋 Pick a scenario and press RUN', 4000);
+}, 700);
+</script>
+</body>
+</html>

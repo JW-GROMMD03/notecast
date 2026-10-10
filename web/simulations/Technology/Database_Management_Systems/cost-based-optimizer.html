@@ -1,0 +1,1715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cost-Based Query Optimization — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #10b981, #14b8a6, #06b6d4);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(16,185,129,0.15);
+    color: #6ee7b7;
+    border-color: #10b981;
+  }
+  .teaching-toggle:hover { background: rgba(16,185,129,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #6ee7b7;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #10b981; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #10b981; color: #022c22; border-color: #10b981; }
+  .btn.primary:hover { background: #059669; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.info { background: #1e3a8a; color: #bfdbfe; border-color: #3b82f6; }
+  .btn.info:hover { background: #1e40af; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #6ee7b7; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #10b981; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(16,185,129,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  /* LEFT SIDE: SQL QUERY + STATISTICS */
+  .left-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    min-width: 340px;
+  }
+
+  .query-box {
+    background: #070a14;
+    border: 2px solid #06b6d4;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 0 25px rgba(6,182,212,0.15);
+  }
+  .query-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .query-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+  .sql-block {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.72rem;
+    line-height: 1.6;
+    color: #cbd5e1;
+    letter-spacing: 0.3px;
+  }
+  .sql-kw { color: #c084fc; font-weight: 800; }
+  .sql-tbl { color: #67e8f9; font-weight: 700; }
+  .sql-col { color: #fbbf24; }
+  .sql-val { color: #86efac; }
+  .sql-op { color: #f87171; }
+
+  .stats-box {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    box-shadow: 0 0 25px rgba(139,92,246,0.15);
+  }
+  .stats-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .stats-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .stats-body {
+    flex: 1;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.6rem;
+    line-height: 1.7;
+  }
+  .stat-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    align-items: center;
+    margin-bottom: 2px;
+  }
+  .stat-row:nth-child(even) {
+    background: rgba(30,41,59,0.3);
+  }
+  .stat-row .stat-label {
+    color: #94a3b8;
+  }
+  .stat-row .stat-label.k {
+    color: #67e8f9;
+    font-weight: 800;
+  }
+  .stat-row .stat-val {
+    color: #fbbf24;
+    font-weight: 800;
+    font-size: 0.65rem;
+  }
+  .stat-row .stat-note {
+    color: #64748b;
+    font-size: 0.5rem;
+    letter-spacing: 0.5px;
+  }
+  .stat-row.header-row {
+    background: transparent;
+    border-bottom: 1px solid #334155;
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+  }
+  .stat-row.header-row .stat-label,
+  .stat-row.header-row .stat-val,
+  .stat-row.header-row .stat-note {
+    color: #64748b;
+    font-size: 0.5rem;
+    letter-spacing: 1px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  /* MIDDLE COLUMN: PLAN SPACE */
+  .mid-col {
+    flex: 1.3;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    min-width: 380px;
+  }
+
+  .plans-box {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #10b981;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    box-shadow: 0 0 25px rgba(16,185,129,0.15);
+  }
+  .plans-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #6ee7b7;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .plans-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .plans-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+  }
+
+  .plan-card {
+    background: linear-gradient(145deg, #0a1220, #050810);
+    border: 1.5px solid #334155;
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: all 0.35s;
+    position: relative;
+    overflow: hidden;
+  }
+  .plan-card:hover {
+    border-color: #10b981;
+    transform: translateX(4px);
+  }
+  .plan-card.chosen {
+    border-color: #10b981;
+    background: linear-gradient(145deg, rgba(16,185,129,0.1), rgba(5,8,16,1));
+    box-shadow: 0 0 20px rgba(16,185,129,0.4);
+  }
+  .plan-card.chosen::before {
+    content: '★';
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    color: #10b981;
+    font-size: 0.85rem;
+    text-shadow: 0 0 10px #10b981;
+  }
+  .plan-card.bad {
+    opacity: 0.5;
+  }
+  .plan-card.bad:hover { opacity: 0.8; }
+  .plan-card.eliminated {
+    opacity: 0.3;
+    filter: grayscale(0.6);
+  }
+  .plan-card.eliminated::after {
+    content: 'ELIMINATED';
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%) rotate(-8deg);
+    color: #ef4444;
+    font-weight: 900;
+    font-size: 0.5rem;
+    letter-spacing: 2px;
+    border: 1px solid #ef4444;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .plan-card.thinking {
+    border-color: #facc15;
+    box-shadow: 0 0 25px rgba(250,204,21,0.6);
+    animation: thinkPulse 0.6s ease-in-out infinite;
+  }
+  @keyframes thinkPulse {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(3px); }
+  }
+
+  .plan-icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+  .plan-content {
+    flex: 1;
+    min-width: 0;
+  }
+  .plan-name {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #6ee7b7;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+  }
+  .plan-card.chosen .plan-name { color: #86efac; }
+  .plan-desc {
+    font-size: 0.55rem;
+    color: #94a3b8;
+    font-family: monospace;
+    line-height: 1.4;
+  }
+  .plan-cost {
+    font-family: monospace;
+    font-size: 0.85rem;
+    font-weight: 900;
+    color: #fbbf24;
+    text-align: right;
+    flex-shrink: 0;
+    min-width: 70px;
+  }
+  .plan-cost .unit {
+    font-size: 0.5rem;
+    color: #64748b;
+    display: block;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .plan-card.chosen .plan-cost {
+    color: #86efac;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+
+  /* COST BAR */
+  .cost-bar-track {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: #0a0e19;
+  }
+  .cost-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
+    transition: width 0.6s;
+  }
+  .plan-card.chosen .cost-bar-fill {
+    background: linear-gradient(90deg, #10b981, #22c55e);
+  }
+
+  /* Explanation panel */
+  .explain-box {
+    background: #070a14;
+    border: 2px solid #eab308;
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 0 25px rgba(234,179,8,0.15);
+    min-height: 100px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .explain-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #fde047;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .explain-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .explain-body {
+    font-family: 'Courier New', monospace;
+    font-size: 0.6rem;
+    line-height: 1.6;
+    color: #cbd5e1;
+  }
+  .explain-body .formula {
+    background: rgba(30,41,59,0.4);
+    border-left: 3px solid #06b6d4;
+    padding: 4px 8px;
+    margin: 4px 0;
+    border-radius: 0 4px 4px 0;
+    font-size: 0.58rem;
+    color: #67e8f9;
+  }
+  .explain-body .verdict {
+    color: #86efac;
+    font-weight: 800;
+    margin-top: 4px;
+  }
+  .explain-body .hl { color: #fbbf24; font-weight: 800; }
+  .explain-body .dim { color: #64748b; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(16,185,129,0.06);
+    border: 1px solid rgba(16,185,129,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #6ee7b7;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #67e8f9; text-shadow: 0 0 10px rgba(6,182,212,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 260px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #10b981;
+    background: rgba(16,185,129,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.05); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Cost model card */
+  .model-card {
+    background: linear-gradient(145deg, rgba(16,185,129,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.58rem;
+  }
+  .model-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #6ee7b7;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .model-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .model-row:last-child { border-bottom: none; }
+  .model-row .lbl { color: #94a3b8; }
+  .model-row .val { color: #6ee7b7; font-weight: 800; }
+  .model-row .val.bad { color: #fca5a5; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #10b981;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(16,185,129,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>COST-BASED QUERY OPTIMIZATION</h1>
+    <span class="sub">STATISTICS · COST MODEL · PLAN ENUMERATION</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Query Templates</h3>
+      <select id="querySelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="range" selected>🔍 Range scan on indexed column</option>
+        <option value="eq">🎯 Equality lookup by primary key</option>
+        <option value="join">🔗 Two-table JOIN</option>
+        <option value="sort">📊 ORDER BY with LIMIT</option>
+        <option value="group">📈 GROUP BY aggregation</option>
+        <option value="or">🔀 OR condition (index merge)</option>
+      </select>
+      <button class="btn primary" id="btnRun">▶ Optimize</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Table Statistics</h3>
+      <div class="slider-row"><span>Row count</span><span class="value" id="rowsVal">1M</span></div>
+      <input type="range" id="rowsRange" min="0" max="4" value="2">
+      <div class="slider-row"><span>Selectivity</span><span class="value" id="selVal">1%</span></div>
+      <input type="range" id="selRange" min="0" max="5" value="0">
+      <div class="slider-row"><span>Index depth</span><span class="value" id="depthVal">3</span></div>
+      <input type="range" id="depthRange" min="2" max="5" value="3">
+    </div>
+
+    <div class="panel">
+      <h3>System Config</h3>
+      <div class="slider-row"><span>Random I/O cost</span><span class="value" id="randVal">4.0</span></div>
+      <input type="range" id="randRange" min="1" max="10" step="0.5" value="4">
+      <div class="slider-row"><span>Sequential I/O cost</span><span class="value" id="seqVal">1.0</span></div>
+      <input type="range" id="seqRange" min="0.5" max="4" step="0.1" value="1">
+      <div class="slider-row"><span>CPU cost / row</span><span class="value" id="cpuVal">0.01</span></div>
+      <input type="range" id="cpuRange" min="1" max="20" value="1">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>Chosen plan</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fbbf24;"></div>Cost estimate</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>Eliminated plan</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#facc15;"></div>Being evaluated</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">ENUMERATE PLANS · ESTIMATE COSTS · PICK THE CHEAPEST</div>
+
+      <div class="main-split">
+        <!-- LEFT: SQL + STATS -->
+        <div class="left-col">
+          <div class="query-box">
+            <div class="query-title">
+              <span>📝 SQL QUERY</span>
+              <span class="hint" id="queryHint">—</span>
+            </div>
+            <div class="sql-block" id="sqlBlock">
+              <span class="sql-kw">SELECT</span> * <span class="sql-kw">FROM</span> <span class="sql-tbl">orders</span>
+              <span class="sql-kw">WHERE</span> <span class="sql-col">created_at</span> <span class="sql-op">&gt;</span> <span class="sql-val">'2024-01-01'</span>;
+            </div>
+          </div>
+
+          <div class="stats-box">
+            <div class="stats-title">
+              <span>📊 CATALOG STATISTICS</span>
+              <span class="hint" id="statsHint">loaded</span>
+            </div>
+            <div class="stats-body" id="statsBody"></div>
+          </div>
+        </div>
+
+        <!-- MIDDLE: PLANS -->
+        <div class="mid-col">
+          <div class="plans-box">
+            <div class="plans-title">
+              <span>🎯 CANDIDATE PLANS — RANKED BY COST</span>
+              <span class="hint" id="plansHint">press Optimize</span>
+            </div>
+            <div class="plans-list" id="plansList">
+              <div style="color:#475569; text-align:center; padding:30px; font-family:monospace; font-size:0.65rem;">
+                Press OPTIMIZE to enumerate plans
+              </div>
+            </div>
+          </div>
+
+          <div class="explain-box">
+            <div class="explain-title">
+              <span>🧮 COST EXPLANATION</span>
+              <span class="hint" id="explainHint">—</span>
+            </div>
+            <div class="explain-body" id="explainBody">
+              <span class="dim">Waiting for optimization to begin...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Plans Tried</div>
+        <div class="metric-value info" id="mPlans">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Best Cost</div>
+        <div class="metric-value" id="mBest">—</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Worst Cost</div>
+        <div class="metric-value bad" id="mWorst">—</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Speedup</div>
+        <div class="metric-value warn" id="mSpeedup">—</div>
+      </div>
+    </div>
+
+    <div class="model-card">
+      <div class="model-title">💰 Cost Model (PostgreSQL-style)</div>
+      <div class="model-row"><span class="lbl">Seq page read</span><span class="val">seq_page_cost</span></div>
+      <div class="model-row"><span class="lbl">Random page read</span><span class="val">random_page_cost</span></div>
+      <div class="model-row"><span class="lbl">Per-row CPU</span><span class="val">cpu_tuple_cost</span></div>
+      <div class="model-row"><span class="lbl">Per-index row</span><span class="val">cpu_index_tuple_cost</span></div>
+      <div class="model-row"><span class="lbl">Per-operator</span><span class="val">cpu_operator_cost</span></div>
+      <div class="model-row"><span class="lbl">Total</span><span class="val bad">abstract units, not seconds</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  query: 'range',
+  rowCounts: [10_000, 100_000, 1_000_000, 10_000_000, 100_000_000],
+  rowCountIdx: 2,
+  selectivities: [0.001, 0.01, 0.05, 0.1, 0.5, 1.0],
+  selectivityIdx: 0,
+  indexDepth: 3,
+  randomIOCost: 4.0,
+  seqIOCost: 1.0,
+  cpuCost: 0.01,
+  // Plan state
+  plans: [],
+  chosenPlan: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  optimizing: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  querySelect: document.getElementById('querySelect'),
+  btnRun: document.getElementById('btnRun'),
+  btnReset: document.getElementById('btnReset'),
+  sqlBlock: document.getElementById('sqlBlock'),
+  queryHint: document.getElementById('queryHint'),
+  statsBody: document.getElementById('statsBody'),
+  statsHint: document.getElementById('statsHint'),
+  plansList: document.getElementById('plansList'),
+  plansHint: document.getElementById('plansHint'),
+  explainBody: document.getElementById('explainBody'),
+  explainHint: document.getElementById('explainHint'),
+  rowsRange: document.getElementById('rowsRange'),
+  rowsVal: document.getElementById('rowsVal'),
+  selRange: document.getElementById('selRange'),
+  selVal: document.getElementById('selVal'),
+  depthRange: document.getElementById('depthRange'),
+  depthVal: document.getElementById('depthVal'),
+  randRange: document.getElementById('randRange'),
+  randVal: document.getElementById('randVal'),
+  seqRange: document.getElementById('seqRange'),
+  seqVal: document.getElementById('seqVal'),
+  cpuRange: document.getElementById('cpuRange'),
+  cpuVal: document.getElementById('cpuVal'),
+  mPlans: document.getElementById('mPlans'),
+  mBest: document.getElementById('mBest'),
+  mWorst: document.getElementById('mWorst'),
+  mSpeedup: document.getElementById('mSpeedup'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function fmt(n) {
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return String(Math.round(n));
+}
+function fmtCost(n) {
+  if (n >= 1000) return Math.round(n).toLocaleString();
+  if (n >= 10) return n.toFixed(0);
+  return n.toFixed(2);
+}
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining cost based query optimization.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   QUERY TEMPLATES
+   ============================================================ */
+const QUERIES = {
+  range: {
+    sql: `<span class="sql-kw">SELECT</span> * <span class="sql-kw">FROM</span> <span class="sql-tbl">orders</span>
+<span class="sql-kw">WHERE</span> <span class="sql-col">created_at</span> <span class="sql-op">&gt;=</span> <span class="sql-val">'2024-01-01'</span>;`,
+    desc: 'Range predicate on an indexed column. Selectivity matters a lot.',
+    hasIndex: true,
+    stats: {
+      table: 'orders',
+      rows: 1000000,
+      rowBytes: 200,
+      pages: 25000,
+      indexName: 'idx_created_at',
+      indexPages: 1500,
+      indexHeight: 3
+    },
+    plans: (stats) => {
+      const rows = stats.rows;
+      const matched = Math.floor(rows * stats.selectivity);
+      const matchedPages = Math.ceil(matched / 50);  // ~50 rows per page
+
+      return [
+        {
+          id: 'seq',
+          name: 'Sequential Scan',
+          icon: '📖',
+          desc: `Read all ${fmt(stats.pages)} pages, filter in memory`,
+          cost: stats.pages * STATE.seqIOCost + rows * STATE.cpuCost
+        },
+        {
+          id: 'index',
+          name: 'Index Scan',
+          icon: '🌲',
+          desc: `Walk B-tree (depth ${STATE.indexDepth}), fetch ${fmt(matched)} matched rows`,
+          cost: STATE.indexDepth * STATE.randomIOCost
+              + matched * STATE.randomIOCost * 0.8
+              + matched * STATE.cpuCost * 2
+        },
+        {
+          id: 'bitmap',
+          name: 'Bitmap Index Scan',
+          icon: '🗺️',
+          desc: `Walk index, build bitmap, fetch pages in order (${fmt(matchedPages)} pages)`,
+          cost: STATE.indexDepth * STATE.randomIOCost
+              + matched * STATE.cpuCost * 0.5
+              + matchedPages * STATE.randomIOCost * 1.5
+        },
+        {
+          id: 'indexonly',
+          name: 'Index-Only Scan',
+          icon: '💎',
+          desc: `Answer entirely from index (no heap fetch)`,
+          cost: STATE.indexDepth * STATE.randomIOCost
+              + matched * STATE.cpuCost * 0.2
+              + Math.ceil(matched / 200) * STATE.seqIOCost
+        }
+      ];
+    }
+  },
+
+  eq: {
+    sql: `<span class="sql-kw">SELECT</span> * <span class="sql-kw">FROM</span> <span class="sql-tbl">users</span>
+<span class="sql-kw">WHERE</span> <span class="sql-col">id</span> <span class="sql-op">=</span> <span class="sql-val">42</span>;`,
+    desc: 'Primary key equality — perfect index use case.',
+    hasIndex: true,
+    stats: {
+      table: 'users',
+      rows: 1000000,
+      rowBytes: 150,
+      pages: 18000,
+      indexName: 'users_pkey',
+      indexPages: 1200,
+      indexHeight: 3
+    },
+    plans: (stats) => {
+      return [
+        {
+          id: 'seq',
+          name: 'Sequential Scan',
+          icon: '📖',
+          desc: `Read all ${fmt(stats.pages)} pages looking for id=42`,
+          cost: stats.pages * STATE.seqIOCost + stats.rows * STATE.cpuCost
+        },
+        {
+          id: 'index',
+          name: 'Index Scan (PK)',
+          icon: '🌲',
+          desc: `B-tree lookup (depth ${STATE.indexDepth}) + 1 heap fetch`,
+          cost: STATE.indexDepth * STATE.randomIOCost + 1 * STATE.randomIOCost + 5 * STATE.cpuCost
+        },
+        {
+          id: 'indexonly',
+          name: 'Index-Only Scan',
+          icon: '💎',
+          desc: `Only fetches ID from index, no heap access needed`,
+          cost: STATE.indexDepth * STATE.randomIOCost + 1 * STATE.cpuCost
+        }
+      ];
+    }
+  },
+
+  join: {
+    sql: `<span class="sql-kw">SELECT</span> * <span class="sql-kw">FROM</span> <span class="sql-tbl">orders</span> o
+<span class="sql-kw">JOIN</span> <span class="sql-tbl">users</span> u <span class="sql-kw">ON</span> <span class="sql-col">o.user_id</span> <span class="sql-op">=</span> <span class="sql-col">u.id</span>
+<span class="sql-kw">WHERE</span> <span class="sql-col">o.status</span> <span class="sql-op">=</span> <span class="sql-val">'paid'</span>;`,
+    desc: 'Join between orders and users. Multiple join algorithms compete.',
+    hasIndex: true,
+    stats: {
+      table: 'orders JOIN users',
+      rows: 1000000,
+      rowBytes: 350,
+      pages: 42000,
+      indexName: 'idx_status, users_pkey',
+      indexPages: 2400,
+      indexHeight: 3
+    },
+    plans: (stats) => {
+      const orders = 1_000_000;
+      const users = 100_000;
+      const matched = Math.floor(orders * stats.selectivity);
+      return [
+        {
+          id: 'nested',
+          name: 'Nested Loop Join',
+          icon: '🔁',
+          desc: `For each of ${fmt(matched)} matching orders, probe users via PK`,
+          cost: matched * (STATE.indexDepth * STATE.randomIOCost) + matched * STATE.cpuCost * 2
+        },
+        {
+          id: 'hash',
+          name: 'Hash Join',
+          icon: '⚗️',
+          desc: `Build hash table on users (${fmt(users)} rows), probe with orders`,
+          cost: users * STATE.cpuCost * 2
+              + Math.ceil(users / 100) * STATE.seqIOCost
+              + matched * STATE.cpuCost * 0.5
+        },
+        {
+          id: 'merge',
+          name: 'Merge Join',
+          icon: '🔀',
+          desc: `Sort both sides by join key, then merge`,
+          cost: (orders + users) * STATE.cpuCost * 2
+              + Math.log2(orders) * STATE.cpuCost * orders * 0.1
+              + (orders + users) * STATE.cpuCost * 0.2
+        },
+        {
+          id: 'seq',
+          name: 'Naive Cross Product',
+          icon: '❌',
+          desc: `Bad idea — cartesian product then filter`,
+          cost: orders * users * STATE.cpuCost * 0.0001
+        }
+      ];
+    }
+  },
+
+  sort: {
+    sql: `<span class="sql-kw">SELECT</span> * <span class="sql-kw">FROM</span> <span class="sql-tbl">products</span>
+<span class="sql-kw">ORDER BY</span> <span class="sql-col">price</span> <span class="sql-kw">DESC</span>
+<span class="sql-kw">LIMIT</span> <span class="sql-val">10</span>;`,
+    desc: 'ORDER BY with LIMIT — index or sort?',
+    hasIndex: true,
+    stats: {
+      table: 'products',
+      rows: 500000,
+      rowBytes: 300,
+      pages: 18000,
+      indexName: 'idx_price_desc',
+      indexPages: 1500,
+      indexHeight: 3
+    },
+    plans: (stats) => {
+      return [
+        {
+          id: 'seqsort',
+          name: 'Seq Scan + Sort',
+          icon: '📊',
+          desc: `Read all ${fmt(stats.pages)} pages, sort 500K rows`,
+          cost: stats.pages * STATE.seqIOCost
+              + stats.rows * STATE.cpuCost
+              + stats.rows * Math.log2(stats.rows) * STATE.cpuCost * 0.3
+        },
+        {
+          id: 'indexlimit',
+          name: 'Index Scan + LIMIT',
+          icon: '🌲',
+          desc: `Walk B-tree, stop after 10 rows`,
+          cost: STATE.indexDepth * STATE.randomIOCost + 10 * STATE.randomIOCost + 10 * STATE.cpuCost
+        },
+        {
+          id: 'topn',
+          name: 'Top-N Heap Sort',
+          icon: '🏔️',
+          desc: `Seq scan + maintain heap of 10 best`,
+          cost: stats.pages * STATE.seqIOCost
+              + stats.rows * STATE.cpuCost
+              + stats.rows * Math.log2(10) * STATE.cpuCost * 0.1
+        }
+      ];
+    }
+  },
+
+  group: {
+    sql: `<span class="sql-kw">SELECT</span> <span class="sql-col">status</span>, <span class="sql-kw">COUNT</span>(*) <span class="sql-kw">FROM</span> <span class="sql-tbl">orders</span>
+<span class="sql-kw">GROUP BY</span> <span class="sql-col">status</span>;`,
+    desc: 'GROUP BY with low cardinality — HashAggregate likely wins.',
+    hasIndex: true,
+    stats: {
+      table: 'orders',
+      rows: 1000000,
+      rowBytes: 200,
+      pages: 25000,
+      indexName: 'idx_status',
+      indexPages: 800,
+      indexHeight: 3
+    },
+    plans: (stats) => {
+      const distinct = 5;
+      return [
+        {
+          id: 'hashagg',
+          name: 'Seq Scan + HashAggregate',
+          icon: '📈',
+          desc: `Read table, group in hash table on ${distinct} distinct values`,
+          cost: stats.pages * STATE.seqIOCost
+              + stats.rows * STATE.cpuCost
+              + stats.rows * STATE.cpuCost * 0.3
+              + distinct * STATE.cpuCost
+        },
+        {
+          id: 'sortagg',
+          name: 'Seq Scan + SortAggregate',
+          icon: '📊',
+          desc: `Read table, sort by status, then aggregate`,
+          cost: stats.pages * STATE.seqIOCost
+              + stats.rows * STATE.cpuCost
+              + stats.rows * Math.log2(stats.rows) * STATE.cpuCost * 0.4
+              + stats.rows * STATE.cpuCost * 0.2
+        },
+        {
+          id: 'indexagg',
+          name: 'Index-Only Aggregation',
+          icon: '💎',
+          desc: `Index already sorted by status, scan and count`,
+          cost: stats.indexPages * STATE.seqIOCost
+              + stats.rows * STATE.cpuCost * 0.3
+        },
+        {
+          id: 'parallel',
+          name: 'Parallel Seq Scan + HashAggregate',
+          icon: '⚡',
+          desc: `Split scan across 4 workers, merge results`,
+          cost: (stats.pages * STATE.seqIOCost + stats.rows * STATE.cpuCost) / 3.5
+        }
+      ];
+    }
+  },
+
+  or: {
+    sql: `<span class="sql-kw">SELECT</span> * <span class="sql-kw">FROM</span> <span class="sql-tbl">events</span>
+<span class="sql-kw">WHERE</span> <span class="sql-col">user_id</span> <span class="sql-op">=</span> <span class="sql-val">123</span>
+   <span class="sql-kw">OR</span> <span class="sql-col">session_id</span> <span class="sql-op">=</span> <span class="sql-val">'abc'</span>;`,
+    desc: 'OR condition — index merge vs full scan.',
+    hasIndex: true,
+    stats: {
+      table: 'events',
+      rows: 5000000,
+      rowBytes: 400,
+      pages: 250000,
+      indexName: 'idx_user_id, idx_session_id',
+      indexPages: 8000,
+      indexHeight: 3
+    },
+    plans: (stats) => {
+      return [
+        {
+          id: 'seq',
+          name: 'Sequential Scan',
+          icon: '📖',
+          desc: `Read all ${fmt(stats.pages)} pages, filter both conditions`,
+          cost: stats.pages * STATE.seqIOCost + stats.rows * STATE.cpuCost * 1.5
+        },
+        {
+          id: 'bitmapor',
+          name: 'BitmapOr (Index Merge)',
+          icon: '🗺️',
+          desc: `Look up both indexes, OR the bitmaps, fetch union of pages`,
+          cost: STATE.indexDepth * STATE.randomIOCost * 2
+              + 15000 * STATE.randomIOCost * 0.5
+              + 15000 * STATE.cpuCost
+        },
+        {
+          id: 'twoindex',
+          name: 'Two Index Scans + Append',
+          icon: '🔀',
+          desc: `Run both index scans separately, concatenate, dedupe`,
+          cost: (STATE.indexDepth * STATE.randomIOCost + 5000 * STATE.randomIOCost) * 2
+              + 10000 * STATE.cpuCost
+        }
+      ];
+    }
+  }
+};
+
+/* ============================================================
+   RENDER — SQL & STATS
+   ============================================================ */
+function renderSQL() {
+  const q = QUERIES[STATE.query];
+  DOM.sqlBlock.innerHTML = q.sql;
+  DOM.queryHint.textContent = q.desc;
+}
+
+function renderStats() {
+  const q = QUERIES[STATE.query];
+  const rows = STATE.rowCounts[STATE.rowCountIdx];
+  const sel = STATE.selectivities[STATE.selectivityIdx];
+
+  const stats = [
+    ['Table', q.stats.table, 'current target'],
+    ['Rows', fmt(rows), 'catalog estimate'],
+    ['Row bytes', q.stats.rowBytes, 'avg tuple size'],
+    ['Heap pages', fmt(Math.floor(rows / (8192 / q.stats.rowBytes))), '8KB pages'],
+    ['Index', q.stats.indexName, 'used when possible'],
+    ['Index height', STATE.indexDepth, 'B-tree depth'],
+    ['Index pages', fmt(q.stats.indexPages), 'internal + leaf'],
+    ['Predicate selectivity', (sel * 100).toFixed(sel < 0.01 ? 2 : 1) + '%', 'fraction matched'],
+    ['Est matched rows', fmt(Math.floor(rows * sel)), 'rows × selectivity']
+  ];
+
+  let html = `<div class="stat-row header-row"><span class="stat-label">Metric</span><span class="stat-val">Value</span><span class="stat-note">Note</span></div>`;
+  for (const [k, v, note] of stats) {
+    html += `
+      <div class="stat-row">
+        <span class="stat-label k">${k}</span>
+        <span class="stat-val">${v}</span>
+        <span class="stat-note">${note}</span>
+      </div>
+    `;
+  }
+  DOM.statsBody.innerHTML = html;
+}
+
+/* ============================================================
+   COST ENUMERATION
+   ============================================================ */
+function runOptimizer() {
+  if (STATE.optimizing) return;
+  STATE.optimizing = true;
+
+  const q = QUERIES[STATE.query];
+  const rows = STATE.rowCounts[STATE.rowCountIdx];
+  const sel = STATE.selectivities[STATE.selectivityIdx];
+
+  // Build stats object with current config
+  const stats = {
+    ...q.stats,
+    rows,
+    selectivity: sel,
+    pages: Math.floor(rows / (8192 / q.stats.rowBytes))
+  };
+
+  // Compute plan costs
+  const plans = q.plans(stats);
+
+  // Sort by cost
+  plans.sort((a, b) => a.cost - b.cost);
+  STATE.plans = plans;
+  STATE.chosenPlan = plans[0];
+
+  const best = plans[0].cost;
+  const worst = plans[plans.length - 1].cost;
+  const speedup = worst / best;
+
+  // Update UI
+  DOM.mPlans.textContent = plans.length;
+  DOM.mBest.textContent = fmtCost(best);
+  DOM.mWorst.textContent = fmtCost(worst);
+  DOM.mSpeedup.textContent = speedup.toFixed(1) + '×';
+  DOM.mSpeedup.className = 'metric-value' + (speedup > 50 ? ' bad' : speedup > 10 ? ' warn' : '');
+
+  DOM.plansHint.textContent = `${plans.length} plans enumerated`;
+
+  renderPlans(plans, best);
+
+  // Narrate
+  teach('ENUMERATE',
+    `Enumerating ${plans.length} candidate plans for the query. Each one has a cost estimate based on statistics and I/O model. The optimizer will pick the cheapest.`,
+    'cyan'
+  );
+
+  // Sequential reveal with animation
+  let delay = 500;
+  plans.forEach((p, idx) => {
+    setTimeout(() => {
+      const el = document.querySelector(`[data-plan-id="${p.id}"]`);
+      if (el) {
+        el.classList.add('thinking');
+        setTimeout(() => {
+          el.classList.remove('thinking');
+          if (idx === 0) el.classList.add('chosen');
+          else if (p.cost > best * 10) el.classList.add('bad');
+        }, 400);
+      }
+    }, delay);
+    delay += 400;
+  });
+
+  setTimeout(() => {
+    explainChosen(stats, plans);
+    STATE.optimizing = false;
+  }, delay);
+}
+
+function renderPlans(plans, bestCost) {
+  const maxCost = Math.max(...plans.map(p => p.cost));
+
+  let html = '';
+  for (let i = 0; i < plans.length; i++) {
+    const p = plans[i];
+    const pct = (p.cost / maxCost) * 100;
+    const isChosen = i === 0;
+    const isEliminated = !isChosen && p.cost > bestCost * 5;
+
+    html += `
+      <div class="plan-card" data-plan-id="${p.id}">
+        <span class="plan-icon">${p.icon}</span>
+        <div class="plan-content">
+          <div class="plan-name">${p.name}</div>
+          <div class="plan-desc">${p.desc}</div>
+        </div>
+        <div class="plan-cost">
+          ${fmtCost(p.cost)}
+          <span class="unit">cost units</span>
+        </div>
+        <div class="cost-bar-track">
+          <div class="cost-bar-fill" style="width:${pct}%"></div>
+        </div>
+      </div>
+    `;
+  }
+  DOM.plansList.innerHTML = html;
+}
+
+/* ============================================================
+   EXPLAIN CHOSEN PLAN
+   ============================================================ */
+function explainChosen(stats, plans) {
+  const chosen = plans[0];
+
+  let formulaHTML = '';
+  let noteHTML = '';
+
+  switch (chosen.id) {
+    case 'seq':
+      formulaHTML = `
+        <div class="formula">
+          cost = pages × seq_page_cost + rows × cpu_tuple_cost<br>
+          = ${fmt(stats.pages)} × ${STATE.seqIOCost} + ${fmt(stats.rows)} × ${STATE.cpuCost}<br>
+          = <span class="hl">${fmtCost(chosen.cost)}</span>
+        </div>`;
+      noteHTML = `A sequential scan won. This happens when the predicate is not selective enough — the index would touch too many random pages. With <span class="hl">${(stats.selectivity * 100).toFixed(1)}%</span> selectivity on ${fmt(stats.rows)} rows, the heap is scanned in order.`;
+      break;
+
+    case 'index':
+      formulaHTML = `
+        <div class="formula">
+          cost = index_depth × random_page_cost<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;+ matched_rows × random_page_cost × 0.8<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;+ matched_rows × cpu_tuple_cost × 2<br>
+          = <span class="hl">${fmtCost(chosen.cost)}</span>
+        </div>`;
+      noteHTML = `An index scan won. The predicate is selective enough (${(stats.selectivity * 100).toFixed(2)}%) that the index touches far fewer pages than a full scan. Random I/O is expensive but the volume is small.`;
+      break;
+
+    case 'bitmap':
+      formulaHTML = `
+        <div class="formula">
+          cost = depth × random + matched × cpu × 0.5 + pages × random × 1.5<br>
+          = <span class="hl">${fmtCost(chosen.cost)}</span>
+        </div>`;
+      noteHTML = `A bitmap index scan won. When a range predicate matches MANY rows, a plain index scan would do random I/O per row. Bitmap converts them into a sorted page list, then reads pages sequentially — much cheaper.`;
+      break;
+
+    case 'indexonly':
+      formulaHTML = `
+        <div class="formula">
+          cost = depth × random + matched × cpu × 0.2<br>
+          = <span class="hl">${fmtCost(chosen.cost)}</span>
+        </div>`;
+      noteHTML = `An index-only scan won. All needed columns are IN the index, so no heap fetch is required. This is the fastest plan when applicable — it's the reason covering indexes exist.`;
+      break;
+
+    case 'hash':
+      formulaHTML = `
+        <div class="formula">
+          cost = build_side × cpu × 2 + build_pages × seq + probe × cpu × 0.5<br>
+          = <span class="hl">${fmtCost(chosen.cost)}</span>
+        </div>`;
+      noteHTML = `A hash join won. The build side (smaller table) is loaded into a hash table, then the probe side streams through. Best when joining a large table against a small/medium one with an equality predicate.`;
+      break;
+
+    case 'merge':
+      formulaHTML = `
+        <div class="formula">
+          cost = sort_cost + merge_cost<br>
+          = <span class="hl">${fmtCost(chosen.cost)}</span>
+        </div>`;
+      noteHTML = `A merge join won. Both sides are sorted (either by index or explicit sort), then merged in a single pass. Best when both sides are already sorted or when the row volume is enormous.`;
+      break;
+
+    case 'nested':
+      formulaHTML = `
+        <div class="formula">
+          cost = outer_rows × (index_depth × random + cpu)<br>
+          = <span class="hl">${fmtCost(chosen.cost)}</span>
+        </div>`;
+      noteHTML = `A nested loop join won. For each row on the outer side, we probe the inner side via an index. Best when the outer side produces FEW rows — otherwise the per-row index lookup cost dominates.`;
+      break;
+
+    case 'topn':
+      formulaHTML = `
+        <div class="formula">
+          cost = seq_scan + top_N_heap_maintenance<br>
+          = <span class="hl">${fmtCost(chosen.cost)}</span>
+        </div>`;
+      noteHTML = `A Top-N heap sort won. It scans the table once but maintains only the top 10 rows in a small heap — much cheaper than a full sort. This is what ORDER BY ... LIMIT usually uses.`;
+      break;
+
+    case 'indexlimit':
+      formulaHTML = `
+        <div class="formula">
+          cost = depth × random + 10 × random<br>
+          = <span class="hl">${fmtCost(chosen.cost)}</span>
+        </div>`;
+      noteHTML = `An index scan won for ORDER BY ... LIMIT. Because the index is already sorted by the ORDER BY column, we can walk it in order and stop after 10 rows — no sorting required.`;
+      break;
+
+    case 'hashagg':
+      formulaHTML = `
+        <div class="formula">
+          cost = seq_scan + per_row_hashing + distinct_buckets<br>
+          = <span class="hl">${fmtCost(chosen.cost)}</span>
+        </div>`;
+      noteHTML = `HashAggregate won. GROUP BY with LOW cardinality (few distinct values) is perfect for hash aggregation — one pass over the table, constant-size hash table.`;
+      break;
+
+    case 'indexagg':
+      formulaHTML = `
+        <div class="formula">
+          cost = index_scan_only (no heap fetch)<br>
+          = <span class="hl">${fmtCost(chosen.cost)}</span>
+        </div>`;
+      noteHTML = `An index-only aggregation won. The index is already sorted by the GROUP BY column, so scanning it in order is equivalent to sorting — no explicit sort needed. Combined with no heap fetches, it's very cheap.`;
+      break;
+
+    case 'bitmapor':
+      formulaHTML = `
+        <div class="formula">
+          cost = 2 × index_lookup + union_page_fetches<br>
+          = <span class="hl">${fmtCost(chosen.cost)}</span>
+        </div>`;
+      noteHTML = `A BitmapOr won. This handles OR predicates by looking up each index separately, converting to bitmaps, and ORing them. The result is a merged sorted page list — a single sequential pass, not two random ones.`;
+      break;
+
+    case 'parallel':
+      formulaHTML = `
+        <div class="formula">
+          cost = serial_cost / workers (approx)<br>
+          = <span class="hl">${fmtCost(chosen.cost)}</span>
+        </div>`;
+      noteHTML = `A parallel plan won. The table is scanned by multiple workers in parallel, then results are merged. On modern multi-core systems, this can give 3-8x speedup on large scans.`;
+      break;
+
+    default:
+      formulaHTML = `<div class="formula">cost = <span class="hl">${fmtCost(chosen.cost)}</span></div>`;
+      noteHTML = `Plan selected.`;
+  }
+
+  DOM.explainBody.innerHTML = `
+    ${formulaHTML}
+    <div class="verdict">★ CHOSEN: ${chosen.name}</div>
+    <div style="margin-top:6px; line-height:1.6;">${noteHTML}</div>
+  `;
+  DOM.explainHint.textContent = `best of ${plans.length}`;
+
+  teach('CHOSEN',
+    `The optimizer chose ${chosen.name} at cost ${fmtCost(chosen.cost)} — the cheapest of ${plans.length} plans. The runner-up was ${plans[1] ? plans[1].name : 'N/A'} at ${plans[1] ? fmtCost(plans[1].cost) : '—'}.`,
+    'ok'
+  );
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.plans = [];
+  STATE.chosenPlan = null;
+  STATE.optimizing = false;
+  renderSQL();
+  renderStats();
+  DOM.plansList.innerHTML = `<div style="color:#475569; text-align:center; padding:30px; font-family:monospace; font-size:0.65rem;">Press OPTIMIZE to enumerate plans</div>`;
+  DOM.explainBody.innerHTML = '<span class="dim">Waiting for optimization to begin...</span>';
+  DOM.explainHint.textContent = '—';
+  DOM.plansHint.textContent = 'press Optimize';
+  DOM.mPlans.textContent = '0';
+  DOM.mBest.textContent = '—';
+  DOM.mWorst.textContent = '—';
+  DOM.mSpeedup.textContent = '—';
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.querySelect.addEventListener('change', e => {
+  STATE.query = e.target.value;
+  resetAll();
+  teach('QUERY', `Loaded query template: ${QUERIES[STATE.query].desc}`, 'cyan');
+});
+
+DOM.btnRun.addEventListener('click', runOptimizer);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.rowsRange.addEventListener('input', e => {
+  STATE.rowCountIdx = parseInt(e.target.value);
+  DOM.rowsVal.textContent = fmt(STATE.rowCounts[STATE.rowCountIdx]);
+  renderStats();
+});
+DOM.selRange.addEventListener('input', e => {
+  STATE.selectivityIdx = parseInt(e.target.value);
+  const v = STATE.selectivities[STATE.selectivityIdx];
+  DOM.selVal.textContent = (v * 100).toFixed(v < 0.01 ? 2 : 1) + '%';
+  renderStats();
+});
+DOM.depthRange.addEventListener('input', e => {
+  STATE.indexDepth = parseInt(e.target.value);
+  DOM.depthVal.textContent = STATE.indexDepth;
+  renderStats();
+});
+DOM.randRange.addEventListener('input', e => {
+  STATE.randomIOCost = parseFloat(e.target.value);
+  DOM.randVal.textContent = STATE.randomIOCost.toFixed(1);
+});
+DOM.seqRange.addEventListener('input', e => {
+  STATE.seqIOCost = parseFloat(e.target.value);
+  DOM.seqVal.textContent = STATE.seqIOCost.toFixed(1);
+});
+DOM.cpuRange.addEventListener('input', e => {
+  STATE.cpuCost = parseInt(e.target.value) / 100;
+  DOM.cpuVal.textContent = STATE.cpuCost.toFixed(2);
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+STATE.rowCountIdx = 2;
+STATE.selectivityIdx = 0;
+STATE.indexDepth = 3;
+DOM.rowsVal.textContent = fmt(STATE.rowCounts[STATE.rowCountIdx]);
+DOM.selVal.textContent = (STATE.selectivities[STATE.selectivityIdx] * 100).toFixed(2) + '%';
+DOM.depthVal.textContent = STATE.indexDepth;
+DOM.randVal.textContent = STATE.randomIOCost.toFixed(1);
+DOM.seqVal.textContent = STATE.seqIOCost.toFixed(1);
+DOM.cpuVal.textContent = STATE.cpuCost.toFixed(2);
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Cost-Based Query Optimization. This is the brain of a modern database. Given a SQL query, the optimizer enumerates dozens or hundreds of execution plans, estimates the cost of each using statistics and a cost model, and picks the cheapest one. The whole game is: pick the plan that reads the fewest bytes from disk.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE STEPS',
+      `Cost-based optimization has four steps: (1) PARSE the query into a logical tree. (2) ENUMERATE alternative physical plans — different join orders, different access paths, different algorithms. (3) ESTIMATE the cost of each using catalog statistics. (4) PICK the cheapest and execute it.`,
+      'info'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE COST MODEL',
+      `PostgreSQL's cost model is famously simple: seq_page_cost=1, random_page_cost=4, cpu_tuple_cost=0.01. Multiply page reads by their cost, row operations by their CPU cost, add them up. The units are arbitrary — only the RELATIVE costs matter. Tune random_page_cost based on your storage (SSD → lower it to 1.1).`,
+      'purple'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('WHY ESTIMATES LIE',
+      `Every optimizer has a weak point: STATISTICS. When the estimate is wrong, the optimizer picks a terrible plan. Classic failure: a stale histogram thinks a column has 100 distinct values when it has 10 million. Or correlation between columns that the optimizer assumes is independent. The result: "the query was fast yesterday and slow today."`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Pick a query template and press OPTIMIZE', 4000);
+}, 600);
+</script>
+</body>
+</html>

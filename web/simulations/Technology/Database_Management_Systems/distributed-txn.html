@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Distributed Transactions — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #06b6d4, #8b5cf6, #ec4899, #f59e0b);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(139,92,246,0.15);
+    color: #c4b5fd;
+    border-color: #8b5cf6;
+  }
+  .teaching-toggle:hover { background: rgba(139,92,246,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #8b5cf6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+  .btn.primary:hover { background: #7c3aed; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.info { background: #1e3a8a; color: #bfdbfe; border-color: #3b82f6; }
+  .btn.info:hover { background: #1e40af; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #c4b5fd; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #8b5cf6; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(139,92,246,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* PHASE INDICATOR */
+  .phase-indicator {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    z-index: 10;
+    background: rgba(10,14,25,0.95);
+    padding: 6px 10px;
+    border-radius: 22px;
+    border: 1px solid #1e293b;
+    box-shadow: 0 0 20px rgba(139,92,246,0.2);
+  }
+  .phase-pill {
+    padding: 5px 12px;
+    border-radius: 16px;
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 1.3px;
+    font-family: monospace;
+    color: #64748b;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: all 0.3s;
+    text-transform: uppercase;
+  }
+  .phase-pill.active {
+    color: #fff;
+    box-shadow: 0 0 20px currentColor;
+    animation: phasePulse 1.2s ease-in-out infinite;
+  }
+  @keyframes phasePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+  .phase-pill.route.active { background: #06b6d4; border-color: #22d3ee; }
+  .phase-pill.read.active { background: #3b82f6; border-color: #60a5fa; }
+  .phase-pill.write.active { background: #f59e0b; border-color: #fbbf24; }
+  .phase-pill.commit.active { background: #8b5cf6; border-color: #a78bfa; }
+  .phase-pill.done.active { background: #10b981; border-color: #34d399; }
+  .phase-arrow {
+    color: #475569;
+    font-size: 0.75rem;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 90px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  /* SHARDS VIEW */
+  .shards-pane {
+    flex: 1.5;
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(139,92,246,0.15);
+    min-height: 0;
+  }
+  .shards-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .shards-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .shards-canvas {
+    flex: 1;
+    position: relative;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .shard-edges {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .shard-edges line {
+    stroke: #334155;
+    stroke-width: 1.5;
+    transition: all 0.4s;
+  }
+  .shard-edges line.active-prepare {
+    stroke: #06b6d4;
+    stroke-width: 2.5;
+    stroke-dasharray: 8 4;
+    animation: dashFlow 0.8s linear infinite;
+    filter: drop-shadow(0 0 6px rgba(6,182,212,0.9));
+  }
+  .shard-edges line.active-read {
+    stroke: #3b82f6;
+    stroke-width: 2.5;
+    stroke-dasharray: 8 4;
+    animation: dashFlow 0.8s linear infinite;
+    filter: drop-shadow(0 0 6px rgba(59,130,246,0.9));
+  }
+  .shard-edges line.active-write {
+    stroke: #f59e0b;
+    stroke-width: 2.5;
+    stroke-dasharray: 8 4;
+    animation: dashFlow 0.8s linear infinite;
+    filter: drop-shadow(0 0 6px rgba(245,158,11,0.9));
+  }
+  .shard-edges line.active-commit {
+    stroke: #8b5cf6;
+    stroke-width: 2.5;
+    stroke-dasharray: 8 4;
+    animation: dashFlow 0.8s linear infinite;
+    filter: drop-shadow(0 0 6px rgba(139,92,246,0.9));
+  }
+  .shard-edges line.active-ack {
+    stroke: #10b981;
+    stroke-width: 2.5;
+    stroke-dasharray: 8 4;
+    animation: dashFlow 0.8s linear infinite;
+    filter: drop-shadow(0 0 6px rgba(16,185,129,0.9));
+  }
+  @keyframes dashFlow {
+    to { stroke-dashoffset: -24; }
+  }
+
+  /* Shard cluster */
+  .shard-cluster {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    z-index: 2;
+  }
+
+  .shard-label {
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: #c4b5fd;
+    font-family: monospace;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(139,92,246,0.15);
+    margin-bottom: 2px;
+  }
+
+  .replicas-row {
+    display: flex;
+    gap: 4px;
+  }
+
+  .replica {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    font-size: 0.55rem;
+    font-weight: 900;
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    border: 2px solid;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    color: #cbd5e1;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  }
+  .replica.follower {
+    border-color: #475569;
+  }
+  .replica.leader {
+    border-color: #10b981;
+    background: linear-gradient(145deg, #064e3b, #022c22);
+    color: #86efac;
+    box-shadow: 0 0 12px rgba(16,185,129,0.6);
+  }
+  .replica.leader::before {
+    content: '👑';
+    position: absolute;
+    top: -10px;
+    font-size: 0.6rem;
+  }
+  .replica.participating {
+    border-color: #f59e0b;
+    box-shadow: 0 0 15px rgba(245,158,11,0.7);
+    animation: replicaPulse 0.8s ease-in-out infinite alternate;
+  }
+  @keyframes replicaPulse {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.1); }
+  }
+  .replica.prepared {
+    border-color: #06b6d4;
+    background: linear-gradient(145deg, #164e63, #083344);
+    color: #67e8f9;
+    box-shadow: 0 0 12px rgba(6,182,212,0.6);
+  }
+  .replica.committed {
+    border-color: #8b5cf6;
+    background: linear-gradient(145deg, #4c1d95, #2e1065);
+    color: #d8b4fe;
+    box-shadow: 0 0 15px rgba(139,92,246,0.7);
+  }
+  .replica.aborted {
+    border-color: #ef4444;
+    background: linear-gradient(145deg, #450a0a, #1c0606);
+    color: #fca5a5;
+    opacity: 0.7;
+  }
+
+  /* Coordinator */
+  .coordinator-box {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    z-index: 5;
+  }
+
+  .coordinator-node {
+    background: linear-gradient(145deg, #1e3a8a, #0c1e4d);
+    border: 2.5px solid #3b82f6;
+    border-radius: 10px;
+    padding: 6px 14px;
+    font-family: monospace;
+    box-shadow: 0 0 20px rgba(59,130,246,0.5);
+    text-align: center;
+    transition: all 0.4s;
+  }
+  .coordinator-node.active {
+    animation: coordPulse 0.6s ease-in-out infinite alternate;
+  }
+  @keyframes coordPulse {
+    0% { box-shadow: 0 0 20px rgba(59,130,246,0.5); }
+    100% { box-shadow: 0 0 35px rgba(59,130,246,1); }
+  }
+  .coordinator-node.committed {
+    border-color: #10b981;
+    background: linear-gradient(145deg, #064e3b, #022c22);
+    box-shadow: 0 0 25px rgba(16,185,129,0.8);
+  }
+  .coordinator-node.aborted {
+    border-color: #ef4444;
+    background: linear-gradient(145deg, #450a0a, #1c0606);
+    box-shadow: 0 0 25px rgba(239,68,68,0.6);
+  }
+  .coordinator-title {
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 1.2px;
+    color: #93c5fd;
+    text-transform: uppercase;
+  }
+  .coordinator-sub {
+    font-size: 0.45rem;
+    color: #64748b;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+
+  /* RIGHT PANEL */
+  .side-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    min-width: 340px;
+  }
+
+  .info-box {
+    background: #070a14;
+    border: 2px solid #3b82f6;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    box-shadow: 0 0 20px rgba(59,130,246,0.15);
+  }
+  .info-box.state { border-color: #10b981; box-shadow: 0 0 20px rgba(16,185,129,0.15); }
+  .info-box.log { border-color: #06b6d4; box-shadow: 0 0 20px rgba(6,182,212,0.15); flex: 1; }
+
+  .info-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .info-box.state .info-title { color: #6ee7b7; }
+  .info-box.log .info-title { color: #67e8f9; }
+  .info-box .info-title { color: #93c5fd; }
+
+  .state-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+  .state-cell {
+    background: rgba(30,41,59,0.4);
+    border-radius: 5px;
+    padding: 5px 7px;
+    font-family: monospace;
+  }
+  .state-cell .lbl {
+    color: #64748b;
+    font-size: 0.48rem;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 1px;
+    text-transform: uppercase;
+  }
+  .state-cell .val {
+    color: #93c5fd;
+    font-size: 0.78rem;
+    font-weight: 900;
+  }
+  .state-cell .val.good { color: #6ee7b7; }
+  .state-cell .val.warn { color: #fde047; }
+  .state-cell .val.bad { color: #f87171; }
+  .state-cell .val.purple { color: #d8b4fe; }
+
+  .log-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.58rem;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+  }
+  .log-line {
+    padding: 2px 4px;
+    border-radius: 3px;
+    animation: logIn 0.3s ease;
+    border-left: 2px solid transparent;
+  }
+  @keyframes logIn {
+    from { transform: translateX(-6px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .log-line.route { border-left-color: #06b6d4; color: #67e8f9; }
+  .log-line.read { border-left-color: #3b82f6; color: #93c5fd; }
+  .log-line.write { border-left-color: #f59e0b; color: #fde047; }
+  .log-line.raft { border-left-color: #a855f7; color: #d8b4fe; }
+  .log-line.prepare { border-left-color: #06b6d4; color: #67e8f9; }
+  .log-line.commit { border-left-color: #10b981; color: #6ee7b7; font-weight: 700; }
+  .log-line.abort { border-left-color: #ef4444; color: #fca5a5; }
+  .log-line.info { border-left-color: #64748b; color: #cbd5e1; }
+  .log-line .ts {
+    color: #475569;
+    font-size: 0.5rem;
+    margin-right: 4px;
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(139,92,246,0.06);
+    border: 1px solid rgba(139,92,246,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #c4b5fd;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #93c5fd; text-shadow: 0 0 10px rgba(59,130,246,0.5); }
+  .metric-value.purple { color: #d8b4fe; text-shadow: 0 0 10px rgba(139,92,246,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 240px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #8b5cf6;
+    background: rgba(139,92,246,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.05); }
+  .teach-entry.yellow { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .tag.yellow { background: rgba(245,158,11,0.15); color: #fde047; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Info card */
+  .info-card {
+    background: linear-gradient(145deg, rgba(139,92,246,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(139,92,246,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.purple { color: #d8b4fe; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 12px; height: 12px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1.5px solid;
+  }
+
+  /* Status banner */
+  .status-banner {
+    position: absolute;
+    top: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #8b5cf6;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #c4b5fd;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(139,92,246,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.committed { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.aborted { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #8b5cf6;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(139,92,246,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>DISTRIBUTED TRANSACTIONS</h1>
+    <span class="sub">SHARDING · MVCC · RAFT · 2PC · SPANNER/COCKROACHDB-STYLE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Transactions</h3>
+      <button class="btn primary" id="btnRun">▶ Run Transaction</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Transaction Types</h3>
+      <select id="txnTypeSelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="single" selected>📍 Single-Shard (no 2PC needed)</option>
+        <option value="multi">🔀 Multi-Shard (2PC required)</option>
+        <option value="cross">🌐 Cross-Region (high latency)</option>
+        <option value="readonly">📖 Read-Only (snapshot)</option>
+      </select>
+    </div>
+
+    <div class="panel">
+      <h3>Fault Injection</h3>
+      <button class="btn danger" id="btnKillLeader">💀 Kill a Raft Leader</button>
+      <button class="btn warn" id="btnSlowShard">🐌 Slow a Shard</button>
+      <button class="btn warn" id="btnPartition">📡 Network Partition</button>
+      <button class="btn success" id="btnRecover">🔄 Recover All</button>
+    </div>
+
+    <div class="panel">
+      <h3>Settings</h3>
+      <div class="slider-row"><span>Shards</span><span class="value" id="shardVal">3</span></div>
+      <input type="range" id="shardRange" min="2" max="5" value="3">
+      <div class="slider-row"><span>Replicas per shard</span><span class="value" id="replVal">3</span></div>
+      <input type="range" id="replRange" min="1" max="5" value="3">
+      <div class="slider-row"><span>Speed</span><span class="value" id="speedVal">1.0×</span></div>
+      <input type="range" id="speedRange" min="0.5" max="3" step="0.1" value="1">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#10b981; background:rgba(16,185,129,0.2);"></div>Raft leader (replica)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#f59e0b; background:rgba(245,158,11,0.2);"></div>Participating in 2PC</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#06b6d4; background:rgba(6,182,212,0.2);"></div>Prepared (phase 1 done)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#8b5cf6; background:rgba(139,92,246,0.2);"></div>Committed</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#ef4444; background:rgba(239,68,68,0.2);"></div>Aborted</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">SHARDED · REPLICATED · MVCC SNAPSHOTS · 2PC ACROSS SHARDS</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <!-- Phase indicator -->
+      <div class="phase-indicator">
+        <div class="phase-pill route" id="pillRoute">1. ROUTE</div>
+        <div class="phase-arrow">→</div>
+        <div class="phase-pill read" id="pillRead">2. READ</div>
+        <div class="phase-arrow">→</div>
+        <div class="phase-pill write" id="pillWrite">3. WRITE</div>
+        <div class="phase-arrow">→</div>
+        <div class="phase-pill commit" id="pillCommit">4. 2PC COMMIT</div>
+        <div class="phase-arrow">→</div>
+        <div class="phase-pill done" id="pillDone">✓ DONE</div>
+      </div>
+
+      <div class="main-split">
+        <!-- SHARDS VIEW -->
+        <div class="shards-pane">
+          <div class="shards-title">
+            <span>🌐 SHARDED CLUSTER</span>
+            <span class="hint" id="shardsHint">— 3 shards · 3 replicas —</span>
+          </div>
+          <div class="shards-canvas" id="shardsCanvas">
+            <svg class="shard-edges" id="shardEdges"></svg>
+          </div>
+        </div>
+
+        <!-- SIDE PANEL -->
+        <div class="side-panel">
+          <div class="info-box state">
+            <div class="info-title">
+              <span>📊 TRANSACTION STATE</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="stateHint">—</span>
+            </div>
+            <div class="state-grid">
+              <div class="state-cell"><span class="lbl">Type</span><span class="val info" id="stType">single</span></div>
+              <div class="state-cell"><span class="lbl">Phase</span><span class="val warn" id="stPhase">idle</span></div>
+              <div class="state-cell"><span class="lbl">Shards touched</span><span class="val" id="stTouched">0</span></div>
+              <div class="state-cell"><span class="lbl">Prepared</span><span class="val purple" id="stPrepared">0</span></div>
+              <div class="state-cell"><span class="lbl">Latency</span><span class="val" id="stLatency">0ms</span></div>
+              <div class="state-cell"><span class="lbl">Final</span><span class="val good" id="stFinal">—</span></div>
+            </div>
+          </div>
+
+          <div class="info-box log">
+            <div class="info-title">
+              <span>📡 PROTOCOL LOG</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="logHint">— 0 events —</span>
+            </div>
+            <div class="log-body" id="logBody"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Phase</div>
+        <div class="metric-value info" id="mPhase">idle</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Shards</div>
+        <div class="metric-value purple" id="mShards">3</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Latency</div>
+        <div class="metric-value warn" id="mLatency">0ms</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Result</div>
+        <div class="metric-value" id="mResult">—</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 The Distributed Stack</div>
+      <div class="info-row"><span class="lbl">Sharding</span><span class="val good">horizontal partition</span></div>
+      <div class="info-row"><span class="lbl">Replication</span><span class="val purple">Raft per shard</span></div>
+      <div class="info-row"><span class="lbl">Snapshot</span><span class="val">MVCC timestamp</span></div>
+      <div class="info-row"><span class="lbl">Cross-shard</span><span class="val warn">2PC</span></div>
+      <div class="info-row"><span class="lbl">Time</span><span class="val">TrueTime / HLC</span></div>
+      <div class="info-row"><span class="lbl">Isolation</span><span class="val good">Serializable</span></div>
+      <div class="info-row"><span class="lbl">Examples</span><span class="val">Spanner, CockroachDB, TiDB</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  txnType: 'single',
+  shardCount: 3,
+  replicaCount: 3,
+  speed: 1.0,
+  // Shards: each has replicas (one leader + followers)
+  shards: [],
+  // Transaction state
+  phase: 'idle',
+  touchedShards: [],
+  preparedShards: [],
+  latency: 0,
+  finalResult: null,
+  running: false,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  shardsCanvas: document.getElementById('shardsCanvas'),
+  shardEdges: document.getElementById('shardEdges'),
+  shardsHint: document.getElementById('shardsHint'),
+  logBody: document.getElementById('logBody'),
+  logHint: document.getElementById('logHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Phase pills
+  pillRoute: document.getElementById('pillRoute'),
+  pillRead: document.getElementById('pillRead'),
+  pillWrite: document.getElementById('pillWrite'),
+  pillCommit: document.getElementById('pillCommit'),
+  pillDone: document.getElementById('pillDone'),
+  // Controls
+  btnRun: document.getElementById('btnRun'),
+  btnReset: document.getElementById('btnReset'),
+  txnTypeSelect: document.getElementById('txnTypeSelect'),
+  btnKillLeader: document.getElementById('btnKillLeader'),
+  btnSlowShard: document.getElementById('btnSlowShard'),
+  btnPartition: document.getElementById('btnPartition'),
+  btnRecover: document.getElementById('btnRecover'),
+  shardRange: document.getElementById('shardRange'),
+  shardVal: document.getElementById('shardVal'),
+  replRange: document.getElementById('replRange'),
+  replVal: document.getElementById('replVal'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  // State
+  stType: document.getElementById('stType'),
+  stPhase: document.getElementById('stPhase'),
+  stTouched: document.getElementById('stTouched'),
+  stPrepared: document.getElementById('stPrepared'),
+  stLatency: document.getElementById('stLatency'),
+  stFinal: document.getElementById('stFinal'),
+  stateHint: document.getElementById('stateHint'),
+  // Metrics
+  mPhase: document.getElementById('mPhase'),
+  mShards: document.getElementById('mShards'),
+  mLatency: document.getElementById('mLatency'),
+  mResult: document.getElementById('mResult'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 3000);
+}
+
+let LOG_COUNTER = 0;
+function logLine(cls, msg) {
+  LOG_COUNTER++;
+  const line = document.createElement('div');
+  line.className = `log-line ${cls}`;
+  line.innerHTML = `<span class="ts">${String(LOG_COUNTER).padStart(3, '0')}</span>${msg}`;
+  DOM.logBody.prepend(line);
+  while (DOM.logBody.children.length > 50) DOM.logBody.lastChild.remove();
+  DOM.logHint.textContent = `${LOG_COUNTER} events`;
+}
+
+function clearLog() {
+  LOG_COUNTER = 0;
+  DOM.logBody.innerHTML = '';
+  DOM.logHint.textContent = '0 events';
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining distributed transactions across shards.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   INITIALIZATION
+   ============================================================ */
+function initCluster() {
+  STATE.shards = [];
+  STATE.phase = 'idle';
+  STATE.touchedShards = [];
+  STATE.preparedShards = [];
+  STATE.latency = 0;
+  STATE.finalResult = null;
+
+  for (let i = 0; i < STATE.shardCount; i++) {
+    const shard = {
+      id: i,
+      name: 'S' + (i + 1),
+      keyRange: `[${i * 100}-${(i + 1) * 100})`,
+      replicas: [],
+      slow: false,
+      partitioned: false,
+      prepared: false,
+      committed: false,
+      aborted: false
+    };
+    for (let j = 0; j < STATE.replicaCount; j++) {
+      shard.replicas.push({
+        id: j,
+        name: 'R' + (j + 1),
+        role: j === 0 ? 'leader' : 'follower',
+        state: j === 0 ? 'leader' : 'follower'
+      });
+    }
+    STATE.shards.push(shard);
+  }
+
+  layoutShards();
+  renderAll();
+}
+
+function layoutShards() {
+  const canvas = DOM.shardsCanvas;
+  const W = canvas.clientWidth || 600;
+  const H = canvas.clientHeight || 400;
+
+  // Coordinator at top, shards below in a row
+  const count = STATE.shards.length;
+  const spacing = (W - 100) / (count + 1);
+
+  for (let i = 0; i < STATE.shards.length; i++) {
+    const shard = STATE.shards[i];
+    shard.x = 50 + spacing * (i + 1);
+    shard.y = H * 0.65;
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderAll() {
+  renderShards();
+  renderEdges();
+  updateStateUI();
+}
+
+function renderShards() {
+  // Remove old clusters
+  DOM.shardsCanvas.querySelectorAll('.shard-cluster').forEach(el => el.remove());
+  DOM.shardsCanvas.querySelectorAll('.coordinator-box').forEach(el => el.remove());
+
+  // Render coordinator (pretend it's the SQL layer)
+  const coord = document.createElement('div');
+  coord.className = 'coordinator-box';
+  const coordNode = document.createElement('div');
+  coordNode.className = 'coordinator-node' +
+    (STATE.phase === 'committed' ? ' committed' : STATE.phase === 'aborted' ? ' aborted' : '') +
+    (STATE.phase !== 'idle' ? ' active' : '');
+  coordNode.innerHTML = `
+    <div class="coordinator-title">🎯 COORDINATOR</div>
+    <div class="coordinator-sub">SQL Layer · 2PC Driver</div>
+  `;
+  coord.appendChild(coordNode);
+  DOM.shardsCanvas.appendChild(coord);
+
+  // Render each shard cluster
+  for (const shard of STATE.shards) {
+    const cluster = document.createElement('div');
+    cluster.className = 'shard-cluster';
+    cluster.dataset.shardId = shard.id;
+    cluster.style.left = shard.x + 'px';
+    cluster.style.top = shard.y + 'px';
+
+    // Label
+    const label = document.createElement('div');
+    label.className = 'shard-label';
+    label.innerHTML = `Shard ${shard.id + 1} ${shard.slow ? '🐌' : ''} ${shard.partitioned ? '📡' : ''}`;
+    cluster.appendChild(label);
+
+    // Replicas row
+    const row = document.createElement('div');
+    row.className = 'replicas-row';
+
+    for (const replica of shard.replicas) {
+      const el = document.createElement('div');
+      el.className = 'replica';
+
+      // Apply visual states
+      if (replica.state === 'leader') el.classList.add('leader');
+      else el.classList.add('follower');
+
+      if (shard.participating && replica.state === 'leader') el.classList.add('participating');
+      if (shard.prepared && replica.state === 'leader') el.classList.add('prepared');
+      if (shard.committed && replica.state === 'leader') el.classList.add('committed');
+      if (shard.aborted && replica.state === 'leader') el.classList.add('aborted');
+
+      el.textContent = replica.name;
+      row.appendChild(el);
+    }
+
+    cluster.appendChild(row);
+    DOM.shardsCanvas.appendChild(cluster);
+  }
+
+  DOM.shardsHint.textContent = `— ${STATE.shardCount} shards · ${STATE.replicaCount} replicas each —`;
+}
+
+function renderEdges() {
+  const svg = DOM.shardEdges;
+  let html = '';
+
+  const canvas = DOM.shardsCanvas;
+  const W = canvas.clientWidth || 600;
+
+  // Coordinator position (top center)
+  const coordX = W / 2;
+  const coordY = 50;
+
+  // Draw edge from coordinator to each participating shard
+  for (const shard of STATE.shards) {
+    const participating = shard.participating;
+    let cls = '';
+    if (participating) {
+      if (shard.prepared) cls = 'active-prepare';
+      else if (shard.committed) cls = 'active-ack';
+      else cls = 'active-write';
+    }
+
+    html += `<line x1="${coordX}" y1="${coordY + 20}" x2="${shard.x}" y2="${shard.y - 40}" class="${cls}" />`;
+  }
+
+  svg.innerHTML = html;
+}
+
+function updateStateUI() {
+  const touched = STATE.touchedShards.length;
+  const prepared = STATE.preparedShards.length;
+
+  DOM.stType.textContent = STATE.txnType;
+  DOM.stPhase.textContent = STATE.phase;
+  DOM.stTouched.textContent = touched;
+  DOM.stPrepared.textContent = `${prepared}/${touched}`;
+  DOM.stLatency.textContent = STATE.latency + 'ms';
+  DOM.stFinal.textContent = STATE.finalResult || '—';
+
+  DOM.stPhase.className = 'val ' + (
+    STATE.phase === 'committed' ? 'good' :
+    STATE.phase === 'aborted' ? 'bad' :
+    STATE.phase === 'idle' ? '' :
+    'warn'
+  );
+  DOM.stFinal.className = 'val ' + (
+    STATE.finalResult === 'COMMITTED' ? 'good' :
+    STATE.finalResult === 'ABORTED' ? 'bad' : ''
+  );
+
+  DOM.mPhase.textContent = STATE.phase;
+  DOM.mShards.textContent = STATE.shardCount;
+  DOM.mLatency.textContent = STATE.latency + 'ms';
+  DOM.mResult.textContent = STATE.finalResult || '—';
+  DOM.mResult.className = 'metric-value' + (
+    STATE.finalResult === 'COMMITTED' ? '' :
+    STATE.finalResult === 'ABORTED' ? ' bad' : ''
+  );
+
+  DOM.stateHint.textContent = `phase: ${STATE.phase}`;
+
+  // Phase pills
+  DOM.pillRoute.classList.remove('active');
+  DOM.pillRead.classList.remove('active');
+  DOM.pillWrite.classList.remove('active');
+  DOM.pillCommit.classList.remove('active');
+  DOM.pillDone.classList.remove('active');
+
+  if (STATE.phase === 'routing') DOM.pillRoute.classList.add('active');
+  else if (STATE.phase === 'reading') DOM.pillRead.classList.add('active');
+  else if (STATE.phase === 'writing') DOM.pillWrite.classList.add('active');
+  else if (STATE.phase === 'preparing') DOM.pillCommit.classList.add('active');
+  else if (STATE.phase === 'committed' || STATE.phase === 'aborted') DOM.pillDone.classList.add('active');
+}
+
+/* ============================================================
+   TRANSACTION EXECUTION
+   ============================================================ */
+function runTransaction() {
+  if (STATE.running) return;
+  STATE.running = true;
+
+  // Reset transaction state
+  STATE.touchedShards = [];
+  STATE.preparedShards = [];
+  STATE.finalResult = null;
+  STATE.latency = 0;
+
+  // Clear shard visual states
+  for (const shard of STATE.shards) {
+    shard.participating = false;
+    shard.prepared = false;
+    shard.committed = false;
+    shard.aborted = false;
+  }
+
+  clearLog();
+  DOM.btnRun.textContent = '⏳ Running...';
+  renderAll();
+
+  // Determine which shards to touch
+  let touchedShardIds = [];
+  switch (STATE.txnType) {
+    case 'single':
+      // Just one random shard
+      touchedShardIds = [Math.floor(Math.random() * STATE.shardCount)];
+      break;
+    case 'multi':
+      // 2-3 shards
+      const count = Math.min(STATE.shardCount, 2 + Math.floor(Math.random() * 2));
+      const indices = [...Array(STATE.shardCount).keys()].sort(() => Math.random() - 0.5);
+      touchedShardIds = indices.slice(0, count);
+      break;
+    case 'cross':
+      // All shards
+      touchedShardIds = [...Array(STATE.shardCount).keys()];
+      break;
+    case 'readonly':
+      // 2 shards, but only reads — no 2PC
+      touchedShardIds = [0, Math.floor(Math.random() * STATE.shardCount)];
+      break;
+  }
+
+  STATE.touchedShards = touchedShardIds;
+  for (const id of touchedShardIds) {
+    STATE.shards[id].participating = true;
+  }
+
+  // === PHASE 1: ROUTE ===
+  STATE.phase = 'routing';
+  updateStateUI();
+  renderAll();
+
+  logLine('route', `📨 ROUTE: Transaction touches shards ${touchedShardIds.map(i => 'S' + (i + 1)).join(', ')}`);
+  teach('ROUTE',
+    `The SQL layer parses the query, determines which shards hold the affected keys (based on the shard key), and identifies the shards to contact. Single-shard transactions skip 2PC entirely — that's the beauty of sharding: 90%+ of queries touch one shard.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    // === PHASE 2: READ (MVCC snapshot) ===
+    STATE.phase = 'reading';
+    STATE.latency += 5;
+    updateStateUI();
+    renderAll();
+
+    logLine('read', `👁 READ: MVCC snapshot @ timestamp T=${Date.now()}`);
+    teach('READ (MVCC)',
+      `The coordinator issues reads to each shard using MVCC SNAPSHOT ISOLATION. Each shard reads a consistent point in time from its Raft-replicated log. Reads do NOT acquire locks — they see a snapshot. Reads on different shards see the SAME logical timestamp.`,
+      'info'
+    );
+
+    setTimeout(() => {
+      // === PHASE 3: WRITE (buffer changes) ===
+      STATE.phase = 'writing';
+      STATE.latency += 10;
+      updateStateUI();
+      renderAll();
+
+      const isReadOnly = STATE.txnType === 'readonly';
+      if (isReadOnly) {
+        logLine('info', `📖 READ-ONLY: No writes, skipping 2PC`);
+        setTimeout(() => finishTransaction('COMMITTED', true), 500);
+        return;
+      }
+
+      logLine('write', `✏️ WRITE: Buffered writes sent to ${touchedShardIds.length} shards`);
+      teach('WRITE (Buffered)',
+        `Writes are sent to each shard but not yet committed. Each shard's Raft leader appends the write to its replicated log. If the transaction touches MULTIPLE shards, we now need 2PC to make them all commit or all abort together.`,
+        'yellow'
+      );
+
+      if (touchedShardIds.length === 1) {
+        // Single-shard transaction — no 2PC needed
+        setTimeout(() => {
+          logLine('commit', `✓ SINGLE-SHARD: Committing via Raft (no 2PC needed)`);
+          teach('SINGLE-SHARD COMMIT',
+            `Only ONE shard is involved. The Raft leader for that shard replicates the write to its followers. Once a majority ACKs, the write is committed. No 2PC needed — Raft itself provides the atomicity guarantee within the shard.`,
+            'ok'
+          );
+          setTimeout(() => {
+            STATE.shards[touchedShardIds[0]].committed = true;
+            renderAll();
+            setTimeout(() => finishTransaction('COMMITTED', true), 500);
+          }, 400);
+        }, 600);
+      } else {
+        // Multi-shard transaction — 2PC!
+        setTimeout(() => run2PC(touchedShardIds), 600);
+      }
+    }, 600);
+  }, 600);
+}
+
+/* ============================================================
+   2PC EXECUTION
+   ============================================================ */
+function run2PC(shardIds) {
+  STATE.phase = 'preparing';
+  STATE.latency += 15;
+  updateStateUI();
+  renderAll();
+
+  logLine('prepare', `⚙️ 2PC PHASE 1: Sending PREPARE to ${shardIds.length} shards`);
+  showStatus(`⚙️ 2PC: PREPARE → ${shardIds.length} shards`);
+  teach('2PC: PREPARE',
+    `The coordinator sends PREPARE to every shard's Raft leader. Each shard must: (1) ensure its Raft group has replicated the write to a majority, (2) acquire MVCC locks on the affected keys, (3) write a prepared record to its WAL, (4) vote YES. This is the distributed "commit or abort?" vote.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    // Each shard prepares
+    const preparedIds = [];
+    for (const id of shardIds) {
+      const shard = STATE.shards[id];
+      if (shard.partitioned) {
+        logLine('abort', `  ✗ Shard ${id + 1} is PARTITIONED — cannot prepare`);
+        shard.aborted = true;
+      } else if (shard.slow) {
+        logLine('info', `  ⏱ Shard ${id + 1} is SLOW — still preparing...`);
+        // Simulate delay
+        shard.prepared = true;
+        preparedIds.push(id);
+        STATE.latency += 20;
+        logLine('prepare', `  ✓ Shard ${id + 1} prepared (slow, +20ms)`);
+      } else {
+        shard.prepared = true;
+        preparedIds.push(id);
+        STATE.latency += 5;
+        logLine('prepare', `  ✓ Shard ${id + 1} PREPARED (voted YES)`);
+      }
+    }
+    STATE.preparedShards = preparedIds;
+    renderAll();
+
+    if (preparedIds.length === shardIds.length) {
+      // All prepared — proceed to commit phase
+      setTimeout(() => run2PCCommit(shardIds), 500);
+    } else {
+      // Some failed — abort
+      setTimeout(() => run2PCAbort(shardIds), 500);
+    }
+  }, 800);
+}
+
+function run2PCCommit(shardIds) {
+  logLine('commit', `✓ 2PC PHASE 2: All shards prepared — sending COMMIT`);
+  showStatus(`✓ 2PC COMMIT → ${shardIds.length} shards`, 'committed');
+  teach('2PC: COMMIT',
+    `All shards voted YES. The coordinator writes a COMMIT record to its own WAL (so it can recover if it crashes) and sends COMMIT to every shard. Each shard then releases its MVCC locks, applies the write to its Raft log, and ACKs the coordinator.`,
+    'ok'
+  );
+
+  setTimeout(() => {
+    for (const id of shardIds) {
+      STATE.shards[id].committed = true;
+      STATE.latency += 3;
+      logLine('commit', `  ✓ Shard ${id + 1} COMMITTED`);
+    }
+    renderAll();
+    setTimeout(() => finishTransaction('COMMITTED'), 600);
+  }, 600);
+}
+
+function run2PCAbort(shardIds) {
+  logLine('abort', `✗ 2PC PHASE 2: Some shards failed — sending ABORT`);
+  showStatus(`✗ 2PC ABORT → ${shardIds.length} shards`, 'aborted');
+  teach('2PC: ABORT',
+    `At least one shard could not prepare (partition, crash, or slow timeout). The entire transaction must ABORT — even the shards that voted YES. This is the atomicity guarantee: all-or-nothing. The prepared shards release their locks and roll back.`,
+    'error'
+  );
+
+  setTimeout(() => {
+    for (const id of shardIds) {
+      STATE.shards[id].aborted = true;
+      logLine('abort', `  ✗ Shard ${id + 1} ABORTED`);
+    }
+    renderAll();
+    setTimeout(() => finishTransaction('ABORTED'), 600);
+  }, 600);
+}
+
+function finishTransaction(result, isReadOnly = false) {
+  STATE.phase = result.toLowerCase();
+  STATE.finalResult = result;
+
+  if (result === 'COMMITTED') {
+    showStatus(`✅ TRANSACTION COMMITTED in ${STATE.latency}ms`, 'committed');
+    logLine('commit', `🏆 TRANSACTION ${result} (latency: ${STATE.latency}ms)`);
+
+    if (isReadOnly) {
+      teach('READ-ONLY COMMITTED',
+        `Read-only transactions skip 2PC entirely. They only need MVCC snapshots, which are consistent across shards by timestamp. No locks, no prepare phase, no commit phase — just reads. Fastest possible distributed transaction.`,
+        'ok'
+      );
+    } else {
+      teach('TRANSACTION COMMITTED',
+        `Distributed transaction committed! ${STATE.touchedShards.length} shard${STATE.touchedShards.length === 1 ? '' : 's'} involved, total latency ${STATE.latency}ms. Notice: single-shard transactions skip 2PC entirely — the Raft replication provides atomicity within one shard. Only when we cross shard boundaries do we pay the 2PC cost.`,
+        'ok'
+      );
+    }
+  } else {
+    showStatus(`❌ TRANSACTION ABORTED in ${STATE.latency}ms`, 'aborted');
+    logLine('abort', `❌ TRANSACTION ${result}`);
+
+    teach('TRANSACTION ABORTED',
+      `The transaction aborted. All prepared shards rolled back, all locks released. The client will need to retry. This is the fundamental cost of distributed transactions: sometimes you abort and retry, and the retry might also fail.`,
+      'error'
+    );
+  }
+
+  updateStateUI();
+  renderAll();
+
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Run Transaction';
+}
+
+/* ============================================================
+   FAULT INJECTION
+   ============================================================ */
+function killLeader() {
+  const shard = STATE.shards[Math.floor(Math.random() * STATE.shards.length)];
+  // Find the leader
+  const leader = shard.replicas.find(r => r.state === 'leader');
+  if (!leader) return;
+
+  // Demote leader, promote another
+  leader.state = 'follower';
+  leader.role = 'follower';
+  const newLeader = shard.replicas.find(r => r.state === 'follower');
+  if (newLeader) {
+    newLeader.state = 'leader';
+    newLeader.role = 'leader';
+  }
+
+  logLine('info', `💀 Shard ${shard.id + 1}: Raft leader crashed, new leader elected`);
+  teach('RAFT FAILOVER',
+    `A Raft leader in shard ${shard.id + 1} crashed. The remaining replicas in that shard held an election and elected a new leader in milliseconds. This is Raft's job — it ensures each SHARD has a consistent replicated log. The 2PC protocol above doesn't need to know about the change — it just talks to whichever replica is currently the leader.`,
+    'warn'
+  );
+
+  renderAll();
+}
+
+function slowShard() {
+  const shard = STATE.shards[Math.floor(Math.random() * STATE.shards.length)];
+  shard.slow = true;
+  logLine('info', `🐌 Shard ${shard.id + 1} is SLOW (network or disk delay)`);
+  teach('SLOW SHARD',
+    `Shard ${shard.id + 1} is now slow. In 2PC, the coordinator must WAIT for this shard's PREPARE and COMMIT responses. A slow shard becomes the LATENCY BOTTLENECK of the whole transaction — the entire distributed transaction takes as long as the slowest participant. This is a well-known problem called "tail latency amplification."`,
+    'warn'
+  );
+  renderAll();
+}
+
+function partitionShard() {
+  const shard = STATE.shards[Math.floor(Math.random() * STATE.shards.length)];
+  shard.partitioned = true;
+  logLine('abort', `📡 Shard ${shard.id + 1} PARTITIONED from the coordinator`);
+  teach('NETWORK PARTITION',
+    `Shard ${shard.id + 1} is now partitioned. It can't communicate with the coordinator or other shards. In 2PC: any transaction touching this shard will fail at the prepare phase — the coordinator will time out and abort. This is why Spanner uses TrueTime and Paxos: to survive partitions without blocking.`,
+    'error'
+  );
+  renderAll();
+}
+
+function recoverAll() {
+  for (const shard of STATE.shards) {
+    shard.slow = false;
+    shard.partitioned = false;
+  }
+  logLine('info', `✓ All shards recovered`);
+  teach('RECOVERED',
+    `All shards are healthy. New transactions will proceed normally.`,
+    'ok'
+  );
+  renderAll();
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  clearLog();
+  DOM.statusBanner.classList.remove('show');
+  initCluster();
+  logLine('info', `Cluster initialized: ${STATE.shardCount} shards × ${STATE.replicaCount} replicas`);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.txnTypeSelect.addEventListener('change', e => {
+  STATE.txnType = e.target.value;
+  const descs = {
+    single: 'A transaction that touches ONE shard. Most OLTP workloads look like this — 90%+ of queries. The Raft leader for that shard handles it locally. No 2PC needed.',
+    multi: 'A transaction that touches 2-3 shards. This requires 2PC — the coordinator must ensure all shards commit or all abort together. This is where distributed transaction complexity lives.',
+    cross: 'A transaction that touches ALL shards. Worst case for 2PC — maximum coordination cost, maximum latency, maximum failure surface.',
+    readonly: 'A read-only transaction. MVCC snapshots make this fast — no locks, no 2PC. Just consistent reads across shards at a single timestamp.'
+  };
+  teach('TXN TYPE', descs[e.target.value], 'cyan');
+});
+
+DOM.btnRun.addEventListener('click', runTransaction);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.btnKillLeader.addEventListener('click', killLeader);
+DOM.btnSlowShard.addEventListener('click', slowShard);
+DOM.btnPartition.addEventListener('click', partitionShard);
+DOM.btnRecover.addEventListener('click', recoverAll);
+
+DOM.shardRange.addEventListener('input', e => {
+  STATE.shardCount = parseInt(e.target.value);
+  DOM.shardVal.textContent = STATE.shardCount;
+  resetAll();
+});
+DOM.replRange.addEventListener('input', e => {
+  STATE.replicaCount = parseInt(e.target.value);
+  DOM.replVal.textContent = STATE.replicaCount;
+  resetAll();
+});
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseFloat(e.target.value);
+  DOM.speedVal.textContent = STATE.speed.toFixed(1) + '×';
+});
+
+window.addEventListener('resize', () => {
+  layoutShards();
+  renderAll();
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Distributed Transactions — the capstone. This simulator shows how modern distributed databases (Spanner, CockroachDB, TiDB) combine FOUR techniques to give ACID across many machines: sharding, Raft replication, MVCC snapshots, and 2PC.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('THE SHARDED LAYER',
+      `Data is split across shards by a SHARD KEY. Each shard owns a key range. A single-shard transaction only touches one shard — no coordination needed. Cross-shard transactions require 2PC. In practice, 90%+ of queries hit ONE shard, so the expensive 2PC path is rare.`,
+      'cyan'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE RAFT LAYER',
+      `Each shard is replicated using RAFT. Every shard has a leader and followers. When the shard's leader accepts a write, it replicates it to followers via Raft. Once a MAJORITY acknowledges, the write is durable. If the leader crashes, a new one is elected in milliseconds.`,
+      'purple'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('THE MVCC LAYER',
+      `Within and across shards, every transaction reads from a CONSISTENT SNAPSHOT. This is MVCC — Multi-Version Concurrency Control. Snapshot reads never block writers, and writers never block readers. Combined with a global logical clock (TrueTime in Spanner, HLC in CockroachDB), snapshots are consistent across the whole cluster.`,
+      'info'
+    );
+  }, 13500);
+
+  setTimeout(() => {
+    teach('THE 2PC LAYER',
+      `Only when a transaction crosses shard boundaries do we need 2PC. The coordinator (the SQL layer) sends PREPARE to each participating shard. Each shard prepares locally, votes YES, and waits. If ALL vote yes, the coordinator sends COMMIT. If ANY votes no, the coordinator sends ABORT. All-or-nothing.`,
+      'warn'
+    );
+  }, 18000);
+
+  setTimeout(() => {
+    teach('THE STACK',
+      `So the full stack is: SHARDING partitions data, RAFT replicates each partition, MVCC provides snapshots for reads, and 2PC coordinates cross-shard writes. This is how Spanner, CockroachDB, TiDB, and YugabyteDB work. Try the different transaction types — especially SINGLE vs MULTI shard to see the 2PC cost.`,
+      'ok'
+    );
+  }, 22500);
+
+  showToast('👋 Try Single-Shard vs Multi-Shard to see the 2PC cost', 4500);
+}, 600);
+</script>
+</body>
+</html>

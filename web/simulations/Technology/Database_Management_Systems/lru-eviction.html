@@ -1,0 +1,1448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LRU Cache Eviction — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #a855f7, #8b5cf6, #6366f1);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(168,85,247,0.15);
+    color: #d8b4fe;
+    border-color: #a855f7;
+  }
+  .teaching-toggle:hover { background: rgba(168,85,247,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #d8b4fe;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #a855f7; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #a855f7; color: #fff; border-color: #a855f7; }
+  .btn.primary:hover { background: #9333ea; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #d8b4fe; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #a855f7; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(168,85,247,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  /* REQUEST STREAM (top) */
+  .stream-pane {
+    background: #070a14;
+    border: 2px solid #a855f7;
+    border-radius: 12px;
+    padding: 10px 12px;
+    min-height: 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-shadow: 0 0 25px rgba(168,85,247,0.15);
+  }
+  .stream-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #d8b4fe;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .stream-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .stream-row {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 4px 0;
+    align-items: center;
+    min-height: 40px;
+  }
+
+  .req-chip {
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: rgba(168,85,247,0.15);
+    border: 1.5px solid rgba(168,85,247,0.4);
+    color: #e9d5ff;
+    font-family: monospace;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    transition: all 0.4s;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .req-chip.current {
+    background: rgba(250,204,21,0.25);
+    border-color: #facc15;
+    color: #fef08a;
+    box-shadow: 0 0 20px rgba(250,204,21,0.6);
+    transform: scale(1.15);
+    animation: reqPulse 0.8s ease-in-out infinite;
+  }
+  @keyframes reqPulse {
+    0%, 100% { transform: scale(1.15); }
+    50% { transform: scale(1.22); }
+  }
+  .req-chip.past {
+    opacity: 0.4;
+    background: rgba(168,85,247,0.06);
+  }
+  .req-chip.future {
+    opacity: 0.7;
+  }
+  .req-chip.hit {
+    background: rgba(16,185,129,0.2);
+    border-color: #10b981;
+    color: #a7f3d0;
+  }
+  .req-chip.miss {
+    background: rgba(239,68,68,0.2);
+    border-color: #ef4444;
+    color: #fecaca;
+  }
+
+  /* CACHE VIEW (middle) */
+  .cache-pane {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #22c55e;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    gap: 12px;
+    min-height: 0;
+    overflow: hidden;
+    box-shadow: 0 0 25px rgba(34,197,94,0.15);
+  }
+
+  .cache-left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+  }
+  .cache-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #86efac;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .cache-title .info {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+
+  .cache-slots {
+    flex: 1;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 8px;
+    background: #02040a;
+    border-radius: 10px;
+    border: 1px solid #1e293b;
+    overflow-x: auto;
+  }
+
+  .slot {
+    min-width: 90px;
+    height: 100%;
+    background: linear-gradient(145deg, #0a1220, #050810);
+    border: 2px solid #334155;
+    border-radius: 10px;
+    padding: 8px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    font-family: monospace;
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .slot.filled {
+    border-color: #22c55e;
+    box-shadow: 0 0 15px rgba(34,197,94,0.3);
+  }
+  .slot.hit-flash {
+    border-color: #10b981;
+    animation: hitPulse 0.6s ease;
+  }
+  @keyframes hitPulse {
+    0% { transform: scale(1); box-shadow: 0 0 40px rgba(16,185,129,1); }
+    50% { transform: scale(1.06); }
+    100% { transform: scale(1); }
+  }
+  .slot.miss-flash {
+    border-color: #ef4444;
+    animation: missPulse 0.6s ease;
+  }
+  @keyframes missPulse {
+    0% { transform: scale(1); box-shadow: 0 0 30px rgba(239,68,68,0.8); }
+    50% { transform: scale(0.95); }
+    100% { transform: scale(1); }
+  }
+  .slot.evict-flash {
+    border-color: #f59e0b;
+    animation: evictPulse 0.6s ease;
+  }
+  @keyframes evictPulse {
+    0% { transform: scale(1); background: rgba(245,158,11,0.3); }
+    50% { transform: scale(1.1) rotate(3deg); }
+    100% { transform: scale(1); }
+  }
+  .slot.new-entry {
+    animation: newEntry 0.5s cubic-bezier(.68,-0.55,.27,1.55);
+  }
+  @keyframes newEntry {
+    0% { transform: translateY(-30px) scale(0.5); opacity: 0; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+  }
+
+  .slot-position {
+    position: absolute;
+    top: 4px;
+    left: 6px;
+    font-size: 0.5rem;
+    color: #475569;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+  }
+  .slot-recency {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    font-size: 0.5rem;
+    color: #a855f7;
+    font-weight: 800;
+    font-family: monospace;
+  }
+  .slot-key {
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: #86efac;
+    letter-spacing: 1.5px;
+  }
+  .slot-key.empty {
+    color: #475569;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .slot-meta {
+    font-size: 0.5rem;
+    color: #64748b;
+    letter-spacing: 0.5px;
+  }
+
+  /* LRU ORDER BAR (right of cache) */
+  .order-pane {
+    width: 220px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .order-title {
+    font-size: 0.6rem;
+    letter-spacing: 1.5px;
+    color: #facc15;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    text-align: center;
+  }
+
+  .order-list {
+    flex: 1;
+    background: #02040a;
+    border-radius: 10px;
+    border: 1px solid #1e293b;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+    font-family: monospace;
+  }
+  .order-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(30,41,59,0.3);
+    border-radius: 5px;
+    border-left: 3px solid #a855f7;
+    font-size: 0.62rem;
+    transition: all 0.3s;
+    animation: orderSlide 0.3s ease;
+  }
+  @keyframes orderSlide {
+    from { transform: translateX(-10px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .order-item.mru {
+    border-left-color: #10b981;
+    background: rgba(16,185,129,0.1);
+    color: #a7f3d0;
+  }
+  .order-item.lru {
+    border-left-color: #ef4444;
+    background: rgba(239,68,68,0.1);
+    color: #fecaca;
+  }
+  .order-item .pos {
+    color: #64748b;
+    font-weight: 800;
+    font-size: 0.55rem;
+    min-width: 24px;
+  }
+  .order-item .key {
+    color: inherit;
+    font-weight: 800;
+    font-size: 0.75rem;
+  }
+  .order-item .tag {
+    margin-left: auto;
+    font-size: 0.5rem;
+    letter-spacing: 0.8px;
+    font-weight: 800;
+  }
+  .order-item.mru .tag { color: #10b981; }
+  .order-item.lru .tag { color: #ef4444; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(168,85,247,0.06);
+    border: 1px solid rgba(168,85,247,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #d8b4fe;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #d8b4fe; text-shadow: 0 0 10px rgba(168,85,247,0.5); }
+
+  /* Hit rate gauge */
+  .gauge {
+    position: relative;
+    height: 24px;
+    background: #0a0e19;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #1e293b;
+  }
+  .gauge-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+    transition: width 0.5s cubic-bezier(.4,0,.2,1);
+    box-shadow: 0 0 20px rgba(16,185,129,0.4);
+  }
+  .gauge-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    font-size: 0.75rem;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+    letter-spacing: 2px;
+  }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 240px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #a855f7;
+    background: rgba(168,85,247,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.06); }
+  .teach-entry.cyan   { border-color: #22d3ee; background: rgba(34,211,238,0.05); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(34,211,238,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Implementation card */
+  .impl-card {
+    background: linear-gradient(145deg, rgba(168,85,247,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(168,85,247,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.58rem;
+  }
+  .impl-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #d8b4fe;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .impl-row {
+    display: flex;
+    gap: 8px;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .impl-row:last-child { border-bottom: none; }
+  .impl-row .lbl {
+    color: #94a3b8;
+    min-width: 70px;
+    font-weight: 700;
+  }
+  .impl-row .val {
+    color: #d8b4fe;
+    font-weight: 800;
+  }
+  .impl-row .val.good { color: #6ee7b7; }
+  .impl-row .val.bad { color: #fca5a5; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #a855f7;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(168,85,247,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Status banner */
+  .status-banner {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #a855f7;
+    border-radius: 30px;
+    padding: 8px 24px;
+    font-family: monospace;
+    font-size: 0.7rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #d8b4fe;
+    z-index: 12;
+    box-shadow: 0 0 25px rgba(168,85,247,0.5);
+    display: none;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.hit { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.5); }
+  .status-banner.miss { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.5); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>LRU CACHE EVICTION</h1>
+    <span class="sub">RECENCY · ORDER · PATHOLOGIES</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Workload Pattern</h3>
+      <select id="demoSelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="textbook" selected>📖 Textbook (LRU shines)</option>
+        <option value="loop">🔁 Cyclic Loop (LRU fails)</option>
+        <option value="scan">📊 Sequential Scan Pollution</option>
+        <option value="zipf">📈 Zipf Distribution (80/20)</option>
+        <option value="hotcold">🎯 Two Hot Keys + Cold</option>
+        <option value="compare">⚖️ Compare LRU vs Optimal</option>
+      </select>
+      <button class="btn primary" id="btnPlay">▶ Play All</button>
+      <button class="btn" id="btnNext">⏭ Next Access</button>
+      <button class="btn" id="btnAuto">🔄 Auto-Play</button>
+      <button class="btn" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Cache Config</h3>
+      <div class="slider-row"><span>Cache size</span><span class="value" id="sizeVal">4</span></div>
+      <input type="range" id="sizeRange" min="2" max="8" value="4">
+      <div class="slider-row"><span>Auto-play speed</span><span class="value" id="speedVal">800ms</span></div>
+      <input type="range" id="speedRange" min="200" max="2000" step="100" value="800">
+    </div>
+
+    <div class="panel">
+      <h3>Algorithm Comparison</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="algo" value="lru" checked style="accent-color:#a855f7;">
+          LRU (Least Recently Used)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="algo" value="optimal" style="accent-color:#a855f7;">
+          Optimal (Belady's MIN)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="algo" value="lruk" style="accent-color:#a855f7;">
+          LRU-K (protects against scans)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="algo" value="random" style="accent-color:#a855f7;">
+          Random (baseline)
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>Hit (in cache)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>Miss (not in cache)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>Eviction</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#facc15;"></div>Current request</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">LRU: KEEP THE MOST RECENTLY USED · EVICT THE LEAST RECENTLY USED</div>
+
+      <div class="main-split">
+        <!-- REQUEST STREAM -->
+        <div class="stream-pane">
+          <div class="stream-title">
+            <span>📨 REQUEST STREAM</span>
+            <span class="hint" id="streamHint">— hit ratio: 0/0 —</span>
+          </div>
+          <div class="stream-row" id="streamRow"></div>
+        </div>
+
+        <!-- CACHE + ORDER -->
+        <div class="cache-pane">
+          <div class="cache-left">
+            <div class="cache-title">
+              <span>💾 LRU CACHE (size <span id="cacheSizeLabel">4</span>)</span>
+              <span class="info" id="cacheInfo">0/4 full</span>
+            </div>
+            <div class="cache-slots" id="cacheSlots"></div>
+          </div>
+          <div class="order-pane">
+            <div class="order-title">LRU Order (top = MRU)</div>
+            <div class="order-list" id="orderList"></div>
+          </div>
+        </div>
+
+        <div class="status-banner" id="statusBanner"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Step</div>
+        <div class="metric-value info" id="mStep">0/0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Hits</div>
+        <div class="metric-value" id="mHits">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Misses</div>
+        <div class="metric-value bad" id="mMisses">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Evictions</div>
+        <div class="metric-value warn" id="mEvicts">0</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:6px;">
+      <div class="gauge">
+        <div class="gauge-fill" id="hitGauge" style="width:0%"></div>
+        <div class="gauge-label" id="hitGaugeLabel">0% HIT RATE</div>
+      </div>
+    </div>
+
+    <div class="impl-card">
+      <div class="impl-title">🔧 LRU Implementation (O(1))</div>
+      <div class="impl-row">
+        <span class="lbl">Data Structure</span>
+        <span class="val">Hash Map + Doubly Linked List</span>
+      </div>
+      <div class="impl-row">
+        <span class="lbl">Get(key)</span>
+        <span class="val good">O(1) — move node to head</span>
+      </div>
+      <div class="impl-row">
+        <span class="lbl">Put(key, val)</span>
+        <span class="val good">O(1) — insert or promote</span>
+      </div>
+      <div class="impl-row">
+        <span class="lbl">Evict()</span>
+        <span class="val good">O(1) — remove tail</span>
+      </div>
+      <div class="impl-row">
+        <span class="lbl">Weakness</span>
+        <span class="val bad">Cyclic / scan patterns</span>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  demo: 'textbook',
+  algo: 'lru',
+  cacheSize: 4,
+  speed: 800,
+  // Request stream (array of keys)
+  stream: [],
+  // Cache state — we keep ordered list, index 0 = MRU
+  cache: [],           // array of keys, [MRU, ..., LRU]
+  // Playback
+  step: 0,
+  playing: false,
+  autoPlaying: false,
+  autoTimer: null,
+  // Stats
+  hits: 0,
+  misses: 0,
+  evictions: 0,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  // LRU-K tracking
+  lruKCounts: {},
+  // Optimal precomputed choices
+  optimalChoices: {}
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  streamRow: document.getElementById('streamRow'),
+  streamHint: document.getElementById('streamHint'),
+  cacheSlots: document.getElementById('cacheSlots'),
+  cacheSizeLabel: document.getElementById('cacheSizeLabel'),
+  cacheInfo: document.getElementById('cacheInfo'),
+  orderList: document.getElementById('orderList'),
+  statusBanner: document.getElementById('statusBanner'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  demoSelect: document.getElementById('demoSelect'),
+  btnPlay: document.getElementById('btnPlay'),
+  btnNext: document.getElementById('btnNext'),
+  btnAuto: document.getElementById('btnAuto'),
+  btnReset: document.getElementById('btnReset'),
+  sizeRange: document.getElementById('sizeRange'),
+  sizeVal: document.getElementById('sizeVal'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  mStep: document.getElementById('mStep'),
+  mHits: document.getElementById('mHits'),
+  mMisses: document.getElementById('mMisses'),
+  mEvicts: document.getElementById('mEvicts'),
+  hitGauge: document.getElementById('hitGauge'),
+  hitGaugeLabel: document.getElementById('hitGaugeLabel')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining LRU cache eviction.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   WORKLOAD GENERATORS
+   ============================================================ */
+function generateStream(pattern) {
+  switch (pattern) {
+    case 'textbook':
+      // Classic textbook sequence — LRU works beautifully
+      return [1, 2, 3, 1, 4, 5, 1, 2, 3, 4, 1, 5, 2, 3, 1];
+
+    case 'loop':
+      // Cyclic loop larger than the cache — LRU's kryptonite
+      // With cacheSize 4, sequence 1,2,3,4,5,1,2,3,4,5... always misses
+      return [1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5];
+
+    case 'scan':
+      // Hot keys 1,2,3 + big scan (10,11,12,13,14,15) that pollutes
+      return [1, 2, 3, 1, 2, 3, 10, 11, 12, 13, 14, 15, 1, 2, 3, 1, 2, 3];
+
+    case 'zipf':
+      // Zipf-like: page 1 very hot, 2 hot, 3 warm, 4-6 cold
+      return [1, 1, 2, 1, 3, 2, 1, 1, 4, 2, 1, 3, 1, 2, 5, 1, 1, 2, 3, 1, 6, 2, 1, 3];
+
+    case 'hotcold':
+      // Two super-hot keys with occasional cold misses
+      return [1, 2, 1, 2, 1, 2, 1, 8, 2, 1, 9, 2, 1, 2, 1, 2, 10, 1, 2, 1];
+
+    case 'compare':
+      // Stream designed to show LRU vs Optimal difference
+      return [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
+
+    default:
+      return [1, 2, 3, 1, 4, 5, 1, 2, 3];
+  }
+}
+
+/* ============================================================
+   OPTIMAL ALGORITHM (Belady's MIN)
+   ============================================================ */
+function computeOptimalChoices() {
+  // For each step, precompute what optimal would evict
+  STATE.optimalChoices = {};
+  const cache = [];
+  for (let i = 0; i < STATE.stream.length; i++) {
+    const key = STATE.stream[i];
+    const idx = cache.indexOf(key);
+    if (idx === -1) {
+      // Miss — need to evict
+      if (cache.length >= STATE.cacheSize) {
+        // Find the key whose NEXT use is furthest away (or never)
+        let victim = null;
+        let victimNextUse = -1;
+        for (const c of cache) {
+          const nextUse = STATE.stream.indexOf(c, i + 1);
+          const dist = nextUse === -1 ? Infinity : nextUse;
+          if (dist > victimNextUse) {
+            victimNextUse = dist;
+            victim = c;
+          }
+        }
+        STATE.optimalChoices[i] = { evict: victim };
+        const vIdx = cache.indexOf(victim);
+        cache.splice(vIdx, 1);
+      }
+      cache.push(key);
+    } else {
+      // Hit — move to MRU (order doesn't matter for optimal)
+      cache.splice(idx, 1);
+      cache.push(key);
+    }
+  }
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  STATE.autoTimer = null;
+  STATE.playing = false;
+  STATE.autoPlaying = false;
+
+  STATE.stream = generateStream(STATE.demo);
+  STATE.cache = [];
+  STATE.step = 0;
+  STATE.hits = 0;
+  STATE.misses = 0;
+  STATE.evictions = 0;
+  STATE.lruKCounts = {};
+
+  computeOptimalChoices();
+
+  renderStream();
+  renderCache();
+  renderOrder();
+  updateStats();
+
+  // Reset status banner
+  DOM.statusBanner.classList.remove('show');
+  DOM.statusBanner.classList.remove('hit', 'miss');
+
+  DOM.btnPlay.textContent = '▶ Play All';
+  DOM.btnAuto.textContent = '🔄 Auto-Play';
+
+  // Update the desc
+  const descs = {
+    textbook: 'Classic textbook workload — LRU shines. Access patterns favor recency.',
+    loop: 'Cyclic loop larger than the cache. LRU fails badly — every access is a miss because the LRU victim is always the page we need next.',
+    scan: 'A working set (1, 2, 3) is repeatedly accessed, but a big scan (10-15) blows it out of the cache. This is "scan pollution".',
+    zipf: 'Zipf distribution — page 1 is very hot, page 2 is hot, pages 3+ are colder. LRU does well when the hot set fits in the cache.',
+    hotcold: 'Two super-hot keys (1, 2) alternate. LRU keeps them both — hits most of the time. Cold keys are occasional misses.',
+    compare: 'Watch how Optimal (Belady\'s MIN) makes a better eviction decision than LRU — it can see the future.'
+  };
+
+  teach('RESET', `Loaded: ${getDemoName()}. ${descs[STATE.demo]}`, 'purple');
+}
+
+function getDemoName() {
+  const names = {
+    'textbook': 'TEXTBOOK WORKLOAD',
+    'loop': 'CYCLIC LOOP (LRU FAILS)',
+    'scan': 'SCAN POLLUTION',
+    'zipf': 'ZIPF DISTRIBUTION',
+    'hotcold': 'TWO HOT KEYS',
+    'compare': 'LRU vs OPTIMAL'
+  };
+  return names[STATE.demo] || 'WORKLOAD';
+}
+
+/* ============================================================
+   RENDERING
+   ============================================================ */
+function renderStream() {
+  let html = '';
+  for (let i = 0; i < STATE.stream.length; i++) {
+    const key = STATE.stream[i];
+    let cls = '';
+    if (i === STATE.step) cls = 'current';
+    else if (i < STATE.step) cls = 'past';
+    else cls = 'future';
+
+    // Past hits/misses color
+    if (i < STATE.step && STATE.history && STATE.history[i]) {
+      cls += ' ' + STATE.history[i];
+    }
+
+    html += `<div class="req-chip ${cls}" data-idx="${i}">${key}</div>`;
+  }
+  DOM.streamRow.innerHTML = html;
+}
+
+function renderCache() {
+  let html = '';
+  for (let i = 0; i < STATE.cacheSize; i++) {
+    const key = STATE.cache[i];
+    const filled = key !== undefined;
+
+    let cls = '';
+    if (filled) cls = 'filled';
+
+    // Check for flash effects
+    if (STATE._flashHits && STATE._flashHits.includes(i)) cls += ' hit-flash';
+    if (STATE._flashMisses && STATE._flashMisses.includes(i)) cls += ' miss-flash';
+    if (STATE._flashEvicts && STATE._flashEvicts.includes(i)) cls += ' evict-flash';
+    if (STATE._flashNew && STATE._flashNew.includes(i)) cls += ' new-entry';
+
+    html += `
+      <div class="slot ${cls}" data-slot-idx="${i}">
+        <span class="slot-position">#${i + 1}</span>
+        ${filled ? `<span class="slot-recency">${i === 0 ? 'MRU' : i === STATE.cache.length - 1 ? 'LRU' : ''}</span>` : ''}
+        <span class="slot-key ${filled ? '' : 'empty'}">${filled ? key : '— empty —'}</span>
+        <span class="slot-meta">${filled ? 'in cache' : 'free'}</span>
+      </div>
+    `;
+  }
+  DOM.cacheSlots.innerHTML = html;
+  DOM.cacheInfo.textContent = `${STATE.cache.length}/${STATE.cacheSize} full`;
+  DOM.cacheSizeLabel.textContent = STATE.cacheSize;
+}
+
+function renderOrder() {
+  let html = '';
+  if (STATE.cache.length === 0) {
+    DOM.orderList.innerHTML = '<div style="color:#475569; text-align:center; padding:12px; font-size:0.6rem;">Empty cache</div>';
+    return;
+  }
+  STATE.cache.forEach((key, idx) => {
+    const isMRU = idx === 0;
+    const isLRU = idx === STATE.cache.length - 1;
+    const cls = isMRU ? 'mru' : isLRU ? 'lru' : '';
+    const tag = isMRU ? '← MRU' : isLRU ? '→ EVICT' : '';
+    html += `
+      <div class="order-item ${cls}">
+        <span class="pos">#${idx + 1}</span>
+        <span class="key">${key}</span>
+        <span class="tag">${tag}</span>
+      </div>
+    `;
+  });
+  DOM.orderList.innerHTML = html;
+}
+
+/* ============================================================
+   STEP EXECUTION
+   ============================================================ */
+STATE.history = [];
+
+function stepNext() {
+  if (STATE.step >= STATE.stream.length) {
+    teach('DONE', `All accesses complete. Final hit rate: ${(STATE.hits / STATE.stream.length * 100).toFixed(0)}%.`, 'ok', false);
+    stopAuto();
+    return;
+  }
+
+  const i = STATE.step;
+  const key = STATE.stream[i];
+  const cacheIdx = STATE.cache.indexOf(key);
+
+  // Clear previous flashes
+  STATE._flashHits = [];
+  STATE._flashMisses = [];
+  STATE._flashEvicts = [];
+  STATE._flashNew = [];
+
+  let isHit = cacheIdx !== -1;
+  let evictedKey = null;
+
+  if (isHit) {
+    // HIT — promote to MRU
+    STATE.hits++;
+    STATE.history[i] = 'hit';
+    // Move to front
+    STATE.cache.splice(cacheIdx, 1);
+    STATE.cache.unshift(key);
+
+    STATE._flashHits = [0];
+    showStatus(`✓ HIT — key ${key}`, 'hit');
+
+    teach('HIT', `Access #${i + 1}: key ${key} is in the cache at position #${cacheIdx + 1}. Move it to the front (MRU). No eviction. Hit rate improves.`, 'ok', false);
+  } else {
+    // MISS
+    STATE.misses++;
+    STATE.history[i] = 'miss';
+
+    if (STATE.cache.length >= STATE.cacheSize) {
+      // Need to evict LRU
+      evictedKey = STATE.cache[STATE.cache.length - 1];
+      STATE.cache.pop();
+      STATE.evictions++;
+      STATE._flashEvicts = [STATE.cacheSize - 1];
+
+      showStatus(`✗ MISS — key ${key} (evicted ${evictedKey})`, 'miss');
+
+      teach('EVICT', `Access #${i + 1}: key ${key} is NOT in the cache. Cache is full. Evict the LRU key ${evictedKey} (tail of the list). Then load ${key}.`, 'warn', false);
+    } else {
+      showStatus(`✗ MISS — key ${key} (cache not full)`, 'miss');
+
+      teach('MISS', `Access #${i + 1}: key ${key} is NOT in the cache. But the cache isn't full yet — no eviction needed. Just insert at the front.`, 'warn', false);
+    }
+
+    // Insert at MRU
+    STATE.cache.unshift(key);
+    STATE._flashNew = [0];
+  }
+
+  // Advance step
+  STATE.step++;
+
+  renderStream();
+  renderCache();
+  renderOrder();
+  updateStats();
+
+  // Clear flash effects after animation
+  setTimeout(() => {
+    STATE._flashHits = [];
+    STATE._flashMisses = [];
+    STATE._flashEvicts = [];
+    STATE._flashNew = [];
+    renderCache();
+  }, 700);
+}
+
+function showStatus(text, type) {
+  DOM.statusBanner.textContent = text;
+  DOM.statusBanner.className = 'status-banner show ' + (type || '');
+  setTimeout(() => {
+    DOM.statusBanner.classList.remove('show');
+  }, 1200);
+}
+
+/* ============================================================
+   PLAYBACK CONTROLS
+   ============================================================ */
+function playAll() {
+  resetAll();
+  let i = 0;
+  const interval = setInterval(() => {
+    if (i >= STATE.stream.length) {
+      clearInterval(interval);
+      return;
+    }
+    stepNext();
+    i++;
+  }, 300);
+}
+
+function startAuto() {
+  if (STATE.autoPlaying) {
+    stopAuto();
+    return;
+  }
+  STATE.autoPlaying = true;
+  DOM.btnAuto.textContent = '⏸ Stop Auto';
+  STATE.autoTimer = setInterval(() => {
+    if (STATE.step >= STATE.stream.length) {
+      stopAuto();
+      return;
+    }
+    stepNext();
+  }, STATE.speed);
+}
+
+function stopAuto() {
+  STATE.autoPlaying = false;
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  STATE.autoTimer = null;
+  DOM.btnAuto.textContent = '🔄 Auto-Play';
+}
+
+/* ============================================================
+   STATS
+   ============================================================ */
+function updateStats() {
+  const total = STATE.hits + STATE.misses;
+  const hitRate = total > 0 ? Math.round((STATE.hits / total) * 100) : 0;
+
+  DOM.mStep.textContent = `${STATE.step}/${STATE.stream.length}`;
+  DOM.mHits.textContent = STATE.hits;
+  DOM.mMisses.textContent = STATE.misses;
+  DOM.mEvicts.textContent = STATE.evictions;
+
+  DOM.hitGauge.style.width = hitRate + '%';
+  DOM.hitGaugeLabel.textContent = hitRate + '% HIT RATE';
+
+  DOM.streamHint.textContent = `— step ${STATE.step}/${STATE.stream.length} · hit ratio ${STATE.hits}/${total} —`;
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.demoSelect.addEventListener('change', e => {
+  STATE.demo = e.target.value;
+  resetAll();
+});
+
+DOM.btnPlay.addEventListener('click', playAll);
+DOM.btnNext.addEventListener('click', () => {
+  if (STATE.step === 0 && STATE.cache.length === 0) {
+    // Start fresh
+  }
+  stepNext();
+});
+DOM.btnAuto.addEventListener('click', startAuto);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.sizeRange.addEventListener('input', e => {
+  STATE.cacheSize = parseInt(e.target.value);
+  DOM.sizeVal.textContent = STATE.cacheSize;
+  resetAll();
+});
+
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseInt(e.target.value);
+  DOM.speedVal.textContent = STATE.speed + 'ms';
+  if (STATE.autoPlaying) {
+    stopAuto();
+    startAuto();
+  }
+});
+
+document.querySelectorAll('input[name="algo"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.algo = e.target.value;
+    const desc = {
+      lru: 'LRU: evict the least recently used entry. Simple, effective for most workloads. Fails on cyclic patterns larger than the cache.',
+      optimal: 'Optimal (Belady\'s MIN): evict the entry whose next use is furthest away. Achieves the theoretical minimum miss rate — but requires knowing the future, so it\'s a benchmark, not an algorithm.',
+      lruk: 'LRU-K: track the last K accesses. A page is evicted if its K-th most recent access is oldest. Protects against scan pollution — a one-off scanned page has only 1 access, so its K-th is infinity.',
+      random: 'Random eviction. Terrible in theory, but only ~20% worse than LRU on real workloads, and much cheaper to implement.'
+    };
+    teach('ALGORITHM', desc[e.target.value], 'purple');
+  });
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to LRU Cache Eviction. LRU — Least Recently Used — is the most famous eviction policy. The rule is simple: when the cache is full and you need to insert a new entry, evict the entry that was accessed longest ago. This approximates "the future will look like the recent past".`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('WHY IT WORKS',
+      `LRU is based on temporal locality: things used recently are likely to be used again soon. For most real workloads — web page caching, database buffer pools, CPU caches — this holds true. LRU achieves hit rates close to Optimal on these workloads.`,
+      'ok'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('WHEN LRU FAILS',
+      `LRU has two famous failure modes: (1) CYCLIC patterns larger than the cache. If you loop 1,2,3,4,5,6,7,8 with a 4-slot cache, LRU evicts 1 to make room for 5, then 2 for 6... and by the time you cycle back to 1, it's gone. Zero hits. (2) SCAN POLLUTION. A one-off big scan evicts the whole working set. LRU-K fixes this by requiring K accesses before entering the "hot" tier.`,
+      'warn'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('IMPLEMENTATION',
+      `LRU is implemented with a hash map + doubly linked list. The map gives O(1) lookup. The list gives O(1) insertion at the MRU end and removal from the LRU end. Every access is O(1). Real systems use variants: segmented LRU (2Q, ARC), Clock approximation (cheaper), LRU-K (scan-resistant).`,
+      'info'
+    );
+  }, 13500);
+
+  showToast('👋 Pick a workload and press Auto-Play or Step', 4000);
+}, 600);
+</script>
+</body>
+</html>

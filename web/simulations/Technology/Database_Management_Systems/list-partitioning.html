@@ -1,0 +1,1647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>List Partitioning — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f59e0b, #f97316, #ef4444);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(245,158,11,0.15);
+    color: #fcd34d;
+    border-color: #f59e0b;
+  }
+  .teaching-toggle:hover { background: rgba(245,158,11,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 290px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f59e0b; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f59e0b; color: #2a1a02; border-color: #f59e0b; }
+  .btn.primary:hover { background: #d97706; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fcd34d; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f59e0b; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(245,158,11,0.06) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* Clients */
+  .clients-row {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    z-index: 5;
+  }
+  .client {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    border: 2px solid #334155;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.95rem;
+    transition: all 0.25s;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .client.active { transform: scale(1.1); }
+  .client.active.insert { border-color: #f59e0b; box-shadow: 0 0 20px rgba(245,158,11,0.7); }
+  .client.active.read   { border-color: #22d3ee; box-shadow: 0 0 20px rgba(34,211,238,0.7); }
+
+  /* Router */
+  .router-wrap {
+    position: absolute;
+    top: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    text-align: center;
+  }
+  .router {
+    padding: 11px 30px;
+    background: linear-gradient(145deg, #3d2405, #1a1204);
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+    box-shadow: 0 0 25px rgba(245,158,11,0.4);
+    display: inline-block;
+    transition: all 0.2s;
+  }
+  .router.busy { animation: routerPulse 0.3s ease; }
+  @keyframes routerPulse {
+    0%, 100% { box-shadow: 0 0 25px rgba(245,158,11,0.4); }
+    50%      { box-shadow: 0 0 60px rgba(245,158,11,1); }
+  }
+  .router .title {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-family: monospace;
+  }
+  .router .formula {
+    font-size: 0.6rem;
+    color: #94a3b8;
+    font-family: monospace;
+    margin-top: 4px;
+  }
+
+  /* ROUTING TABLE — the heart of list partitioning */
+  .routing-table-wrap {
+    position: absolute;
+    top: 180px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 92%;
+    z-index: 4;
+    background: rgba(10, 14, 25, 0.95);
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.6), 0 0 30px rgba(245,158,11,0.25);
+  }
+  .rt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .rt-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    font-family: monospace;
+    text-transform: uppercase;
+  }
+  .rt-subtitle {
+    font-size: 0.55rem;
+    color: #64748b;
+    font-family: monospace;
+    letter-spacing: 0.8px;
+  }
+  .rt-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .rt-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    background: #070a14;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 0.62rem;
+    transition: all 0.3s;
+  }
+  .rt-row.active {
+    background: rgba(245,158,11,0.15);
+    border-color: #f59e0b;
+    box-shadow: 0 0 15px rgba(245,158,11,0.5);
+  }
+  .rt-row .rt-part-name {
+    color: #fcd34d;
+    font-weight: 800;
+    min-width: 90px;
+    letter-spacing: 1px;
+  }
+  .rt-row .rt-values {
+    flex: 1;
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .rt-row .rt-value {
+    padding: 1px 6px;
+    background: rgba(34,211,238,0.1);
+    border: 1px solid rgba(34,211,238,0.3);
+    border-radius: 3px;
+    color: #7dd3fc;
+    font-size: 0.55rem;
+    letter-spacing: 0.3px;
+    transition: all 0.3s;
+  }
+  .rt-row.active .rt-value.match {
+    background: rgba(16,185,129,0.25);
+    border-color: #10b981;
+    color: #6ee7b7;
+    box-shadow: 0 0 10px rgba(16,185,129,0.7);
+    transform: scale(1.1);
+  }
+  .rt-row .rt-arrow {
+    color: #64748b;
+    font-size: 0.7rem;
+  }
+  .rt-row .rt-target {
+    color: #10b981;
+    font-weight: 800;
+    letter-spacing: 1px;
+    min-width: 80px;
+    text-align: right;
+  }
+
+  /* DEFAULT partition (catch-all) */
+  .rt-row.default-row {
+    background: linear-gradient(90deg, rgba(139,92,246,0.08), rgba(139,92,246,0.02));
+    border-color: rgba(139,92,246,0.4);
+  }
+  .rt-row.default-row .rt-part-name {
+    color: #a78bfa;
+  }
+  .rt-row.default-row .rt-target {
+    color: #a78bfa;
+  }
+  .rt-row.default-row.active {
+    background: linear-gradient(90deg, rgba(139,92,246,0.25), rgba(139,92,246,0.1));
+    border-color: #8b5cf6;
+    box-shadow: 0 0 15px rgba(139,92,246,0.6);
+  }
+
+  /* PARTITIONS (below routing table) */
+  .partitions-container {
+    position: absolute;
+    top: 480px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+    align-content: flex-start;
+    gap: 14px;
+    padding: 8px 20px;
+    z-index: 3;
+  }
+
+  .partition {
+    width: 175px;
+    background: linear-gradient(160deg, #1f1408 0%, #070a14 100%);
+    border: 2px solid #334155;
+    border-radius: 10px;
+    padding: 10px;
+    transition: all 0.35s cubic-bezier(.4,0,.2,1);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    position: relative;
+  }
+  .partition.hot {
+    border-color: #ef4444;
+    box-shadow: 0 0 25px rgba(239,68,68,0.5), 0 10px 25px rgba(0,0,0,0.5);
+    animation: hotFlash 1.2s ease-in-out infinite;
+  }
+  @keyframes hotFlash {
+    0%, 100% { box-shadow: 0 0 25px rgba(239,68,68,0.5), 0 10px 25px rgba(0,0,0,0.5); }
+    50%      { box-shadow: 0 0 45px rgba(239,68,68,0.9), 0 10px 25px rgba(0,0,0,0.5); }
+  }
+  .partition.warm { border-color: #f59e0b; }
+  .partition.cold { border-color: #10b981; }
+  .partition.default-part {
+    border-style: dashed;
+    border-color: #8b5cf6;
+    background: linear-gradient(160deg, rgba(139,92,246,0.1), rgba(7,10,20,1));
+  }
+  .partition.default-part.hot {
+    border-color: #ef4444;
+  }
+  .partition.busy {
+    animation: partBusy 0.3s ease;
+  }
+  @keyframes partBusy {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-5px); box-shadow: 0 20px 45px rgba(245,158,11,0.8); }
+  }
+  .partition.new {
+    animation: partSpawn 0.55s cubic-bezier(.68,-0.55,.27,1.55);
+  }
+  @keyframes partSpawn {
+    0%   { transform: scale(0) translateY(30px); opacity: 0; }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
+  }
+  .partition.offline {
+    border-color: #7f1d1d;
+    opacity: 0.4;
+    filter: grayscale(0.7);
+    animation: none;
+  }
+
+  .part-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .part-name {
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: #fcd34d;
+    letter-spacing: 1.2px;
+    font-family: monospace;
+  }
+  .partition.default-part .part-name { color: #a78bfa; }
+  .partition.offline .part-name { color: #f87171; }
+  .part-status {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  .partition.hot .part-status { background: #ef4444; box-shadow: 0 0 10px #ef4444; }
+  .partition.offline .part-status { background: #ef4444; animation: none; }
+
+  .part-values {
+    background: #070a14;
+    border: 1px solid #1e293b;
+    border-radius: 5px;
+    padding: 4px 6px;
+    font-family: monospace;
+    font-size: 0.55rem;
+    color: #94a3b8;
+    margin-bottom: 6px;
+    min-height: 42px;
+    line-height: 1.5;
+  }
+  .part-value-chip {
+    display: inline-block;
+    padding: 1px 5px;
+    background: rgba(34,211,238,0.1);
+    border: 1px solid rgba(34,211,238,0.3);
+    border-radius: 3px;
+    color: #7dd3fc;
+    margin: 1px;
+    font-size: 0.52rem;
+  }
+  .partition.default-part .part-value-chip {
+    background: rgba(139,92,246,0.1);
+    border-color: rgba(139,92,246,0.3);
+    color: #c4b5fd;
+  }
+
+  .part-load-track {
+    height: 5px;
+    background: #0a0e19;
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 5px 0;
+    border: 1px solid #1e293b;
+  }
+  .part-load-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #10b981, #22d3ee);
+    transition: width 0.4s, background 0.4s;
+  }
+  .partition.hot .part-load-fill {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+  }
+
+  .part-metric-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.58rem;
+    color: #64748b;
+    font-family: monospace;
+    margin-bottom: 2px;
+  }
+  .part-metric-row .val { color: #fcd34d; font-weight: 700; }
+  .part-metric-row .val.warn { color: #f59e0b; }
+  .part-metric-row .val.bad  { color: #ef4444; }
+
+  /* Particle */
+  .particle {
+    position: absolute;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 6;
+  }
+  .particle.read    { background: #22d3ee; box-shadow: 0 0 10px #22d3ee; }
+  .particle.insert  { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+  .particle.default { background: #8b5cf6; box-shadow: 0 0 12px #8b5cf6; }
+  .particle.route   { background: #fcd34d; box-shadow: 0 0 10px #fcd34d; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(245,158,11,0.06);
+    border: 1px solid rgba(245,158,11,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.58rem;
+    color: #fcd34d;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 300px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f59e0b;
+    background: rgba(245,158,11,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.purple2 { border-color: #8b5cf6; background: rgba(139,92,246,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(245,158,11,0.15); color: #fcd34d; }
+  .teach-entry .tag.purple2 { background: rgba(139,92,246,0.15); color: #a78bfa; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f59e0b;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(245,158,11,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>LIST PARTITIONING</h1>
+    <span class="sub">EXPLICIT VALUES · DOMAIN-DRIVEN · CATCH-ALL DEFAULT</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Traffic Control</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 100 Queries</button>
+      <button class="btn warn" id="btnRogue">💥 Inject Unknown Region</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Profile</h3>
+      <div class="slider-row"><span>Queries / sec</span><span class="value" id="qpsVal">60</span></div>
+      <input type="range" id="qpsRange" min="1" max="300" value="60">
+      <div class="slider-row"><span>Read Ratio</span><span class="value" id="readVal">65%</span></div>
+      <input type="range" id="readRange" min="0" max="100" value="65">
+      <div class="slider-row"><span>Region Skew</span><span class="value" id="skewVal">15%</span></div>
+      <input type="range" id="skewRange" min="0" max="80" value="15">
+    </div>
+
+    <div class="panel">
+      <h3>Partition Scheme</h3>
+      <div style="font-size:0.65rem; color:#94a3b8; line-height:1.6;">
+        <label style="display:flex; align-items:center; gap:6px; margin-bottom:5px; cursor:pointer;">
+          <input type="checkbox" id="chkAmericas" checked style="accent-color:#f59e0b;">
+          <span style="color:#7dd3fc; font-family:monospace;">AMERICAS</span>
+          <span style="color:#64748b; font-size:0.55rem; margin-left:auto;">US, CA, BR, MX</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; margin-bottom:5px; cursor:pointer;">
+          <input type="checkbox" id="chkEMEA" checked style="accent-color:#f59e0b;">
+          <span style="color:#7dd3fc; font-family:monospace;">EMEA</span>
+          <span style="color:#64748b; font-size:0.55rem; margin-left:auto;">UK, DE, FR, ES, IT</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; margin-bottom:5px; cursor:pointer;">
+          <input type="checkbox" id="chkAPAC" checked style="accent-color:#f59e0b;">
+          <span style="color:#7dd3fc; font-family:monospace;">APAC</span>
+          <span style="color:#64748b; font-size:0.55rem; margin-left:auto;">JP, AU, IN, KR, SG</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="chkDefault" checked style="accent-color:#8b5cf6;">
+          <span style="color:#a78bfa; font-family:monospace;">DEFAULT</span>
+          <span style="color:#64748b; font-size:0.55rem; margin-left:auto;">catch-all</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Operations</h3>
+      <button class="btn success" id="btnAddRegion">+ Add New Region List</button>
+      <button class="btn danger" id="btnKill">💥 Kill Partition</button>
+      <button class="btn success" id="btnRecover">🔄 Recover</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#22d3ee;"></div>Read</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>Insert (matched)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6;"></div>Falls through to DEFAULT</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>Healthy partition</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">EXPLICIT VALUE LISTS · NO HASH · NO RANGE MATH</div>
+
+      <div class="clients-row" id="clientsRow">
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+      </div>
+
+      <div class="router-wrap">
+        <div class="router" id="router">
+          <div class="title">LIST ROUTER</div>
+          <div class="formula" id="routerFormula">route(value) = partition WHERE value ∈ partition.values</div>
+        </div>
+      </div>
+
+      <!-- ROUTING TABLE -->
+      <div class="routing-table-wrap">
+        <div class="rt-header">
+          <div class="rt-title">📋 ROUTING TABLE — EXPLICIT VALUE LISTS</div>
+          <div class="rt-subtitle" id="rtSubtitle">4 rows · 17 values</div>
+        </div>
+        <div class="rt-rows" id="rtRows"></div>
+      </div>
+
+      <svg class="connections" id="connections" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:1;"></svg>
+
+      <div class="partitions-container" id="partitionsContainer"></div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Partitions</div>
+        <div class="metric-value" id="mPartitions">4</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">QPS</div>
+        <div class="metric-value" id="mQps">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Matched %</div>
+        <div class="metric-value" id="mMatched">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Catch-all %</div>
+        <div class="metric-value" id="mCatchall">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Hottest Part</div>
+        <div class="metric-value" id="mHottest">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Distinct Values</div>
+        <div class="metric-value" id="mDistinct">0</div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:6px;">🔍 Current Route</h3>
+      <div style="font-family:monospace; font-size:0.62rem; background:#02040a; padding:8px; border-radius:6px; min-height:44px; color:#94a3b8; line-height:1.5;" id="routeViz">
+        <span style="color:#475569;">waiting for traffic...</span>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:6px;">⚖️ Partition Balance</h3>
+      <div style="font-family:monospace; font-size:0.62rem;" id="balanceViz"></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  running: false,
+  qps: 60,
+  readRatio: 0.65,
+  regionSkew: 0.15,
+  // The partition scheme — explicitly declared lists
+  partitions: [
+    { id: 'AMERICAS', name: 'P_AMERICAS', values: ['US', 'CA', 'BR', 'MX'], color: '#22d3ee', enabled: true, load: 0, ops: 0, rows: 1250000, online: true, isDefault: false },
+    { id: 'EMEA',     name: 'P_EMEA',     values: ['UK', 'DE', 'FR', 'ES', 'IT'], color: '#a855f7', enabled: true, load: 0, ops: 0, rows: 1180000, online: true, isDefault: false },
+    { id: 'APAC',     name: 'P_APAC',     values: ['JP', 'AU', 'IN', 'KR', 'SG'], color: '#10b981', enabled: true, load: 0, ops: 0, rows: 980000, online: true, isDefault: false },
+    { id: 'DEFAULT',  name: 'P_DEFAULT',  values: [], color: '#8b5cf6', enabled: true, load: 0, ops: 0, rows: 180000, online: true, isDefault: true }
+  ],
+  // Cumulative counters
+  totalQueries: 0,
+  totalMatched: 0,
+  totalCatchall: 0,
+  totalWrites: 0,
+  // Skew/hot tracking
+  regionHits: {},
+  hotRegion: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  latencySamples: [],
+  tickTimer: null,
+  lastAnnouncedCatchall: 0
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  rtRows: document.getElementById('rtRows'),
+  rtSubtitle: document.getElementById('rtSubtitle'),
+  partitionsContainer: document.getElementById('partitionsContainer'),
+  connections: document.getElementById('connections'),
+  routeViz: document.getElementById('routeViz'),
+  balanceViz: document.getElementById('balanceViz'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  router: document.getElementById('router'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnRogue: document.getElementById('btnRogue'),
+  btnAddRegion: document.getElementById('btnAddRegion'),
+  btnKill: document.getElementById('btnKill'),
+  btnRecover: document.getElementById('btnRecover'),
+  qpsRange: document.getElementById('qpsRange'),
+  qpsVal: document.getElementById('qpsVal'),
+  readRange: document.getElementById('readRange'),
+  readVal: document.getElementById('readVal'),
+  skewRange: document.getElementById('skewRange'),
+  skewVal: document.getElementById('skewVal'),
+  mPartitions: document.getElementById('mPartitions'),
+  mQps: document.getElementById('mQps'),
+  mMatched: document.getElementById('mMatched'),
+  mCatchall: document.getElementById('mCatchall'),
+  mHottest: document.getElementById('mHottest'),
+  mDistinct: document.getElementById('mDistinct'),
+  clientsRow: document.getElementById('clientsRow')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining list partitioning.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING FEED
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   INITIALIZE
+   ============================================================ */
+function initializeScheme() {
+  updateCheckboxesFromPartitions();
+  renderRoutingTable();
+  renderPartitions();
+  updateTelemetry();
+
+  teach('INIT',
+    `List partitioning initializes with explicitly declared value lists. Unlike range partitioning (which uses ` +
+    `boundaries) or hash partitioning (which uses a function), list partitioning requires you to HAND-PICK which ` +
+    `discrete values go to which partition. This is the most controllable strategy — and the most brittle.`,
+    'ok'
+  );
+
+  setTimeout(() => {
+    teach('WHY LIST',
+      `List partitioning exists for DOMAIN-DRIVEN data. If your shard key is a country, you don't want hash(country) — ` +
+      `you want "US, CA, MX → AMERICAS partition" because that's how your business is organized. You know where the ` +
+      `data physically needs to live (data residency, latency, compliance). List partitioning lets you enforce that.`,
+      'purple'
+    );
+  }, 2400);
+}
+
+/* ============================================================
+   ROUTING TABLE RENDER
+   ============================================================ */
+function renderRoutingTable() {
+  let html = '';
+  let totalValues = 0;
+  for (const p of STATE.partitions) {
+    if (!p.enabled) continue;
+    totalValues += p.values.length;
+    const valuesHTML = p.isDefault
+      ? `<span style="color:#8b5cf6; font-style:italic; font-size:0.55rem;">anything NOT matched above</span>`
+      : p.values.map(v => `<span class="rt-value" data-value="${v}">${v}</span>`).join('');
+    html += `
+      <div class="rt-row ${p.isDefault ? 'default-row' : ''}" data-part-id="${p.id}">
+        <span class="rt-part-name">${p.name}</span>
+        <span style="color:#64748b;">:</span>
+        <span class="rt-values">${valuesHTML}</span>
+        <span class="rt-arrow">→</span>
+        <span class="rt-target">${p.name}</span>
+      </div>
+    `;
+  }
+  DOM.rtRows.innerHTML = html;
+  DOM.rtSubtitle.textContent = `${STATE.partitions.filter(p => p.enabled).length} rows · ${totalValues} values`;
+}
+
+function highlightRoute(partId, value) {
+  // Clear previous
+  DOM.rtRows.querySelectorAll('.rt-row').forEach(r => r.classList.remove('active'));
+  DOM.rtRows.querySelectorAll('.rt-value').forEach(v => v.classList.remove('match'));
+
+  const row = DOM.rtRows.querySelector(`[data-part-id="${partId}"]`);
+  if (row) {
+    row.classList.add('active');
+    if (value && !STATE.partitions.find(p => p.id === partId)?.isDefault) {
+      const vEl = row.querySelector(`.rt-value[data-value="${value}"]`);
+      if (vEl) vEl.classList.add('match');
+    }
+  }
+}
+
+/* ============================================================
+   ROUTE A VALUE
+   ============================================================ */
+function routeValue(value) {
+  // Explicit match first
+  for (const p of STATE.partitions) {
+    if (!p.enabled || !p.online || p.isDefault) continue;
+    if (p.values.includes(value)) {
+      return { partition: p, matched: true };
+    }
+  }
+  // Fall through to DEFAULT
+  const def = STATE.partitions.find(p => p.isDefault && p.enabled && p.online);
+  if (def) return { partition: def, matched: false };
+  return null;
+}
+
+/* ============================================================
+   VALUE GENERATION
+   ============================================================ */
+function generateValue() {
+  // Build the pool of known values
+  const known = [];
+  for (const p of STATE.partitions) {
+    if (p.enabled && p.online && !p.isDefault) {
+      for (const v of p.values) known.push(v);
+    }
+  }
+
+  // If hotspot injected, favor it
+  if (STATE.hotRegion && Math.random() < STATE.regionSkew) {
+    return STATE.hotRegion;
+  }
+
+  // Occasionally pick an "unknown" value to hit the DEFAULT partition
+  if (Math.random() < 0.1) {
+    const unknown = ['NZ', 'ZA', 'EG', 'NG', 'TH', 'VN', 'PH'];
+    return unknown[randInt(0, unknown.length - 1)];
+  }
+
+  // Otherwise pick a known value uniformly
+  return known[randInt(0, known.length - 1)];
+}
+
+/* ============================================================
+   QUERY DISPATCH
+   ============================================================ */
+function dispatchQuery() {
+  const value = generateValue();
+  const isRead = Math.random() < STATE.readRatio;
+  const route = routeValue(value);
+
+  if (!route) {
+    // No matching partition and no default — query fails
+    DOM.routeViz.innerHTML = `<span style="color:#f87171;">UNROUTABLE:</span> value=<span style="color:#fbbf24;">${value}</span> has no partition and no DEFAULT`;
+    return;
+  }
+
+  const { partition, matched } = route;
+
+  // Track hits
+  STATE.regionHits[value] = (STATE.regionHits[value] || 0) + 1;
+  partition.ops++;
+  partition.load = clamp(partition.load + 0.06, 0, 1);
+  if (!isRead) {
+    partition.rows += randInt(1, 5);
+    STATE.totalWrites++;
+  }
+
+  STATE.totalQueries++;
+  if (matched) STATE.totalMatched++;
+  else STATE.totalCatchall++;
+
+  // Router flash
+  DOM.router.classList.remove('busy');
+  void DOM.router.offsetWidth;
+  DOM.router.classList.add('busy');
+
+  // Update route viz
+  if (matched) {
+    DOM.routeViz.innerHTML = `
+      <span style="color:#64748b;">LOOKUP</span> <span style="color:#fbbf24;font-weight:700;">'${value}'</span>
+      <span style="color:#64748b;">→</span> matches list
+      <span style="color:#7dd3fc;font-weight:700;">[${partition.values.join(', ')}]</span>
+      <span style="color:#64748b;">→</span>
+      <span style="color:#10b981;font-weight:700;">${partition.name}</span>
+    `;
+  } else {
+    DOM.routeViz.innerHTML = `
+      <span style="color:#64748b;">LOOKUP</span> <span style="color:#fbbf24;font-weight:700;">'${value}'</span>
+      <span style="color:#64748b;">→</span> <span style="color:#f87171;">no list match</span>
+      <span style="color:#64748b;">→</span> falls through to <span style="color:#a78bfa;font-weight:700;">${partition.name}</span>
+    `;
+  }
+
+  // Highlight routing table
+  highlightRoute(partition.id, value);
+
+  // Client highlight
+  const clientEls = DOM.clientsRow.querySelectorAll('.client');
+  const client = clientEls[randInt(0, clientEls.length - 1)];
+  client.classList.add('active', isRead ? 'read' : 'insert');
+  setTimeout(() => client.classList.remove('active', 'read', 'insert'), 220);
+
+  // Pulse the target partition
+  const partEl = DOM.partitionsContainer.querySelector(`[data-part-id="${partition.id}"]`);
+  if (partEl) {
+    partEl.classList.remove('busy');
+    void partEl.offsetWidth;
+    partEl.classList.add('busy');
+  }
+
+  // Particle
+  animateParticle(client, partition, isRead, matched);
+
+  // Latency
+  const ownLoad = partition.load;
+  const latency = 4 + Math.pow(ownLoad, 3) * 220 + rand(-2, 2) + (matched ? 0 : 8); // default costs slightly more
+  STATE.latencySamples.push(latency);
+  if (STATE.latencySamples.length > 400) STATE.latencySamples.shift();
+
+  renderPartitionVisuals();
+  updateTelemetry();
+}
+
+/* ============================================================
+   PARTICLES
+   ============================================================ */
+function animateParticle(client, partition, isRead, matched) {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const cr = client.getBoundingClientRect();
+  const rr = DOM.router.getBoundingClientRect();
+  const partEl = DOM.partitionsContainer.querySelector(`[data-part-id="${partition.id}"]`);
+  if (!partEl) return;
+  const pr = partEl.getBoundingClientRect();
+
+  // Hop 1: client → router
+  const p1 = document.createElement('div');
+  p1.className = 'particle route';
+  const sx1 = cr.left - stageRect.left + cr.width / 2 - 4;
+  const sy1 = cr.top - stageRect.top + cr.height - 4;
+  const tx1 = rr.left - stageRect.left + rr.width / 2 - 4;
+  const ty1 = rr.top - stageRect.top + rr.height - 4;
+  p1.style.left = sx1 + 'px';
+  p1.style.top = sy1 + 'px';
+  DOM.stage.appendChild(p1);
+
+  const t0 = performance.now();
+  (function hop1(now) {
+    const t = Math.min(1, (now - t0) / 180);
+    const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    p1.style.transform = `translate(${(tx1 - sx1) * e}px, ${(ty1 - sy1) * e}px)`;
+    p1.style.opacity = String(1 - t * 0.3);
+    if (t < 1) requestAnimationFrame(hop1);
+    else {
+      p1.remove();
+      // Hop 2: router → partition
+      const p2 = document.createElement('div');
+      p2.className = `particle ${matched ? (isRead ? 'read' : 'insert') : 'default'}`;
+      p2.style.left = tx1 + 'px';
+      p2.style.top = ty1 + 'px';
+      DOM.stage.appendChild(p2);
+
+      const tx2 = pr.left - stageRect.left + pr.width / 2 - 4;
+      const ty2 = pr.top - stageRect.top + pr.height / 2 - 4;
+
+      const t2 = performance.now();
+      (function hop2(now2) {
+        const t = Math.min(1, (now2 - t2) / 260);
+        const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+        p2.style.transform = `translate(${(tx2 - tx1) * e}px, ${(ty2 - ty1) * e}px)`;
+        p2.style.opacity = String(1 - t * 0.4);
+        if (t < 1) requestAnimationFrame(hop2);
+        else p2.remove();
+      })(t2);
+    }
+  })(t0);
+}
+
+/* ============================================================
+   RENDER PARTITIONS
+   ============================================================ */
+function renderPartitions() {
+  DOM.partitionsContainer.innerHTML = '';
+  for (const p of STATE.partitions) {
+    if (!p.enabled) continue;
+    DOM.partitionsContainer.appendChild(buildPartitionEl(p));
+  }
+}
+
+function buildPartitionEl(p) {
+  const el = document.createElement('div');
+  el.className = 'partition new';
+  el.dataset.partId = p.id;
+  if (p.isDefault) el.classList.add('default-part');
+  if (!p.online) el.classList.add('offline');
+
+  const valuesHTML = p.isDefault
+    ? `<span class="part-value-chip" style="background:rgba(139,92,246,0.15); border-color:rgba(139,92,246,0.4); color:#c4b5fd;">* (catch-all)</span>`
+    : p.values.map(v => `<span class="part-value-chip">${v}</span>`).join('');
+
+  el.innerHTML = `
+    <div class="part-header">
+      <div class="part-name">${p.name}</div>
+      <div class="part-status"></div>
+    </div>
+    <div class="part-values">${valuesHTML}</div>
+    <div class="part-load-track"><div class="part-load-fill"></div></div>
+    <div class="part-metric-row">
+      <span>LOAD</span><span class="val load-val">0%</span>
+    </div>
+    <div class="part-metric-row">
+      <span>OPS</span><span class="val ops-val">0</span>
+    </div>
+    <div class="part-metric-row">
+      <span>ROWS</span><span class="val">${(p.rows / 1_000_000).toFixed(2)}M</span>
+    </div>
+  `;
+  applyPartitionVisuals(el, p);
+  return el;
+}
+
+function applyPartitionVisuals(el, p) {
+  const fill = el.querySelector('.part-load-fill');
+  const loadVal = el.querySelector('.load-val');
+  const opsVal = el.querySelector('.ops-val');
+  const pct = Math.round(p.load * 100);
+  fill.style.width = pct + '%';
+  loadVal.textContent = pct + '%';
+  loadVal.className = 'val load-val ' + (pct > 85 ? 'bad' : pct > 60 ? 'warn' : '');
+  opsVal.textContent = p.ops;
+
+  el.classList.toggle('hot', p.load > 0.85 && p.online);
+  el.classList.toggle('warm', p.load > 0.5 && p.load <= 0.85 && p.online);
+  el.classList.toggle('cold', p.load <= 0.5 && p.online);
+  el.classList.toggle('offline', !p.online);
+}
+
+function renderPartitionVisuals() {
+  for (const p of STATE.partitions) {
+    const el = DOM.partitionsContainer.querySelector(`[data-part-id="${p.id}"]`);
+    if (el) applyPartitionVisuals(el, p);
+  }
+}
+
+/* ============================================================
+   TELEMETRY
+   ============================================================ */
+function updateTelemetry() {
+  const online = STATE.partitions.filter(p => p.enabled && p.online).length;
+  DOM.mPartitions.textContent = online;
+  DOM.mQps.textContent = STATE.running ? STATE.qps : 0;
+
+  const total = STATE.totalQueries || 1;
+  DOM.mMatched.textContent = Math.round((STATE.totalMatched / total) * 100) + '%';
+  DOM.mMatched.className = 'metric-value' + ((STATE.totalMatched / total) < 0.7 ? ' warn' : '');
+  DOM.mCatchall.textContent = Math.round((STATE.totalCatchall / total) * 100) + '%';
+  DOM.mCatchall.className = 'metric-value' + ((STATE.totalCatchall / total) > 0.3 ? ' bad' : (STATE.totalCatchall / total) > 0.1 ? ' warn' : '');
+
+  const loads = STATE.partitions.filter(p => p.enabled && p.online).map(p => p.load);
+  const hottest = loads.length ? Math.max(...loads) : 0;
+  DOM.mHottest.textContent = Math.round(hottest * 100) + '%';
+  DOM.mHottest.className = 'metric-value' + (hottest > 0.85 ? ' bad' : hottest > 0.6 ? ' warn' : '');
+
+  const distinctSet = new Set();
+  for (const p of STATE.partitions) {
+    if (p.enabled && !p.isDefault) p.values.forEach(v => distinctSet.add(v));
+  }
+  DOM.mDistinct.textContent = distinctSet.size;
+
+  // Balance visualization
+  let html = '';
+  for (const p of STATE.partitions) {
+    if (!p.enabled) continue;
+    const pct = Math.round(p.load * 100);
+    const color = !p.online ? '#7f1d1d' : p.load > 0.85 ? '#ef4444' : p.load > 0.5 ? '#f59e0b' : '#10b981';
+    html += `
+      <div style="margin-bottom:4px;">
+        <div style="display:flex; justify-content:space-between; color:#94a3b8; font-size:0.58rem;">
+          <span style="color:${p.color};">${p.name}</span>
+          <span style="color:${color};">${pct}%</span>
+        </div>
+        <div style="height:4px; background:#0a0e19; border-radius:2px; margin-top:1px; overflow:hidden;">
+          <div style="height:100%; width:${pct}%; background:${color}; border-radius:2px; transition:width 0.3s;"></div>
+        </div>
+      </div>
+    `;
+  }
+  DOM.balanceViz.innerHTML = html;
+
+  // Contextual teaching: catch-all overflow
+  const catchallPct = STATE.totalCatchall / total;
+  if (STATE.running && catchallPct > 0.25 && STATE.lastAnnouncedCatchall <= 0.25) {
+    teach('CATCH-ALL',
+      `DEFAULT partition is receiving ${Math.round(catchallPct * 100)}% of all traffic. Every UNKNOWN value lands ` +
+      `here. In production, this is a red flag: either your value list is incomplete (missing regions), or someone ` +
+      `is sending garbage values. Either way, it means the DEFAULT partition is a scaling liability.`,
+      'warn'
+    );
+  }
+  STATE.lastAnnouncedCatchall = catchallPct;
+}
+
+/* ============================================================
+   DECAY
+   ============================================================ */
+setInterval(() => {
+  for (const p of STATE.partitions) p.load = Math.max(0, p.load - 0.03);
+  renderPartitionVisuals();
+  updateTelemetry();
+}, 400);
+
+/* ============================================================
+   TRAFFIC
+   ============================================================ */
+function tick() {
+  if (!STATE.running) return;
+  const batch = Math.max(1, Math.round(STATE.qps / 10));
+  for (let i = 0; i < batch; i++) dispatchQuery();
+}
+
+function startTraffic() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+  STATE.tickTimer = setInterval(tick, 100);
+
+  teach('START',
+    `Traffic started at ${STATE.qps} q/s. Each query carries a shard-key value like 'US' or 'JP'. The router ` +
+    `looks up which partition's value list contains it. If nothing matches, the query falls through to the ` +
+    `DEFAULT partition — a safety net that catches all unknowns. Watch the routing table highlight the match in ` +
+    `real time.`,
+    'ok'
+  );
+}
+
+function stopTraffic() {
+  STATE.running = false;
+  DOM.btnToggle.textContent = '▶ Start Traffic';
+  DOM.btnToggle.classList.add('primary');
+  DOM.btnToggle.classList.remove('danger');
+  clearInterval(STATE.tickTimer);
+  STATE.tickTimer = null;
+  teach('STOP', 'Traffic stopped.', 'info', false);
+}
+
+function burst() {
+  teach('BURST',
+    `100 queries dispatched. Under list partitioning, a burst is only a problem if it concentrates on ONE value — ` +
+    `like a flash sale targeting US customers. That would hammer the AMERICAS partition while other partitions idle.`,
+    'info'
+  );
+  for (let i = 0; i < 100; i++) setTimeout(dispatchQuery, i * 8);
+  showToast('⚡ 100-query burst dispatched');
+}
+
+function injectRogue() {
+  teach('UNKNOWN VALUE',
+    `Injecting traffic with values NOT in any list: NZ, ZA, EG, NG, TH, VN, PH. Watch them all funnel to the ` +
+    `DEFAULT partition. This is the safety net and the warning sign — the DEFAULT partition catches unknowns but ` +
+    `concentrates their load. If you forget to add a region list, all its traffic piles up on DEFAULT.`,
+    'warn'
+  );
+  if (!STATE.running) startTraffic();
+  // Force 30 unknown values
+  for (let i = 0; i < 30; i++) {
+    setTimeout(() => {
+      const unknown = ['NZ', 'ZA', 'EG', 'NG', 'TH', 'VN', 'PH'];
+      const value = unknown[randInt(0, unknown.length - 1)];
+      // Manually dispatch a single query with this value
+      dispatchCustomValue(value);
+    }, i * 50);
+  }
+  showToast('💥 Rogue values injected');
+}
+
+function dispatchCustomValue(value) {
+  const isRead = Math.random() < STATE.readRatio;
+  const route = routeValue(value);
+  if (!route) return;
+  const { partition, matched } = route;
+  partition.ops++;
+  partition.load = clamp(partition.load + 0.06, 0, 1);
+  STATE.totalQueries++;
+  if (matched) STATE.totalMatched++;
+  else STATE.totalCatchall++;
+
+  DOM.routeViz.innerHTML = `
+    <span style="color:#64748b;">LOOKUP</span> <span style="color:#fbbf24;font-weight:700;">'${value}'</span>
+    <span style="color:#64748b;">→</span> <span style="color:#f87171;">no list match</span>
+    <span style="color:#64748b;">→</span> falls through to <span style="color:#a78bfa;font-weight:700;">${partition.name}</span>
+  `;
+  highlightRoute(partition.id, value);
+
+  const partEl = DOM.partitionsContainer.querySelector(`[data-part-id="${partition.id}"]`);
+  if (partEl) {
+    partEl.classList.remove('busy');
+    void partEl.offsetWidth;
+    partEl.classList.add('busy');
+  }
+  renderPartitionVisuals();
+  updateTelemetry();
+}
+
+/* ============================================================
+   ADD NEW REGION LIST
+   ============================================================ */
+function addRegionList() {
+  const existing = STATE.partitions.filter(p => !p.isDefault).map(p => p.id);
+  const candidates = [
+    { id: 'MEA', name: 'P_MEA', values: ['ZA', 'EG', 'NG', 'KE', 'SA'], color: '#f97316' },
+    { id: 'OCEANIA', name: 'P_OCEANIA', values: ['NZ', 'FJ', 'PG'], color: '#14b8a6' },
+    { id: 'SEA', name: 'P_SEA', values: ['TH', 'VN', 'PH', 'ID', 'MY'], color: '#ec4899' },
+    { id: 'LATAM', name: 'P_LATAM', values: ['AR', 'CL', 'CO', 'PE'], color: '#84cc16' },
+    { id: 'NORDICS', name: 'P_NORDICS', values: ['SE', 'NO', 'DK', 'FI'], color: '#06b6d4' }
+  ];
+  const next = candidates.find(c => !existing.includes(c.id));
+  if (!next) {
+    showToast('⚠ No more predefined regions to add');
+    return;
+  }
+  STATE.partitions.splice(STATE.partitions.length - 1, 0, {
+    id: next.id,
+    name: next.name,
+    values: next.values,
+    color: next.color,
+    enabled: true,
+    load: 0,
+    ops: 0,
+    rows: randInt(200_000, 800_000),
+    online: true,
+    isDefault: false
+  });
+  updateCheckboxesFromPartitions();
+  renderRoutingTable();
+  renderPartitions();
+  updateTelemetry();
+
+  teach('ADD LIST',
+    `Added ${next.name} with explicit values [${next.values.join(', ')}]. Now any query with those values routes ` +
+    `here instead of falling through to DEFAULT. This is the operational discipline list partitioning requires: ` +
+    `you must remember to add a list before you start receiving traffic for a new region. If you forget, the traffic ` +
+    `silently piles up on DEFAULT.`,
+    'ok'
+  );
+  showToast(`✅ Added ${next.name}`);
+}
+
+function killPartition() {
+  const online = STATE.partitions.filter(p => p.enabled && p.online);
+  if (online.length <= 1) { showToast('⚠ Cannot kill last partition'); return; }
+  // Prefer killing a non-default partition
+  const nonDefault = online.filter(p => !p.isDefault);
+  const victim = nonDefault.length > 0 ? nonDefault[randInt(0, nonDefault.length - 1)] : online[randInt(0, online.length - 1)];
+  victim.online = false;
+  victim.load = 0;
+
+  renderPartitionVisuals();
+  updateTelemetry();
+
+  if (victim.isDefault) {
+    teach('DEFAULT DOWN',
+      `${victim.name} (the DEFAULT partition) failed. Now ANY unknown value causes a routing FAILURE — there is ` +
+      `no catch-all. This is the fundamental hazard of relying on a DEFAULT partition: it's a single point of failure ` +
+      `for all unroutable traffic.`,
+      'error'
+    );
+  } else {
+    teach('PARTITION DOWN',
+      `${victim.name} failed. Its values [${victim.values.join(', ')}] are now UNROUTABLE — and they will NOT fall ` +
+      `through to DEFAULT, because the router still expects to find them in ${victim.name}. Every query with those ` +
+      `values will error until the partition recovers. Unlike hash or range partitioning, list partitioning has ` +
+      `NO automatic rebalancing — the affected values must be manually migrated.`,
+      'error'
+    );
+  }
+  showToast(`💥 ${victim.name} failed`);
+}
+
+function recoverPartition() {
+  const offline = STATE.partitions.filter(p => !p.online);
+  if (offline.length === 0) { showToast('✔ All partitions online'); return; }
+  const s = offline[0];
+  s.online = true;
+  s.load = 0.05;
+
+  renderPartitionVisuals();
+  updateTelemetry();
+
+  teach('RECOVERED',
+    `${s.name} is back online. Its values are routable again. In real systems, recovery means restoring from ` +
+    `backup or replaying the WAL. Because list partitioning has no automatic rebalancing, the recovery is ` +
+    `deterministic: the same values return to the same partition they came from.`,
+    'ok'
+  );
+  showToast(`🔄 ${s.name} recovered`);
+}
+
+/* ============================================================
+   CHECKBOX SYNC
+   ============================================================ */
+function updateCheckboxesFromPartitions() {
+  const map = {
+    AMERICAS: 'chkAmericas',
+    EMEA: 'chkEMEA',
+    APAC: 'chkAPAC',
+    DEFAULT: 'chkDefault'
+  };
+  for (const [id, checkboxId] of Object.entries(map)) {
+    const p = STATE.partitions.find(x => x.id === id);
+    const cb = document.getElementById(checkboxId);
+    if (cb && p) {
+      cb.checked = p.enabled;
+    }
+  }
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnToggle.addEventListener('click', () => STATE.running ? stopTraffic() : startTraffic());
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnRogue.addEventListener('click', injectRogue);
+DOM.btnAddRegion.addEventListener('click', addRegionList);
+DOM.btnKill.addEventListener('click', killPartition);
+DOM.btnRecover.addEventListener('click', recoverPartition);
+
+DOM.qpsRange.addEventListener('input', e => {
+  STATE.qps = parseInt(e.target.value);
+  DOM.qpsVal.textContent = STATE.qps;
+});
+DOM.readRange.addEventListener('input', e => {
+  STATE.readRatio = parseInt(e.target.value) / 100;
+  DOM.readVal.textContent = e.target.value + '%';
+});
+DOM.skewRange.addEventListener('input', e => {
+  STATE.regionSkew = parseInt(e.target.value) / 100;
+  DOM.skewVal.textContent = e.target.value + '%';
+});
+
+// Checkboxes toggle partitions
+document.getElementById('chkAmericas').addEventListener('change', e => {
+  const p = STATE.partitions.find(x => x.id === 'AMERICAS');
+  if (p) {
+    p.enabled = e.target.checked;
+    renderRoutingTable();
+    renderPartitions();
+    updateTelemetry();
+    if (!e.target.checked) {
+      teach('DISABLED', `AMERICAS partition disabled. Values [${p.values.join(', ')}] now fall through to DEFAULT.`, 'warn');
+    }
+  }
+});
+document.getElementById('chkEMEA').addEventListener('change', e => {
+  const p = STATE.partitions.find(x => x.id === 'EMEA');
+  if (p) {
+    p.enabled = e.target.checked;
+    renderRoutingTable();
+    renderPartitions();
+    updateTelemetry();
+    if (!e.target.checked) {
+      teach('DISABLED', `EMEA partition disabled. Values [${p.values.join(', ')}] now fall through to DEFAULT.`, 'warn');
+    }
+  }
+});
+document.getElementById('chkAPAC').addEventListener('change', e => {
+  const p = STATE.partitions.find(x => x.id === 'APAC');
+  if (p) {
+    p.enabled = e.target.checked;
+    renderRoutingTable();
+    renderPartitions();
+    updateTelemetry();
+    if (!e.target.checked) {
+      teach('DISABLED', `APAC partition disabled. Values [${p.values.join(', ')}] now fall through to DEFAULT.`, 'warn');
+    }
+  }
+});
+document.getElementById('chkDefault').addEventListener('change', e => {
+  const p = STATE.partitions.find(x => x.id === 'DEFAULT');
+  if (p) {
+    p.enabled = e.target.checked;
+    renderRoutingTable();
+    renderPartitions();
+    updateTelemetry();
+    if (!e.target.checked) {
+      teach('NO DEFAULT',
+        `DEFAULT partition DISABLED. Now any unknown value causes a routing FAILURE. This is the "strict" mode of ` +
+        `list partitioning — it catches missing value lists immediately (query errors) instead of silently piling ` +
+        `up on the catch-all.`,
+        'error'
+      );
+    }
+  }
+});
+
+window.addEventListener('resize', () => {});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+initializeScheme();
+
+setTimeout(() => {
+  teach('CONTRAST',
+    `List partitioning is the OPPOSITE of hash partitioning. Hash spreads data randomly but uniformly. List puts ` +
+    `data EXACTLY where you say. Hash is resilient to any new value. List requires you to declare every value. ` +
+    `Hash can't be used for data residency. List can. Hash has zero operational overhead. List requires constant ` +
+    `attention as new values appear.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('REAL SYSTEMS',
+      `List partitioning is used by: Oracle (classic list partitioning), PostgreSQL (PARTITION BY LIST), MySQL 8+, ` +
+      `and most enterprise OLTP databases. It's the natural fit for multi-tenant SaaS (partition by tenant_id ` +
+      `category), geo-distributed systems (partition by country), and compliance boundaries (EU data stays in EU). ` +
+      `Cloud Spanner and CockroachDB don't have explicit list partitioning but achieve the same effect with custom ` +
+      `range/key placement rules.`,
+      'purple2'
+    );
+  }, 4200);
+
+  showToast('👋 Try INJECT UNKNOWN or disable a checkbox to see fallback', 4500);
+}, 800);
+</script>
+</body>
+</html>

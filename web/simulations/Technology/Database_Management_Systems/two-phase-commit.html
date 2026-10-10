@@ -1,0 +1,1771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Two-Phase Commit Protocol (2PC) — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #3b82f6, #06b6d4, #14b8a6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(59,130,246,0.15);
+    color: #93c5fd;
+    border-color: #3b82f6;
+  }
+  .teaching-toggle:hover { background: rgba(59,130,246,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #93c5fd;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #3b82f6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .btn.primary:hover { background: #2563eb; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #93c5fd; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #3b82f6; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(59,130,246,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* PHASE INDICATOR */
+  .phase-indicator {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    z-index: 10;
+    background: rgba(10,14,25,0.95);
+    padding: 6px 10px;
+    border-radius: 22px;
+    border: 1px solid #1e293b;
+    box-shadow: 0 0 20px rgba(59,130,246,0.2);
+  }
+  .phase-pill {
+    padding: 5px 16px;
+    border-radius: 16px;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    font-family: monospace;
+    color: #64748b;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: all 0.3s;
+    text-transform: uppercase;
+  }
+  .phase-pill.active {
+    color: #fff;
+    box-shadow: 0 0 20px currentColor;
+    animation: phasePulse 1.2s ease-in-out infinite;
+  }
+  @keyframes phasePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+  .phase-pill.prepare.active { background: #3b82f6; border-color: #60a5fa; }
+  .phase-pill.commit.active { background: #10b981; border-color: #34d399; }
+  .phase-pill.done.active { background: #14b8a6; border-color: #2dd4bf; }
+  .phase-arrow {
+    color: #475569;
+    font-size: 0.75rem;
+  }
+
+  /* MAIN LAYOUT: Coordinator + Participants */
+  .main-split {
+    position: absolute;
+    top: 90px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 16px;
+  }
+
+  /* COORDINATOR ROW */
+  .coordinator-row {
+    display: flex;
+    justify-content: center;
+    z-index: 4;
+  }
+
+  .node {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-family: monospace;
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    min-width: 180px;
+  }
+
+  .node.coordinator {
+    background: linear-gradient(145deg, #1e3a8a, #0c1e4d);
+    border: 2.5px solid #3b82f6;
+    box-shadow: 0 0 25px rgba(59,130,246,0.4);
+  }
+  .node.coordinator.voting {
+    animation: coordVote 0.6s ease-in-out infinite alternate;
+  }
+  @keyframes coordVote {
+    0% { box-shadow: 0 0 25px rgba(59,130,246,0.4); }
+    100% { box-shadow: 0 0 45px rgba(59,130,246,0.9); }
+  }
+  .node.coordinator.decided {
+    border-color: #10b981;
+    box-shadow: 0 0 35px rgba(16,185,129,0.6);
+  }
+  .node.coordinator.aborted {
+    border-color: #ef4444;
+    box-shadow: 0 0 35px rgba(239,68,68,0.7);
+  }
+
+  .node-title {
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    color: #fff;
+  }
+  .node-sub {
+    font-size: 0.5rem;
+    letter-spacing: 0.8px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .node-state {
+    font-size: 0.68rem;
+    font-weight: 900;
+    margin-top: 4px;
+    letter-spacing: 1px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(0,0,0,0.3);
+    color: #93c5fd;
+    font-family: monospace;
+  }
+  .node-state.prepare { color: #93c5fd; background: rgba(59,130,246,0.2); }
+  .node-state.ready { color: #6ee7b7; background: rgba(16,185,129,0.2); }
+  .node-state.commit { color: #6ee7b7; background: rgba(16,185,129,0.25); }
+  .node-state.abort { color: #fca5a5; background: rgba(239,68,68,0.2); }
+  .node-state.uncertain { color: #fde047; background: rgba(250,204,21,0.25); animation: uncertainFlash 1s ease-in-out infinite; }
+  @keyframes uncertainFlash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .node-state.crashed { color: #fca5a5; background: rgba(239,68,68,0.3); border: 1px solid #ef4444; }
+
+  .node-detail {
+    font-size: 0.5rem;
+    color: #64748b;
+    margin-top: 3px;
+    font-family: monospace;
+    letter-spacing: 0.5px;
+  }
+
+  /* CONNECTION LINES CONTAINER */
+  .connections-container {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+  }
+  .connections-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .connections-svg path {
+    stroke: #334155;
+    stroke-width: 1.5;
+    fill: none;
+  }
+  .connections-svg path.active {
+    stroke: #3b82f6;
+    stroke-width: 2;
+    stroke-dasharray: 8 4;
+    animation: dashFlow 0.8s linear infinite;
+    filter: drop-shadow(0 0 6px rgba(59,130,246,0.9));
+  }
+  @keyframes dashFlow {
+    to { stroke-dashoffset: -24; }
+  }
+  .connections-svg path.prepare {
+    stroke: #3b82f6;
+  }
+  .connections-svg path.commit {
+    stroke: #10b981;
+  }
+  .connections-svg path.abort {
+    stroke: #ef4444;
+  }
+  .connections-svg path.ack {
+    stroke: #14b8a6;
+  }
+
+  /* PARTICIPANTS ROW */
+  .participants-row {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    z-index: 4;
+    margin-bottom: 6px;
+  }
+
+  .node.participant {
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    border: 2.5px solid #64748b;
+    min-width: 160px;
+    padding: 10px 14px;
+  }
+  .node.participant.ready {
+    border-color: #10b981;
+    box-shadow: 0 0 25px rgba(16,185,129,0.5);
+  }
+  .node.participant.commit {
+    border-color: #10b981;
+    box-shadow: 0 0 25px rgba(16,185,129,0.6);
+    background: linear-gradient(145deg, #064e3b, #022c22);
+  }
+  .node.participant.abort {
+    border-color: #ef4444;
+    box-shadow: 0 0 25px rgba(239,68,68,0.6);
+    background: linear-gradient(145deg, #450a0a, #1c0606);
+  }
+  .node.participant.waiting {
+    border-color: #3b82f6;
+    animation: participantPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes participantPulse {
+    0%, 100% { box-shadow: 0 0 15px rgba(59,130,246,0.4); }
+    50% { box-shadow: 0 0 35px rgba(59,130,246,0.9); }
+  }
+  .node.participant.crashed {
+    border-color: #ef4444;
+    background: linear-gradient(145deg, #450a0a, #1c0606);
+    animation: crashShake 0.5s ease;
+  }
+  @keyframes crashShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+  .node.participant.recovered {
+    border-color: #facc15;
+    background: linear-gradient(145deg, #422006, #1c0d02);
+  }
+
+  /* MESSAGE LOG */
+  .messages-pane {
+    background: #070a14;
+    border: 2px solid #06b6d4;
+    border-radius: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(6,182,212,0.15);
+    flex: 1;
+    min-height: 0;
+    z-index: 5;
+  }
+  .messages-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .messages-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    padding: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.58rem;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+  }
+  .msg-line {
+    padding: 3px 6px;
+    border-radius: 3px;
+    display: flex;
+    gap: 6px;
+    animation: msgIn 0.35s ease;
+    border-left: 3px solid transparent;
+  }
+  @keyframes msgIn {
+    from { transform: translateX(-8px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .msg-line .ts {
+    color: #475569;
+    font-size: 0.5rem;
+    min-width: 44px;
+    letter-spacing: 0;
+  }
+  .msg-line .from {
+    font-weight: 800;
+    color: #cbd5e1;
+    min-width: 60px;
+  }
+  .msg-line .arrow {
+    color: #64748b;
+    font-weight: 900;
+  }
+  .msg-line .to {
+    font-weight: 800;
+    color: #cbd5e1;
+    min-width: 60px;
+  }
+  .msg-line .payload {
+    color: #94a3b8;
+    flex: 1;
+  }
+  .msg-line.prepare {
+    border-left-color: #3b82f6;
+    background: rgba(59,130,246,0.06);
+  }
+  .msg-line.prepare .payload { color: #93c5fd; font-weight: 700; }
+  .msg-line.vote-yes {
+    border-left-color: #10b981;
+    background: rgba(16,185,129,0.06);
+  }
+  .msg-line.vote-yes .payload { color: #6ee7b7; font-weight: 700; }
+  .msg-line.vote-no {
+    border-left-color: #ef4444;
+    background: rgba(239,68,68,0.06);
+  }
+  .msg-line.vote-no .payload { color: #fca5a5; font-weight: 700; }
+  .msg-line.commit {
+    border-left-color: #10b981;
+    background: rgba(16,185,129,0.1);
+  }
+  .msg-line.commit .payload { color: #86efac; font-weight: 800; }
+  .msg-line.abort {
+    border-left-color: #ef4444;
+    background: rgba(239,68,68,0.1);
+  }
+  .msg-line.abort .payload { color: #fca5a5; font-weight: 800; }
+  .msg-line.ack {
+    border-left-color: #14b8a6;
+    background: rgba(20,184,166,0.06);
+  }
+  .msg-line.ack .payload { color: #5eead4; }
+  .msg-line.system {
+    border-left-color: #a855f7;
+    background: rgba(168,85,247,0.06);
+    font-style: italic;
+  }
+  .msg-line.system .payload { color: #d8b4fe; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(59,130,246,0.06);
+    border: 1px solid rgba(59,130,246,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #93c5fd;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #67e8f9; text-shadow: 0 0 10px rgba(6,182,212,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 240px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #3b82f6;
+    background: rgba(59,130,246,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.05); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Info card */
+  .info-card {
+    background: linear-gradient(145deg, rgba(59,130,246,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(59,130,246,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #93c5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.bad { color: #fca5a5; }
+  .info-row .val.warn { color: #fcd34d; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1.5px solid;
+  }
+
+  /* Status banner */
+  .status-banner {
+    position: absolute;
+    top: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #3b82f6;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #93c5fd;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(59,130,246,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+    transition: all 0.3s;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.commit { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.abort { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+  .status-banner.uncertain { border-color: #facc15; color: #fde047; box-shadow: 0 0 25px rgba(250,204,21,0.6); }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #3b82f6;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(59,130,246,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>TWO-PHASE COMMIT (2PC)</h1>
+    <span class="sub">PREPARE · VOTE · COMMIT/ABORT · ATOMICITY ACROSS NODES</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Scenarios</h3>
+      <select id="scenarioSelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="commit" selected>✅ All vote YES → Commit</option>
+        <option value="abort">❌ One votes NO → Abort</option>
+        <option value="coordinator-crash">💀 Coordinator crashes after prepare</option>
+        <option value="participant-crash">💀 Participant crashes after vote</option>
+        <option value="uncertain">⚠️ Participant uncertain (blocking)</option>
+        <option value="slow">🐌 Participant slow (timeout)</option>
+      </select>
+      <button class="btn primary" id="btnRun">▶ Run Scenario</button>
+      <button class="btn" id="btnStep">⏭ Step</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Participants</h3>
+      <div class="slider-row"><span>Number of nodes</span><span class="value" id="pcountVal">3</span></div>
+      <input type="range" id="pcountRange" min="2" max="5" value="3">
+    </div>
+
+    <div class="panel">
+      <h3>Timing</h3>
+      <div class="slider-row"><span>Message delay</span><span class="value" id="delayVal">800ms</span></div>
+      <input type="range" id="delayRange" min="200" max="2000" step="100" value="800">
+      <div class="slider-row"><span>Auto-step interval</span><span class="value" id="stepVal">1200ms</span></div>
+      <input type="range" id="stepRange" min="400" max="2500" step="100" value="1200">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#3b82f6; background:rgba(59,130,246,0.1);"></div>Coordinator</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#64748b; background:rgba(100,116,139,0.1);"></div>Participant</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#10b981; background:rgba(16,185,129,0.1);"></div>Voted YES / Commit</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#ef4444; background:rgba(239,68,68,0.1);"></div>Voted NO / Abort</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#facc15; background:rgba(250,204,21,0.1);"></div>Uncertain (blocked)</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">PHASE 1: PREPARE (VOTE) · PHASE 2: COMMIT OR ABORT</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <!-- Phase indicator -->
+      <div class="phase-indicator">
+        <div class="phase-pill prepare" id="pillPrepare">1. PREPARE</div>
+        <div class="phase-arrow">→</div>
+        <div class="phase-pill commit" id="pillCommit">2. COMMIT</div>
+        <div class="phase-arrow">→</div>
+        <div class="phase-pill done" id="pillDone">DONE</div>
+      </div>
+
+      <div class="main-split">
+        <!-- COORDINATOR -->
+        <div class="coordinator-row">
+          <div class="node coordinator" id="coordinatorNode">
+            <div class="node-title">🎯 COORDINATOR</div>
+            <div class="node-sub">Drives the protocol</div>
+            <div class="node-state" id="coordState">INIT</div>
+            <div class="node-detail" id="coordDetail">ready to begin</div>
+          </div>
+        </div>
+
+        <!-- CONNECTION LINES -->
+        <div class="connections-container" id="connectionsContainer">
+          <svg class="connections-svg" id="connectionsSvg"></svg>
+        </div>
+
+        <!-- PARTICIPANTS -->
+        <div class="participants-row" id="participantsRow"></div>
+
+        <!-- MESSAGE LOG -->
+        <div class="messages-pane">
+          <div class="messages-title">
+            <span>📡 MESSAGE LOG</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="msgHint">— 0 messages —</span>
+          </div>
+          <div class="messages-body" id="messagesBody"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Phase</div>
+        <div class="metric-value info" id="mPhase">INIT</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Messages</div>
+        <div class="metric-value" id="mMsgs">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Yes Votes</div>
+        <div class="metric-value" id="mYes">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">No Votes</div>
+        <div class="metric-value bad" id="mNo">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Uncertain</div>
+        <div class="metric-value warn" id="mUncertain">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Final</div>
+        <div class="metric-value" id="mFinal">—</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 2PC at a Glance</div>
+      <div class="info-row"><span class="lbl">Phases</span><span class="val">Prepare + Commit</span></div>
+      <div class="info-row"><span class="lbl">Messages</span><span class="val">2N (best case)</span></div>
+      <div class="info-row"><span class="lbl">Latency</span><span class="val">2 round-trips</span></div>
+      <div class="info-row"><span class="lbl">Atomicity</span><span class="val">Guaranteed</span></div>
+      <div class="info-row"><span class="lbl">Blocking</span><span class="val bad">On coordinator crash</span></div>
+      <div class="info-row"><span class="lbl">Coordinator SPOF</span><span class="val bad">Yes</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">XA, Spanner</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  scenario: 'commit',
+  participantCount: 3,
+  messageDelay: 800,
+  stepInterval: 1200,
+  // Coordinator state
+  coordinator: {
+    state: 'INIT',  // INIT | PREPARING | DECIDED_COMMIT | DECIDED_ABORT | DONE
+    yesVotes: 0,
+    noVotes: 0,
+    uncertain: 0,
+    phase: 'prepare',  // prepare | commit | done
+    crashed: false
+  },
+  // Participants: array of { id, name, state, vote, crashed }
+  participants: [],
+  // Message counter
+  messageCount: 0,
+  // Simulation
+  running: false,
+  autoTimer: null,
+  currentStep: 0,
+  steps: [],        // array of step functions
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  coordinatorNode: document.getElementById('coordinatorNode'),
+  coordState: document.getElementById('coordState'),
+  coordDetail: document.getElementById('coordDetail'),
+  participantsRow: document.getElementById('participantsRow'),
+  connectionsContainer: document.getElementById('connectionsContainer'),
+  connectionsSvg: document.getElementById('connectionsSvg'),
+  messagesBody: document.getElementById('messagesBody'),
+  msgHint: document.getElementById('msgHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Phase pills
+  pillPrepare: document.getElementById('pillPrepare'),
+  pillCommit: document.getElementById('pillCommit'),
+  pillDone: document.getElementById('pillDone'),
+  // Controls
+  scenarioSelect: document.getElementById('scenarioSelect'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  pcountRange: document.getElementById('pcountRange'),
+  pcountVal: document.getElementById('pcountVal'),
+  delayRange: document.getElementById('delayRange'),
+  delayVal: document.getElementById('delayVal'),
+  stepRange: document.getElementById('stepRange'),
+  stepVal: document.getElementById('stepVal'),
+  // Metrics
+  mPhase: document.getElementById('mPhase'),
+  mMsgs: document.getElementById('mMsgs'),
+  mYes: document.getElementById('mYes'),
+  mNo: document.getElementById('mNo'),
+  mUncertain: document.getElementById('mUncertain'),
+  mFinal: document.getElementById('mFinal'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+}
+
+function clearStatus() {
+  DOM.statusBanner.classList.remove('show');
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining the two phase commit protocol.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   LOGGING
+   ============================================================ */
+function logMessage(type, from, to, payload) {
+  STATE.messageCount++;
+  const line = document.createElement('div');
+  line.className = `msg-line ${type}`;
+  line.innerHTML = `
+    <span class="ts">t=${String(STATE.messageCount).padStart(3, '0')}</span>
+    <span class="from">${from}</span>
+    <span class="arrow">→</span>
+    <span class="to">${to}</span>
+    <span class="payload">${payload}</span>
+  `;
+  DOM.messagesBody.prepend(line);
+  while (DOM.messagesBody.children.length > 60) DOM.messagesBody.lastChild.remove();
+  DOM.msgHint.textContent = `${STATE.messageCount} messages`;
+  DOM.mMsgs.textContent = STATE.messageCount;
+}
+
+/* ============================================================
+   PHASE UI
+   ============================================================ */
+function setPhase(phase) {
+  STATE.coordinator.phase = phase;
+  DOM.pillPrepare.classList.remove('active');
+  DOM.pillCommit.classList.remove('active');
+  DOM.pillDone.classList.remove('active');
+  if (phase === 'prepare') DOM.pillPrepare.classList.add('active');
+  else if (phase === 'commit') DOM.pillCommit.classList.add('active');
+  else if (phase === 'done') DOM.pillDone.classList.add('active');
+  DOM.mPhase.textContent = phase.toUpperCase();
+}
+
+/* ============================================================
+   RENDERING
+   ============================================================ */
+function renderCoordinator() {
+  const c = STATE.coordinator;
+  DOM.coordState.textContent = c.state;
+  DOM.coordState.className = 'node-state ' + getStateClass(c.state);
+  DOM.coordinatorNode.className = 'node coordinator';
+  if (c.state === 'PREPARING') DOM.coordinatorNode.classList.add('voting');
+  if (c.state === 'DECIDED_COMMIT') DOM.coordinatorNode.classList.add('decided');
+  if (c.state === 'DECIDED_ABORT') DOM.coordinatorNode.classList.add('aborted');
+  DOM.coordDetail.textContent = c.detail || '';
+}
+
+function getStateClass(state) {
+  if (!state) return '';
+  const s = state.toLowerCase();
+  if (s.includes('commit') || s === 'decided_commit') return 'commit';
+  if (s.includes('abort')) return 'abort';
+  if (s.includes('prepare')) return 'prepare';
+  if (s.includes('ready') || s.includes('yes')) return 'ready';
+  if (s.includes('no')) return 'abort';
+  if (s.includes('uncertain')) return 'uncertain';
+  if (s.includes('crash')) return 'crashed';
+  return '';
+}
+
+function renderParticipants() {
+  let html = '';
+  for (const p of STATE.participants) {
+    let cls = 'node participant';
+    let stateCls = getStateClass(p.state);
+    if (p.state === 'READY' || p.state === 'YES') cls += ' ready';
+    if (p.state === 'COMMIT') cls += ' commit';
+    if (p.state === 'ABORT' || p.state === 'NO') cls += ' abort';
+    if (p.state === 'WAITING' || p.state === 'UNCERTAIN') cls += ' waiting';
+    if (p.state === 'CRASHED') cls += ' crashed';
+    if (p.state === 'RECOVERED') cls += ' recovered';
+
+    html += `
+      <div class="${cls}" data-participant-id="${p.id}">
+        <div class="node-title">${p.name}</div>
+        <div class="node-sub">${p.role || 'Participant'}</div>
+        <div class="node-state ${stateCls}">${p.state}</div>
+        <div class="node-detail">${p.detail || ''}</div>
+      </div>
+    `;
+  }
+  DOM.participantsRow.innerHTML = html;
+}
+
+function renderConnections() {
+  // Draw lines from coordinator to each participant
+  const container = DOM.connectionsContainer;
+  const svg = DOM.connectionsSvg;
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+
+  // Get bounding boxes
+  const coordEl = DOM.coordinatorNode;
+  const containerRect = container.getBoundingClientRect();
+  const coordRect = coordEl.getBoundingClientRect();
+
+  const coordX = coordRect.left + coordRect.width / 2 - containerRect.left;
+  const coordY = coordRect.bottom - containerRect.top;
+
+  let html = '';
+  for (const p of STATE.participants) {
+    const pEl = DOM.participantsRow.querySelector(`[data-participant-id="${p.id}"]`);
+    if (!pEl) continue;
+    const pRect = pEl.getBoundingClientRect();
+    const px = pRect.left + pRect.width / 2 - containerRect.left;
+    const py = pRect.top - containerRect.top;
+
+    // Curved path
+    const midY = (coordY + py) / 2;
+    let cls = '';
+    if (p.connection === 'prepare') cls = 'active prepare';
+    else if (p.connection === 'vote-yes') cls = 'active commit';
+    else if (p.connection === 'vote-no') cls = 'active abort';
+    else if (p.connection === 'commit') cls = 'active commit';
+    else if (p.connection === 'abort') cls = 'active abort';
+    else if (p.connection === 'ack') cls = 'active ack';
+
+    html += `<path class="${cls}" d="M ${coordX} ${coordY} C ${coordX} ${midY}, ${px} ${midY}, ${px} ${py}" />`;
+  }
+  svg.innerHTML = html;
+}
+
+function renderAll() {
+  renderCoordinator();
+  renderParticipants();
+  // Delay connections to allow layout
+  setTimeout(renderConnections, 30);
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.mYes.textContent = STATE.coordinator.yesVotes;
+  DOM.mNo.textContent = STATE.coordinator.noVotes;
+  DOM.mUncertain.textContent = STATE.coordinator.uncertain;
+  DOM.mMsgs.textContent = STATE.messageCount;
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  STATE.autoTimer = null;
+  STATE.running = false;
+  STATE.messageCount = 0;
+  STATE.currentStep = 0;
+  STATE.steps = [];
+
+  STATE.coordinator = {
+    state: 'INIT',
+    yesVotes: 0,
+    noVotes: 0,
+    uncertain: 0,
+    phase: 'prepare',
+    crashed: false,
+    detail: 'ready to begin'
+  };
+
+  STATE.participants = [];
+  for (let i = 0; i < STATE.participantCount; i++) {
+    STATE.participants.push({
+      id: 'P' + (i + 1),
+      name: 'Participant ' + (i + 1),
+      state: 'IDLE',
+      vote: null,
+      crashed: false,
+      connection: null,
+      detail: 'waiting for prepare'
+    });
+  }
+
+  DOM.messagesBody.innerHTML = '';
+  DOM.msgHint.textContent = '0 messages';
+  DOM.mFinal.textContent = '—';
+  DOM.mFinal.className = 'metric-value';
+  clearStatus();
+  setPhase('prepare');
+  DOM.pillPrepare.classList.add('active');
+
+  renderAll();
+  updateMetrics();
+
+  // Build the step sequence
+  buildSteps();
+
+  DOM.btnRun.textContent = '▶ Run Scenario';
+}
+
+/* ============================================================
+   STEP BUILDERS — one per scenario
+   ============================================================ */
+function buildSteps() {
+  STATE.steps = [];
+  switch (STATE.scenario) {
+    case 'commit': buildCommitScenario(); break;
+    case 'abort': buildAbortScenario(); break;
+    case 'coordinator-crash': buildCoordinatorCrash(); break;
+    case 'participant-crash': buildParticipantCrash(); break;
+    case 'uncertain': buildUncertainScenario(); break;
+    case 'slow': buildSlowScenario(); break;
+  }
+}
+
+/* ---------- Helper steps ---------- */
+function stepPrepare(participantsIdx) {
+  return () => {
+    // Coordinator sends PREPARE to each participant
+    STATE.coordinator.state = 'PREPARING';
+    STATE.coordinator.detail = 'sending PREPARE to all';
+
+    for (const i of participantsIdx) {
+      const p = STATE.participants[i];
+      p.connection = 'prepare';
+      p.state = 'WAITING';
+      p.detail = 'received PREPARE';
+      logMessage('prepare', 'Coordinator', p.name, 'PREPARE — vote?');
+    }
+
+    teach('PHASE 1: PREPARE',
+      `The coordinator sends PREPARE to all participants. Each participant must now decide: can I commit this transaction? They write the decision to their local WAL (undo + redo logs), lock the affected rows, and enter a WAITING state.`,
+      'info'
+    );
+    renderAll();
+  };
+}
+
+function stepVote(idx, vote, delay = 0) {
+  return () => {
+    const p = STATE.participants[idx];
+    if (!p) return;
+
+    setTimeout(() => {
+      if (vote === 'YES') {
+        p.state = 'READY';
+        p.vote = 'YES';
+        p.connection = 'vote-yes';
+        p.detail = 'voted YES';
+        STATE.coordinator.yesVotes++;
+        logMessage('vote-yes', p.name, 'Coordinator', 'VOTE YES');
+        teach('VOTE YES',
+          `${p.name} votes YES. It has logged the transaction, acquired locks, and is now prepared to commit OR abort. It will wait for the coordinator's decision.`,
+          'ok', false
+        );
+      } else if (vote === 'NO') {
+        p.state = 'NO';
+        p.vote = 'NO';
+        p.connection = 'vote-no';
+        p.detail = 'voted NO';
+        STATE.coordinator.noVotes++;
+        logMessage('vote-no', p.name, 'Coordinator', 'VOTE NO');
+        teach('VOTE NO',
+          `${p.name} votes NO. Something went wrong locally — lock conflict, constraint violation, disk error. The entire distributed transaction must ABORT, even for participants who voted YES.`,
+          'error', false
+        );
+      } else if (vote === 'CRASH') {
+        p.state = 'CRASHED';
+        p.crashed = true;
+        p.connection = null;
+        p.detail = 'CRASHED';
+        logMessage('system', p.name, '—', '💥 CRASHED before voting');
+        teach('CRASH',
+          `${p.name} crashed before voting. The coordinator will wait for its vote but never receive it. This is why 2PC uses TIMEOUTS — eventually the coordinator must decide without this vote.`,
+          'error', false
+        );
+      }
+      renderAll();
+      updateMetrics();
+    }, delay);
+  };
+}
+
+function stepDecision(decision) {
+  return () => {
+    if (decision === 'COMMIT') {
+      STATE.coordinator.state = 'DECIDED_COMMIT';
+      STATE.coordinator.detail = 'all voted YES → COMMIT';
+      setPhase('commit');
+      logMessage('commit', 'Coordinator', 'ALL', 'GLOBAL COMMIT');
+      showStatus('✅ GLOBAL COMMIT DECISION', 'commit');
+      teach('DECISION: COMMIT',
+        `All participants voted YES. The coordinator logs the COMMIT decision to its own WAL and sends COMMIT to every participant. From this point on, the outcome is COMMITTED everywhere — even if a node crashes and recovers, it must respect the commit.`,
+        'ok'
+      );
+    } else {
+      STATE.coordinator.state = 'DECIDED_ABORT';
+      STATE.coordinator.detail = 'at least one NO → ABORT';
+      logMessage('abort', 'Coordinator', 'ALL', 'GLOBAL ABORT');
+      showStatus('❌ GLOBAL ABORT DECISION', 'abort');
+      teach('DECISION: ABORT',
+        `At least one participant voted NO (or a participant timed out). The coordinator logs ABORT and sends ABORT to every participant — even the ones that voted YES. This is the atomicity guarantee: either ALL commit or ALL abort.`,
+        'error'
+      );
+      setPhase('commit'); // we go to phase 2
+    }
+    renderAll();
+  };
+}
+
+function stepSendDecision(decision) {
+  return () => {
+    for (const p of STATE.participants) {
+      if (p.crashed) continue;
+      if (decision === 'COMMIT') {
+        p.connection = 'commit';
+        logMessage('commit', 'Coordinator', p.name, 'COMMIT');
+      } else {
+        p.connection = 'abort';
+        logMessage('abort', 'Coordinator', p.name, 'ABORT');
+      }
+    }
+    renderAll();
+  };
+}
+
+function stepApplyDecision(decision, delay = 400) {
+  return () => {
+    setTimeout(() => {
+      for (const p of STATE.participants) {
+        if (p.crashed) continue;
+        if (decision === 'COMMIT') {
+          p.state = 'COMMIT';
+          p.detail = 'committed locally';
+        } else {
+          p.state = 'ABORT';
+          p.detail = 'aborted locally';
+        }
+        // Simulate ACK
+        p.connection = 'ack';
+        logMessage('ack', p.name, 'Coordinator', 'ACK');
+      }
+      renderAll();
+    }, delay);
+  };
+}
+
+function stepFinal() {
+  return () => {
+    STATE.coordinator.state = STATE.coordinator.state === 'DECIDED_COMMIT' ? 'DONE_COMMIT' : 'DONE_ABORT';
+    STATE.coordinator.detail = 'protocol complete';
+    if (STATE.coordinator.state === 'DONE_COMMIT') {
+      setPhase('done');
+      showStatus('✔ 2PC COMPLETE — ALL COMMITTED', 'commit');
+      DOM.mFinal.textContent = 'COMMITTED';
+      DOM.mFinal.className = 'metric-value';
+    } else {
+      setPhase('done');
+      showStatus('✔ 2PC COMPLETE — ALL ABORTED', 'abort');
+      DOM.mFinal.textContent = 'ABORTED';
+      DOM.mFinal.className = 'metric-value bad';
+    }
+    teach('COMPLETE',
+      `2PC complete. All participants either committed or aborted together. The atomicity guarantee across nodes is preserved.`,
+      'ok'
+    );
+    STATE.running = false;
+    if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+    STATE.autoTimer = null;
+    DOM.btnRun.textContent = '▶ Run Again';
+    renderAll();
+  };
+}
+
+/* ---------- Scenario: All Commit ---------- */
+function buildCommitScenario() {
+  const N = STATE.participantCount;
+  const all = [];
+  for (let i = 0; i < N; i++) all.push(i);
+
+  STATE.steps.push(stepPrepare(all));
+  STATE.steps.push(stepVote(0, 'YES', 200));
+  STATE.steps.push(stepVote(1, 'YES', 200));
+  if (N >= 3) STATE.steps.push(stepVote(2, 'YES', 200));
+  if (N >= 4) STATE.steps.push(stepVote(3, 'YES', 200));
+  if (N >= 5) STATE.steps.push(stepVote(4, 'YES', 200));
+  STATE.steps.push(stepDecision('COMMIT'));
+  STATE.steps.push(stepSendDecision('COMMIT'));
+  STATE.steps.push(stepApplyDecision('COMMIT', 300));
+  STATE.steps.push(stepFinal());
+}
+
+/* ---------- Scenario: One votes NO ---------- */
+function buildAbortScenario() {
+  const N = STATE.participantCount;
+  const all = [];
+  for (let i = 0; i < N; i++) all.push(i);
+
+  STATE.steps.push(stepPrepare(all));
+  STATE.steps.push(stepVote(0, 'YES', 200));
+  if (N >= 2) STATE.steps.push(stepVote(1, 'NO', 300));
+  if (N >= 3) STATE.steps.push(stepVote(2, 'YES', 200));
+  if (N >= 4) STATE.steps.push(stepVote(3, 'YES', 200));
+  if (N >= 5) STATE.steps.push(stepVote(4, 'YES', 200));
+  STATE.steps.push(stepDecision('ABORT'));
+  STATE.steps.push(stepSendDecision('ABORT'));
+  STATE.steps.push(stepApplyDecision('ABORT', 300));
+  STATE.steps.push(stepFinal());
+}
+
+/* ---------- Scenario: Coordinator crashes after PREPARE ---------- */
+function buildCoordinatorCrash() {
+  const N = STATE.participantCount;
+  const all = [];
+  for (let i = 0; i < N; i++) all.push(i);
+
+  STATE.steps.push(stepPrepare(all));
+  STATE.steps.push(stepVote(0, 'YES', 200));
+  STATE.steps.push(stepVote(1, 'YES', 200));
+  if (N >= 3) STATE.steps.push(stepVote(2, 'YES', 200));
+
+  // Coordinator crash
+  STATE.steps.push(() => {
+    STATE.coordinator.state = 'CRASHED';
+    STATE.coordinator.crashed = true;
+    STATE.coordinator.detail = '💥 crashed after receiving votes';
+    logMessage('system', 'Coordinator', '—', '💥 COORDINATOR CRASHED');
+    teach('💥 COORDINATOR CRASH',
+      `The coordinator crashes AFTER all participants voted YES but BEFORE sending the decision. Participants are now in the READY state holding locks — they don't know if the outcome was commit or abort. They are BLOCKED until the coordinator recovers.`,
+      'error'
+    );
+    showStatus('⚠️ COORDINATOR CRASHED — PARTICIPANTS BLOCKED', 'uncertain');
+    // Mark all prepared participants as uncertain
+    for (const p of STATE.participants) {
+      if (p.state === 'READY') {
+        p.state = 'UNCERTAIN';
+        p.detail = 'waiting for decision';
+      }
+    }
+    renderAll();
+  });
+
+  // Blocked participants
+  STATE.steps.push(() => {
+    teach('THE BLOCKING PROBLEM',
+      `This is the famous BLOCKING PROBLEM of 2PC. Participants have voted YES and are holding locks, but cannot commit or abort without the coordinator's decision. They can't unilaterally decide — if they commit and the decision was abort, atomicity is broken. So they WAIT. If the coordinator never comes back, they wait FOREVER.`,
+      'error'
+    );
+  });
+
+  // Coordinator recovers
+  STATE.steps.push(() => {
+    STATE.coordinator.state = 'DECIDED_COMMIT';
+    STATE.coordinator.crashed = false;
+    STATE.coordinator.detail = 'recovered from WAL';
+    logMessage('system', 'Coordinator', '—', '✦ recovered from WAL, decision was COMMIT');
+    teach('RECOVERY',
+      `The coordinator recovers. Because it had written the COMMIT decision to its WAL BEFORE crashing, it can resume: it reads the WAL, finds the decision was COMMIT, and now sends COMMIT to all participants.`,
+      'warn'
+    );
+    setPhase('commit');
+    renderAll();
+  });
+
+  STATE.steps.push(stepSendDecision('COMMIT'));
+  STATE.steps.push(stepApplyDecision('COMMIT', 300));
+  STATE.steps.push(stepFinal());
+}
+
+/* ---------- Scenario: Participant crashes after vote ---------- */
+function buildParticipantCrash() {
+  const N = STATE.participantCount;
+  const all = [];
+  for (let i = 0; i < N; i++) all.push(i);
+
+  STATE.steps.push(stepPrepare(all));
+  STATE.steps.push(stepVote(0, 'YES', 200));
+  STATE.steps.push(stepVote(1, 'YES', 200));
+
+  // Participant 2 crashes after voting YES but before commit
+  STATE.steps.push(() => {
+    if (STATE.participants[2]) {
+      STATE.participants[2].state = 'CRASHED';
+      STATE.participants[2].crashed = true;
+      STATE.participants[2].detail = 'crashed after YES';
+      logMessage('system', 'Participant 3', '—', '💥 CRASHED after voting YES');
+      teach('PARTICIPANT CRASH',
+        `Participant 3 voted YES and then crashed. Because it wrote YES to its WAL before voting, it can recover. But it will NOT know the final decision until the coordinator tells it (or it talks to another participant).`,
+        'warn'
+      );
+    }
+    renderAll();
+  });
+
+  STATE.steps.push(stepDecision('COMMIT'));
+  STATE.steps.push(stepSendDecision('COMMIT'));
+  STATE.steps.push(stepApplyDecision('COMMIT', 300));
+
+  // Participant recovers
+  STATE.steps.push(() => {
+    if (STATE.participants[2] && STATE.participants[2].crashed) {
+      STATE.participants[2].state = 'RECOVERED';
+      STATE.participants[2].crashed = false;
+      STATE.participants[2].detail = 'recovered, applied COMMIT';
+      logMessage('system', 'Participant 3', '—', '✦ recovered from WAL, applied COMMIT');
+      teach('RECOVERY',
+        `Participant 3 recovers from its WAL, sees it voted YES, and queries the coordinator for the decision. It learns COMMIT and applies it. The distributed transaction is now fully consistent.`,
+        'ok'
+      );
+    }
+    renderAll();
+  });
+
+  STATE.steps.push(stepFinal());
+}
+
+/* ---------- Scenario: Uncertain participant (blocked) ---------- */
+function buildUncertainScenario() {
+  const N = STATE.participantCount;
+  const all = [];
+  for (let i = 0; i < N; i++) all.push(i);
+
+  STATE.steps.push(stepPrepare(all));
+  STATE.steps.push(stepVote(0, 'YES', 200));
+  STATE.steps.push(stepVote(1, 'YES', 200));
+  if (N >= 3) STATE.steps.push(stepVote(2, 'YES', 200));
+
+  // Coordinator loses network to participant 2
+  STATE.steps.push(() => {
+    if (STATE.participants[1]) {
+      STATE.participants[1].state = 'UNCERTAIN';
+      STATE.participants[1].detail = 'lost contact with coordinator';
+      logMessage('system', 'Participant 2', '—', '📡 LOST CONTACT with coordinator');
+      teach('UNCERTAIN STATE',
+        `Participant 2 voted YES but can no longer reach the coordinator. It's in the UNCERTAIN state: it must hold its locks (they can't be released until the outcome is known) and wait. This is the fundamental cost of 2PC — no unilateral decision possible.`,
+        'warn'
+      );
+    }
+    renderAll();
+  });
+
+  STATE.steps.push(() => {
+    teach('THE WAIT',
+      `Participant 2 will wait indefinitely. If the coordinator recovers, it will send the decision. If the coordinator never returns, an administrator must intervene. Real systems mitigate this by using a highly available coordinator, 3PC, or consensus protocols like Raft.`,
+      'warn'
+    );
+  });
+
+  // Coordinator recovers and sends decision
+  STATE.steps.push(() => {
+    STATE.coordinator.state = 'DECIDED_COMMIT';
+    STATE.coordinator.crashed = false;
+    STATE.coordinator.detail = 'coordinator back online';
+    logMessage('system', 'Coordinator', '—', '✦ back online, sending decision');
+    if (STATE.participants[1]) {
+      STATE.participants[1].state = 'READY';
+      STATE.participants[1].detail = 'reached again';
+    }
+    setPhase('commit');
+    renderAll();
+  });
+
+  STATE.steps.push(stepSendDecision('COMMIT'));
+  STATE.steps.push(stepApplyDecision('COMMIT', 300));
+  STATE.steps.push(stepFinal());
+}
+
+/* ---------- Scenario: Slow participant (timeout) ---------- */
+function buildSlowScenario() {
+  const N = STATE.participantCount;
+  const all = [];
+  for (let i = 0; i < N; i++) all.push(i);
+
+  STATE.steps.push(stepPrepare(all));
+  STATE.steps.push(stepVote(0, 'YES', 200));
+  STATE.steps.push(stepVote(1, 'YES', 200));
+
+  // Participant 3 slow
+  STATE.steps.push(() => {
+    if (STATE.participants[2]) {
+      STATE.participants[2].state = 'WAITING';
+      STATE.participants[2].detail = 'slow — still deciding';
+      logMessage('system', 'Participant 3', '—', '⏱ SLOW — no vote yet');
+      teach('SLOW PARTICIPANT',
+        `Participant 3 is taking a long time to vote. The coordinator cannot decide until it hears back — or until its TIMEOUT expires. Real systems use a short timeout, but that risks aborting a transaction that would have committed.`,
+        'warn'
+      );
+    }
+    renderAll();
+  });
+
+  STATE.steps.push(() => {
+    // Coordinator times out
+    if (STATE.participants[2]) {
+      STATE.participants[2].state = 'NO';
+      STATE.participants[2].voter = 'NO';
+      STATE.participants[2].detail = 'timeout — aborted';
+      STATE.coordinator.noVotes++;
+      logMessage('abort', 'Coordinator', 'Participant 3', 'TIMEOUT — treat as NO');
+      teach('TIMEOUT → ABORT',
+        `The coordinator times out waiting for Participant 3. Standard 2PC says: treat the missing vote as a NO. The whole transaction aborts. This is why SLOW nodes can kill a whole distributed transaction — they force aborts.`,
+        'error'
+      );
+    }
+    renderAll();
+  });
+
+  STATE.steps.push(stepDecision('ABORT'));
+  STATE.steps.push(stepSendDecision('ABORT'));
+  STATE.steps.push(stepApplyDecision('ABORT', 300));
+  STATE.steps.push(stepFinal());
+}
+
+/* ============================================================
+   EXECUTION
+   ============================================================ */
+function stepOnce() {
+  if (STATE.currentStep >= STATE.steps.length) {
+    return;
+  }
+  const step = STATE.steps[STATE.currentStep];
+  STATE.currentStep++;
+  step();
+}
+
+function runAll() {
+  if (STATE.running) {
+    // Pause
+    STATE.running = false;
+    if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+    STATE.autoTimer = null;
+    DOM.btnRun.textContent = '▶ Resume';
+    return;
+  }
+
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+
+  STATE.autoTimer = setInterval(() => {
+    if (STATE.currentStep >= STATE.steps.length) {
+      clearInterval(STATE.autoTimer);
+      STATE.autoTimer = null;
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+      return;
+    }
+    stepOnce();
+  }, STATE.stepInterval);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.scenarioSelect.addEventListener('change', e => {
+  STATE.scenario = e.target.value;
+  resetAll();
+  const descs = {
+    'commit': 'The happy path: all participants vote YES, all commit together.',
+    'abort': 'One participant votes NO — the entire distributed transaction aborts.',
+    'coordinator-crash': 'The coordinator crashes after the votes but before deciding. Participants block.',
+    'participant-crash': 'A participant crashes after voting YES. It recovers and applies the decision.',
+    'uncertain': 'A participant loses contact with the coordinator. It blocks until the decision arrives.',
+    'slow': 'One participant is slow. The coordinator times out and treats the missing vote as NO.'
+  };
+  teach('SCENARIO', descs[STATE.scenario], 'cyan');
+});
+
+DOM.btnRun.addEventListener('click', runAll);
+DOM.btnStep.addEventListener('click', () => {
+  stepOnce();
+  if (!STATE.running) {
+    DOM.btnRun.textContent = '▶ Run Scenario';
+  }
+});
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.pcountRange.addEventListener('input', e => {
+  STATE.participantCount = parseInt(e.target.value);
+  DOM.pcountVal.textContent = STATE.participantCount;
+  resetAll();
+});
+DOM.delayRange.addEventListener('input', e => {
+  STATE.messageDelay = parseInt(e.target.value);
+  DOM.delayVal.textContent = STATE.messageDelay + 'ms';
+});
+DOM.stepRange.addEventListener('input', e => {
+  STATE.stepInterval = parseInt(e.target.value);
+  DOM.stepVal.textContent = STATE.stepInterval + 'ms';
+  if (STATE.running) {
+    clearInterval(STATE.autoTimer);
+    STATE.autoTimer = setInterval(() => {
+      if (STATE.currentStep >= STATE.steps.length) {
+        clearInterval(STATE.autoTimer);
+        STATE.autoTimer = null;
+        STATE.running = false;
+        DOM.btnRun.textContent = '▶ Run Again';
+        return;
+      }
+      stepOnce();
+    }, STATE.stepInterval);
+  }
+});
+
+window.addEventListener('resize', () => {
+  renderConnections();
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Two-Phase Commit — 2PC. When a transaction touches data on multiple databases, we need ALL of them to agree on the outcome. Either everyone commits, or everyone aborts. No exceptions. 2PC is the classic protocol that makes this work — at the cost of a coordinator that becomes a single point of failure.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('PHASE 1: PREPARE',
+      `The coordinator sends PREPARE to every participant. Each participant: (1) writes a prepare record to its WAL, (2) acquires locks on the affected rows, (3) replies YES if it can commit, or NO if it can't. Once YES is sent, the participant is COMMITTED-IN-DOUBT — it must hold locks until the coordinator tells it what to do.`,
+      'info'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('PHASE 2: COMMIT OR ABORT',
+      `The coordinator decides: if all votes were YES, send COMMIT. If any was NO or timed out, send ABORT. The decision is written to the coordinator's WAL BEFORE it's sent, so the coordinator can recover and re-send if it crashes. Participants apply the decision and send ACK.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('THE BLOCKING PROBLEM',
+      `The famous flaw of 2PC: if the coordinator crashes after PREPARE but before COMMIT/ABORT, participants are BLOCKED. They voted YES, they hold locks, they cannot decide. They wait. If the coordinator never returns, an admin must intervene. This is why 2PC is called a BLOCKING protocol — and why 3PC, Raft, and Paxos were invented to fix it.`,
+      'error'
+    );
+  }, 13500);
+
+  setTimeout(() => {
+    teach('REAL SYSTEMS',
+      `2PC is everywhere in databases: XA (Java distributed transactions), PostgreSQL prepared transactions, MySQL XA, Oracle two-phase commit, SQL Server distributed transactions. Modern systems hide 2PC behind "distributed transactions" APIs. Google Spanner adds TrueTime to make 2PC fast. CockroachDB uses Raft on top. But underneath, the 2PC message pattern is still there.`,
+      'purple'
+    );
+  }, 18000);
+
+  showToast('👋 Pick a scenario and press RUN', 4000);
+}, 600);
+</script>
+</body>
+</html>

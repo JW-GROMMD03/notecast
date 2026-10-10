@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concurrency Control and Locking — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #facc15, #f97316, #ef4444);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(250,204,21,0.15);
+    color: #fde047;
+    border-color: #facc15;
+  }
+  .teaching-toggle:hover { background: rgba(250,204,21,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fde047;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #facc15; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #facc15; color: #2a1f04; border-color: #facc15; }
+  .btn.primary:hover { background: #eab308; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fde047; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #facc15; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(250,204,21,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* Timeline header */
+  .timeline-header {
+    position: absolute;
+    top: 40px;
+    left: 30px;
+    right: 30px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    z-index: 5;
+    font-family: monospace;
+    font-size: 0.6rem;
+    color: #64748b;
+    letter-spacing: 1px;
+  }
+  .timeline-header .tick {
+    position: absolute;
+    transform: translateX(-50%);
+  }
+
+  /* Timeline track */
+  .timeline-track {
+    position: absolute;
+    top: 68px;
+    left: 30px;
+    right: 30px;
+    bottom: 30px;
+    background: linear-gradient(180deg, #070a14, #02040a);
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    overflow: hidden;
+    z-index: 4;
+  }
+  .timeline-grid {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(90deg, rgba(100,116,139,0.08) 1px, transparent 1px);
+    background-size: 5% 100%;
+  }
+  .timeline-cursor {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: #facc15;
+    box-shadow: 0 0 12px #facc15;
+    transition: left 0.15s linear;
+    z-index: 8;
+  }
+  .timeline-cursor::before {
+    content: '▼';
+    position: absolute;
+    top: -14px;
+    left: -5px;
+    color: #facc15;
+    font-size: 0.7rem;
+    text-shadow: 0 0 8px #facc15;
+  }
+
+  /* Txn rows */
+  .txn-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 62px;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    transition: all 0.3s;
+  }
+  .txn-row .txn-label {
+    position: absolute;
+    left: 8px;
+    top: 4px;
+    font-family: monospace;
+    font-size: 0.6rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    z-index: 6;
+  }
+
+  /* Operation blocks on the timeline */
+  .op-block {
+    position: absolute;
+    top: 22px;
+    height: 32px;
+    border-radius: 5px;
+    padding: 3px 8px;
+    font-family: monospace;
+    font-size: 0.56rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    z-index: 5;
+    opacity: 0;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: opacity 0.3s, transform 0.4s cubic-bezier(.4,0,.2,1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  .op-block.visible {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  .op-block.waiting {
+    border: 1px dashed #f59e0b;
+    background: rgba(245,158,11,0.1);
+    color: #fbbf24;
+  }
+  .op-block.granted-read {
+    border: 1px solid #22d3ee;
+    background: rgba(34,211,238,0.18);
+    color: #7dd3fc;
+  }
+  .op-block.granted-write {
+    border: 1px solid #f43f5e;
+    background: rgba(244,63,94,0.18);
+    color: #fda4af;
+  }
+  .op-block.granted-lock {
+    border: 1px solid #facc15;
+    background: rgba(250,204,21,0.18);
+    color: #fde047;
+  }
+  .op-block.committed {
+    border: 1px solid #10b981;
+    background: rgba(16,185,129,0.18);
+    color: #6ee7b7;
+  }
+  .op-block.aborted {
+    border: 1px solid #ef4444;
+    background: rgba(239,68,68,0.15);
+    color: #fca5a5;
+    text-decoration: line-through;
+  }
+
+  /* Resource panel */
+  .resource-panel {
+    position: absolute;
+    top: 90px;
+    right: 20px;
+    width: 200px;
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #facc15;
+    border-radius: 12px;
+    padding: 12px;
+    z-index: 10;
+    box-shadow: 0 0 25px rgba(250,204,21,0.3);
+  }
+  .resource-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #fde047;
+    font-weight: 800;
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 8px;
+    font-family: monospace;
+  }
+  .resource-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 6px;
+    font-family: monospace;
+    font-size: 0.6rem;
+    color: #94a3b8;
+    border-bottom: 1px solid #1e293b;
+  }
+  .resource-row:last-child { border-bottom: none; }
+  .resource-row .lock-badge {
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 800;
+    font-size: 0.55rem;
+    letter-spacing: 0.5px;
+  }
+  .lock-badge.free { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+  .lock-badge.read { background: rgba(34,211,238,0.15); color: #7dd3fc; }
+  .lock-badge.write { background: rgba(244,63,94,0.2); color: #fda4af; }
+  .lock-badge.waiting { background: rgba(245,158,11,0.15); color: #fbbf24; animation: pulseBg 1s infinite; }
+  @keyframes pulseBg {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(250,204,21,0.06);
+    border: 1px solid rgba(250,204,21,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.58rem;
+    color: #fde047;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1.05rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #facc15;
+    background: rgba(250,204,21,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #facc15; background: rgba(250,204,21,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(250,204,21,0.15); color: #fde047; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Anomaly cards */
+  .anomaly-card {
+    background: linear-gradient(145deg, rgba(239,68,68,0.1), rgba(127,29,29,0.04));
+    border: 1px solid rgba(239,68,68,0.4);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.6rem;
+  }
+  .anomaly-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #f87171;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  .anomaly-item {
+    padding: 3px 6px;
+    margin-bottom: 3px;
+    background: rgba(0,0,0,0.2);
+    border-left: 3px solid #ef4444;
+    border-radius: 3px;
+    color: #cbd5e1;
+    line-height: 1.4;
+  }
+  .anomaly-item.safe { border-left-color: #10b981; color: #a7f3d0; }
+  .anomaly-item code { color: #fde047; font-weight: 700; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-swatch {
+    width: 20px; height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #facc15;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(250,204,21,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .scenario-select {
+    width: 100%;
+    padding: 6px 8px;
+    background: #0b0f19;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.72rem;
+    margin-bottom: 6px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>CONCURRENCY CONTROL &amp; LOCKING</h1>
+    <span class="sub">TRANSACTIONS · LOCKS · ANOMALIES</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Scenario Library</h3>
+      <select class="scenario-select" id="scenarioSelect">
+        <option value="lost-update">🔴 Lost Update</option>
+        <option value="dirty-read">🔴 Dirty Read</option>
+        <option value="unrepeatable">🔴 Unrepeatable Read</option>
+        <option value="phantom">🔴 Phantom Read</option>
+        <option value="deadlock">🔴 Deadlock</option>
+        <option value="write-skew">🔴 Write Skew</option>
+        <option value="clean" selected>✅ Well-Locked (Baseline)</option>
+      </select>
+      <button class="btn primary" id="btnRun">▶ Run Scenario</button>
+      <button class="btn" id="btnStep">⏭ Step</button>
+    </div>
+
+    <div class="panel">
+      <h3>Concurrency Config</h3>
+      <div class="slider-row"><span>Active Transactions</span><span class="value" id="txnCountVal">3</span></div>
+      <input type="range" id="txnCountRange" min="2" max="5" value="3">
+      <div class="slider-row"><span>Operation Speed</span><span class="value" id="speedVal">1.0×</span></div>
+      <input type="range" id="speedRange" min="0.3" max="2.5" step="0.1" value="1.0">
+      <div class="slider-row"><span>Lock Timeout</span><span class="value" id="timeoutVal">3s</span></div>
+      <input type="range" id="timeoutRange" min="1" max="8" value="3">
+    </div>
+
+    <div class="panel">
+      <h3>Isolation Level</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="iso" value="read-uncommitted" style="accent-color:#facc15;">
+          Read Uncommitted
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="iso" value="read-committed" checked style="accent-color:#facc15;">
+          Read Committed
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="iso" value="repeatable-read" style="accent-color:#facc15;">
+          Repeatable Read
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="iso" value="serializable" style="accent-color:#facc15;">
+          Serializable
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Actions</h3>
+      <button class="btn success" id="btnReset">⟲ Reset</button>
+      <button class="btn warn" id="btnSpeed">⏩ Fast Forward</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-swatch" style="background:rgba(34,211,238,0.3); border:1px solid #22d3ee;"></div>Read Lock (S-Lock)</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:rgba(244,63,94,0.3); border:1px solid #f43f5e;"></div>Write Lock (X-Lock)</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:rgba(245,158,11,0.2); border:1px dashed #f59e0b;"></div>Waiting for Lock</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:rgba(16,185,129,0.3); border:1px solid #10b981;"></div>Committed</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:rgba(239,68,68,0.3); border:1px solid #ef4444;"></div>Aborted</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">TIMELINE — EACH ROW IS A TRANSACTION</div>
+
+      <div class="timeline-header" id="timelineHeader"></div>
+      <div class="timeline-track" id="timelineTrack">
+        <div class="timeline-grid"></div>
+        <div class="timeline-cursor" id="timelineCursor" style="left:0%"></div>
+      </div>
+
+      <div class="resource-panel" id="resourcePanel">
+        <div class="resource-title">🔒 Lock Table</div>
+        <div id="resourceRows"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Elapsed</div>
+        <div class="metric-value" id="mElapsed">0.0s</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Active Txns</div>
+        <div class="metric-value" id="mActive">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Held Locks</div>
+        <div class="metric-value" id="mHeldLocks">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Waiting</div>
+        <div class="metric-value" id="mWaiting">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Committed</div>
+        <div class="metric-value" id="mCommitted">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Aborted</div>
+        <div class="metric-value" id="mAborted">0</div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:6px;">⚠️ Anomalies Detected</h3>
+      <div class="anomaly-card" id="anomalyCard">
+        <div class="anomaly-title">Waiting for scenario...</div>
+        <div id="anomalyList"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  scenario: 'clean',
+  txnCount: 3,
+  speed: 1.0,
+  timeout: 3.0,
+  isolation: 'read-committed',
+  running: false,
+  paused: false,
+  elapsedMs: 0,
+  // Resources — think of these as rows in a table
+  resources: {
+    A: { id: 'A', name: 'Row A (balance)', value: 100, lock: null },  // lock = { type: 'S'|'X', txnId }
+    B: { id: 'B', name: 'Row B (balance)', value: 100, lock: null }
+  },
+  txns: [],                // { id, name, color, ops[], status: 'active'|'committed'|'aborted'|'waiting', startMs, endMs }
+  events: [],              // scheduled events { atMs, fn }
+  anomalies: [],           // { type, desc }
+  committed: 0,
+  aborted: 0,
+  lockHistory: [],
+  // Timing
+  lastTick: 0,
+  rafId: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  shownEvents: new Set()
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  timelineHeader: document.getElementById('timelineHeader'),
+  timelineTrack: document.getElementById('timelineTrack'),
+  timelineCursor: document.getElementById('timelineCursor'),
+  resourceRows: document.getElementById('resourceRows'),
+  anomalyCard: document.getElementById('anomalyCard'),
+  anomalyList: document.getElementById('anomalyList'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  scenarioSelect: document.getElementById('scenarioSelect'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnSpeed: document.getElementById('btnSpeed'),
+  txnCountRange: document.getElementById('txnCountRange'),
+  txnCountVal: document.getElementById('txnCountVal'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  timeoutRange: document.getElementById('timeoutRange'),
+  timeoutVal: document.getElementById('timeoutVal'),
+  mElapsed: document.getElementById('mElapsed'),
+  mActive: document.getElementById('mActive'),
+  mHeldLocks: document.getElementById('mHeldLocks'),
+  mWaiting: document.getElementById('mWaiting'),
+  mCommitted: document.getElementById('mCommitted'),
+  mAborted: document.getElementById('mAborted')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining database concurrency control and locking.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+function addAnomaly(type, desc, safe = false) {
+  STATE.anomalies.push({ type, desc, safe });
+  const el = document.createElement('div');
+  el.className = `anomaly-item ${safe ? 'safe' : ''}`;
+  el.innerHTML = `<strong>${type}:</strong> ${desc}`;
+  DOM.anomalyList.prepend(el);
+  while (DOM.anomalyList.children.length > 8) DOM.anomalyList.lastChild.remove();
+}
+
+function clearAnomalies() {
+  STATE.anomalies = [];
+  DOM.anomalyList.innerHTML = '';
+  DOM.anomalyCard.querySelector('.anomaly-title').textContent = 'Monitoring...';
+}
+
+/* ============================================================
+   RENDERING — Timeline Header
+   ============================================================ */
+function renderTimelineHeader() {
+  let html = '';
+  for (let i = 0; i <= 10; i++) {
+    const pct = i * 10;
+    const seconds = (pct / 100 * 10).toFixed(0);  // 10 seconds total
+    html += `<div class="tick" style="left:${pct}%;">${seconds}s</div>`;
+  }
+  DOM.timelineHeader.innerHTML = html;
+}
+
+/* ============================================================
+   RENDERING — Timeline Track
+   ============================================================ */
+function renderTrack() {
+  // Remove old txn rows (keep grid and cursor)
+  DOM.timelineTrack.querySelectorAll('.txn-row, .timeline-grid, .timeline-cursor').forEach(el => {
+    if (!el.classList.contains('timeline-grid') && !el.classList.contains('timeline-cursor')) {
+      el.remove();
+    }
+  });
+
+  const trackHeight = DOM.timelineTrack.clientHeight;
+  const rowHeight = trackHeight / Math.max(1, STATE.txns.length);
+
+  STATE.txns.forEach((txn, idx) => {
+    const row = document.createElement('div');
+    row.className = 'txn-row';
+    row.style.top = (idx * rowHeight) + 'px';
+    row.style.height = rowHeight + 'px';
+    row.dataset.txnId = txn.id;
+
+    const label = document.createElement('div');
+    label.className = 'txn-label';
+    label.style.color = txn.color;
+    label.innerHTML = `${txn.name} <span style="color:#64748b;">${txn.status.toUpperCase()}</span>`;
+    row.appendChild(label);
+
+    // Render op blocks
+    for (const op of txn.ops) {
+      const el = document.createElement('div');
+      el.className = `op-block ${op.cls}`;
+      el.style.left = op.startPct + '%';
+      el.style.width = op.widthPct + '%';
+      el.innerHTML = op.label;
+      el.dataset.opId = op.id;
+      if (op.visible) el.classList.add('visible');
+      row.appendChild(el);
+    }
+
+    DOM.timelineTrack.appendChild(row);
+  });
+
+  // Re-add grid and cursor on top
+  const grid = document.createElement('div');
+  grid.className = 'timeline-grid';
+  DOM.timelineTrack.insertBefore(grid, DOM.timelineTrack.firstChild);
+
+  const cursor = document.createElement('div');
+  cursor.className = 'timeline-cursor';
+  cursor.id = 'timelineCursor';
+  cursor.style.left = '0%';
+  DOM.timelineTrack.appendChild(cursor);
+  DOM.timelineCursor = cursor;
+}
+
+/* ============================================================
+   RENDERING — Resource (Lock) Table
+   ============================================================ */
+function renderResources() {
+  let html = '';
+  for (const rid of ['A', 'B']) {
+    const r = STATE.resources[rid];
+    let badgeClass = 'free';
+    let badgeText = 'FREE';
+    if (r.lock) {
+      if (r.lock.type === 'S') { badgeClass = 'read'; badgeText = `S-LOCK (${r.lock.txnName})`; }
+      else if (r.lock.type === 'X') { badgeClass = 'write'; badgeText = `X-LOCK (${r.lock.txnName})`; }
+    }
+    const waitingCount = STATE.txns.filter(t => t.status === 'waiting' && t.waitingFor === rid).length;
+    if (waitingCount > 0 && !r.lock) {
+      badgeClass = 'waiting';
+      badgeText = `PENDING (${waitingCount})`;
+    } else if (waitingCount > 0 && r.lock) {
+      badgeText += ` · +${waitingCount} waiting`;
+    }
+    html += `<div class="resource-row">
+      <span>${r.name}</span>
+      <span class="lock-badge ${badgeClass}">${badgeText}</span>
+    </div>`;
+  }
+  DOM.resourceRows.innerHTML = html;
+}
+
+/* ============================================================
+   LOCK MANAGER
+   ============================================================ */
+function acquireLock(txn, resourceId, type) {
+  const r = STATE.resources[resourceId];
+
+  // Compatibility matrix
+  // S + S = compatible
+  // S + X = conflict
+  // X + anything = conflict
+  const current = r.lock;
+  const compatible = !current || (current.type === 'S' && type === 'S');
+
+  if (compatible) {
+    if (type === 'S') {
+      // Multiple readers — track set
+      if (!r.lock) r.lock = { type: 'S', txns: new Set([txn.name]), txnName: txn.name };
+      else r.lock.txns.add(txn.name);
+    } else {
+      r.lock = { type: 'X', txnName: txn.name, txns: new Set([txn.name]) };
+    }
+    return { granted: true };
+  } else {
+    return { granted: false, heldBy: current };
+  }
+}
+
+function releaseLocks(txn) {
+  for (const rid of ['A', 'B']) {
+    const r = STATE.resources[rid];
+    if (r.lock && r.lock.txns && r.lock.txns.has(txn.name)) {
+      r.lock.txns.delete(txn.name);
+      if (r.lock.txns.size === 0) r.lock = null;
+    }
+  }
+  renderResources();
+}
+
+/* ============================================================
+   SCENARIO DEFINITIONS
+   ============================================================ */
+const COLORS = ['#22d3ee', '#f43f5e', '#a855f7', '#f59e0b', '#10b981'];
+
+const SCENARIOS = {
+  'clean': {
+    title: 'Clean Concurrent Access',
+    desc: 'Two transactions read and write to DIFFERENT rows. No conflicts, both commit.',
+    txns: 3,
+    schedule: [
+      { at: 200,  fn: (txn) => opWait(txn, 'A', 100) },
+      { at: 200,  fn: (txn) => opWait(txn, 'B', 100) },
+      { at: 200,  fn: (txn) => opWait(txn, 'A', 100) },
+      { at: 400,  fn: (txn, i) => opRead(txn, i === 0 ? 'A' : i === 1 ? 'B' : 'A', 'SELECT') },
+      { at: 800,  fn: (txn) => opRead(txn, txn.name === 'T2' ? 'B' : 'A', 'SELECT') },
+      { at: 1200, fn: (txn, i) => opWrite(txn, i === 1 ? 'B' : 'A', 'UPDATE') },
+      { at: 1800, fn: (txn) => opCommit(txn) }
+    ],
+    teaching: [
+      { at: 100, tag: 'SCENARIO', msg: 'Running clean concurrent access. Multiple transactions read and write, but to DIFFERENT rows. No locks conflict, no waiting, everything commits.', kind: 'info' },
+      { at: 1000, tag: 'S-LOCK', msg: 'T1 and T3 both hold SHARED locks on row A. This is legal — many readers are allowed simultaneously. Only writers (X-locks) exclude.', kind: 'purple' },
+      { at: 2200, tag: 'COMMITTED', msg: 'All transactions committed cleanly. No anomalies, no waiting. This is the happy path — concurrency control working as designed.', kind: 'ok' }
+    ]
+  },
+  'lost-update': {
+    title: 'Lost Update',
+    desc: 'Two transactions read the same row, both increment, one update is lost. Classic race condition.',
+    txns: 2,
+    schedule: [
+      { at: 200,  fn: (txn) => opWait(txn, 'A', 100) },
+      { at: 400,  fn: (txn) => opRead(txn, 'A', 'SELECT balance') },
+      { at: 900,  fn: (txn) => opRead(txn, 'A', 'SELECT balance') },   // Both read the same value
+      { at: 1400, fn: (txn) => opWrite(txn, 'A', 'UPDATE +10') },
+      { at: 2200, fn: (txn) => opCommit(txn) }
+    ],
+    teaching: [
+      { at: 100, tag: 'SCENARIO', msg: 'Running LOST UPDATE scenario. Both transactions read Row A = 100, both add 10, both write. If locking is weak, the second write overwrites the first.', kind: 'warn' },
+      { at: 700, tag: 'S-LOCKS HELD', msg: 'Both transactions hold SHARED locks on A — the read phase. Both see value 100. This is legal for readers.', kind: 'purple' },
+      { at: 1500, tag: '⚠️ CONFLICT', msg: 'T1 attempts to acquire an EXCLUSIVE lock to write. But T2 also wants to write. Only ONE can proceed — the other waits.', kind: 'warn' },
+      { at: 2400, tag: 'WRITE SERIALIZED', msg: 'The write lock serializes the two writes. If the DB uses S-locks first (as in 2PL), T1 and T2 both had S-locks — T1 must upgrade to X, waits for T2. No lost update.', kind: 'ok' }
+    ]
+  },
+  'dirty-read': {
+    title: 'Dirty Read',
+    desc: 'T1 writes but does not commit. T2 reads the uncommitted value. T1 then aborts — T2 saw data that never existed.',
+    txns: 2,
+    schedule: [
+      { at: 200,  fn: (txn) => opWait(txn, 'A', 100) },
+      { at: 400,  fn: (txn) => txn.name === 'T1' ? opWrite(txn, 'A', 'UPDATE=200') : null },
+      { at: 1000, fn: (txn) => txn.name === 'T2' ? opRead(txn, 'A', 'SELECT') : null },
+      { at: 1600, fn: (txn) => txn.name === 'T1' ? opAbort(txn) : null },
+      { at: 2200, fn: (txn) => txn.name === 'T2' ? opCommit(txn) : null }
+    ],
+    teaching: [
+      { at: 100, tag: 'SCENARIO', msg: 'Running DIRTY READ scenario. T1 writes A=200 but has NOT committed. T2 reads A and sees 200.', kind: 'warn' },
+      { at: 700, tag: 'X-LOCK HELD', msg: 'T1 holds an EXCLUSIVE lock on A (uncommitted write). If isolation is READ UNCOMMITTED, T2 can still read through.', kind: 'warn' },
+      { at: 1200, tag: '⚠️ DIRTY READ', msg: 'T2 just read A=200 from T1\'s uncommitted transaction. This is a DIRTY READ — reading data that might disappear.', kind: 'error' },
+      { at: 1800, tag: 'T1 ABORTS', msg: 'T1 rolls back. Row A reverts to 100. But T2 already saw 200 and made decisions based on it. T2\'s view of the world was a lie.', kind: 'error' },
+      { at: 2400, tag: 'FIX: READ COMMITTED', msg: 'At READ COMMITTED isolation, T2\'s SELECT would BLOCK on A\'s X-lock until T1 commits or aborts. No dirty read possible.', kind: 'ok' }
+    ]
+  },
+  'unrepeatable': {
+    title: 'Unrepeatable Read',
+    desc: 'T1 reads A=100. T2 changes A to 150 and commits. T1 re-reads A and gets 150. Same query, different answer.',
+    txns: 2,
+    schedule: [
+      { at: 200,  fn: (txn) => opWait(txn, 'A', 100) },
+      { at: 400,  fn: (txn) => txn.name === 'T1' ? opRead(txn, 'A', 'SELECT') : null },
+      { at: 900,  fn: (txn) => txn.name === 'T1' ? opReleaseLocks(txn) : null },  // T1 releases S-lock after read (violates 2PL!)
+      { at: 1200, fn: (txn) => txn.name === 'T2' ? opWrite(txn, 'A', 'UPDATE=150') : null },
+      { at: 1700, fn: (txn) => txn.name === 'T2' ? opCommit(txn) : null },
+      { at: 2200, fn: (txn) => txn.name === 'T1' ? opRead(txn, 'A', 'SELECT AGAIN') : null },
+      { at: 3000, fn: (txn) => txn.name === 'T1' ? opCommit(txn) : null }
+    ],
+    teaching: [
+      { at: 100, tag: 'SCENARIO', msg: 'Running UNREPEATABLE READ scenario. T1 reads A, then T2 modifies A, then T1 reads A again — and gets a different value.', kind: 'warn' },
+      { at: 500, tag: 'FIRST READ', msg: 'T1 reads A=100 and releases its S-lock (this violates strict 2PL — locks should be held until commit).', kind: 'warn' },
+      { at: 1400, tag: 'T2 WRITES', msg: 'T2 acquires X-lock on A (T1 no longer holds S-lock), writes 150, commits.', kind: 'info' },
+      { at: 2400, tag: '⚠️ UNREPEATABLE', msg: 'T1 re-reads A and now sees 150. Same query, different answer. This is an UNREPEATABLE READ — a classic anomaly.', kind: 'error' },
+      { at: 3200, tag: 'FIX: REPEATABLE READ', msg: 'At REPEATABLE READ, T1 would hold its S-lock until commit. T2\'s X-lock would wait. T1 would see 100 again.', kind: 'ok' }
+    ]
+  },
+  'phantom': {
+    title: 'Phantom Read',
+    desc: 'T1 runs "SELECT * WHERE status=X" and gets 5 rows. T2 inserts a new row matching. T1 re-runs and sees 6 rows.',
+    txns: 2,
+    schedule: [
+      { at: 200,  fn: (txn) => opWait(txn, 'A', 100) },
+      { at: 400,  fn: (txn) => txn.name === 'T1' ? opRead(txn, 'A', 'SELECT WHERE') : null },
+      { at: 900,  fn: (txn) => txn.name === 'T1' ? opReleaseLocks(txn) : null },
+      { at: 1200, fn: (txn) => txn.name === 'T2' ? opWrite(txn, 'B', 'INSERT') : null },
+      { at: 1800, fn: (txn) => txn.name === 'T2' ? opCommit(txn) : null },
+      { at: 2300, fn: (txn) => txn.name === 'T1' ? opRead(txn, 'A', 'SELECT WHERE') : null },
+      { at: 3100, fn: (txn) => txn.name === 'T1' ? opCommit(txn) : null }
+    ],
+    teaching: [
+      { at: 100, tag: 'SCENARIO', msg: 'Running PHANTOM READ scenario. T1 does a range query. T2 inserts a new row matching the range. T1 repeats the query and gets MORE rows.', kind: 'warn' },
+      { at: 500, tag: 'RANGE READ', msg: 'T1 runs SELECT * WHERE status=active and gets 5 rows. But it only locked those 5 rows — nothing prevents new rows from appearing.', kind: 'warn' },
+      { at: 1400, tag: 'T2 INSERTS', msg: 'T2 inserts a new row matching status=active. This row is NOT locked by T1 — it didn\'t exist when T1 read.', kind: 'info' },
+      { at: 2400, tag: '⚠️ PHANTOM', msg: 'T1 re-runs the query and now sees 6 rows. A PHANTOM appeared out of nowhere. Same query, different row count.', kind: 'error' },
+      { at: 3200, tag: 'FIX: SERIALIZABLE', msg: 'At SERIALIZABLE, T1 would take a RANGE LOCK on the status=active predicate. T2\'s insert would wait. No phantoms.', kind: 'ok' }
+    ]
+  },
+  'deadlock': {
+    title: 'Deadlock',
+    desc: 'T1 locks A, waits for B. T2 locks B, waits for A. Neither can proceed. Circular wait.',
+    txns: 2,
+    schedule: [
+      { at: 200,  fn: (txn) => txn.name === 'T1' ? opWait(txn, 'A', 100) : null },
+      { at: 200,  fn: (txn) => txn.name === 'T2' ? opWait(txn, 'B', 100) : null },
+      { at: 500,  fn: (txn) => txn.name === 'T1' ? opWrite(txn, 'A', 'X-LOCK A') : null },
+      { at: 800,  fn: (txn) => txn.name === 'T2' ? opWrite(txn, 'B', 'X-LOCK B') : null },
+      { at: 1400, fn: (txn) => txn.name === 'T1' ? opWrite(txn, 'B', 'WAIT FOR B') : null },
+      { at: 1400, fn: (txn) => txn.name === 'T2' ? opWrite(txn, 'A', 'WAIT FOR A') : null },
+      { at: 4000, fn: (txn) => txn.name === 'T1' ? opAbort(txn) : null },  // Deadlock victim
+      { at: 4400, fn: (txn) => txn.name === 'T2' ? opCommit(txn) : null }
+    ],
+    teaching: [
+      { at: 100, tag: 'SCENARIO', msg: 'Running DEADLOCK scenario. T1 and T2 each grab one lock, then reach for the other — classic circular wait.', kind: 'warn' },
+      { at: 600, tag: 'X-LOCK A', msg: 'T1 holds exclusive lock on row A. It plans to also update B.', kind: 'purple' },
+      { at: 900, tag: 'X-LOCK B', msg: 'T2 holds exclusive lock on row B. It plans to also update A.', kind: 'purple' },
+      { at: 1500, tag: '⚠️ CYCLE', msg: 'T1 requests B (held by T2). T2 requests A (held by T1). A cycle forms in the wait-for graph. Neither can proceed. This is a DEADLOCK.', kind: 'error' },
+      { at: 3200, tag: 'DEADLOCK DETECTOR', msg: 'The database\'s deadlock detector runs a cycle check on the wait-for graph. It finds T1 → B → T2 → A → T1. It picks T1 as the victim (usually the one with less work done).', kind: 'warn' },
+      { at: 4200, tag: 'T1 ABORTED', msg: 'T1 is rolled back, releasing its X-lock on A. T2 can now acquire A and commit. T1 must be retried by the application.', kind: 'error' }
+    ]
+  },
+  'write-skew': {
+    title: 'Write Skew',
+    desc: 'T1 and T2 each check a condition, then write. Individually correct, together they violate an invariant.',
+    txns: 2,
+    schedule: [
+      { at: 200,  fn: (txn) => opWait(txn, 'A', 100) },
+      { at: 400,  fn: (txn) => opRead(txn, txn.name === 'T1' ? 'A' : 'B', 'CHECK') },
+      { at: 900,  fn: (txn) => opRead(txn, txn.name === 'T1' ? 'B' : 'A', 'CHECK') },
+      { at: 1500, fn: (txn) => opWrite(txn, txn.name === 'T1' ? 'A' : 'B', 'UPDATE') },
+      { at: 2400, fn: (txn) => opCommit(txn) }
+    ],
+    teaching: [
+      { at: 100, tag: 'SCENARIO', msg: 'Running WRITE SKEW scenario. Classic example: two doctors on-call. Each checks if the other is on-call, then goes off-call. Both see each other online — both go offline. Zero on-call!', kind: 'warn' },
+      { at: 500, tag: 'S-LOCKS', msg: 'Both T1 and T2 hold SHARED locks on A and B during the check phase. They can read concurrently.', kind: 'purple' },
+      { at: 1600, tag: 'X-LOCKS', msg: 'T1 upgrades to X-lock on A. T2 upgrades to X-lock on B. Different rows — no conflict!', kind: 'info' },
+      { at: 2500, tag: '⚠️ INVARIANT VIOLATED', msg: 'Both commit. Both are now off-call. The invariant "at least one doctor on-call" is broken. Write skew — a snapshot isolation hazard.', kind: 'error' },
+      { at: 3200, tag: 'FIX: SERIALIZABLE', msg: 'Serializable isolation would detect that T1 and T2 read each other\'s rows before writing. It would abort one of them. No skew.', kind: 'ok' }
+    ]
+  }
+};
+
+/* ============================================================
+   OP HELPERS (create visual op blocks)
+   ============================================================ */
+function opWait(txn, resourceId, durationMs) {
+  // Just a placeholder for timeline spacing
+  return;
+}
+
+function opRead(txn, resourceId, label) {
+  const startPct = (STATE.elapsedMs / 10000) * 100;
+  const widthPct = 6;
+  const op = {
+    id: `op-${Date.now()}-${Math.random()}`,
+    startPct,
+    widthPct,
+    label: `🔒 ${label} ${resourceId}`,
+    cls: 'granted-read',
+    visible: true
+  };
+
+  // Try to acquire S-lock
+  const res = acquireLock(txn, resourceId, 'S');
+  if (res.granted) {
+    op.cls = 'granted-read';
+    txn.ops.push(op);
+    teach('S-LOCK',
+      `${txn.name} acquired SHARED lock on Row ${resourceId}. Multiple readers can hold S-locks simultaneously — they don't block each other.`,
+      'info', false
+    );
+  } else {
+    op.cls = 'waiting';
+    op.label = `⏳ WAIT ${resourceId}`;
+    txn.status = 'waiting';
+    txn.waitingFor = resourceId;
+    txn.ops.push(op);
+    teach('WAIT',
+      `${txn.name} wants S-lock on Row ${resourceId} but it is held by ${res.heldBy.txnName} as an X-lock. Writers block readers.`,
+      'warn', false
+    );
+  }
+  renderTrack();
+  renderResources();
+}
+
+function opWrite(txn, resourceId, label) {
+  const startPct = (STATE.elapsedMs / 10000) * 100;
+  const widthPct = 6;
+
+  // Try to acquire X-lock
+  const res = acquireLock(txn, resourceId, 'X');
+  const op = {
+    id: `op-${Date.now()}-${Math.random()}`,
+    startPct,
+    widthPct,
+    label: `✏️ ${label}`,
+    cls: 'granted-write',
+    visible: true
+  };
+
+  if (res.granted) {
+    // Actually change the value
+    STATE.resources[resourceId].value += 10;
+    txn.ops.push(op);
+    teach('X-LOCK',
+      `${txn.name} acquired EXCLUSIVE lock on Row ${resourceId} and performed ${label}. Now the row value = ${STATE.resources[resourceId].value}.`,
+      'info', false
+    );
+  } else {
+    op.cls = 'waiting';
+    op.label = `⏳ WAIT ${resourceId}`;
+    txn.status = 'waiting';
+    txn.waitingFor = resourceId;
+    txn.ops.push(op);
+    teach('WAIT',
+      `${txn.name} wants X-lock on Row ${resourceId} but ${res.heldBy.txnName} holds it. This is where deadlocks form — if ${res.heldBy.txnName} is also waiting on ${txn.name}, we have a cycle.`,
+      'error'
+    );
+  }
+  renderTrack();
+  renderResources();
+}
+
+function opReleaseLocks(txn) {
+  releaseLocks(txn);
+  teach('RELEASE',
+    `${txn.name} released its locks EARLY. This violates STRICT TWO-PHASE LOCKING — locks should be held until commit/abort to prevent cascading aborts and unrepeatable reads.`,
+    'warn', false
+  );
+}
+
+function opCommit(txn) {
+  const startPct = (STATE.elapsedMs / 10000) * 100;
+  const op = {
+    id: `commit-${txn.id}`,
+    startPct,
+    widthPct: 5,
+    label: '✓ COMMIT',
+    cls: 'committed',
+    visible: true
+  };
+  txn.ops.push(op);
+  txn.status = 'committed';
+  releaseLocks(txn);
+  STATE.committed++;
+  teach('COMMIT',
+    `${txn.name} committed. All its locks released. All its changes are durable.`,
+    'ok', false
+  );
+  renderTrack();
+  renderResources();
+}
+
+function opAbort(txn) {
+  const startPct = (STATE.elapsedMs / 10000) * 100;
+  const op = {
+    id: `abort-${txn.id}`,
+    startPct,
+    widthPct: 5,
+    label: '✗ ABORT',
+    cls: 'aborted',
+    visible: true
+  };
+  txn.ops.push(op);
+  txn.status = 'aborted';
+  releaseLocks(txn);
+  STATE.aborted++;
+  teach('ABORT',
+    `${txn.name} aborted. All its changes are rolled back. All its locks released. Other transactions can proceed.`,
+    'error', false
+  );
+  renderTrack();
+  renderResources();
+}
+
+/* ============================================================
+   RUN SCENARIO
+   ============================================================ */
+function runScenario() {
+  resetScenario();
+  const scenario = SCENARIOS[STATE.scenario];
+  if (!scenario) return;
+
+  // Create transactions
+  const n = Math.min(scenario.txns, STATE.txnCount);
+  for (let i = 0; i < n; i++) {
+    STATE.txns.push({
+      id: `T${i + 1}`,
+      name: `T${i + 1}`,
+      color: COLORS[i % COLORS.length],
+      status: 'active',
+      ops: []
+    });
+  }
+  // If more txns requested than scenario defines, clone the schedule
+  for (let i = scenario.txns; i < STATE.txnCount; i++) {
+    STATE.txns.push({
+      id: `T${i + 1}`,
+      name: `T${i + 1}`,
+      color: COLORS[i % COLORS.length],
+      status: 'active',
+      ops: []
+    });
+  }
+
+  STATE.running = true;
+  STATE.elapsedMs = 0;
+  DOM.btnRun.textContent = '⏸ Pause';
+
+  renderTrack();
+  renderResources();
+  renderTimelineHeader();
+
+  // Schedule events
+  STATE.events = [];
+  for (const evt of scenario.schedule) {
+    for (let i = 0; i < STATE.txns.length; i++) {
+      const txn = STATE.txns[i];
+      STATE.events.push({
+        atMs: evt.at,
+        fired: false,
+        fn: () => evt.fn(txn, i)
+      });
+    }
+  }
+
+  // Schedule teaching
+  for (const t of scenario.teaching) {
+    STATE.events.push({
+      atMs: t.at,
+      fired: false,
+      fn: () => teach(t.tag, t.msg, t.kind)
+    });
+  }
+
+  STATE.events.sort((a, b) => a.atMs - b.atMs);
+
+  DOM.anomalyCard.querySelector('.anomaly-title').textContent = scenario.title;
+
+  teach('START', `Running: ${scenario.title}. ${scenario.desc}`, 'purple');
+
+  // Start the loop
+  if (STATE.rafId) cancelAnimationFrame(STATE.rafId);
+  STATE.lastTick = performance.now();
+  loop();
+}
+
+function resetScenario() {
+  STATE.running = false;
+  STATE.elapsedMs = 0;
+  STATE.txns = [];
+  STATE.events = [];
+  STATE.committed = 0;
+  STATE.aborted = 0;
+  STATE.resources.A.lock = null;
+  STATE.resources.B.lock = null;
+  STATE.resources.A.value = 100;
+  STATE.resources.B.value = 100;
+  if (STATE.rafId) cancelAnimationFrame(STATE.rafId);
+  STATE.rafId = null;
+
+  DOM.timelineTrack.querySelectorAll('.txn-row').forEach(el => el.remove());
+  DOM.timelineCursor = document.getElementById('timelineCursor');
+  if (DOM.timelineCursor) DOM.timelineCursor.style.left = '0%';
+  clearAnomalies();
+  renderResources();
+  updateTelemetry();
+}
+
+function loop() {
+  const now = performance.now();
+  const dt = (now - STATE.lastTick) * STATE.speed;
+  STATE.lastTick = now;
+
+  if (STATE.running) {
+    STATE.elapsedMs += dt;
+
+    // Fire scheduled events
+    for (const evt of STATE.events) {
+      if (!evt.fired && STATE.elapsedMs >= evt.atMs) {
+        evt.fired = true;
+        try { evt.fn(); } catch (e) { console.warn(e); }
+      }
+    }
+
+    // Update cursor
+    const pct = clamp((STATE.elapsedMs / 10000) * 100, 0, 100);
+    if (DOM.timelineCursor) DOM.timelineCursor.style.left = pct + '%';
+
+    // Update telemetry
+    updateTelemetry();
+
+    // Finish check
+    if (STATE.elapsedMs > 8000) {
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Again';
+      teach('DONE', `Scenario complete. Committed: ${STATE.committed}, Aborted: ${STATE.aborted}.`, 'ok', false);
+      analyzeAnomalies();
+    }
+  }
+
+  STATE.rafId = requestAnimationFrame(loop);
+}
+
+/* ============================================================
+   ANOMALY ANALYSIS
+   ============================================================ */
+function analyzeAnomalies() {
+  const scenario = SCENARIOS[STATE.scenario];
+  const title = DOM.anomalyCard.querySelector('.anomaly-title');
+
+  if (STATE.scenario === 'clean') {
+    title.textContent = '✅ No Anomalies';
+    addAnomaly('CLEAN', 'All transactions committed without conflicts. Locks worked as designed.', true);
+  } else if (STATE.scenario === 'lost-update') {
+    title.textContent = '✅ Prevented';
+    addAnomaly('LOST UPDATE', 'Detected the potential race. X-lock serialized the writers.', true);
+  } else if (STATE.scenario === 'dirty-read') {
+    title.textContent = '⚠️ Dirty Read Occurred';
+    addAnomaly('DIRTY READ', 'T2 read uncommitted data from T1. Not allowed under READ COMMITTED.', false);
+  } else if (STATE.scenario === 'unrepeatable') {
+    title.textContent = '⚠️ Unrepeatable Read';
+    addAnomaly('UNREPEATABLE READ', 'T1 saw different values on the same SELECT. Fix: repeatable read.', false);
+  } else if (STATE.scenario === 'phantom') {
+    title.textContent = '⚠️ Phantom Rows';
+    addAnomaly('PHANTOM READ', 'Row count changed between reads. Fix: serializable + range locks.', false);
+  } else if (STATE.scenario === 'deadlock') {
+    title.textContent = '⚠️ Deadlock Resolved';
+    addAnomaly('DEADLOCK', 'Circular wait detected. T1 aborted as victim.', false);
+    addAnomaly('WAIT-FOR GRAPH', 'Cycle: T1 → B → T2 → A → T1', false);
+  } else if (STATE.scenario === 'write-skew') {
+    title.textContent = '⚠️ Invariant Broken';
+    addAnomaly('WRITE SKEW', 'Both transactions wrote, breaking a shared invariant.', false);
+    addAnomaly('SNAPSHOT HAZARD', 'Not caught by snapshot isolation. Needs SERIALIZABLE.', false);
+  }
+}
+
+/* ============================================================
+   TELEMETRY
+   ============================================================ */
+function updateTelemetry() {
+  DOM.mElapsed.textContent = (STATE.elapsedMs / 1000).toFixed(1) + 's';
+  DOM.mActive.textContent = STATE.txns.filter(t => t.status === 'active' || t.status === 'waiting').length;
+  let heldLocks = 0;
+  for (const rid of ['A', 'B']) {
+    if (STATE.resources[rid].lock) heldLocks += STATE.resources[rid].lock.txns ? STATE.resources[rid].lock.txns.size : 1;
+  }
+  DOM.mHeldLocks.textContent = heldLocks;
+  DOM.mWaiting.textContent = STATE.txns.filter(t => t.status === 'waiting').length;
+  DOM.mCommitted.textContent = STATE.committed;
+  DOM.mAborted.textContent = STATE.aborted;
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.scenarioSelect.addEventListener('change', e => {
+  STATE.scenario = e.target.value;
+  if (STATE.running) {
+    resetScenario();
+    DOM.btnRun.textContent = '▶ Run Scenario';
+  }
+});
+
+DOM.btnRun.addEventListener('click', () => {
+  if (STATE.running) {
+    STATE.running = false;
+    DOM.btnRun.textContent = '▶ Resume';
+  } else {
+    if (STATE.txns.length === 0) {
+      runScenario();
+    } else {
+      // Resume
+      STATE.running = true;
+      STATE.lastTick = performance.now();
+      DOM.btnRun.textContent = '⏸ Pause';
+    }
+  }
+});
+
+DOM.btnStep.addEventListener('click', () => {
+  // Advance 200ms
+  if (STATE.txns.length === 0) runScenario();
+  STATE.running = true;
+  STATE.elapsedMs += 200;
+  for (const evt of STATE.events) {
+    if (!evt.fired && STATE.elapsedMs >= evt.atMs) {
+      evt.fired = true;
+      try { evt.fn(); } catch (e) {}
+    }
+  }
+  const pct = clamp((STATE.elapsedMs / 10000) * 100, 0, 100);
+  if (DOM.timelineCursor) DOM.timelineCursor.style.left = pct + '%';
+  updateTelemetry();
+  STATE.running = false;
+});
+
+DOM.btnReset.addEventListener('click', () => {
+  resetScenario();
+  DOM.btnRun.textContent = '▶ Run Scenario';
+  teach('RESET', 'Scenario reset. Ready to run.', 'info', false);
+});
+
+DOM.btnSpeed.addEventListener('click', () => {
+  STATE.speed = STATE.speed === 1.0 ? 2.5 : 1.0;
+  DOM.speedRange.value = STATE.speed;
+  DOM.speedVal.textContent = STATE.speed.toFixed(1) + '×';
+  showToast(`Speed: ${STATE.speed.toFixed(1)}×`);
+});
+
+DOM.txnCountRange.addEventListener('input', e => {
+  STATE.txnCount = parseInt(e.target.value);
+  DOM.txnCountVal.textContent = STATE.txnCount;
+});
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseFloat(e.target.value);
+  DOM.speedVal.textContent = STATE.speed.toFixed(1) + '×';
+});
+DOM.timeoutRange.addEventListener('input', e => {
+  STATE.timeout = parseInt(e.target.value);
+  DOM.timeoutVal.textContent = STATE.timeout + 's';
+});
+
+document.querySelectorAll('input[name="iso"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.isolation = e.target.value;
+    const desc = {
+      'read-uncommitted': 'Dirty reads allowed. Fastest, least safe. Almost never used.',
+      'read-committed': 'No dirty reads. Default in PostgreSQL, Oracle, SQL Server.',
+      'repeatable-read': 'No unrepeatable reads. Default in MySQL InnoDB.',
+      'serializable': 'Full isolation. Uses range locks or SSI. Slowest but safest.'
+    };
+    teach('ISOLATION', `Isolation level = ${e.target.value.toUpperCase()}. ${desc[e.target.value]}`, 'purple');
+  });
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+renderTimelineHeader();
+renderResources();
+updateTelemetry();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Concurrency Control and Locking. In a database, thousands of transactions run at the same time. ` +
+    `Without control, they corrupt each other — lost updates, dirty reads, phantoms, deadlocks. ` +
+    `The mechanisms that prevent this: LOCKS (S and X), ISOLATION LEVELS, and STRICT TWO-PHASE LOCKING. ` +
+    `Pick a scenario from the dropdown and press Run to see it play out in real time.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('THEORY',
+      `Lock Compatibility Matrix: S-lock + S-lock = compatible (many readers). S-lock + X-lock = conflict. ` +
+      `X-lock + X-lock = conflict. Every anomaly in the dropdown traces back to violating one of these rules, ` +
+      `or releasing locks too early. This is the entire foundation of database concurrency.`,
+      'info'
+    );
+  }, 4500);
+
+  showToast('👋 Pick a scenario and press Run', 4000);
+}, 800);
+</script>
+</body>
+</html>

@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B+ Tree Index Node Splitting — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #22c55e, #10b981, #14b8a6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(34,197,94,0.15);
+    color: #86efac;
+    border-color: #22c55e;
+  }
+  .teaching-toggle:hover { background: rgba(34,197,94,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #86efac;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #22c55e; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #22c55e; color: #032210; border-color: #22c55e; }
+  .btn.primary:hover { background: #16a34a; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #86efac; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #22c55e; margin-bottom: 9px; }
+  input[type=number] {
+    width: 100%;
+    padding: 7px 9px;
+    background: #02040a;
+    border: 1px solid #334155;
+    color: #86efac;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  input[type=number]:focus { outline: none; border-color: #22c55e; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(34,197,94,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* TREE CANVAS (top) */
+  .tree-pane {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #22c55e;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(34,197,94,0.15);
+    min-height: 0;
+    overflow: hidden;
+  }
+  .tree-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #86efac;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tree-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .tree-canvas {
+    flex: 1;
+    position: relative;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .tree-edges {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .tree-edges path {
+    stroke: #475569;
+    stroke-width: 1.2;
+    fill: none;
+    transition: stroke 0.3s, stroke-width 0.3s;
+  }
+  .tree-edges path.active {
+    stroke: #22c55e;
+    stroke-width: 2;
+    filter: drop-shadow(0 0 6px rgba(34,197,94,0.9));
+  }
+  .tree-edges path.overflow-path {
+    stroke: #ef4444;
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 8px rgba(239,68,68,0.9));
+    animation: edgeFlash 0.5s ease-in-out infinite alternate;
+  }
+  @keyframes edgeFlash {
+    0% { opacity: 0.5; }
+    100% { opacity: 1; }
+  }
+
+  /* B+ tree node */
+  .btree-node {
+    position: absolute;
+    background: linear-gradient(145deg, #0a1f14, #061209);
+    border: 2px solid #334155;
+    border-radius: 8px;
+    padding: 5px;
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    z-index: 2;
+    font-family: monospace;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 60px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  .btree-node.leaf {
+    border-color: #22c55e;
+  }
+  .btree-node.internal {
+    border-color: #a855f7;
+  }
+  .btree-node.root {
+    border-color: #eab308;
+    box-shadow: 0 0 20px rgba(234,179,8,0.5);
+  }
+  .btree-node.overfull {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 25px rgba(239,68,68,0.8);
+    animation: overfullPulse 0.5s ease-in-out infinite alternate;
+  }
+  @keyframes overfullPulse {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.03); }
+  }
+  .btree-node.splitting {
+    animation: splitShake 0.6s ease;
+  }
+  @keyframes splitShake {
+    0%, 100% { transform: scale(1); }
+    25% { transform: scale(1.08) rotate(-2deg); }
+    75% { transform: scale(1.08) rotate(2deg); }
+  }
+  .btree-node.newly-split {
+    animation: splitIn 0.6s cubic-bezier(.68,-0.55,.27,1.55);
+  }
+  @keyframes splitIn {
+    0% { transform: scale(0.5) translateY(-20px); opacity: 0; }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
+  }
+  .btree-node.search-path {
+    border-color: #facc15;
+    box-shadow: 0 0 20px rgba(250,204,21,0.7);
+  }
+  .btree-node.highlighted {
+    box-shadow: 0 0 30px rgba(34,197,94,1);
+    border-color: #22c55e !important;
+    transform: scale(1.05);
+  }
+
+  .node-row {
+    display: flex;
+    gap: 2px;
+    justify-content: center;
+  }
+  .node-key {
+    min-width: 22px;
+    padding: 3px 5px;
+    text-align: center;
+    background: #02040a;
+    border: 1px solid #334155;
+    border-radius: 3px;
+    font-size: 0.6rem;
+    font-weight: 800;
+    color: #86efac;
+    letter-spacing: 0.3px;
+    transition: all 0.3s;
+  }
+  .btree-node.internal .node-key {
+    color: #d8b4fe;
+    background: rgba(168,85,247,0.1);
+  }
+  .node-key.mid-key {
+    color: #fbbf24;
+    background: rgba(250,204,21,0.15);
+    border-color: #eab308;
+    box-shadow: 0 0 8px rgba(250,204,21,0.6);
+  }
+  .node-key.highlight {
+    background: rgba(16,185,129,0.3);
+    border-color: #10b981;
+    color: #a7f3d0;
+  }
+
+  .btree-node .node-label {
+    font-size: 0.45rem;
+    color: #475569;
+    letter-spacing: 0.5px;
+    text-align: center;
+  }
+  .btree-node.leaf .node-label { color: #4ade80; }
+  .btree-node.internal .node-label { color: #c084fc; }
+  .btree-node.root .node-label { color: #fbbf24; }
+
+  /* INFO PANELS (bottom) */
+  .bottom-panels {
+    display: flex;
+    gap: 10px;
+    height: 190px;
+    flex-shrink: 0;
+  }
+  .info-panel {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #334155;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .info-panel.lookup { border-color: #22d3ee; }
+  .info-panel.insert { border-color: #a855f7; }
+  .info-panel.stats  { border-color: #10b981; }
+
+  .info-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .info-panel.lookup .info-title { color: #67e8f9; }
+  .info-panel.insert .info-title { color: #d8b4fe; }
+  .info-panel.stats .info-title { color: #6ee7b7; }
+
+  .info-body {
+    flex: 1;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.58rem;
+    line-height: 1.5;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 5px;
+    padding: 6px;
+  }
+
+  .info-line {
+    padding: 2px 4px;
+    border-left: 2px solid transparent;
+    margin-bottom: 1px;
+    animation: lineIn 0.3s ease;
+  }
+  @keyframes lineIn {
+    from { transform: translateX(-6px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .info-line.step1 { border-left-color: #22d3ee; color: #a5f3fc; }
+  .info-line.step2 { border-left-color: #facc15; color: #fef08a; }
+  .info-line.step3 { border-left-color: #10b981; color: #a7f3d0; }
+  .info-line.warn  { border-left-color: #f59e0b; color: #fcd34d; }
+  .info-line.err   { border-left-color: #ef4444; color: #fca5a5; }
+  .info-line.ok    { border-left-color: #22c55e; color: #86efac; font-weight: 700; }
+  .info-line.dim   { color: #64748b; }
+
+  /* Stats grid */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin-top: 4px;
+  }
+  .stat-cell {
+    background: rgba(30,41,59,0.4);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-family: monospace;
+  }
+  .stat-cell .lbl {
+    color: #64748b;
+    font-size: 0.48rem;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 1px;
+  }
+  .stat-cell .val {
+    color: #86efac;
+    font-size: 0.78rem;
+    font-weight: 900;
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(34,197,94,0.06);
+    border: 1px solid rgba(34,197,94,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #86efac;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #67e8f9; text-shadow: 0 0 10px rgba(6,182,212,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 260px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #22c55e;
+    background: rgba(34,197,94,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #22d3ee; background: rgba(34,211,238,0.05); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(34,211,238,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Spec card */
+  .spec-card {
+    background: linear-gradient(145deg, rgba(34,197,94,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(34,197,94,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.58rem;
+  }
+  .spec-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #86efac;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .spec-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .spec-row:last-child { border-bottom: none; }
+  .spec-row .lbl { color: #94a3b8; }
+  .spec-row .val { color: #86efac; font-weight: 800; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1.5px solid;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #22c55e;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(34,197,94,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Status banner */
+  .status-banner {
+    position: absolute;
+    bottom: 220px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #22c55e;
+    border-radius: 30px;
+    padding: 7px 22px;
+    font-family: monospace;
+    font-size: 0.68rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #86efac;
+    z-index: 12;
+    box-shadow: 0 0 25px rgba(34,197,94,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.warn { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.5); }
+  .status-banner.split { border-color: #a855f7; color: #d8b4fe; box-shadow: 0 0 25px rgba(168,85,247,0.5); }
+  .status-banner.insert { border-color: #eab308; color: #fde047; box-shadow: 0 0 25px rgba(234,179,8,0.5); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>B+ TREE INDEX NODE SPLITTING</h1>
+    <span class="sub">BALANCED · SORTED · LOGARITHMIC</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Operations</h3>
+      <input type="number" id="keyInput" placeholder="Enter key (e.g. 42)" value="42" min="1" max="999">
+      <button class="btn primary" id="btnInsert">➕ Insert Key</button>
+      <button class="btn" id="btnLookup">🔍 Lookup Key</button>
+      <button class="btn" id="btnDelete">➖ Delete Key</button>
+    </div>
+
+    <div class="panel">
+      <h3>Bulk Load</h3>
+      <button class="btn success" id="btnBulkAsc">📈 Insert 1..10</button>
+      <button class="btn success" id="btnBulkRandom">🎲 Insert 10 Random</button>
+      <button class="btn warn" id="btnFillAll">⚡ Fill to Split</button>
+      <button class="btn danger" id="btnClear">🗑️ Clear Tree</button>
+    </div>
+
+    <div class="panel">
+      <h3>Tree Parameters</h3>
+      <div class="slider-row"><span>Max keys per node</span><span class="value" id="orderVal">4</span></div>
+      <input type="range" id="orderRange" min="3" max="8" value="4">
+      <div style="font-size:0.55rem; color:#64748b; font-family:monospace; margin-top:-4px;">
+        Order = max keys before split. Real DBs use 100-400.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#eab308; background:rgba(234,179,8,0.1);"></div>Root node</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#a855f7; background:rgba(168,85,247,0.1);"></div>Internal node (routing)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#22c55e; background:rgba(34,197,94,0.1);"></div>Leaf node (data pointers)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#ef4444; background:rgba(239,68,68,0.1);"></div>Overfull (needs split)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#facc15; background:rgba(250,204,21,0.1);"></div>Search path</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">B+ TREE: KEYS IN SORTED NODES · SPLIT ON OVERFLOW · GROW FROM LEAVES UP</div>
+
+      <div class="main-split">
+        <!-- TREE -->
+        <div class="tree-pane">
+          <div class="tree-title">
+            <span>🌳 B+ TREE STRUCTURE</span>
+            <span class="hint" id="treeHint">— height 1 —</span>
+          </div>
+          <div class="tree-canvas" id="treeCanvas">
+            <svg class="tree-edges" id="treeEdges"></svg>
+          </div>
+        </div>
+
+        <!-- BOTTOM INFO PANELS -->
+        <div class="bottom-panels">
+          <div class="info-panel lookup">
+            <div class="info-title">
+              <span>🔍 LAST OPERATION</span>
+              <span class="hint" style="font-size:0.5rem; color:#64748b;" id="opHint">—</span>
+            </div>
+            <div class="info-body" id="opLog">
+              <div class="info-line dim">Ready. Enter a key and press an operation.</div>
+            </div>
+          </div>
+
+          <div class="info-panel stats">
+            <div class="info-title">
+              <span>📊 TREE STATISTICS</span>
+              <span class="hint" style="font-size:0.5rem; color:#64748b;">live</span>
+            </div>
+            <div class="info-body">
+              <div class="stats-grid">
+                <div class="stat-cell"><span class="lbl">NODES</span><span class="val" id="statNodes">1</span></div>
+                <div class="stat-cell"><span class="lbl">KEYS</span><span class="val" id="statKeys">0</span></div>
+                <div class="stat-cell"><span class="lbl">HEIGHT</span><span class="val" id="statHeight">1</span></div>
+                <div class="stat-cell"><span class="lbl">SPLITS</span><span class="val" id="statSplits">0</span></div>
+                <div class="stat-cell"><span class="lbl">LOOKUPS</span><span class="val" id="statLookups">0</span></div>
+                <div class="stat-cell"><span class="lbl">AVG DEPTH</span><span class="val" id="statAvgDepth">—</span></div>
+              </div>
+              <div style="margin-top:6px; padding:4px 6px; background:rgba(34,197,94,0.08); border-radius:4px; font-size:0.55rem; color:#86efac;">
+                ✔ Balanced: all leaves at depth <span id="statLeafDepth">1</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-panel insert">
+            <div class="info-title">
+              <span>📖 TEACHING NOTES</span>
+              <span class="hint" style="font-size:0.5rem; color:#64748b;" id="teachHint">narrative</span>
+            </div>
+            <div class="info-body" id="teachNotes">
+              <div class="info-line step1">B+ tree rules:</div>
+              <div class="info-line dim">1. All leaves at same depth (balanced).</div>
+              <div class="info-line dim">2. Sorted keys within each node.</div>
+              <div class="info-line dim">3. Leaves hold data pointers (or rows).</div>
+              <div class="info-line dim">4. Internal nodes hold only routing keys.</div>
+              <div class="info-line dim">5. When a node overflows → SPLIT.</div>
+              <div class="info-line dim">6. Splits propagate upward; root split grows height.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="status-banner" id="statusBanner"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Height</div>
+        <div class="metric-value info" id="mHeight">1</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Nodes</div>
+        <div class="metric-value" id="mNodes">1</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Keys</div>
+        <div class="metric-value" id="mKeys">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Splits</div>
+        <div class="metric-value warn" id="mSplits">0</div>
+      </div>
+    </div>
+
+    <div class="spec-card">
+      <div class="spec-title">🔬 B+ Tree Properties</div>
+      <div class="spec-row"><span class="lbl">Search</span><span class="val">O(log N)</span></div>
+      <div class="spec-row"><span class="lbl">Insert</span><span class="val">O(log N)</span></div>
+      <div class="spec-row"><span class="lbl">Delete</span><span class="val">O(log N)</span></div>
+      <div class="spec-row"><span class="lbl">Range scan</span><span class="val">O(log N + K)</span></div>
+      <div class="spec-row"><span class="lbl">All leaves same depth</span><span class="val">Yes ✔</span></div>
+      <div class="spec-row"><span class="lbl">Typical fanout (DB)</span><span class="val">100–400</span></div>
+      <div class="spec-row"><span class="lbl">Billion rows, height</span><span class="val">3–4</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  order: 4,               // max keys per node; split at order+1
+  keys: [],               // all inserted keys
+  // Tree structure: root is a node reference
+  root: null,
+  nextNodeId: 1,
+  splits: 0,
+  lookups: 0,
+  height: 1,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  // Currently highlighted keys/paths
+  searchPath: [],
+  highlightedKeys: [],
+  overfullNode: null
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  treeCanvas: document.getElementById('treeCanvas'),
+  treeEdges: document.getElementById('treeEdges'),
+  treeHint: document.getElementById('treeHint'),
+  opLog: document.getElementById('opLog'),
+  opHint: document.getElementById('opHint'),
+  teachNotes: document.getElementById('teachNotes'),
+  statusBanner: document.getElementById('statusBanner'),
+  keyInput: document.getElementById('keyInput'),
+  btnInsert: document.getElementById('btnInsert'),
+  btnLookup: document.getElementById('btnLookup'),
+  btnDelete: document.getElementById('btnDelete'),
+  btnBulkAsc: document.getElementById('btnBulkAsc'),
+  btnBulkRandom: document.getElementById('btnBulkRandom'),
+  btnFillAll: document.getElementById('btnFillAll'),
+  btnClear: document.getElementById('btnClear'),
+  orderRange: document.getElementById('orderRange'),
+  orderVal: document.getElementById('orderVal'),
+  statNodes: document.getElementById('statNodes'),
+  statKeys: document.getElementById('statKeys'),
+  statHeight: document.getElementById('statHeight'),
+  statSplits: document.getElementById('statSplits'),
+  statLookups: document.getElementById('statLookups'),
+  statAvgDepth: document.getElementById('statAvgDepth'),
+  statLeafDepth: document.getElementById('statLeafDepth'),
+  mHeight: document.getElementById('mHeight'),
+  mNodes: document.getElementById('mNodes'),
+  mKeys: document.getElementById('mKeys'),
+  mSplits: document.getElementById('mSplits'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function clearStatusBanner() {
+  DOM.statusBanner.classList.remove('show');
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(clearStatusBanner, 1800);
+}
+
+function logOp(text, kind = 'dim') {
+  const el = document.createElement('div');
+  el.className = `info-line ${kind}`;
+  el.textContent = text;
+  DOM.opLog.appendChild(el);
+  while (DOM.opLog.children.length > 30) DOM.opLog.firstChild.remove();
+  DOM.opLog.scrollTop = DOM.opLog.scrollHeight;
+}
+
+function clearOpLog() {
+  DOM.opLog.innerHTML = '';
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining B plus tree index node splitting.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   B+ TREE DATA STRUCTURE
+   Each node:
+     { id, keys: [], children: [] (internal only), isLeaf: bool }
+   ============================================================ */
+function createNode(isLeaf) {
+  return {
+    id: STATE.nextNodeId++,
+    keys: [],
+    children: [],       // node references (internal only)
+    isLeaf: !!isLeaf,
+    parent: null
+  };
+}
+
+function initTree() {
+  STATE.nextNodeId = 1;
+  STATE.splits = 0;
+  STATE.lookups = 0;
+  STATE.keys = [];
+  STATE.root = createNode(true);
+  STATE.height = 1;
+}
+
+/* ============================================================
+   SEARCH
+   Find leaf node where key should be inserted/searched
+   Returns: { node, path: [nodes from root to leaf], idx: index within leaf }
+   ============================================================ */
+function search(key) {
+  const path = [];
+  let node = STATE.root;
+  path.push(node);
+
+  while (!node.isLeaf) {
+    // Find the child to descend into
+    let i = 0;
+    while (i < node.keys.length && key >= node.keys[i]) i++;
+    // In B+ tree with separator keys, keys[i-1] <= key < keys[i]
+    // Simple version: keys[0..N-1] are separators; children[i] is subtree for keys < keys[i], last child for keys >= all keys.
+    // We use: children[i] holds keys < keys[i+1]; keys[i] is the smallest key in children[i+1] (or a separator).
+    // For simplicity in this demo, internal nodes route using: children[i] for keys < keys[i], children[last] for keys >= all.
+    // We'll interpret separator keys as: keys[i] is the max key in children[i] (a "high key").
+    // So to find the right child: find the first i such that key <= keys[i] → go to children[i]
+    i = 0;
+    while (i < node.keys.length && key > node.keys[i]) i++;
+    node = node.children[i];
+    path.push(node);
+  }
+
+  // Leaf: find index
+  let idx = 0;
+  while (idx < node.keys.length && node.keys[idx] < key) idx++;
+
+  return { node, path, idx };
+}
+
+/* ============================================================
+   INSERT
+   ============================================================ */
+function insert(key) {
+  clearOpLog();
+  showStatus(`➕ INSERT ${key}`, 'insert');
+
+  // Duplicate check
+  if (STATE.keys.includes(key)) {
+    logOp(`Key ${key} already exists — skipping`, 'warn');
+    showToast(`⚠ Key ${key} already exists`);
+    return;
+  }
+
+  STATE.keys.push(key);
+
+  const { node, path, idx } = search(key);
+
+  logOp(`Search path: ${path.map(n => n.isLeaf ? '🗲 leaf' : '◉ internal').join(' → ')}`, 'step1');
+  logOp(`Descended ${path.length - 1} levels to find target leaf`, 'step1');
+
+  // Highlight the search path
+  STATE.searchPath = path.map(n => n.id);
+  renderTree();
+  setTimeout(() => { STATE.searchPath = []; renderTree(); }, 1400);
+
+  // Insert into leaf at the right position
+  node.keys.splice(idx, 0, key);
+  logOp(`Inserted key ${key} at position ${idx} in leaf`, 'step3');
+
+  teach('INSERT',
+    `Inserted key ${key}. Walked the tree from root down to the leaf that should contain it (${path.length} node${path.length === 1 ? '' : 's'} visited), then inserted in sorted order. If the leaf was full, it would split.`,
+    'ok'
+  );
+
+  // Handle overflow if any
+  handleOverflow(node);
+
+  // Re-render
+  renderTree();
+  updateStats();
+}
+
+function handleOverflow(node) {
+  // If node keys length > order, split
+  while (node && node.keys.length > STATE.order) {
+    logOp(`Node overfull (${node.keys.length} > ${STATE.order}) — SPLITTING`, 'warn');
+    showStatus(`⚡ SPLIT — node has ${node.keys.length} keys`, 'warn');
+    teach('SPLIT',
+      `Node overflowed with ${node.keys.length} keys. The middle key (${node.keys[Math.floor(node.keys.length / 2)]}) becomes the split point. Left half stays, right half becomes a new node, and the middle key is PUSHED UP to the parent.`,
+      'purple'
+    );
+
+    STATE.splits++;
+
+    const mid = Math.floor(node.keys.length / 2);
+
+    if (node.isLeaf) {
+      // Leaf split: split into two leaves; promote a COPY of the middle key
+      const midKey = node.keys[mid];
+
+      const rightNode = createNode(true);
+      rightNode.keys = node.keys.slice(mid);
+      node.keys = node.keys.slice(0, mid);
+
+      // Push midKey up to parent (COPY, stays in right leaf too)
+      const promotedKey = midKey;
+      const newNodeForParent = rightNode;
+
+      if (!node.parent) {
+        // Node is root — create new root
+        const newRoot = createNode(false);
+        newRoot.keys = [promotedKey];
+        newRoot.children = [node, rightNode];
+        node.parent = newRoot;
+        rightNode.parent = newRoot;
+        STATE.root = newRoot;
+        STATE.height++;
+        logOp(`Root split: new root created with key ${promotedKey}`, 'err');
+        teach('HEIGHT GROWTH',
+          `The root was the node that split. A new root is created ABOVE it with the promoted middle key (${promotedKey}) and the two halves as its children. The tree height grew from ${STATE.height - 1} to ${STATE.height}.`,
+          'purple'
+        );
+        return;
+      } else {
+        // Attach to existing parent
+        const parent = node.parent;
+        const nodeIdxInParent = parent.children.indexOf(node);
+        // Insert promotedKey into parent at correct position
+        let pi = 0;
+        while (pi < parent.keys.length && parent.keys[pi] < promotedKey) pi++;
+        parent.keys.splice(pi, 0, promotedKey);
+        parent.children.splice(pi + 1, 0, rightNode);
+        rightNode.parent = parent;
+        logOp(`Promoted key ${promotedKey} to parent internal node`, 'step3');
+        // Recurse: parent might also overflow
+        node = parent;
+        continue;
+      }
+    } else {
+      // Internal split: push middle key UP (does not stay in either child)
+      const promotedKey = node.keys[mid];
+
+      const rightNode = createNode(false);
+      rightNode.keys = node.keys.slice(mid + 1);
+      rightNode.children = node.children.slice(mid + 1);
+      for (const c of rightNode.children) c.parent = rightNode;
+
+      node.keys = node.keys.slice(0, mid);
+      node.children = node.children.slice(0, mid + 1);
+
+      if (!node.parent) {
+        const newRoot = createNode(false);
+        newRoot.keys = [promotedKey];
+        newRoot.children = [node, rightNode];
+        node.parent = newRoot;
+        rightNode.parent = newRoot;
+        STATE.root = newRoot;
+        STATE.height++;
+        logOp(`Root split (internal): new root with key ${promotedKey}`, 'err');
+        teach('HEIGHT GROWTH',
+          `Internal root split. New root created with promoted key ${promotedKey}. Height grew to ${STATE.height}.`,
+          'purple'
+        );
+        return;
+      } else {
+        const parent = node.parent;
+        const nodeIdxInParent = parent.children.indexOf(node);
+        let pi = 0;
+        while (pi < parent.keys.length && parent.keys[pi] < promotedKey) pi++;
+        parent.keys.splice(pi, 0, promotedKey);
+        parent.children.splice(pi + 1, 0, rightNode);
+        rightNode.parent = parent;
+        logOp(`Promoted internal key ${promotedKey} up to parent`, 'step3');
+        node = parent;
+        continue;
+      }
+    }
+  }
+}
+
+/* ============================================================
+   LOOKUP
+   ============================================================ */
+function lookup(key) {
+  clearOpLog();
+  showStatus(`🔍 LOOKUP ${key}`, '');
+  STATE.lookups++;
+
+  const { node, path, idx } = search(key);
+  const found = node.keys[idx] === key;
+
+  logOp(`Searching for key ${key}...`, 'step1');
+  logOp(`Path: root → ${path.length - 1} internal node${path.length - 1 === 1 ? '' : 's'} → leaf`, 'step1');
+  logOp(`Compared ${path.length} nodes (O(log N) = ${Math.log2(STATE.keys.length || 1).toFixed(1)})`, 'step2');
+
+  if (found) {
+    logOp(`✔ FOUND at leaf position ${idx}`, 'ok');
+    teach('LOOKUP HIT',
+      `Found key ${key}. Only ${path.length} nodes visited — that's logarithmic. For a billion keys with fanout 100, this would be 5 node accesses (height 5).`,
+      'ok'
+    );
+  } else {
+    logOp(`✘ NOT FOUND (would insert at position ${idx})`, 'err');
+    teach('LOOKUP MISS',
+      `Key ${key} not found. The search still walks the tree in O(log N) — it just terminates at the leaf and confirms the key isn't there.`,
+      'warn'
+    );
+  }
+
+  // Highlight search path
+  STATE.searchPath = path.map(n => n.id);
+  renderTree();
+  setTimeout(() => { STATE.searchPath = []; renderTree(); }, 1800);
+
+  updateStats();
+}
+
+/* ============================================================
+   DELETE (simplified — remove from leaf, ignore underflow merge)
+   ============================================================ */
+function remove(key) {
+  clearOpLog();
+  showStatus(`➖ DELETE ${key}`, 'warn');
+
+  const { node, path, idx } = search(key);
+  const found = node.keys[idx] === key;
+
+  if (!found) {
+    logOp(`Key ${key} not found — nothing to delete`, 'warn');
+    showToast(`⚠ Key ${key} not found`);
+    return;
+  }
+
+  node.keys.splice(idx, 1);
+  STATE.keys = STATE.keys.filter(k => k !== key);
+  logOp(`Removed key ${key} from leaf`, 'step3');
+
+  teach('DELETE',
+    `Removed key ${key}. In a real B+ tree, if a leaf becomes under-full (fewer than ⌈m/2⌉ keys), we'd trigger a MERGE or REDISTRIBUTE with a sibling. Real DBs often leave under-full nodes alone (lazy) to avoid write amplification.`,
+    'warn'
+  );
+
+  STATE.searchPath = path.map(n => n.id);
+  renderTree();
+  setTimeout(() => { STATE.searchPath = []; renderTree(); }, 1400);
+
+  updateStats();
+}
+
+/* ============================================================
+   LAYOUT & RENDERING
+   ============================================================ */
+function renderTree() {
+  const canvas = DOM.treeCanvas;
+  canvas.querySelectorAll('.btree-node').forEach(el => el.remove());
+
+  if (!STATE.root) return;
+
+  // Compute level (depth from root) for each node
+  const levels = [];
+  const nodeLevels = new Map();
+
+  function assignLevels(node, level) {
+    if (!levels[level]) levels[level] = [];
+    levels[level].push(node);
+    nodeLevels.set(node, level);
+    for (const c of node.children) assignLevels(c, level + 1);
+  }
+  assignLevels(STATE.root, 0);
+
+  // Compute node widths (for accurate positioning)
+  function nodeWidth(n) {
+    return Math.max(60, n.keys.length * 28 + 12);
+  }
+
+  // Assign x positions: recursive subtree layout
+  const positions = new Map();
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+  const maxLevel = levels.length - 1;
+  const rowHeight = (H - 40) / Math.max(1, maxLevel + 1);
+
+  // Simple approach: leaves spread evenly, parents centered
+  const leaves = levels[maxLevel];
+  const leafSpacing = W / (leaves.length + 1);
+  for (let i = 0; i < leaves.length; i++) {
+    positions.set(leaves[i], { x: leafSpacing * (i + 1), y: 20 + maxLevel * rowHeight + rowHeight / 2 });
+  }
+
+  // Internal nodes: centered over their children
+  for (let l = maxLevel - 1; l >= 0; l--) {
+    for (const n of levels[l]) {
+      const childXs = n.children.map(c => positions.get(c).x);
+      const cx = childXs.reduce((a, b) => a + b, 0) / childXs.length;
+      positions.set(n, { x: cx, y: 20 + l * rowHeight + rowHeight / 2 });
+    }
+  }
+
+  // Render edges
+  let edgesHTML = '';
+  for (const node of levels.flat()) {
+    if (!node.children.length) continue;
+    const from = positions.get(node);
+    for (const c of node.children) {
+      const to = positions.get(c);
+      const active = STATE.searchPath.includes(node.id) && STATE.searchPath.includes(c.id);
+      const overflow = node.keys.length > STATE.order ? 'overflow-path' : '';
+      const cls = overflow || (active ? 'active' : '');
+      edgesHTML += `<path class="${cls}" d="M ${from.x} ${from.y + 28} C ${from.x} ${(from.y + to.y) / 2}, ${to.x} ${(from.y + to.y) / 2}, ${to.x} ${to.y - 28}" />`;
+    }
+  }
+  DOM.treeEdges.innerHTML = edgesHTML;
+
+  // Render nodes
+  for (const [node, level] of nodeLevels) {
+    const pos = positions.get(node);
+    const el = document.createElement('div');
+    const classes = ['btree-node'];
+    classes.push(node.isLeaf ? 'leaf' : 'internal');
+    if (node === STATE.root) classes.push('root');
+    if (node.keys.length > STATE.order) classes.push('overfull');
+    if (STATE.searchPath.includes(node.id)) classes.push('search-path');
+    el.className = classes.join(' ');
+    el.dataset.nodeId = node.id;
+
+    const w = nodeWidth(node);
+    el.style.left = (pos.x - w / 2) + 'px';
+    el.style.top = (pos.y - 28) + 'px';
+    el.style.minWidth = w + 'px';
+
+    // Keys
+    const keysHTML = node.keys.map(k => {
+      const isMid = node.keys.length > STATE.order && k === node.keys[Math.floor(node.keys.length / 2)];
+      const cls = isMid ? 'mid-key' : '';
+      return `<div class="node-key ${cls}">${k}</div>`;
+    }).join('');
+
+    const label = node === STATE.root ? 'root' : node.isLeaf ? 'leaf' : 'internal';
+
+    el.innerHTML = `
+      <div class="node-row">${keysHTML || '<div class="node-key" style="color:#475569;">(empty)</div>'}</div>
+      <div class="node-label">${label} · ${node.keys.length}/${STATE.order}</div>
+    `;
+
+    canvas.appendChild(el);
+  }
+
+  // Update hint
+  DOM.treeHint.textContent = `— height ${STATE.height} · ${STATE.root ? countNodes(STATE.root) : 0} nodes —`;
+}
+
+function countNodes(node) {
+  let count = 1;
+  for (const c of node.children) count += countNodes(c);
+  return count;
+}
+
+/* ============================================================
+   STATS
+   ============================================================ */
+function updateStats() {
+  const nodeCount = STATE.root ? countNodes(STATE.root) : 0;
+  DOM.statNodes.textContent = nodeCount;
+  DOM.mNodes.textContent = nodeCount;
+
+  DOM.statKeys.textContent = STATE.keys.length;
+  DOM.mKeys.textContent = STATE.keys.length;
+
+  DOM.statHeight.textContent = STATE.height;
+  DOM.mHeight.textContent = STATE.height;
+
+  DOM.statSplits.textContent = STATE.splits;
+  DOM.mSplits.textContent = STATE.splits;
+
+  DOM.statLookups.textContent = STATE.lookups;
+  DOM.statLeafDepth.textContent = STATE.height;
+
+  // Average depth = average lookup cost = number of nodes visited
+  if (STATE.keys.length === 0) {
+    DOM.statAvgDepth.textContent = '—';
+  } else {
+    const depth = STATE.height;
+    DOM.statAvgDepth.textContent = depth + ' levels';
+  }
+}
+
+/* ============================================================
+   BULK OPERATIONS
+   ============================================================ */
+function bulkInsertAscending() {
+  clearOpLog();
+  logOp(`Bulk inserting keys 1..10 in ASCENDING order`, 'step1');
+  teach('BULK LOAD',
+    `Inserting keys 1 through 10 in ascending order. This is the WORST case for B+ tree splitting — every insert goes to the rightmost leaf, which fills up and splits repeatedly. Real systems use BULK LOADING (sort first, then build bottom-up) to avoid this.`,
+    'warn'
+  );
+  for (let i = 1; i <= 10; i++) {
+    setTimeout(() => insert(i), i * 300);
+  }
+  setTimeout(() => {
+    renderTree();
+    updateStats();
+  }, 3500);
+}
+
+function bulkInsertRandom() {
+  clearOpLog();
+  logOp(`Bulk inserting 10 random keys`, 'step1');
+  const keys = [];
+  while (keys.length < 10) {
+    const k = Math.floor(Math.random() * 99) + 1;
+    if (!keys.includes(k)) keys.push(k);
+  }
+  logOp(`Keys to insert: ${keys.join(', ')}`, 'step2');
+  teach('RANDOM BULK LOAD',
+    `Inserting 10 random keys. Random inserts distribute better across leaves — each leaf fills up gradually, so splits happen later and are spread out. This is the typical OLTP workload.`,
+    'cyan'
+  );
+  for (let i = 0; i < keys.length; i++) {
+    setTimeout(() => insert(keys[i]), i * 300);
+  }
+  setTimeout(() => {
+    renderTree();
+    updateStats();
+  }, 3500);
+}
+
+function fillToSplit() {
+  clearOpLog();
+  logOp(`Filling a single leaf until it splits`, 'step1');
+  const base = 10;
+  teach('FILL TO SPLIT',
+    `Inserting keys around ${base} to fill one leaf. When it hits ${STATE.order + 1} keys, it will SPLIT — the middle key gets promoted and the tree grows.`,
+    'purple'
+  );
+  for (let i = 0; i < STATE.order + 2; i++) {
+    setTimeout(() => insert(base + i), i * 400);
+  }
+  setTimeout(() => {
+    renderTree();
+    updateStats();
+  }, 3500);
+}
+
+function clearTree() {
+  initTree();
+  STATE.keys = [];
+  renderTree();
+  updateStats();
+  clearOpLog();
+  logOp(`Tree cleared. Ready for new operations.`, 'dim');
+  teach('CLEARED', 'Tree reset to a single empty leaf.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnInsert.addEventListener('click', () => {
+  const k = parseInt(DOM.keyInput.value);
+  if (isNaN(k)) { showToast('⚠ Enter a valid number'); return; }
+  insert(k);
+});
+
+DOM.btnLookup.addEventListener('click', () => {
+  const k = parseInt(DOM.keyInput.value);
+  if (isNaN(k)) { showToast('⚠ Enter a valid number'); return; }
+  lookup(k);
+});
+
+DOM.btnDelete.addEventListener('click', () => {
+  const k = parseInt(DOM.keyInput.value);
+  if (isNaN(k)) { showToast('⚠ Enter a valid number'); return; }
+  remove(k);
+});
+
+DOM.btnBulkAsc.addEventListener('click', bulkInsertAscending);
+DOM.btnBulkRandom.addEventListener('click', bulkInsertRandom);
+DOM.btnFillAll.addEventListener('click', fillToSplit);
+DOM.btnClear.addEventListener('click', clearTree);
+
+DOM.orderRange.addEventListener('input', e => {
+  STATE.order = parseInt(e.target.value);
+  DOM.orderVal.textContent = STATE.order;
+  // Rebuild tree with new order — clear for simplicity
+  clearTree();
+  teach('ORDER CHANGED',
+    `Max keys per node set to ${STATE.order}. Higher orders mean fewer levels but larger nodes; lower orders mean more levels but tighter memory. Real databases use orders around 100–400 because a single 8KB page fits that many keys.`,
+    'info', false
+  );
+});
+
+window.addEventListener('resize', () => {
+  renderTree();
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+initTree();
+renderTree();
+updateStats();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to B+ Tree Index Node Splitting. B+ trees are the workhorse index of every relational database. They store keys in sorted order, keep all leaves at the same depth (balanced), and guarantee O(log N) lookups even for billions of rows.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('WHY THEY WIN',
+      `B+ trees beat binary search trees because each node holds MANY keys — 100 to 400 in a real database. A single 8KB page fits ~200 keys, so a billion-row table has height 4 or 5. That means a lookup touches 4-5 disk pages instead of 30+ for a binary tree.`,
+      'ok'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE SPLIT',
+      `When a node fills up, it SPLITS in half. The middle key gets promoted up to the parent. If the parent is also full, it splits too — and this cascades up. If the ROOT splits, a new root is created above it, and the tree grows one level taller. This is how B+ trees stay balanced automatically.`,
+      'purple'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('TRY IT',
+      `Try inserting keys 1 through 10 in ascending order. Watch how each insert goes to the rightmost leaf, filling it up and triggering a split. Then try random keys to see how the splits spread out. The final tree is always balanced — all leaves at the same depth — no matter what order you insert.`,
+      'info'
+    );
+  }, 13500);
+
+  showToast('👋 Try Insert 1..10 to see repeated splits', 4000);
+}, 600);
+</script>
+</body>
+</html>

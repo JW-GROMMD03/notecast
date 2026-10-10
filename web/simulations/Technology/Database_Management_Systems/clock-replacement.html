@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clock Page Replacement — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f97316, #fbbf24, #facc15);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(249,115,22,0.15);
+    color: #fdba74;
+    border-color: #f97316;
+  }
+  .teaching-toggle:hover { background: rgba(249,115,22,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f97316; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f97316; color: #fff; border-color: #f97316; }
+  .btn.primary:hover { background: #ea580c; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fdba74; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f97316; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(249,115,22,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  /* REQUEST STREAM (top) */
+  .stream-pane {
+    background: #070a14;
+    border: 2px solid #f97316;
+    border-radius: 12px;
+    padding: 8px 12px;
+    min-height: 56px;
+    box-shadow: 0 0 25px rgba(249,115,22,0.15);
+  }
+  .stream-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .stream-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .stream-row {
+    display: flex;
+    gap: 5px;
+    overflow-x: auto;
+    padding: 2px 0;
+    align-items: center;
+  }
+  .req-chip {
+    padding: 5px 11px;
+    border-radius: 5px;
+    background: rgba(249,115,22,0.12);
+    border: 1.5px solid rgba(249,115,22,0.35);
+    color: #fed7aa;
+    font-family: monospace;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    flex-shrink: 0;
+    transition: all 0.3s;
+    position: relative;
+  }
+  .req-chip.current {
+    background: rgba(250,204,21,0.3);
+    border-color: #facc15;
+    color: #fef08a;
+    box-shadow: 0 0 20px rgba(250,204,21,0.7);
+    transform: scale(1.15);
+    animation: reqPulse 0.8s ease-in-out infinite;
+  }
+  @keyframes reqPulse {
+    0%, 100% { transform: scale(1.15); }
+    50% { transform: scale(1.22); }
+  }
+  .req-chip.past { opacity: 0.35; }
+  .req-chip.hit { background: rgba(16,185,129,0.2); border-color: #10b981; color: #a7f3d0; }
+  .req-chip.miss { background: rgba(239,68,68,0.2); border-color: #ef4444; color: #fecaca; }
+
+  /* CLOCK RING (center) */
+  .clock-pane {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #fbbf24;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    gap: 14px;
+    overflow: hidden;
+    box-shadow: 0 0 25px rgba(251,191,36,0.15);
+    min-height: 0;
+  }
+
+  .clock-left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+  }
+  .clock-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fde047;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .clock-title .info {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+
+  .clock-canvas-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    min-height: 0;
+  }
+
+  .clock-ring {
+    position: relative;
+    width: min(420px, 90%);
+    aspect-ratio: 1;
+    max-height: 100%;
+  }
+
+  /* Slot positioning computed by JS as absolutely positioned around a circle */
+  .ring-slot {
+    position: absolute;
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #0a1220, #050810);
+    border: 3px solid #475569;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    transform: translate(-50%, -50%);
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    z-index: 2;
+  }
+  .ring-slot.has-page {
+    border-color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.35);
+  }
+  .ring-slot.ref1 {
+    border-color: #3b82f6;
+    background: linear-gradient(145deg, #0a1a30, #050d1a);
+    box-shadow: 0 0 20px rgba(59,130,246,0.5);
+  }
+  .ring-slot.hand {
+    border-color: #f97316;
+    box-shadow: 0 0 35px rgba(249,115,22,0.9);
+    animation: handPulse 0.6s ease;
+    z-index: 5;
+  }
+  @keyframes handPulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.12); }
+  }
+  .ring-slot.cleared {
+    animation: refClear 0.7s ease;
+  }
+  @keyframes refClear {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    40% { transform: translate(-50%, -50%) scale(0.9); filter: brightness(1.5); }
+  }
+  .ring-slot.evicting {
+    animation: evictShake 0.7s ease;
+    border-color: #ef4444 !important;
+  }
+  @keyframes evictShake {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    25% { transform: translate(-50%, -50%) scale(1.08) rotate(-4deg); }
+    75% { transform: translate(-50%, -50%) scale(1.08) rotate(4deg); }
+  }
+  .ring-slot.loading {
+    border-color: #22d3ee;
+    animation: loadIn 0.6s cubic-bezier(.68,-0.55,.27,1.55);
+  }
+  @keyframes loadIn {
+    0% { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  }
+  .ring-slot.empty {
+    background: rgba(15,20,30,0.5);
+    border-style: dashed;
+    border-color: #334155;
+  }
+
+  .ring-page {
+    font-size: 0.85rem;
+    font-weight: 900;
+    color: #86efac;
+    letter-spacing: 1px;
+  }
+  .ring-page.empty {
+    color: #475569;
+    font-size: 0.6rem;
+    font-weight: 600;
+  }
+  .ring-slot.ref1 .ring-page { color: #93c5fd; }
+  .ring-ref-bit {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    font-size: 0.58rem;
+    font-weight: 900;
+    color: #475569;
+    letter-spacing: 0.5px;
+  }
+  .ring-slot.ref1 .ring-ref-bit { color: #60a5fa; }
+  .ring-frame-idx {
+    position: absolute;
+    bottom: 3px;
+    font-size: 0.48rem;
+    color: #475569;
+    font-family: monospace;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+  }
+
+  /* The hand (pointer) */
+  .clock-hand {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2px;
+    height: 50%;
+    background: linear-gradient(180deg, #f97316, transparent);
+    transform-origin: top center;
+    transition: transform 0.5s cubic-bezier(.4,0,.2,1);
+    z-index: 1;
+    pointer-events: none;
+    box-shadow: 0 0 12px rgba(249,115,22,0.8);
+  }
+  .clock-hand::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: -6px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #f97316;
+    box-shadow: 0 0 20px #f97316;
+    animation: tipPulse 1s ease-in-out infinite;
+  }
+  @keyframes tipPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.3); }
+  }
+
+  .clock-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 90px;
+    height: 90px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle, #1a0a04 0%, #050810 70%);
+    border: 2px solid #f97316;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    z-index: 3;
+    box-shadow: 0 0 25px rgba(249,115,22,0.4), inset 0 0 20px rgba(249,115,22,0.2);
+    text-align: center;
+    line-height: 1.1;
+  }
+  .clock-center .lbl {
+    font-size: 0.42rem;
+    color: #64748b;
+    letter-spacing: 1px;
+    font-weight: 800;
+  }
+  .clock-center .val {
+    font-size: 1rem;
+    color: #fdba74;
+    font-weight: 900;
+    letter-spacing: 1px;
+  }
+  .clock-center .sub {
+    font-size: 0.42rem;
+    color: #f59e0b;
+    letter-spacing: 0.8px;
+    margin-top: 2px;
+    font-weight: 700;
+  }
+
+  /* Detail panel (right of clock) */
+  .detail-pane {
+    width: 240px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .detail-box {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .detail-title {
+    font-size: 0.55rem;
+    letter-spacing: 1.5px;
+    color: #fdba74;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 5px;
+    text-align: center;
+  }
+  .frame-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-family: monospace;
+    font-size: 0.55rem;
+    overflow-y: auto;
+    flex: 1;
+  }
+  .frame-row {
+    display: grid;
+    grid-template-columns: 30px 1fr 25px;
+    gap: 4px;
+    padding: 3px 5px;
+    background: rgba(30,41,59,0.3);
+    border-radius: 4px;
+    border-left: 3px solid #334155;
+    transition: all 0.3s;
+    align-items: center;
+  }
+  .frame-row.ref1 { border-left-color: #3b82f6; background: rgba(59,130,246,0.08); }
+  .frame-row.hand { border-left-color: #f97316; background: rgba(249,115,22,0.15); box-shadow: 0 0 10px rgba(249,115,22,0.5); }
+  .frame-row.empty { opacity: 0.4; border-left-color: #475569; }
+  .frame-row .idx { color: #64748b; font-weight: 800; }
+  .frame-row .page { color: #86efac; font-weight: 800; }
+  .frame-row.empty .page { color: #475569; font-style: italic; font-weight: 600; }
+  .frame-row .bit {
+    text-align: center;
+    font-weight: 900;
+    padding: 1px 0;
+    border-radius: 3px;
+    font-size: 0.55rem;
+  }
+  .frame-row .bit.r1 { background: rgba(59,130,246,0.3); color: #93c5fd; }
+  .frame-row .bit.r0 { background: rgba(100,116,139,0.2); color: #64748b; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(249,115,22,0.06);
+    border: 1px solid rgba(249,115,22,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fdba74;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #fdba74; text-shadow: 0 0 10px rgba(249,115,22,0.5); }
+
+  .gauge {
+    position: relative;
+    height: 22px;
+    background: #0a0e19;
+    border-radius: 11px;
+    overflow: hidden;
+    border: 1px solid #1e293b;
+    margin-bottom: 6px;
+  }
+  .gauge-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+    transition: width 0.5s cubic-bezier(.4,0,.2,1);
+    box-shadow: 0 0 20px rgba(16,185,129,0.4);
+  }
+  .gauge-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    font-size: 0.7rem;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+    letter-spacing: 2px;
+  }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 220px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f97316;
+    background: rgba(249,115,22,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.orange { border-color: #f97316; background: rgba(249,115,22,0.06); }
+  .teach-entry.cyan   { border-color: #22d3ee; background: rgba(34,211,238,0.05); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.orange { background: rgba(249,115,22,0.15); color: #fdba74; }
+  .teach-entry .tag.cyan   { background: rgba(34,211,238,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Comparison card */
+  .compare-card {
+    background: linear-gradient(145deg, rgba(249,115,22,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(249,115,22,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.58rem;
+  }
+  .compare-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .compare-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .compare-row:last-child { border-bottom: none; }
+  .compare-row .lbl { color: #94a3b8; }
+  .compare-row .clock { color: #fdba74; font-weight: 800; }
+  .compare-row .lru { color: #d8b4fe; font-weight: 800; }
+  .compare-row .both { color: #6ee7b7; font-weight: 800; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f97316;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(249,115,22,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Status banner */
+  .status-banner {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #f97316;
+    border-radius: 30px;
+    padding: 8px 24px;
+    font-family: monospace;
+    font-size: 0.7rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fdba74;
+    z-index: 12;
+    box-shadow: 0 0 25px rgba(249,115,22,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.hit { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.5); }
+  .status-banner.miss { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.5); }
+  .status-banner.clearing { border-color: #3b82f6; color: #93c5fd; box-shadow: 0 0 25px rgba(59,130,246,0.5); }
+  .status-banner.evicting { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.5); }
+  .status-banner.stopped { border-color: #facc15; color: #fef08a; box-shadow: 0 0 25px rgba(250,204,21,0.5); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>CLOCK PAGE REPLACEMENT</h1>
+    <span class="sub">SECOND CHANCE · REFERENCE BIT · RING BUFFER</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Workload Pattern</h3>
+      <select id="demoSelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="textbook" selected>📖 Textbook (second chance shines)</option>
+        <option value="hot" style="display:none;">Hot key stress</option>
+        <option value="sequential">📊 Sequential scan</option>
+        <option value="loop">🔁 Cyclic loop</option>
+        <option value="hotcold">🎯 Hot/cold mix</option>
+        <option value="compare">⚖️ Clock vs LRU (same stream)</option>
+      </select>
+      <button class="btn primary" id="btnAuto">▶ Auto-Play</button>
+      <button class="btn" id="btnStep">⏭ Step</button>
+      <button class="btn success" id="btnPlayAll">⏩ Play All</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Clock Configuration</h3>
+      <div class="slider-row"><span>Ring size</span><span class="value" id="sizeVal">6</span></div>
+      <input type="range" id="sizeRange" min="4" max="12" value="6">
+      <div class="slider-row"><span>Auto-play speed</span><span class="value" id="speedVal">900ms</span></div>
+      <input type="range" id="speedRange" min="200" max="2500" step="100" value="900">
+    </div>
+
+    <div class="panel">
+      <h3>Algorithm</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="algo" value="clock" checked style="accent-color:#f97316;">
+          Clock (1-bit second chance)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="algo" value="enhanced" style="accent-color:#f97316;">
+          Enhanced Clock (2-bit)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="algo" value="lru" style="accent-color:#f97316;">
+          LRU (for comparison)
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>Has a page</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#3b82f6;"></div>Reference bit = 1</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f97316;"></div>Clock hand position</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>Evicting victim</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#475569;"></div>Empty frame</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">CLOCK: SWEEP THE RING · GIVE REF=1 PAGES A SECOND CHANCE · EVICT REF=0</div>
+
+      <div class="main-split">
+        <!-- STREAM -->
+        <div class="stream-pane">
+          <div class="stream-title">
+            <span>📨 REQUEST STREAM</span>
+            <span class="hint" id="streamHint">— step 0/0 —</span>
+          </div>
+          <div class="stream-row" id="streamRow"></div>
+        </div>
+
+        <!-- CLOCK RING -->
+        <div class="clock-pane">
+          <div class="clock-left">
+            <div class="clock-title">
+              <span>🕐 CLOCK RING (size <span id="cacheSizeLabel">6</span>)</span>
+              <span class="info" id="cacheInfo">0/6 full · hand at frame 0</span>
+            </div>
+            <div class="clock-canvas-wrap">
+              <div class="clock-ring" id="clockRing">
+                <div class="clock-hand" id="clockHand"></div>
+                <div class="clock-center" id="clockCenter">
+                  <div class="lbl">HAND</div>
+                  <div class="val" id="handVal">→ 0</div>
+                  <div class="sub" id="handSub">frame 0</div>
+                </div>
+                <!-- Slots injected by JS -->
+              </div>
+            </div>
+          </div>
+          <div class="detail-pane">
+            <div class="detail-box">
+              <div class="detail-title">Frame Table</div>
+              <div class="frame-list" id="frameList"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="status-banner" id="statusBanner"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Step</div>
+        <div class="metric-value info" id="mStep">0/0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Hits</div>
+        <div class="metric-value" id="mHits">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Misses</div>
+        <div class="metric-value bad" id="mMisses">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Hand Sweeps</div>
+        <div class="metric-value warn" id="mSweeps">0</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:6px;">
+      <div class="gauge">
+        <div class="gauge-fill" id="hitGauge" style="width:0%"></div>
+        <div class="gauge-label" id="hitGaugeLabel">0% HIT RATE</div>
+      </div>
+    </div>
+
+    <div class="compare-card">
+      <div class="compare-title">🔄 Clock vs LRU</div>
+      <div class="compare-row"><span class="lbl">Memory / frame</span><span><span class="clock">1 bit</span> · <span class="lru">16+ bytes</span></span></div>
+      <div class="compare-row"><span class="lbl">Access cost</span><span class="both">O(1) both</span></div>
+      <div class="compare-row"><span class="lbl">Evict cost</span><span class="both">O(1) amortized</span></div>
+      <div class="compare-row"><span class="lbl">Approx LRU?</span><span class="clock">Yes — closely</span></div>
+      <div class="compare-row"><span class="lbl">Used by</span><span class="clock">Postgres, MySQL</span></div>
+      <div class="compare-row"><span class="lbl">Hit rate vs LRU</span><span class="clock">~99% same</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  demo: 'textbook',
+  algo: 'clock',
+  cacheSize: 6,
+  speed: 900,
+  // Ring buffer of frames
+  frames: [],           // [{ pageId, refBit, lastAccess }]
+  hand: 0,              // clock hand index
+  // Stream
+  stream: [],
+  history: [],
+  step: 0,
+  // Stats
+  hits: 0,
+  misses: 0,
+  handSweeps: 0,
+  evictions: 0,
+  // Playback
+  autoTimer: null,
+  autoPlaying: false,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  streamRow: document.getElementById('streamRow'),
+  streamHint: document.getElementById('streamHint'),
+  clockRing: document.getElementById('clockRing'),
+  clockHand: document.getElementById('clockHand'),
+  handVal: document.getElementById('handVal'),
+  handSub: document.getElementById('handSub'),
+  frameList: document.getElementById('frameList'),
+  cacheSizeLabel: document.getElementById('cacheSizeLabel'),
+  cacheInfo: document.getElementById('cacheInfo'),
+  statusBanner: document.getElementById('statusBanner'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  demoSelect: document.getElementById('demoSelect'),
+  btnAuto: document.getElementById('btnAuto'),
+  btnStep: document.getElementById('btnStep'),
+  btnPlayAll: document.getElementById('btnPlayAll'),
+  btnReset: document.getElementById('btnReset'),
+  sizeRange: document.getElementById('sizeRange'),
+  sizeVal: document.getElementById('sizeVal'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  mStep: document.getElementById('mStep'),
+  mHits: document.getElementById('mHits'),
+  mMisses: document.getElementById('mMisses'),
+  mSweeps: document.getElementById('mSweeps'),
+  hitGauge: document.getElementById('hitGauge'),
+  hitGaugeLabel: document.getElementById('hitGaugeLabel')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining the Clock page replacement algorithm.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   WORKLOAD GENERATORS
+   ============================================================ */
+function generateStream(pattern) {
+  switch (pattern) {
+    case 'textbook':
+      // Classic stream where Clock shows its second-chance behavior
+      return [1, 2, 3, 4, 5, 6, 1, 2, 7, 3, 1, 2, 3, 8, 4, 1, 2, 9];
+
+    case 'sequential':
+      // Long sequential scan
+      return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
+
+    case 'loop':
+      // Cyclic loop slightly larger than ring
+      return [1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4];
+
+    case 'hotcold':
+      // Two hot keys, occasional cold
+      return [1, 2, 1, 2, 1, 2, 5, 1, 2, 6, 1, 2, 1, 2, 7, 1, 2, 1];
+
+    case 'compare':
+      // Stream that shows both Clock and LRU approximate similarly
+      return [1, 2, 3, 4, 1, 5, 6, 2, 3, 7, 4, 8, 1, 2, 5, 3];
+
+    default:
+      return [1, 2, 3, 4, 1, 5, 2, 3];
+  }
+}
+
+function getDemoName() {
+  const names = {
+    'textbook': 'TEXTBOOK WORKLOAD',
+    'sequential': 'SEQUENTIAL SCAN',
+    'loop': 'CYCLIC LOOP',
+    'hotcold': 'HOT/COLD MIX',
+    'compare': 'CLOCK vs LRU'
+  };
+  return names[STATE.demo] || 'WORKLOAD';
+}
+
+/* ============================================================
+   FRAME MANAGEMENT
+   ============================================================ */
+function initFrames() {
+  STATE.frames = [];
+  for (let i = 0; i < STATE.cacheSize; i++) {
+    STATE.frames.push({
+      idx: i,
+      pageId: null,
+      refBit: 0,
+      lastAccess: 0
+    });
+  }
+  STATE.hand = 0;
+}
+
+/* ============================================================
+   CLOCK ALGORITHM — the core
+   ============================================================ */
+function clockEvict() {
+  // Sweep the ring to find a victim with refBit = 0
+  let attempts = 0;
+  const maxAttempts = STATE.cacheSize * 3;
+
+  while (attempts < maxAttempts) {
+    const f = STATE.frames[STATE.hand];
+
+    if (f.refBit === 0) {
+      // Found victim!
+      const victim = f;
+      // Advance hand past the victim
+      STATE.hand = (STATE.hand + 1) % STATE.cacheSize;
+      return victim;
+    } else {
+      // Second chance — clear bit, advance hand
+      f.refBit = 0;
+      STATE.handSweeps++;
+      // Visual: flash the slot as "cleared"
+      flashClear(f.idx);
+      // Advance hand
+      STATE.hand = (STATE.hand + 1) % STATE.cacheSize;
+      attempts++;
+    }
+  }
+
+  // Fallback: evict at current hand position (shouldn't happen with 1-bit)
+  const fallback = STATE.frames[STATE.hand];
+  STATE.hand = (STATE.hand + 1) % STATE.cacheSize;
+  return fallback;
+}
+
+function flashClear(idx) {
+  const el = document.querySelector(`[data-slot-idx="${idx}"]`);
+  if (el) {
+    el.classList.add('cleared');
+    setTimeout(() => el.classList.remove('cleared'), 700);
+  }
+}
+
+/* ============================================================
+   MAIN STEP
+   ============================================================ */
+function stepNext() {
+  if (STATE.step >= STATE.stream.length) {
+    teach('DONE',
+      `All ${STATE.stream.length} accesses done. Hit rate: ${(STATE.hits / STATE.stream.length * 100).toFixed(0)}%. ` +
+      `Hand swept ${STATE.handSweeps} extra frames to give second chances.`,
+      'ok', false
+    );
+    stopAuto();
+    showStatus('✔ Workload complete', 'stopped');
+    return;
+  }
+
+  const i = STATE.step;
+  const key = STATE.stream[i];
+
+  // 1. Search for the page in the ring
+  const hitFrame = STATE.frames.find(f => f.pageId === key);
+
+  if (hitFrame) {
+    // HIT — set ref bit to 1
+    STATE.hits++;
+    STATE.history[i] = 'hit';
+    hitFrame.refBit = 1;
+    hitFrame.lastAccess = i;
+
+    // Visual pulse
+    const el = document.querySelector(`[data-slot-idx="${hitFrame.idx}"]`);
+    if (el) {
+      el.classList.add('loading');
+      setTimeout(() => el.classList.remove('loading'), 700);
+    }
+
+    showStatus(`✓ HIT — Page ${key} · refBit set to 1 (second chance granted)`, 'hit');
+
+    teach('HIT',
+      `Access #${i + 1}: page ${key} is at frame ${hitFrame.idx}. It's already in the ring — just set its reference bit to 1. ` +
+      `The next time the hand sweeps past it, it will get a second chance.`,
+      'ok', false
+    );
+  } else {
+    // MISS — find a free frame or evict
+    STATE.misses++;
+    STATE.history[i] = 'miss';
+
+    // First, look for an empty frame
+    const emptyFrame = STATE.frames.find(f => f.pageId === null);
+
+    if (emptyFrame) {
+      // Free frame available
+      emptyFrame.pageId = key;
+      emptyFrame.refBit = 1;
+      emptyFrame.lastAccess = i;
+
+      const el = document.querySelector(`[data-slot-idx="${emptyFrame.idx}"]`);
+      if (el) {
+        el.classList.add('loading');
+        setTimeout(() => el.classList.remove('loading'), 700);
+      }
+
+      showStatus(`✗ MISS — Page ${key} · loaded into empty frame ${emptyFrame.idx}`, 'miss');
+
+      teach('MISS (empty)',
+        `Access #${i + 1}: page ${key} not found. There's an empty frame (${emptyFrame.idx}) — no eviction needed. ` +
+        `Just load the page, set its ref bit to 1.`,
+        'warn', false
+      );
+    } else {
+      // No empty frame — must evict via clock sweep
+      showStatus(`✗ MISS — Page ${key} · clock sweep starting at hand ${STATE.hand}`, 'clearing');
+
+      // Note how many clearings happen for the sweep
+      const sweepsBefore = STATE.handSweeps;
+      const victim = clockEvict();
+      const clearedThisSweep = STATE.handSweeps - sweepsBefore;
+
+      // Flash victim
+      const victimEl = document.querySelector(`[data-slot-idx="${victim.idx}"]`);
+      if (victimEl) {
+        victimEl.classList.add('evicting');
+        setTimeout(() => victimEl.classList.remove('evicting'), 700);
+      }
+
+      STATE.evictions++;
+
+      const oldPageId = victim.pageId;
+
+      // Replace
+      victim.pageId = key;
+      victim.refBit = 1;
+      victim.lastAccess = i;
+
+      setTimeout(() => {
+        const el = document.querySelector(`[data-slot-idx="${victim.idx}"]`);
+        if (el) {
+          el.classList.add('loading');
+          setTimeout(() => el.classList.remove('loading'), 700);
+        }
+        showStatus(`✗ EVICT — Page ${oldPageId} from frame ${victim.idx}, loaded ${key}`, 'evicting');
+      }, 400);
+
+      teach('EVICT',
+        `Access #${i + 1}: page ${key} not found. Ring is full. Sweep the hand from frame ${(victim.idx - clearedThisSweep + STATE.cacheSize) % STATE.cacheSize}: ` +
+        `${clearedThisSweep > 0 ? `cleared ${clearedThisSweep} ref-bit${clearedThisSweep === 1 ? '' : 's'} (second chances), then ` : ''}` +
+        `found frame ${victim.idx} (page ${oldPageId}) with ref bit = 0. Evict it, load ${key}.`,
+        'orange', false
+      );
+    }
+  }
+
+  // Update hand position visually
+  updateHandVisual();
+
+  STATE.step++;
+
+  renderStream();
+  renderRing();
+  renderFrameList();
+  updateStats();
+
+  // Clear transient flash classes
+  setTimeout(() => {
+    document.querySelectorAll('.ring-slot').forEach(el => {
+      el.classList.remove('loading', 'cleared', 'evicting');
+    });
+  }, 900);
+}
+
+/* ============================================================
+   UPDATE HAND VISUAL
+   ============================================================ */
+function updateHandVisual() {
+  const N = STATE.cacheSize;
+  const angle = (STATE.hand / N) * 360;
+  DOM.clockHand.style.transform = `rotate(${angle}deg)`;
+
+  DOM.handVal.textContent = '→ ' + STATE.hand;
+  DOM.handSub.textContent = 'frame ' + STATE.hand;
+}
+
+/* ============================================================
+   RENDERING
+   ============================================================ */
+function renderStream() {
+  let html = '';
+  for (let i = 0; i < STATE.stream.length; i++) {
+    const key = STATE.stream[i];
+    let cls = '';
+    if (i === STATE.step) cls = 'current';
+    else if (i < STATE.step) cls = 'past';
+    if (i < STATE.step && STATE.history[i]) cls += ' ' + STATE.history[i];
+
+    html += `<div class="req-chip ${cls}">${key}</div>`;
+  }
+  DOM.streamRow.innerHTML = html;
+  DOM.streamHint.textContent = `step ${STATE.step}/${STATE.stream.length} · hit ${STATE.hits}/${STATE.hits + STATE.misses}`;
+}
+
+function renderRing() {
+  // Remove existing slots
+  document.querySelectorAll('.ring-slot').forEach(el => el.remove());
+
+  const N = STATE.cacheSize;
+  // Radius as percentage of ring container
+  const radius = 40; // percent
+
+  for (let i = 0; i < N; i++) {
+    // Position around circle. Start from top (angle -90°) and go clockwise.
+    const angleRad = (-90 + (i / N) * 360) * Math.PI / 180;
+    const x = 50 + radius * Math.cos(angleRad);
+    const y = 50 + radius * Math.sin(angleRad);
+
+    const f = STATE.frames[i];
+    const isEmpty = f.pageId === null;
+
+    const el = document.createElement('div');
+    el.className = 'ring-slot' + (isEmpty ? ' empty' : ' has-page') + (f.refBit === 1 ? ' ref1' : '');
+    el.dataset.slotIdx = i;
+    el.style.left = x + '%';
+    el.style.top = y + '%';
+    el.style.position = 'absolute';
+
+    el.innerHTML = `
+      <span class="ring-ref-bit">${f.refBit}</span>
+      <span class="ring-page ${isEmpty ? 'empty' : ''}">${isEmpty ? '—' : 'P' + f.pageId}</span>
+      <span class="ring-frame-idx">F${i}</span>
+    `;
+
+    // Highlight if this is the hand position
+    if (i === STATE.hand) {
+      el.classList.add('hand');
+    }
+
+    DOM.clockRing.appendChild(el);
+  }
+
+  // Cache info
+  const filled = STATE.frames.filter(f => f.pageId !== null).length;
+  DOM.cacheInfo.textContent = `${filled}/${N} full · hand at frame ${STATE.hand}`;
+  DOM.cacheSizeLabel.textContent = N;
+}
+
+function renderFrameList() {
+  let html = '';
+  for (let i = 0; i < STATE.frames.length; i++) {
+    const f = STATE.frames[i];
+    const isEmpty = f.pageId === null;
+    const isHand = i === STATE.hand;
+
+    let cls = '';
+    if (isEmpty) cls = 'empty';
+    else if (f.refBit === 1) cls = 'ref1';
+    if (isHand) cls += ' hand';
+
+    html += `
+      <div class="frame-row ${cls}">
+        <span class="idx">F${i}</span>
+        <span class="page">${isEmpty ? '(empty)' : 'Page ' + f.pageId}</span>
+        <span class="bit ${f.refBit ? 'r1' : 'r0'}">${f.refBit}</span>
+      </div>
+    `;
+  }
+  DOM.frameList.innerHTML = html;
+}
+
+function showStatus(text, type) {
+  DOM.statusBanner.textContent = text;
+  DOM.statusBanner.className = 'status-banner show ' + (type || '');
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => {
+    DOM.statusBanner.classList.remove('show');
+  }, 1600);
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  STATE.autoTimer = null;
+  STATE.autoPlaying = false;
+  DOM.btnAuto.textContent = '▶ Auto-Play';
+
+  STATE.stream = generateStream(STATE.demo);
+  STATE.history = [];
+  STATE.step = 0;
+  STATE.hits = 0;
+  STATE.misses = 0;
+  STATE.handSweeps = 0;
+  STATE.evictions = 0;
+
+  initFrames();
+  updateHandVisual();
+  renderStream();
+  renderRing();
+  renderFrameList();
+  updateStats();
+
+  DOM.statusBanner.classList.remove('show');
+
+  const descs = {
+    textbook: 'Classic stream. Watch how the hand gives second chances — pages with ref=1 get skipped, ref=0 get evicted.',
+    sequential: 'Long sequential scan. Every new page overwrites the previous — few hits, lots of clearing.',
+    loop: 'Cyclic loop. Cache size is one less than the working set — the classic worst case.',
+    hotcold: 'Two hot keys (1,2) alternate. Clock keeps them resident — very high hit rate.',
+    compare: 'A mix designed to show Clock and LRU making similar decisions.'
+  };
+
+  teach('RESET', `Loaded: ${getDemoName()}. ${descs[STATE.demo]}`, 'orange');
+}
+
+/* ============================================================
+   PLAYBACK
+   ============================================================ */
+function startAuto() {
+  if (STATE.autoPlaying) {
+    stopAuto();
+    return;
+  }
+  STATE.autoPlaying = true;
+  DOM.btnAuto.textContent = '⏸ Stop Auto';
+  STATE.autoTimer = setInterval(() => {
+    if (STATE.step >= STATE.stream.length) {
+      stopAuto();
+      return;
+    }
+    stepNext();
+  }, STATE.speed);
+}
+
+function stopAuto() {
+  STATE.autoPlaying = false;
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  STATE.autoTimer = null;
+  DOM.btnAuto.textContent = '▶ Auto-Play';
+}
+
+function playAll() {
+  resetAll();
+  let i = 0;
+  const interval = setInterval(() => {
+    if (i >= STATE.stream.length) {
+      clearInterval(interval);
+      return;
+    }
+    stepNext();
+    i++;
+  }, 250);
+}
+
+/* ============================================================
+   STATS
+   ============================================================ */
+function updateStats() {
+  const total = STATE.hits + STATE.misses;
+  const hitRate = total > 0 ? Math.round((STATE.hits / total) * 100) : 0;
+
+  DOM.mStep.textContent = `${STATE.step}/${STATE.stream.length}`;
+  DOM.mHits.textContent = STATE.hits;
+  DOM.mMisses.textContent = STATE.misses;
+  DOM.mSweeps.textContent = STATE.handSweeps;
+
+  DOM.hitGauge.style.width = hitRate + '%';
+  DOM.hitGaugeLabel.textContent = hitRate + '% HIT RATE';
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.demoSelect.addEventListener('change', e => {
+  STATE.demo = e.target.value;
+  resetAll();
+});
+
+DOM.btnAuto.addEventListener('click', startAuto);
+DOM.btnStep.addEventListener('click', () => {
+  if (STATE.step >= STATE.stream.length) return;
+  stepNext();
+});
+DOM.btnPlayAll.addEventListener('click', playAll);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.sizeRange.addEventListener('input', e => {
+  STATE.cacheSize = parseInt(e.target.value);
+  DOM.sizeVal.textContent = STATE.cacheSize;
+  resetAll();
+});
+
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseInt(e.target.value);
+  DOM.speedVal.textContent = STATE.speed + 'ms';
+  if (STATE.autoPlaying) {
+    stopAuto();
+    startAuto();
+  }
+});
+
+document.querySelectorAll('input[name="algo"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.algo = e.target.value;
+    const desc = {
+      clock: 'Clock (1-bit): every frame has one reference bit. On eviction, sweep the ring; ref=1 → clear and skip; ref=0 → evict. Cheap second chance approximation of LRU.',
+      enhanced: 'Enhanced Clock (2-bit): adds a "dirty" bit. Preference order on eviction: (ref=0, dirty=0) → (ref=0, dirty=1) → (ref=1, dirty=0) → (ref=1, dirty=1). Avoids flushing dirty pages during eviction when possible.',
+      lru: 'True LRU tracks a timestamp per frame — more memory, more bookkeeping per access. In practice the hit rate difference vs Clock is tiny.'
+    };
+    teach('ALGORITHM', desc[e.target.value], 'purple');
+  });
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Clock Page Replacement. The Clock algorithm is a cheap approximation of LRU. Instead of tracking a timestamp per page, it keeps a single reference bit per frame and a "hand" that sweeps around a ring. This is what PostgreSQL and many other systems use internally.`,
+    'orange'
+  );
+
+  setTimeout(() => {
+    teach('THE MECHANICS',
+      `Every access sets the frame's reference bit to 1. On a miss with a full ring, the hand sweeps: if it finds a frame with ref=0, that's the victim. If ref=1, it clears the bit ("second chance") and moves on. The reference bit is a cheap proxy for "recently used".`,
+      'cyan'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('WHY SECOND CHANCE',
+      `The name "second chance" comes from this: a page that was recently used gets ref=1, so the hand will skip it once, clear its bit, and only evict it if the hand comes around again without it being touched. This approximates LRU closely — a page used once recently survives at least one full sweep.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('WHERE IT\'S USED',
+      `Real databases: PostgreSQL uses a Clock-sweep algorithm for its shared_buffers. SQL Server uses a variant. Oracle uses a "touch count" version. Many OS page caches (Linux) use two-list LRU which is a related idea. Clock wins because it needs only 1 bit per frame and O(1) amortized work per access.`,
+      'purple'
+    );
+  }, 13000);
+
+  showToast('👋 Pick a workload and press Auto-Play', 4000);
+}, 600);
+</script>
+</body>
+</html>

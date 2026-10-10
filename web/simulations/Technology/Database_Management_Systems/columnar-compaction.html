@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Columnar Storage Compaction — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #06b6d4, #14b8a6, #22c55e);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(20,184,166,0.15);
+    color: #5eead4;
+    border-color: #14b8a6;
+  }
+  .teaching-toggle:hover { background: rgba(20,184,166,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #5eead4;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #14b8a6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #14b8a6; color: #042f2e; border-color: #14b8a6; }
+  .btn.primary:hover { background: #0d9488; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.info { background: #1e3a8a; color: #bfdbfe; border-color: #3b82f6; }
+  .btn.info:hover { background: #1e40af; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #5eead4; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #14b8a6; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(20,184,166,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MAIN LAYOUT */
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  /* SEGMENTS PANE */
+  .segments-pane {
+    flex: 1.4;
+    background: #070a14;
+    border: 2px solid #14b8a6;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(20,184,166,0.15);
+    min-height: 0;
+  }
+  .segments-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #5eead4;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .segments-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .segments-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    min-height: 0;
+    padding: 4px;
+  }
+
+  /* Column segment (like a Parquet file / ClickHouse part) */
+  .segment {
+    background: linear-gradient(145deg, #0a1e1c, #051010);
+    border: 1.5px solid #0d9488;
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    position: relative;
+    overflow: hidden;
+    animation: segmentIn 0.5s ease;
+  }
+  @keyframes segmentIn {
+    from { transform: scale(0.9); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  .segment.small { border-color: #f59e0b; }
+  .segment.compacting {
+    border-color: #ec4899;
+    box-shadow: 0 0 20px rgba(236,72,153,0.6);
+    animation: segmentPulse 0.6s ease-in-out infinite alternate;
+  }
+  @keyframes segmentPulse {
+    0% { box-shadow: 0 0 20px rgba(236,72,153,0.4); }
+    100% { box-shadow: 0 0 35px rgba(236,72,153,0.9); }
+  }
+  .segment.merged {
+    animation: segmentMerge 0.6s ease;
+  }
+  @keyframes segmentMerge {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); border-color: #22c55e; }
+  }
+  .segment.removing {
+    animation: segmentOut 0.6s ease forwards;
+  }
+  @keyframes segmentOut {
+    to { transform: scale(0.7); opacity: 0; height: 0; padding: 0; margin: 0; }
+  }
+
+  .segment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .segment-name {
+    color: #5eead4;
+    font-weight: 800;
+    letter-spacing: 1px;
+  }
+  .segment.small .segment-name { color: #fcd34d; }
+  .segment.compacting .segment-name { color: #f9a8d4; }
+  .segment-meta {
+    color: #64748b;
+    font-size: 0.5rem;
+    letter-spacing: 0.5px;
+  }
+
+  /* Column layout inside segment */
+  .columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 4px;
+    font-family: monospace;
+    font-size: 0.5rem;
+  }
+  .col-header {
+    color: #94a3b8;
+    text-align: center;
+    font-weight: 800;
+    letter-spacing: 1px;
+    padding: 2px 0;
+    border-bottom: 1px solid #134e4a;
+    margin-bottom: 2px;
+  }
+  .col-block {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .col-val {
+    background: rgba(20,184,166,0.08);
+    padding: 1px 4px;
+    border-radius: 2px;
+    color: #5eead4;
+    text-align: center;
+    font-weight: 700;
+    transition: all 0.3s;
+  }
+  .col-val.null { color: #475569; font-style: italic; }
+  .col-val.deleted {
+    background: rgba(239,68,68,0.15);
+    color: #fca5a5;
+    text-decoration: line-through;
+    opacity: 0.7;
+  }
+  .col-val.updated {
+    background: rgba(250,204,21,0.15);
+    color: #fde047;
+    animation: valUpdated 0.5s ease;
+  }
+  @keyframes valUpdated {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+  }
+
+  .segment-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: monospace;
+    font-size: 0.5rem;
+    color: #64748b;
+    margin-top: 2px;
+  }
+  .delete-bitmap {
+    display: flex;
+    gap: 2px;
+  }
+  .delete-bit {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: rgba(16,185,129,0.3);
+    border: 1px solid #10b981;
+  }
+  .delete-bit.marked {
+    background: rgba(239,68,68,0.5);
+    border-color: #ef4444;
+  }
+
+  /* RIGHT PANE */
+  .info-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    min-width: 320px;
+  }
+
+  .info-box {
+    background: #070a14;
+    border: 2px solid #06b6d4;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    box-shadow: 0 0 20px rgba(6,182,212,0.15);
+  }
+  .info-box.stats { border-color: #10b981; box-shadow: 0 0 20px rgba(16,185,129,0.15); }
+  .info-box.log { border-color: #a855f7; box-shadow: 0 0 20px rgba(168,85,247,0.15); flex: 1; }
+  .info-box.info-top { border-color: #f59e0b; box-shadow: 0 0 20px rgba(245,158,11,0.15); }
+
+  .info-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .info-box.info-top .info-title { color: #fcd34d; }
+  .info-box.stats .info-title { color: #6ee7b7; }
+  .info-box.log .info-title { color: #d8b4fe; }
+  .info-box .info-title { color: #67e8f9; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+  .stat-cell {
+    background: rgba(30,41,59,0.4);
+    border-radius: 5px;
+    padding: 5px 7px;
+    font-family: monospace;
+  }
+  .stat-cell .lbl {
+    color: #64748b;
+    font-size: 0.48rem;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 1px;
+    text-transform: uppercase;
+  }
+  .stat-cell .val {
+    color: #5eead4;
+    font-size: 0.8rem;
+    font-weight: 900;
+  }
+  .stat-cell .val.warn { color: #fbbf24; }
+  .stat-cell .val.bad { color: #f87171; }
+  .stat-cell .val.good { color: #6ee7b7; }
+
+  .log-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.58rem;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+  }
+  .log-line {
+    padding: 2px 4px;
+    border-radius: 3px;
+    animation: logIn 0.3s ease;
+    border-left: 2px solid transparent;
+  }
+  @keyframes logIn {
+    from { transform: translateX(-6px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .log-line.insert { border-left-color: #22d3ee; color: #a5f3fc; }
+  .log-line.update { border-left-color: #facc15; color: #fde047; }
+  .log-line.delete { border-left-color: #ef4444; color: #fca5a5; }
+  .log-line.compact { border-left-color: #ec4899; color: #f9a8d4; }
+  .log-line.merge { border-left-color: #10b981; color: #6ee7b7; font-weight: 700; }
+  .log-line.info { border-left-color: #64748b; color: #cbd5e1; }
+  .log-line .ts {
+    color: #475569;
+    font-size: 0.5rem;
+    margin-right: 4px;
+  }
+
+  /* Column comparison card */
+  .compare-card {
+    background: linear-gradient(145deg, rgba(20,184,166,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(20,184,166,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .compare-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #5eead4;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .compare-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .compare-row:last-child { border-bottom: none; }
+  .compare-row .lbl { color: #94a3b8; }
+  .compare-row .col { color: #5eead4; font-weight: 800; }
+  .compare-row .row { color: #fca5a5; font-weight: 800; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(20,184,166,0.06);
+    border: 1px solid rgba(20,184,166,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #5eead4;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .metric-value.info { color: #67e8f9; text-shadow: 0 0 10px rgba(6,182,212,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 260px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #14b8a6;
+    background: rgba(20,184,166,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.pink   { border-color: #ec4899; background: rgba(236,72,153,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.05); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.pink   { background: rgba(236,72,153,0.15); color: #f9a8d4; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Legend */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1.5px solid;
+  }
+
+  /* Status banner */
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #14b8a6;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #5eead4;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(20,184,166,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.compact { border-color: #ec4899; color: #f9a8d4; box-shadow: 0 0 25px rgba(236,72,153,0.6); }
+  .status-banner.merge { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #14b8a6;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(20,184,166,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>COLUMNAR STORAGE COMPACTION</h1>
+    <span class="sub">IMMUTABLE FILES · DELETE BITMAPS · BACKGROUND MERGE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Workload</h3>
+      <button class="btn primary" id="btnInsert">➕ INSERT 4 Rows</button>
+      <button class="btn warn" id="btnUpdate">✏️ UPDATE Random Row</button>
+      <button class="btn danger" id="btnDelete">🗑️ DELETE Random Row</button>
+    </div>
+
+    <div class="panel">
+      <h3>Compaction</h3>
+      <button class="btn success" id="btnCompact">⚙️ Compact Small Segments</button>
+      <button class="btn info" id="btnMajor">🔧 Major Compaction (all)</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Compaction Policy</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.7rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="policy" value="size" checked style="accent-color:#14b8a6;">
+          Size-tiered (small → big)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="policy" value="count" style="accent-color:#14b8a6;">
+          Count-based (merge if ≥3)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="policy" value="tombstone" style="accent-color:#14b8a6;">
+          Tombstone-driven (≥30% deleted)
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Auto-Compaction</h3>
+      <div class="slider-row"><span>Run every</span><span class="value" id="autoVal">OFF</span></div>
+      <input type="range" id="autoRange" min="0" max="10" value="0">
+      <div style="font-size:0.55rem; color:#64748b; font-family:monospace; margin-top:-4px;">
+        0 = manual. N = run every N operations.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#0d9488; background:rgba(13,148,136,0.15);"></div>Segment (immutable)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#f59e0b; background:rgba(245,158,11,0.15);"></div>Small segment (merge candidate)</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#ec4899; background:rgba(236,72,153,0.15);"></div>Being compacted</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:#ef4444; background:rgba(239,68,68,0.15);"></div>Deleted (bitmap)</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">COLUMNAR SEGMENTS · IMMUTABLE ONCE WRITTEN · COMPACT IN BACKGROUND</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <!-- SEGMENTS -->
+        <div class="segments-pane">
+          <div class="segments-title">
+            <span>📁 SEGMENTS (on disk)</span>
+            <span class="hint" id="segmentsHint">— 0 segments —</span>
+          </div>
+          <div class="segments-list" id="segmentsList"></div>
+        </div>
+
+        <!-- INFO PANEL -->
+        <div class="info-pane">
+          <div class="info-box info-top">
+            <div class="info-title">
+              <span>📖 COLUMNAR STORAGE</span>
+              <span style="font-size:0.5rem; color:#64748b;">immutable · sorted · compressed</span>
+            </div>
+            <div style="font-family:monospace; font-size:0.58rem; color:#cbd5e1; line-height:1.6;">
+              Column-oriented: each column stored <strong style="color:#5eead4;">separately</strong> and compressed with RLE/dictionary encoding.
+              Writes create <strong style="color:#5eead4;">new segments</strong> — never modify existing ones.
+              Updates = insert new + mark old as deleted (via <strong style="color:#fca5a5;">delete bitmap</strong>).
+              Deletes = mark in <strong style="color:#fca5a5;">bitmap</strong>, physically removed by compaction.
+            </div>
+          </div>
+
+          <div class="info-box stats">
+            <div class="info-title">
+              <span>📊 SEGMENT STATS</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="statsHint">live</span>
+            </div>
+            <div class="stats-grid">
+              <div class="stat-cell"><span class="lbl">Segments</span><span class="val" id="sSegments">0</span></div>
+              <div class="stat-cell"><span class="lbl">Live Rows</span><span class="val" id="sLive">0</span></div>
+              <div class="stat-cell"><span class="lbl">Deleted</span><span class="val warn" id="sDeleted">0</span></div>
+              <div class="stat-cell"><span class="lbl">Dead %</span><span class="val warn" id="sDeadPct">0%</span></div>
+              <div class="stat-cell"><span class="lbl">Compactions</span><span class="val good" id="sComp">0</span></div>
+              <div class="stat-cell"><span class="lbl">Rows/seg (avg)</span><span class="val" id="sAvg">0</span></div>
+            </div>
+          </div>
+
+          <div class="info-box log">
+            <div class="info-title">
+              <span>📋 OPERATION LOG</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="logHint">— 0 ops —</span>
+            </div>
+            <div class="log-body" id="logBody"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Segments</div>
+        <div class="metric-value info" id="mSegments">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Live Rows</div>
+        <div class="metric-value" id="mLive">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Deleted</div>
+        <div class="metric-value bad" id="mDeleted">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Dead %</div>
+        <div class="metric-value warn" id="mDeadPct">0%</div>
+      </div>
+    </div>
+
+    <div class="compare-card">
+      <div class="compare-title">⚖️ Columnar vs Row</div>
+      <div class="compare-row"><span class="lbl">Storage</span><span class="col">by column</span></div>
+      <div class="compare-row"><span class="lbl">Compression</span><span class="col">10-100×</span></div>
+      <div class="compare-row"><span class="lbl">Analytics scan</span><span class="col">fast</span></div>
+      <div class="compare-row"><span class="lbl">Point update</span><span class="row">slow</span></div>
+      <div class="compare-row"><span class="lbl">Deletes</span><span class="row">bitmap</span></div>
+      <div class="compare-row"><span class="lbl">Updates</span><span class="row">rewrite</span></div>
+      <div class="compare-row"><span class="lbl">Compaction</span><span class="col">essential</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  policy: 'size',
+  autoCompactEvery: 0,      // 0 = off
+  operationsSinceCompact: 0,
+  segments: [],             // { id, rows: [{ id, name, age, city, deleted }], deleted, createdAt, size }
+  nextSegmentId: 1,
+  nextRowId: 1,
+  compactions: 0,
+  liveRows: 0,
+  deletedRows: 0,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  segmentsList: document.getElementById('segmentsList'),
+  segmentsHint: document.getElementById('segmentsHint'),
+  logBody: document.getElementById('logBody'),
+  logHint: document.getElementById('logHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnInsert: document.getElementById('btnInsert'),
+  btnUpdate: document.getElementById('btnUpdate'),
+  btnDelete: document.getElementById('btnDelete'),
+  btnCompact: document.getElementById('btnCompact'),
+  btnMajor: document.getElementById('btnMajor'),
+  btnReset: document.getElementById('btnReset'),
+  autoRange: document.getElementById('autoRange'),
+  autoVal: document.getElementById('autoVal'),
+  sSegments: document.getElementById('sSegments'),
+  sLive: document.getElementById('sLive'),
+  sDeleted: document.getElementById('sDeleted'),
+  sDeadPct: document.getElementById('sDeadPct'),
+  sComp: document.getElementById('sComp'),
+  sAvg: document.getElementById('sAvg'),
+  mSegments: document.getElementById('mSegments'),
+  mLive: document.getElementById('mLive'),
+  mDeleted: document.getElementById('mDeleted'),
+  mDeadPct: document.getElementById('mDeadPct'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 1800);
+}
+
+let LOG_COUNTER = 0;
+function logLine(cls, msg) {
+  LOG_COUNTER++;
+  const line = document.createElement('div');
+  line.className = `log-line ${cls}`;
+  line.innerHTML = `<span class="ts">${String(LOG_COUNTER).padStart(3, '0')}</span>${msg}`;
+  DOM.logBody.prepend(line);
+  while (DOM.logBody.children.length > 40) DOM.logBody.lastChild.remove();
+  DOM.logHint.textContent = `${LOG_COUNTER} ops`;
+}
+
+function clearLog() {
+  LOG_COUNTER = 0;
+  DOM.logBody.innerHTML = '';
+  DOM.logHint.textContent = '0 ops';
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining columnar storage compaction.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   DATA GENERATORS
+   ============================================================ */
+const NAMES = ['Alice', 'Bob', 'Carol', 'Dave', 'Eve', 'Frank', 'Grace', 'Henry', 'Ivy', 'Jack', 'Kate', 'Leo'];
+const CITIES = ['NYC', 'LA', 'SF', 'LDN', 'PAR', 'TOK', 'SYD', 'BER', 'MUM', 'SAO'];
+
+function randomRow() {
+  return {
+    id: STATE.nextRowId++,
+    name: NAMES[Math.floor(Math.random() * NAMES.length)],
+    age: 20 + Math.floor(Math.random() * 50),
+    city: CITIES[Math.floor(Math.random() * CITIES.length)],
+    deleted: false
+  };
+}
+
+/* ============================================================
+   SEGMENT OPERATIONS
+   ============================================================ */
+function createSegment(rowCount = 4) {
+  const rows = [];
+  for (let i = 0; i < rowCount; i++) {
+    rows.push(randomRow());
+  }
+  const seg = {
+    id: STATE.nextSegmentId++,
+    rows,
+    deleted: 0,
+    createdAt: Date.now()
+  };
+  STATE.segments.push(seg);
+  return seg;
+}
+
+function countLive(seg) {
+  return seg.rows.filter(r => !r.deleted).length;
+}
+
+function countDeleted(seg) {
+  return seg.rows.filter(r => r.deleted).length;
+}
+
+/* ============================================================
+   INSERT
+   ============================================================ */
+function doInsert() {
+  const seg = createSegment(4);
+  logLine('insert', `INSERT 4 rows → new segment S${String(seg.id).padStart(3, '0')}`);
+  teach('INSERT',
+    `Inserted 4 rows. Columnar stores are IMMUTABLE — nothing was modified. Instead, a NEW segment S${String(seg.id).padStart(3, '0')} was appended to the segment list. Reads must now scan all segments to see the full dataset.`,
+    'cyan'
+  );
+  STATE.operationsSinceCompact++;
+  renderAll();
+  maybeAutoCompact();
+}
+
+/* ============================================================
+   UPDATE — insert new + mark old as deleted
+   ============================================================ */
+function doUpdate() {
+  // Find a random live row across all segments
+  const candidates = [];
+  for (const seg of STATE.segments) {
+    for (const row of seg.rows) {
+      if (!row.deleted) candidates.push({ seg, row });
+    }
+  }
+  if (candidates.length === 0) {
+    showToast('⚠ No live rows to update');
+    return;
+  }
+  const { seg, row } = candidates[Math.floor(Math.random() * candidates.length)];
+
+  // Mark old row deleted
+  row.deleted = true;
+  seg.deleted++;
+
+  // Insert new row with updated data into a fresh segment
+  const newRow = {
+    ...row,
+    id: row.id,       // same logical id (MVCC-style)
+    age: row.age + 1, // simulate a change
+    _updated: true
+  };
+  const newSeg = {
+    id: STATE.nextSegmentId++,
+    rows: [newRow],
+    deleted: 0,
+    createdAt: Date.now()
+  };
+  STATE.segments.push(newSeg);
+
+  logLine('update', `UPDATE row id=${row.id}: marked deleted in S${String(seg.id).padStart(3, '0')}, inserted new version in S${String(newSeg.id).padStart(3, '0')}`);
+  teach('UPDATE',
+    `Columnar stores don't UPDATE in place. Instead: (1) mark the old row as deleted in its segment's delete bitmap, (2) write a NEW version of the row to a fresh segment. Two segment writes for one logical update.`,
+    'warn'
+  );
+  STATE.operationsSinceCompact++;
+  renderAll();
+  maybeAutoCompact();
+}
+
+/* ============================================================
+   DELETE — mark in delete bitmap
+   ============================================================ */
+function doDelete() {
+  const candidates = [];
+  for (const seg of STATE.segments) {
+    for (const row of seg.rows) {
+      if (!row.deleted) candidates.push({ seg, row });
+    }
+  }
+  if (candidates.length === 0) {
+    showToast('⚠ No live rows to delete');
+    return;
+  }
+  const { seg, row } = candidates[Math.floor(Math.random() * candidates.length)];
+  row.deleted = true;
+  seg.deleted++;
+
+  logLine('delete', `DELETE row id=${row.id}: marked in delete bitmap of S${String(seg.id).padStart(3, '0')}`);
+  teach('DELETE',
+    `DELETE doesn't physically remove data. It marks the row in the segment's delete bitmap. The bytes stay on disk until compaction. This makes deletes instant, but space is not reclaimed until compaction runs.`,
+    'error'
+  );
+  STATE.operationsSinceCompact++;
+  renderAll();
+  maybeAutoCompact();
+}
+
+/* ============================================================
+   COMPACTION
+   ============================================================ */
+function shouldCompact(seg) {
+  // Policy-based selection
+  switch (STATE.policy) {
+    case 'size':
+      // Small segments (fewer than 4 live rows) are compaction candidates
+      return countLive(seg) < 4;
+    case 'count':
+      // Merge if at least 3 small segments exist
+      return false; // Handled at cluster level
+    case 'tombstone':
+      // Segment with >30% deleted rows
+      return countDeleted(seg) / seg.rows.length > 0.3;
+  }
+  return false;
+}
+
+function doCompact(specificSegments = null) {
+  let candidates;
+
+  if (specificSegments) {
+    candidates = specificSegments;
+  } else {
+    switch (STATE.policy) {
+      case 'size':
+        candidates = STATE.segments.filter(s => countLive(s) < 4);
+        // Need at least 2 to merge
+        if (candidates.length < 2) {
+          showToast('⚠ Not enough small segments to compact');
+          return;
+        }
+        // Pick up to 3 smallest
+        candidates = candidates.sort((a, b) => a.rows.length - b.rows.length).slice(0, 3);
+        break;
+
+      case 'count':
+        // If we have 3+ segments, merge the smallest 3
+        if (STATE.segments.length < 3) {
+          showToast('⚠ Need at least 3 segments');
+          return;
+        }
+        candidates = [...STATE.segments]
+          .sort((a, b) => a.rows.length - b.rows.length)
+          .slice(0, 3);
+        break;
+
+      case 'tombstone':
+        candidates = STATE.segments.filter(s => countDeleted(s) / s.rows.length > 0.3);
+        if (candidates.length < 1) {
+          showToast('⚠ No tombstone-heavy segments');
+          return;
+        }
+        break;
+    }
+  }
+
+  if (!candidates || candidates.length < 1) return;
+
+  performCompaction(candidates);
+}
+
+function performCompaction(candidates) {
+  STATE.compactions++;
+  const segIds = candidates.map(s => 'S' + String(s.id).padStart(3, '0'));
+  logLine('compact', `🔧 Compacting segments: ${segIds.join(', ')}`);
+  showStatus(`⚙️ Compacting ${candidates.length} segments`, 'compact');
+
+  // Visual: mark compacting
+  for (const seg of candidates) {
+    const el = document.querySelector(`[data-seg-id="${seg.id}"]`);
+    if (el) el.classList.add('compacting');
+  }
+
+  // Merge all live rows from candidates into a new segment
+  const liveRows = [];
+  let totalDeleted = 0;
+  for (const seg of candidates) {
+    for (const row of seg.rows) {
+      if (!row.deleted) {
+        liveRows.push({ ...row });
+      } else {
+        totalDeleted++;
+      }
+    }
+  }
+
+  // Sort by row id to keep it tidy
+  liveRows.sort((a, b) => a.id - b.id);
+
+  // Remove old segments from state
+  for (const seg of candidates) {
+    const idx = STATE.segments.indexOf(seg);
+    if (idx !== -1) STATE.segments.splice(idx, 1);
+  }
+
+  // Add new merged segment (if there are live rows)
+  if (liveRows.length > 0) {
+    const newSeg = {
+      id: STATE.nextSegmentId++,
+      rows: liveRows,
+      deleted: 0,
+      createdAt: Date.now(),
+      _merged: true
+    };
+    STATE.segments.push(newSeg);
+    logLine('merge', `✔ Merged into S${String(newSeg.id).padStart(3, '0')} with ${liveRows.length} live rows (reclaimed ${totalDeleted} deleted)`);
+    teach('COMPACTION',
+      `Compaction merged ${candidates.length} segments into a single new segment S${String(newSeg.id).padStart(3, '0')}. All live rows were copied. ${totalDeleted} deleted rows were dropped — the space is now reclaimed. Columnar compaction rewrites whole columns, so it's expensive but necessary.`,
+      'pink'
+    );
+  } else {
+    logLine('merge', `✔ All rows were deleted — segments dropped, ${totalDeleted} rows reclaimed`);
+    teach('COMPACTION',
+      `All rows in these segments were deleted. Compaction dropped the whole segments — the ultimate space reclamation.`,
+      'pink'
+    );
+  }
+
+  // Animate removal
+  setTimeout(() => {
+    renderAll();
+  }, 100);
+
+  STATE.operationsSinceCompact = 0;
+}
+
+function doMajor() {
+  if (STATE.segments.length < 2) {
+    showToast('⚠ Need at least 2 segments');
+    return;
+  }
+  logLine('compact', `🔧 MAJOR COMPACTION: merging ALL ${STATE.segments.length} segments`);
+  showStatus('⚙️ MAJOR COMPACTION — merging all segments', 'compact');
+  teach('MAJOR COMPACTION',
+    `Major compaction merges EVERY segment into one. Expensive — rewrites the entire dataset — but has huge benefits: reads only touch one file, all tombstones are dropped, and space is fully reclaimed. Real systems schedule this for low-traffic windows.`,
+    'pink'
+  );
+
+  performCompaction([...STATE.segments]);
+}
+
+/* ============================================================
+   AUTO COMPACTION
+   ============================================================ */
+function maybeAutoCompact() {
+  if (STATE.autoCompactEvery === 0) return;
+  if (STATE.operationsSinceCompact >= STATE.autoCompactEvery) {
+    setTimeout(() => {
+      logLine('info', `⏰ Auto-compaction triggered after ${STATE.operationsSinceCompact} operations`);
+      doCompact();
+    }, 400);
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderAll() {
+  renderSegments();
+  updateStats();
+}
+
+function renderSegments() {
+  if (STATE.segments.length === 0) {
+    DOM.segmentsList.innerHTML = `<div style="color:#475569; text-align:center; padding:20px; font-family:monospace; font-size:0.65rem;">No segments. Click INSERT to add data.</div>`;
+    DOM.segmentsHint.textContent = '0 segments';
+    return;
+  }
+
+  let html = '';
+  // Show segments in reverse order (newest first)
+  const sorted = [...STATE.segments].sort((a, b) => b.createdAt - a.createdAt);
+
+  for (const seg of sorted) {
+    const live = countLive(seg);
+    const deleted = countDeleted(seg);
+    const isSmall = live < 4 && live > 0;
+    const deadPct = seg.rows.length > 0 ? (deleted / seg.rows.length) * 100 : 0;
+
+    const cls = [];
+    if (isSmall) cls.push('small');
+    if (seg._merged) cls.push('merged');
+
+    // Build column view (up to 8 rows)
+    const displayRows = seg.rows.slice(0, 8);
+    let colsHtml = '';
+    // Headers
+    colsHtml += `<div class="col-block"><div class="col-header">ID</div>`;
+    colsHtml += `<div class="col-block"><div class="col-header">NAME</div>`;
+    colsHtml += `<div class="col-block"><div class="col-header">AGE</div>`;
+    colsHtml += `<div class="col-block"><div class="col-header">CITY</div>`;
+    // Close header blocks and reopen for values (we need them in 4 columns)
+    // Better approach: build 4 separate columns
+    let colId = '<div class="col-header">ID</div>';
+    let colName = '<div class="col-header">NAME</div>';
+    let colAge = '<div class="col-header">AGE</div>';
+    let colCity = '<div class="col-header">CITY</div>';
+
+    for (const row of displayRows) {
+      const delCls = row.deleted ? 'deleted' : '';
+      const upCls = row._updated ? 'updated' : '';
+      colId += `<div class="col-val ${delCls}">${row.id}</div>`;
+      colName += `<div class="col-val ${delCls} ${upCls}">${row.name}</div>`;
+      colAge += `<div class="col-val ${delCls} ${upCls}">${row.age}</div>`;
+      colCity += `<div class="col-val ${delCls} ${upCls}">${row.city}</div>`;
+    }
+    if (seg.rows.length > 8) {
+      colId += `<div class="col-val" style="color:#475569;">+${seg.rows.length - 8} more</div>`;
+    }
+
+    // Delete bitmap (up to 16 bits)
+    let bitmapHtml = '';
+    for (let i = 0; i < Math.min(16, seg.rows.length); i++) {
+      const bitCls = seg.rows[i].deleted ? 'marked' : '';
+      bitmapHtml += `<div class="delete-bit ${bitCls}"></div>`;
+    }
+
+    html += `
+      <div class="segment ${cls.join(' ')}" data-seg-id="${seg.id}">
+        <div class="segment-header">
+          <span class="segment-name">S${String(seg.id).padStart(3, '0')}</span>
+          <span class="segment-meta">${seg.rows.length} rows · ${live} live · ${deleted} deleted</span>
+        </div>
+        <div class="columns">
+          <div class="col-block">${colId}</div>
+          <div class="col-block">${colName}</div>
+          <div class="col-block">${colAge}</div>
+          <div class="col-block">${colCity}</div>
+        </div>
+        <div class="segment-footer">
+          <span>Delete bitmap:</span>
+          <div class="delete-bitmap">${bitmapHtml}</div>
+          <span style="color:${deadPct > 30 ? '#f87171' : '#64748b'};">${deadPct.toFixed(0)}% dead</span>
+        </div>
+      </div>
+    `;
+  }
+  DOM.segmentsList.innerHTML = html;
+  DOM.segmentsHint.textContent = `${STATE.segments.length} segments · ${STATE.segments.reduce((a, s) => a + s.rows.length, 0)} total rows`;
+}
+
+function updateStats() {
+  // Count totals
+  let live = 0, deleted = 0;
+  for (const seg of STATE.segments) {
+    for (const row of seg.rows) {
+      if (row.deleted) deleted++;
+      else live++;
+    }
+  }
+  STATE.liveRows = live;
+  STATE.deletedRows = deleted;
+
+  const total = live + deleted;
+  const deadPct = total > 0 ? (deleted / total) * 100 : 0;
+  const avg = STATE.segments.length > 0 ? (total / STATE.segments.length).toFixed(1) : 0;
+
+  // UI updates
+  DOM.sSegments.textContent = STATE.segments.length;
+  DOM.mSegments.textContent = STATE.segments.length;
+
+  DOM.sLive.textContent = live;
+  DOM.mLive.textContent = live;
+
+  DOM.sDeleted.textContent = deleted;
+  DOM.mDeleted.textContent = deleted;
+
+  DOM.sDeadPct.textContent = deadPct.toFixed(0) + '%';
+  DOM.mDeadPct.textContent = deadPct.toFixed(0) + '%';
+
+  DOM.sDeadPct.className = 'val ' + (deadPct > 30 ? 'bad' : deadPct > 15 ? 'warn' : '');
+  DOM.mDeadPct.className = 'metric-value ' + (deadPct > 30 ? 'bad' : deadPct > 15 ? 'warn' : '');
+
+  DOM.sComp.textContent = STATE.compactions;
+  DOM.sAvg.textContent = avg;
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.segments = [];
+  STATE.nextSegmentId = 1;
+  STATE.nextRowId = 1;
+  STATE.compactions = 0;
+  STATE.liveRows = 0;
+  STATE.deletedRows = 0;
+  STATE.operationsSinceCompact = 0;
+  clearLog();
+  DOM.statusBanner.classList.remove('show');
+
+  // Initial dataset: 2 segments with some rows
+  createSegment(6);
+  createSegment(4);
+
+  logLine('info', 'Database reset. 2 segments created.');
+  renderAll();
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnInsert.addEventListener('click', doInsert);
+DOM.btnUpdate.addEventListener('click', doUpdate);
+DOM.btnDelete.addEventListener('click', doDelete);
+DOM.btnCompact.addEventListener('click', () => doCompact());
+DOM.btnMajor.addEventListener('click', doMajor);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.autoRange.addEventListener('input', e => {
+  STATE.autoCompactEvery = parseInt(e.target.value);
+  DOM.autoVal.textContent = STATE.autoCompactEvery === 0 ? 'OFF' : STATE.autoCompactEvery;
+  teach('AUTO COMPACTION',
+    STATE.autoCompactEvery === 0
+      ? 'Auto-compaction is OFF. Click the compact buttons to run manually.'
+      : `Auto-compaction will trigger every ${STATE.autoCompactEvery} operations. Real systems do this in the background.`,
+    'info', false
+  );
+});
+
+document.querySelectorAll('input[name="policy"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.policy = e.target.value;
+    const desc = {
+      size: 'Size-tiered: merge small segments into larger ones. Common in Cassandra and RocksDB.',
+      count: 'Count-based: if you have N+ segments, merge the smallest ones. Simpler heuristic.',
+      tombstone: 'Tombstone-driven: merge segments that have >30% deleted rows. Reclaims space efficiently.'
+    };
+    teach('COMPACTION POLICY', desc[e.target.value], 'purple');
+  });
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Columnar Storage Compaction. Column-oriented databases store each column separately, compressed, and IMMUTABLE. Once a segment is written, it never changes. This makes reads incredibly fast for analytics — but what happens when you DELETE or UPDATE a row?`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE IMMUTABLE PROBLEM',
+      `Columnar segments can't be modified in place. An UPDATE becomes: mark old row as deleted (via a delete bitmap) + write a new version. A DELETE just marks the row in the bitmap. This is fast, but leaves "tombstones" — deleted bytes still consuming disk space.`,
+      'warn'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE COMPACTION FIX',
+      `Compaction is the background process that reclaims space. It reads multiple segments, drops deleted rows, and writes out one new merged segment. Think of it as garbage collection for columnar storage. Run it periodically to keep read performance and disk usage bounded.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('REAL SYSTEMS',
+      `ClickHouse uses "parts" and merges them in the background. Snowflake uses immutable micro-partitions with automatic reclustering. BigQuery uses Capacitor columnar format. Druid uses segment merges. Parquet files on S3 get compacted by Spark/Iceberg/Delta. Every columnar system has a compaction strategy.`,
+      'purple'
+    );
+  }, 13500);
+
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click INSERT to add data, UPDATE to modify rows (watch how it creates new segments), DELETE to mark rows (see the delete bitmap fill in), then COMPACT to reclaim space. Every operation is realistic — this is exactly what your columnar DB is doing under the hood.`,
+      'cyan'
+    );
+  }, 18000);
+
+  showToast('👋 Try INSERT → UPDATE → DELETE → COMPACT', 4500);
+}, 600);
+</script>
+</body>
+</html>
