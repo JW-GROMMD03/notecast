@@ -42,6 +42,46 @@ if (themeToggleBtn) {
   });
 }
 
+// --- FACULTY & COURSE STATIC LIBRARY DATA ---
+const FACULTY_DATA = {
+  Technology: [
+    "Artificial_Intelligence", "Bioinformatics", "Blockchain_Technology", "Building_and_Construction_Technology", 
+    "Cloud_Computing", "Computer_Animation", "Computer_Engineering", "Computer_Information_Systems_CIS", 
+    "Computer_Science", "Cybersecurity_and_Cyber_Defense", "Data_Science_and_Analytics", "Database_Management_Systems", 
+    "Digital_Forensics", "Educational_Technology", "Electrical_and_Electronics_Technology", "Game_Development", 
+    "Geographic_Information_Systems_GIS", "Health_Information_Management", "Information_Communication_Technology_ICT", 
+    "Information_Science", "Information_Technology_IT", "Instrumentation_and_Control_Systems_Technology", 
+    "Internet_of_Things_IoT", "Management_Information_Systems_MIS", "Mobile_Application_Development", "Multimedia_Technology", 
+    "Network_Administration", "Robotics_and_Mechatronics", "Software_Engineering", "Telecommunications_Engineering", 
+    "Virtual_and_Augmented_Reality_VR_AR", "Web_Design_and_Development"
+  ],
+  Engineering: [
+    "Aerospace_Engineering", "Agricultural_Engineering", "Automotive_Engineering", "Bioengineering", 
+    "Biomedical_Engineering", "Chemical_Engineering", "Civil_Engineering", "Computer_Engineering", 
+    "Electrical_Engineering", "Environmental_Engineering", "Industrial_Engineering", "Materials_Science_and_Engineering", 
+    "Mechanical_Engineering", "Mechatronics_Engineering", "Mining_Engineering", "Nuclear_Engineering", 
+    "Petroleum_Engineering", "Robotics_Engineering", "Software_Engineering", "Structural_Engineering", "Systems_Engineering"
+  ],
+  Education: [
+    "BEd_Science_Mathematics_and_Physics", "BEd_Science_Biology_and_Chemistry", "BEd_Arts_Geography_and_Mathematics", 
+    "BEd_Computer_Science", "MEd_Mathematics_Education", "MEd_Science_Education", "PGDE_Science_STEM", 
+    "BEd_Technology_Education", "Diploma_in_Teacher_Education_Science"
+  ],
+  Business: [
+    "Accounting", "Actuarial_Science", "Banking_and_Finance", "Business_Administration", "Business_Analytics", 
+    "Business_Communication", "Commerce_BCom", "Corporate_Governance", "E_Commerce", "Entrepreneurship_and_Innovation", 
+    "Financial_Engineering", "Hospitality_and_Tourism_Management", "Human_Resource_Management", "International_Business", 
+    "Logistics_and_Supply_Chain_Management", "Management_Information_Systems_MIS", "Marketing_and_Digital_Strategy", 
+    "Operations_Management", "Project_Management", "Real_Estate_Management", "Strategic_Management"
+  ]
+};
+
+const MODULES = [
+  { file: "fundamentals.html", name: "Fundamentals & Core Concepts" },
+  { file: "advanced_architecture.html", name: "Advanced Architecture & Systems" },
+  { file: "case_study_simulation.html", name: "Case Study & Real-World Simulation" }
+];
+
 async function init() {
   user = await requireAuth();
   document.getElementById("userName").textContent = user.display_name || user.email;
@@ -69,7 +109,67 @@ async function init() {
     });
   });
 
-  // 2. Wire Dynamic Simulation Generator (Fixed for Long-Running 90s Timeout)
+  // 2. Wire Cascading Dropdowns for Static Library (Zero Timeout Path)
+  const facultySelect = document.getElementById("facultySelect");
+  const courseDropdown = document.getElementById("courseDropdown");
+  const moduleDropdown = document.getElementById("moduleDropdown");
+  const launchBtn = document.getElementById("launchStaticSimBtn");
+
+  if (facultySelect) {
+    facultySelect.addEventListener("change", (e) => {
+      const faculty = e.target.value;
+      courseDropdown.innerHTML = '<option value="">-- Select Course --</option>';
+      moduleDropdown.innerHTML = '<option value="">-- Select Course First --</option>';
+      courseDropdown.disabled = !faculty;
+      moduleDropdown.disabled = true;
+      launchBtn.disabled = true;
+
+      if (faculty && FACULTY_DATA[faculty]) {
+        FACULTY_DATA[faculty].forEach(course => {
+          const opt = document.createElement("option");
+          opt.value = course;
+          opt.textContent = course.replace(/_/g, " ");
+          courseDropdown.appendChild(opt);
+        });
+      }
+    });
+
+    courseDropdown.addEventListener("change", (e) => {
+      const course = e.target.value;
+      moduleDropdown.innerHTML = '<option value="">-- Select Module --</option>';
+      moduleDropdown.disabled = !course;
+      launchBtn.disabled = true;
+
+      if (course) {
+        MODULES.forEach(mod => {
+          const opt = document.createElement("option");
+          opt.value = mod.file;
+          opt.textContent = mod.name;
+          moduleDropdown.appendChild(opt);
+        });
+      }
+    });
+
+    moduleDropdown.addEventListener("change", (e) => {
+      launchBtn.disabled = !e.target.value;
+    });
+
+    launchBtn.addEventListener("click", () => {
+      const faculty = facultySelect.value;
+      const course = courseDropdown.value;
+      const moduleFile = moduleDropdown.value;
+
+      if (!faculty || !course || !moduleFile) return alert("Please make a complete selection.");
+
+      // Direct local file mapping for instant execution
+      const filePath = `${faculty}/${course}/${moduleFile}`;
+      const readableTitle = `${course.replace(/_/g, " ")} — ${moduleDropdown.options[moduleDropdown.selectedIndex].text}`;
+
+      window.location.href = `simulator.html?file=${encodeURIComponent(filePath)}&title=${encodeURIComponent(readableTitle)}`;
+    });
+  }
+
+  // 3. Wire Custom AI Generation (With 120s Extended Client Timeout and Cloud Gateway Error Catching)
   const generateSimBtn = document.getElementById("generateSimBtn");
   if (generateSimBtn) {
     generateSimBtn.addEventListener("click", async () => {
@@ -77,38 +177,52 @@ async function init() {
       if (!topic) return alert("Please enter a topic or unit name!");
 
       generateSimBtn.disabled = true;
-      generateSimBtn.textContent = "AI Synthesizing 3D Env...";
+      generateSimBtn.textContent = "Synthesizing...";
+      
+      // We implement an explicit AbortController to cleanly handle 120s client-side limits,
+      // but if the Render cloud edge drops it at 30s (502 Bad Gateway), the catch block guides the user safely.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); 
+
       try {
-        // We use native fetch here instead of authedFetch to bypass any client-side 
-        // AbortController timeouts that might be killing the request at 15 seconds.
         const response = await fetch("/diagrams/generate-sim/", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${localStorage.getItem('nc_access') || ''}`
           },
-          credentials: "include", // Ensures your nc_access auth cookies are sent
-          body: JSON.stringify({ topic })
+          credentials: "include", 
+          body: JSON.stringify({ topic }),
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          throw new Error(`HTTP ${response.status}: The proxy cloud provider timed out the request.`);
         }
 
         const schema = await response.json();
         sessionStorage.setItem("active_sim_schema", JSON.stringify(schema));
         window.location.href = `simulator.html?topic=${encodeURIComponent(topic)}`;
       } catch (err) {
+        clearTimeout(timeoutId);
         console.error("Simulation Generation Error:", err);
-        alert("Failed to generate simulation. The AI provider took too long to respond. Please try again.");
+        
+        // Friendly alert intercepting Render proxy drops
+        if (err.name === 'AbortError' || err.message.includes("502") || err.message.includes("504")) {
+          alert(`Network Timeout: The cloud provider dropped the connection because the AI took longer than 30 seconds to generate the environment.\n\nPlease use the "Pre-Compiled Academic Library" dropdown above instead for instant access without generation limits.`);
+        } else {
+          alert("Failed to generate simulation. Please check your provider keys and try again.");
+        }
       } finally {
         generateSimBtn.disabled = false;
-        generateSimBtn.textContent = "Generate Live Simulation";
+        generateSimBtn.textContent = "Generate Live";
       }
     });
   }
 
-  // 3. Collapsible Sidebar Toggle for Notes & Summary
+  // 4. Collapsible Sidebar Toggle for Notes & Summary
   const readerWorkspace = document.getElementById("readerWorkspace");
   const toggleSidebarBtn = document.getElementById("toggleSidebarBtn");
   const closeSidebarBtn = document.getElementById("closeSidebarBtn");
@@ -124,7 +238,7 @@ async function init() {
     });
   }
 
-  // 4. Docu-Vision Professional Editor & Shape Insertion
+  // 5. Docu-Vision Professional Editor & Shape Insertion
   const summaryEditor = document.getElementById("docSummaryEditor");
   if (summaryEditor) {
     summaryEditor.addEventListener("input", () => {
@@ -157,7 +271,7 @@ async function init() {
     });
   }
 
-  // 5. Generate Short Notes Prompt Workflow
+  // 6. Generate Short Notes Prompt Workflow
   const genNotesBtn = document.getElementById("generateShortNotesBtn");
   if (genNotesBtn) {
     genNotesBtn.addEventListener("click", async () => {
@@ -219,7 +333,7 @@ async function init() {
     });
   }
 
-  // 6. Wire PDF Upload (Upgraded to authedFetch)
+  // 7. Wire PDF Upload
   const uploadPdfBtn = document.getElementById("uploadPdfBtn");
   if (uploadPdfBtn) {
     uploadPdfBtn.addEventListener("click", async () => {
@@ -256,7 +370,7 @@ async function init() {
     });
   }
 
-  // 7. Flashcard Actions (Upgraded to authedFetch)
+  // 8. Flashcard Actions
   const fcShowBtn = document.getElementById("fcShowBtn");
   if (fcShowBtn) {
     fcShowBtn.addEventListener("click", () => {
@@ -283,7 +397,7 @@ async function init() {
     });
   });
 
-  // 8. Wire Logout
+  // 9. Wire Logout
   const logoutBtn = document.getElementById("logoutBtn");
   if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
@@ -369,7 +483,6 @@ async function loadDocuments() {
         fileNameEl.textContent = currentSelectedDoc.filename || currentSelectedDoc.title;
         
         if (viewer) {
-          // Fallback to storage_key or document id so it never resolves to undefined
           const fileKey = currentSelectedDoc.storage_key || currentSelectedDoc.id;
           viewer.innerHTML = `<iframe src="/api/documents/media/${fileKey}/" style="width:100%; height:100%; border:none; background:#ffffff;"></iframe>`;
         }
@@ -394,7 +507,6 @@ async function loadDocuments() {
   }
 }
 
-// --- FLASHCARD ENGINE (SM-2) ---
 async function loadFlashcards() {
   dueFlashcards = await authedFetch("/flashcards/due/");
   currentFcIndex = 0;
@@ -423,7 +535,6 @@ function renderCurrentFlashcard() {
   document.getElementById("fcShowBtn").style.display = "block";
 }
 
-// --- KNOWLEDGE GRAPH ENGINE ---
 async function loadGraph() {
   const graphData = await authedFetch("/graph/");
   

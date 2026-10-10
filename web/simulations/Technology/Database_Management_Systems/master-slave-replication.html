@@ -1,0 +1,1608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Master-Slave Replication — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #a855f7, #3b82f6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(168,85,247,0.15);
+    color: #c084fc;
+    border-color: #a855f7;
+  }
+  .teaching-toggle:hover { background: rgba(168,85,247,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 260px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #c084fc;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #a855f7; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #a855f7; color: #fff; border-color: #a855f7; }
+  .btn.primary:hover { background: #9333ea; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #c084fc; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #a855f7; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(168,85,247,0.06) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* Clients */
+  .clients-row {
+    position: absolute;
+    top: 48px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 14px;
+    z-index: 5;
+  }
+  .client {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    border: 2px solid #334155;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem;
+    transition: all 0.25s;
+    position: relative;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .client.write {
+    border-color: #f59e0b;
+    box-shadow: 0 0 20px rgba(245,158,11,0.7);
+    transform: scale(1.1);
+  }
+  .client.read {
+    border-color: #06b6d4;
+    box-shadow: 0 0 20px rgba(6,182,212,0.7);
+    transform: scale(1.1);
+  }
+
+  /* MASTER NODE */
+  .master-wrap {
+    position: absolute;
+    top: 130px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+  }
+  .master-node {
+    width: 260px;
+    background: linear-gradient(160deg, #1a1230 0%, #0a0e19 100%);
+    border: 2px solid #a855f7;
+    border-radius: 12px;
+    padding: 12px;
+    position: relative;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.7), 0 0 30px rgba(168,85,247,0.4);
+    transition: all 0.3s;
+  }
+  .master-node.busy {
+    animation: masterPulse 0.3s ease;
+  }
+  @keyframes masterPulse {
+    0%, 100% { box-shadow: 0 20px 50px rgba(0,0,0,0.7), 0 0 30px rgba(168,85,247,0.4); }
+    50%      { box-shadow: 0 20px 50px rgba(0,0,0,0.7), 0 0 80px rgba(168,85,247,1); }
+  }
+  .master-node.down {
+    border-color: #7f1d1d;
+    opacity: 0.4;
+    filter: grayscale(0.7);
+  }
+  .master-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .master-name {
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    color: #c084fc;
+    font-family: monospace;
+  }
+  .master-crown {
+    font-size: 0.7rem;
+    color: #fbbf24;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .master-status {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  .master-node.down .master-status {
+    background: #ef4444; box-shadow: 0 0 10px #ef4444; animation: none;
+  }
+  .master-role {
+    font-size: 0.6rem;
+    color: #94a3b8;
+    letter-spacing: 1.5px;
+    text-align: center;
+    margin-bottom: 8px;
+    font-family: monospace;
+  }
+  .master-role b { color: #fbbf24; }
+  .master-metric-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.62rem;
+    color: #64748b;
+    font-family: monospace;
+    margin-bottom: 3px;
+  }
+  .master-metric-row .val { color: #c084fc; font-weight: 700; }
+  .master-metric-row .val.warn { color: #f59e0b; }
+  .master-metric-row .val.bad { color: #ef4444; }
+
+  .mini-log {
+    background: #070a14;
+    border: 1px solid #1e293b;
+    border-radius: 5px;
+    padding: 5px 7px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.55rem;
+    color: #94a3b8;
+    margin-top: 6px;
+    height: 42px;
+    overflow: hidden;
+    position: relative;
+  }
+  .mini-log-entry {
+    animation: logSlide 0.3s ease;
+    color: #a855f7;
+  }
+  @keyframes logSlide {
+    from { transform: translateX(-10px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  /* REPLICATION BUS */
+  .repl-bus {
+    position: absolute;
+    top: 335px;
+    left: 15%;
+    right: 15%;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #a855f7, transparent);
+    box-shadow: 0 0 15px rgba(168,85,247,0.8);
+    z-index: 2;
+    transition: all 0.3s;
+  }
+  .repl-bus.broken {
+    background: linear-gradient(90deg, transparent, #7f1d1d, transparent);
+    box-shadow: 0 0 15px rgba(239,68,68,0.6);
+  }
+  .repl-bus-label {
+    position: absolute;
+    top: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #a855f7;
+    font-family: monospace;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .repl-bus.broken .repl-bus-label {
+    color: #f87171;
+  }
+
+  /* SLAVES CONTAINER */
+  .slaves-container {
+    position: absolute;
+    top: 380px;
+    left: 0; right: 0;
+    bottom: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 22px;
+    padding: 8px 30px;
+    flex-wrap: wrap;
+  }
+
+  .slave {
+    width: 175px;
+    background: linear-gradient(160deg, #0f1a2e 0%, #070a14 100%);
+    border: 2px solid #3b82f6;
+    border-radius: 10px;
+    padding: 10px;
+    position: relative;
+    transition: all 0.3s;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5), 0 0 15px rgba(59,130,246,0.2);
+  }
+  .slave.busy {
+    animation: slavePulse 0.3s ease;
+  }
+  @keyframes slavePulse {
+    0%, 100% { box-shadow: 0 10px 25px rgba(0,0,0,0.5), 0 0 15px rgba(59,130,246,0.2); }
+    50%      { box-shadow: 0 10px 25px rgba(0,0,0,0.5), 0 0 45px rgba(59,130,246,0.9); }
+  }
+  .slave.lagging {
+    border-color: #f59e0b;
+    box-shadow: 0 0 25px rgba(245,158,11,0.5);
+  }
+  .slave.down {
+    border-color: #7f1d1d;
+    opacity: 0.4;
+    filter: grayscale(0.7);
+  }
+  .slave.promoting {
+    animation: promoteAnim 1s ease;
+    border-color: #fbbf24;
+  }
+  @keyframes promoteAnim {
+    0%, 100% { transform: scale(1); }
+    30% { transform: scale(1.15); box-shadow: 0 0 80px rgba(251,191,36,1); }
+  }
+  .slave.crowned {
+    border-color: #fbbf24;
+    box-shadow: 0 0 30px rgba(251,191,36,0.6), 0 10px 25px rgba(0,0,0,0.5);
+  }
+
+  .slave-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .slave-name {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    color: #60a5fa;
+    font-family: monospace;
+  }
+  .slave.crowned .slave-name { color: #fbbf24; }
+  .slave-status {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  .slave.down .slave-status {
+    background: #ef4444; box-shadow: 0 0 8px #ef4444; animation: none;
+  }
+  .slave.lagging .slave-status {
+    background: #f59e0b; box-shadow: 0 0 8px #f59e0b;
+  }
+
+  .slave-role {
+    font-size: 0.55rem;
+    color: #64748b;
+    letter-spacing: 1.2px;
+    text-align: center;
+    margin-bottom: 6px;
+    font-family: monospace;
+  }
+  .slave.crowned .slave-role { color: #fbbf24; font-weight: 700; }
+
+  .repl-progress {
+    height: 5px;
+    background: #0a0e19;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 6px;
+    border: 1px solid #1e293b;
+  }
+  .repl-progress-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #3b82f6, #a855f7);
+    transition: width 0.4s ease;
+    box-shadow: 0 0 6px rgba(168,85,247,0.5);
+  }
+  .slave.lagging .repl-progress-fill {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+  }
+
+  .slave-metric {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.58rem;
+    color: #64748b;
+    font-family: monospace;
+    margin-bottom: 2px;
+  }
+  .slave-metric .val { color: #60a5fa; font-weight: 700; }
+  .slave-metric .val.warn { color: #f59e0b; }
+  .slave-metric .val.bad { color: #ef4444; }
+
+  /* Particle */
+  .particle {
+    position: absolute;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .particle.read   { background: #06b6d4; box-shadow: 0 0 10px #06b6d4; }
+  .particle.write  { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+  .particle.repl   { background: #a855f7; box-shadow: 0 0 10px #a855f7; }
+  .particle.heart  { background: #10b981; box-shadow: 0 0 10px #10b981; }
+
+  /* RIGHT: teaching panel */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(168,85,247,0.06);
+    border: 1px solid rgba(168,85,247,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.58rem;
+    color: #c084fc;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 380px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #a855f7;
+    background: rgba(168,85,247,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #c084fc; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #a855f7;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(168,85,247,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .connections {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .connections path {
+    stroke: #a855f7;
+    stroke-width: 1.2;
+    fill: none;
+    stroke-dasharray: 5 5;
+    opacity: 0.4;
+    animation: dash 1.5s linear infinite;
+  }
+  .connections path.broken { stroke: #7f1d1d; opacity: 0.15; animation: none; }
+  @keyframes dash { to { stroke-dashoffset: -20; } }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>MASTER-SLAVE REPLICATION</h1>
+    <span class="sub">PRIMARY · REPLICAS · ASYNC/SYNC · FAILOVER</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Traffic Control</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 60 Queries</button>
+      <button class="btn warn" id="btnWriteWave">🔥 Write Storm</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Profile</h3>
+      <div class="slider-row"><span>Queries / sec</span><span class="value" id="qpsVal">50</span></div>
+      <input type="range" id="qpsRange" min="1" max="300" value="50">
+      <div class="slider-row"><span>Read Ratio</span><span class="value" id="readVal">80%</span></div>
+      <input type="range" id="readRange" min="0" max="100" value="80">
+    </div>
+
+    <div class="panel">
+      <h3>Replication Mode</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="mode" value="async" checked style="accent-color:#a855f7;">
+          Asynchronous
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="mode" value="sync" style="accent-color:#a855f7;">
+          Synchronous
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="mode" value="semi" style="accent-color:#a855f7;">
+          Semi-synchronous
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Failure Injection</h3>
+      <button class="btn danger" id="btnKillMaster">💥 Kill Master</button>
+      <button class="btn warn" id="btnLagSlave">🐌 Slow a Slave</button>
+      <button class="btn" id="btnNetwork">📡 Network Partition</button>
+      <button class="btn success" id="btnRecover">🔄 Recover All</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#06b6d4;"></div>Read query</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>Write query</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#a855f7;"></div>Replication stream</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>Heartbeat / ack</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fbbf24;"></div>Promoted master</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">ONE WRITER · MANY READERS · ONE-WAY REPLICATION</div>
+
+      <div class="clients-row" id="clientsRow">
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+      </div>
+
+      <svg class="connections" id="connections"></svg>
+
+      <div class="master-wrap">
+        <div class="master-node" id="masterNode">
+          <div class="master-header">
+            <div class="master-name">MASTER</div>
+            <div class="master-crown">👑 PRIMARY</div>
+            <div class="master-status"></div>
+          </div>
+          <div class="master-role">Accepting <b>READS + WRITES</b></div>
+          <div class="master-metric-row"><span>CPU</span><span class="val" id="masterCpu">0%</span></div>
+          <div class="master-metric-row"><span>WRITE QPS</span><span class="val" id="masterWrite">0</span></div>
+          <div class="master-metric-row"><span>REPL LAG</span><span class="val" id="masterLag">0 ms</span></div>
+          <div class="mini-log" id="masterLog"></div>
+        </div>
+      </div>
+
+      <div class="repl-bus" id="replBus">
+        <div class="repl-bus-label" id="replBusLabel">▼ REPLICATION STREAM ▼</div>
+      </div>
+
+      <div class="slaves-container" id="slavesContainer"></div>
+    </div>
+  </main>
+
+  <!-- RIGHT PANEL: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Slaves Online</div>
+        <div class="metric-value" id="mSlaves">3</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">QPS</div>
+        <div class="metric-value" id="mQps">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Repl Lag</div>
+        <div class="metric-value" id="mLag">0 ms</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Writes Lost</div>
+        <div class="metric-value" id="mLost">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Read Capacity</div>
+        <div class="metric-value" id="mReadCap">4×</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Mode</div>
+        <div class="metric-value" id="mMode" style="font-size:0.85rem;">ASYNC</div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:6px;">📊 Replication Lag Timeline</h3>
+      <div style="font-family:monospace; font-size:0.62rem; color:#94a3b8;">
+        <div id="lagBars"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  running: false,
+  qps: 50,
+  readRatio: 0.8,
+  mode: 'async',             // async | sync | semi
+  master: { cpu: 0, writes: 0, up: true, isMaster: true },
+  slaves: [],                // { id, cpu, lagMs, up, syncing, promoted }
+  totalQueries: 0,
+  totalWrites: 0,
+  writesLost: 0,
+  latencySamples: [],
+  tickTimer: null,
+  teaching: true,
+  voiceEnabled: false,
+  networkPartition: false,
+  promotedId: null,
+  lastAnnouncedLag: 0,
+  lastAnnouncedLost: 0
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  slavesContainer: document.getElementById('slavesContainer'),
+  connections: document.getElementById('connections'),
+  replBus: document.getElementById('replBus'),
+  replBusLabel: document.getElementById('replBusLabel'),
+  masterNode: document.getElementById('masterNode'),
+  masterCpu: document.getElementById('masterCpu'),
+  masterWrite: document.getElementById('masterWrite'),
+  masterLag: document.getElementById('masterLag'),
+  masterLog: document.getElementById('masterLog'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  lagBars: document.getElementById('lagBars'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnWriteWave: document.getElementById('btnWriteWave'),
+  btnKillMaster: document.getElementById('btnKillMaster'),
+  btnLagSlave: document.getElementById('btnLagSlave'),
+  btnNetwork: document.getElementById('btnNetwork'),
+  btnRecover: document.getElementById('btnRecover'),
+  qpsRange: document.getElementById('qpsRange'),
+  qpsVal: document.getElementById('qpsVal'),
+  readRange: document.getElementById('readRange'),
+  readVal: document.getElementById('readVal'),
+  mSlaves: document.getElementById('mSlaves'),
+  mQps: document.getElementById('mQps'),
+  mLag: document.getElementById('mLag'),
+  mLost: document.getElementById('mLost'),
+  mReadCap: document.getElementById('mReadCap'),
+  mMode: document.getElementById('mMode'),
+  clientsRow: document.getElementById('clientsRow')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE ENGINE
+   ============================================================ */
+const Voice = {
+  enabled: false,
+  queue: [],
+  speaking: false,
+  lastSpoken: '',
+  lastSpokenAt: 0,
+  maxQueue: 4,
+
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      this.queue = [];
+      this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining master slave replication step by step.");
+    }
+  },
+
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text;
+    this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0; u.volume = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+                  || voices.find(v => v.lang === 'en-US')
+                  || voices.find(v => v.lang.startsWith('en'));
+    if (preferred) u.voice = preferred;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING FEED
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   CLUSTER INIT
+   ============================================================ */
+function initializeCluster() {
+  STATE.slaves = [];
+  STATE.promotedId = null;
+  for (let i = 0; i < 3; i++) {
+    STATE.slaves.push({
+      id: i + 1,
+      cpu: 0,
+      lagMs: 0,
+      up: true,
+      syncing: true,
+      promoted: false,
+      backlog: 0
+    });
+  }
+  STATE.master = { cpu: 0, writes: 0, up: true, isMaster: true };
+  STATE.writesLost = 0;
+  STATE.totalWrites = 0;
+  renderSlaves();
+  renderLagBars();
+  updateTelemetry();
+
+  teach('INIT',
+    `Cluster initialized: 1 master + 3 slaves. In master-slave replication, the master accepts ALL writes. ` +
+    `Slaves receive a one-way stream of the master's write-ahead log and apply it in order. This makes reads scale ` +
+    `(add slaves) but writes do not scale — the master is the sole writer.`,
+    'ok'
+  );
+
+  setTimeout(() => {
+    teach('CONCEPT',
+      `Why one-way? Because ordering matters. If two nodes could both accept writes to the same row, you'd need ` +
+      `conflict resolution. Master-slave sidesteps that by funneling every write through ONE node, which assigns a ` +
+      `strictly increasing sequence number. Slaves just replay the log. This is the design behind MySQL replication, ` +
+      `PostgreSQL streaming replication, and MongoDB replica sets.`,
+      'purple'
+    );
+  }, 2500);
+}
+
+/* ============================================================
+   RENDER SLAVES
+   ============================================================ */
+function renderSlaves() {
+  DOM.slavesContainer.innerHTML = '';
+  for (const s of STATE.slaves) {
+    DOM.slavesContainer.appendChild(buildSlaveEl(s));
+  }
+}
+
+function buildSlaveEl(s) {
+  const el = document.createElement('div');
+  el.className = 'slave';
+  el.dataset.slaveId = s.id;
+  if (s.promoted) el.classList.add('crowned');
+  if (!s.up) el.classList.add('down');
+  if (s.lagMs > 500) el.classList.add('lagging');
+
+  el.innerHTML = `
+    <div class="slave-header">
+      <div class="slave-name">SLAVE-${String(s.id).padStart(2, '0')}</div>
+      <div class="slave-status"></div>
+    </div>
+    <div class="slave-role">${s.promoted ? '👑 PRIMARY' : 'Read replica'}</div>
+    <div class="repl-progress"><div class="repl-progress-fill"></div></div>
+    <div class="slave-metric"><span>CPU</span><span class="val cpu-val">0%</span></div>
+    <div class="slave-metric"><span>READ QPS</span><span class="val qps-val">0</span></div>
+    <div class="slave-metric"><span>LAG</span><span class="val lag-val">0 ms</span></div>
+  `;
+  applySlaveVisuals(el, s);
+  return el;
+}
+
+function applySlaveVisuals(el, s) {
+  const fill = el.querySelector('.repl-progress-fill');
+  const cpuVal = el.querySelector('.cpu-val');
+  const qpsVal = el.querySelector('.qps-val');
+  const lagVal = el.querySelector('.lag-val');
+
+  // Progress bar shows how caught up the slave is
+  const caughtUp = clamp(100 - s.lagMs / 10, 20, 100);
+  fill.style.width = caughtUp + '%';
+
+  const cpuPct = Math.round(s.cpu * 100);
+  cpuVal.textContent = cpuPct + '%';
+  cpuVal.className = 'val ' + (cpuPct > 85 ? 'bad' : cpuPct > 60 ? 'warn' : '');
+
+  const onlineReaders = STATE.slaves.filter(x => x.up && !x.promoted).length || 1;
+  qpsVal.textContent = (STATE.running && s.up && !s.promoted)
+    ? Math.round(STATE.qps * STATE.readRatio / onlineReaders)
+    : 0;
+
+  lagVal.textContent = Math.round(s.lagMs) + ' ms';
+  lagVal.className = 'val ' + (s.lagMs > 1000 ? 'bad' : s.lagMs > 300 ? 'warn' : '');
+}
+
+/* ============================================================
+   CONNECTIONS
+   ============================================================ */
+function drawConnections() {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const masterRect = DOM.masterNode.getBoundingClientRect();
+  const mx = masterRect.left - stageRect.left + masterRect.width / 2;
+  const my = masterRect.top - stageRect.top + masterRect.height;
+
+  let paths = '';
+  DOM.slavesContainer.querySelectorAll('.slave').forEach(el => {
+    const r = el.getBoundingClientRect();
+    const x = r.left - stageRect.left + r.width / 2;
+    const y = r.top - stageRect.top;
+    const broken = el.classList.contains('down') || STATE.networkPartition;
+    paths += `<path class="${broken ? 'broken' : ''}" d="M ${mx} ${my} L ${x} ${y}"/>`;
+  });
+  DOM.connections.innerHTML = paths;
+}
+
+/* ============================================================
+   PARTICLES
+   ============================================================ */
+function animateWrite(clientEl) {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const cr = clientEl.getBoundingClientRect();
+  const mr = DOM.masterNode.getBoundingClientRect();
+
+  const p = document.createElement('div');
+  p.className = 'particle write';
+  const sx = cr.left - stageRect.left + cr.width / 2 - 4;
+  const sy = cr.top - stageRect.top + cr.height - 4;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const tx = mr.left - stageRect.left + mr.width / 2 - 4;
+  const ty = mr.top - stageRect.top - 4;
+  const dur = 300;
+  const t0 = performance.now();
+
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    p.style.transform = `translate(${(tx - sx) * e}px, ${(ty - sy) * e}px)`;
+    p.style.opacity = String(1 - t * 0.4);
+    if (t < 1) requestAnimationFrame(frame);
+    else {
+      p.remove();
+      DOM.masterNode.classList.remove('busy');
+      void DOM.masterNode.offsetWidth;
+      DOM.masterNode.classList.add('busy');
+    }
+  })(t0);
+}
+
+function animateReplicationToSlave(slaveId) {
+  if (!STATE.master.up || STATE.networkPartition) return;
+  const slave = STATE.slaves.find(s => s.id === slaveId);
+  if (!slave || !slave.up) return;
+
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const mr = DOM.masterNode.getBoundingClientRect();
+  const slaveEl = DOM.slavesContainer.querySelector(`[data-slave-id="${slaveId}"]`);
+  if (!slaveEl) return;
+  const sr = slaveEl.getBoundingClientRect();
+
+  const p = document.createElement('div');
+  p.className = 'particle repl';
+  const sx = mr.left - stageRect.left + mr.width / 2 - 4;
+  const sy = mr.top - stageRect.top + mr.height - 4;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const tx = sr.left - stageRect.left + sr.width / 2 - 4;
+  const ty = sr.top - stageRect.top - 4;
+  const dur = 380;
+  const t0 = performance.now();
+
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    p.style.transform = `translate(${(tx - sx) * e}px, ${(ty - sy) * e}px)`;
+    p.style.opacity = String(1 - t * 0.4);
+    if (t < 1) requestAnimationFrame(frame);
+    else {
+      p.remove();
+      slaveEl.classList.remove('busy');
+      void slaveEl.offsetWidth;
+      slaveEl.classList.add('busy');
+      // Send ack back
+      if (STATE.mode === 'sync' || STATE.mode === 'semi') animateAckToMaster(slaveId);
+    }
+  })(t0);
+}
+
+function animateAckToMaster(slaveId) {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const mr = DOM.masterNode.getBoundingClientRect();
+  const slaveEl = DOM.slavesContainer.querySelector(`[data-slave-id="${slaveId}"]`);
+  if (!slaveEl) return;
+  const sr = slaveEl.getBoundingClientRect();
+
+  const p = document.createElement('div');
+  p.className = 'particle heart';
+  const sx = sr.left - stageRect.left + sr.width / 2 - 4;
+  const sy = sr.top - stageRect.top - 4;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const tx = mr.left - stageRect.left + mr.width / 2 - 4;
+  const ty = mr.top - stageRect.top + mr.height - 4;
+  const dur = 280;
+  const t0 = performance.now();
+
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    p.style.transform = `translate(${(tx - sx) * t}px, ${(ty - sy) * t}px)`;
+    p.style.opacity = String(1 - t * 0.5);
+    if (t < 1) requestAnimationFrame(frame);
+    else p.remove();
+  })(t0);
+}
+
+function animateReadToSlave(clientEl, slaveId) {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const cr = clientEl.getBoundingClientRect();
+  const slaveEl = DOM.slavesContainer.querySelector(`[data-slave-id="${slaveId}"]`);
+  if (!slaveEl) return;
+  const sr = slaveEl.getBoundingClientRect();
+
+  const p = document.createElement('div');
+  p.className = 'particle read';
+  const sx = cr.left - stageRect.left + cr.width / 2 - 4;
+  const sy = cr.top - stageRect.top + cr.height - 4;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const tx = sr.left - stageRect.left + sr.width / 2 - 4;
+  const ty = sr.top - stageRect.top - 4;
+  const dur = 320;
+  const t0 = performance.now();
+
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    p.style.transform = `translate(${(tx - sx) * e}px, ${(ty - sy) * e}px)`;
+    p.style.opacity = String(1 - t * 0.4);
+    if (t < 1) requestAnimationFrame(frame);
+    else {
+      p.remove();
+      slaveEl.classList.remove('busy');
+      void slaveEl.offsetWidth;
+      slaveEl.classList.add('busy');
+    }
+  })(t0);
+}
+
+/* ============================================================
+   DISPATCH
+   ============================================================ */
+function dispatchQuery() {
+  if (!STATE.master.up) return;
+
+  const isRead = Math.random() < STATE.readRatio;
+  const clientEls = DOM.clientsRow.querySelectorAll('.client');
+  const client = clientEls[randInt(0, clientEls.length - 1)];
+
+  if (isRead) {
+    // Route reads to any online slave (load balancing)
+    const onlineSlaves = STATE.slaves.filter(s => s.up && !s.promoted);
+    const targets = onlineSlaves.length > 0 ? onlineSlaves : [STATE.master];
+    const target = targets[randInt(0, targets.length - 1)];
+
+    client.classList.add('read');
+    setTimeout(() => client.classList.remove('read'), 200);
+
+    if (target === STATE.master) {
+      animateWrite(client);  // reuse particle to master
+      STATE.master.cpu = clamp(STATE.master.cpu + 0.004, 0, 1);
+    } else {
+      animateReadToSlave(client, target.id);
+      target.cpu = clamp(target.cpu + 0.005, 0, 1);
+      // Stale read check: if slave has lag and read hits before write propagated
+      if (target.lagMs > 500 && Math.random() < 0.15) {
+        // Simulating a stale read
+      }
+    }
+  } else {
+    // WRITES go only to the master
+    client.classList.add('write');
+    setTimeout(() => client.classList.remove('write'), 200);
+    animateWrite(client);
+    STATE.master.cpu = clamp(STATE.master.cpu + 0.012, 0, 1);
+    STATE.master.writes++;
+    STATE.totalWrites++;
+
+    // Log entry on master
+    if (Math.random() < 0.5) {
+      const entry = document.createElement('div');
+      entry.className = 'mini-log-entry';
+      entry.textContent = `[W] seq=${STATE.totalWrites} key=${randInt(0, 99)}`;
+      DOM.masterLog.prepend(entry);
+      while (DOM.masterLog.children.length > 4) DOM.masterLog.lastChild.remove();
+    }
+
+    // Replicate to slaves
+    for (const s of STATE.slaves) {
+      if (!s.up) continue;
+      if (STATE.networkPartition && Math.random() < 0.9) continue; // partition drops
+      // Lag accumulates based on mode
+      const replDelay = STATE.mode === 'sync' ? 5 : STATE.mode === 'semi' ? 20 : 60;
+      setTimeout(() => {
+        animateReplicationToSlave(s.id);
+        s.lagMs = Math.max(0, s.lagMs + rand(-2, replDelay / 10));
+      }, rand(10, 60));
+    }
+
+    // In sync mode, master waits for ack → higher latency
+    if (STATE.mode === 'sync') {
+      // Simulated latency penalty
+    }
+  }
+
+  STATE.totalQueries++;
+}
+
+/* ============================================================
+   TICK
+   ============================================================ */
+function tick() {
+  if (!STATE.running) return;
+  const batch = Math.max(1, Math.round(STATE.qps / 10));
+  for (let i = 0; i < batch; i++) dispatchQuery();
+}
+
+/* ============================================================
+   DECAY / SLOW DRIFT
+   ============================================================ */
+setInterval(() => {
+  STATE.master.cpu = Math.max(0, STATE.master.cpu - 0.03);
+
+  let maxLag = 0;
+  for (const s of STATE.slaves) {
+    s.cpu = Math.max(0, s.cpu - 0.03);
+    // Lag decays when master is idle; grows when there are pending writes
+    const lagDecay = STATE.running ? 2 : 8;
+    s.lagMs = Math.max(0, s.lagMs - lagDecay);
+    // If slave is "slow" (flagged externally), lag grows
+    if (s.slow) {
+      s.lagMs = Math.min(5000, s.lagMs + 15);
+    }
+    maxLag = Math.max(maxLag, s.lagMs);
+  }
+
+  renderSlaveVisuals();
+  renderLagBars();
+  updateTelemetry();
+
+  // Contextual teaching
+  checkTeachingTriggers(maxLag);
+}, 400);
+
+function renderSlaveVisuals() {
+  for (const s of STATE.slaves) {
+    const el = DOM.slavesContainer.querySelector(`[data-slave-id="${s.id}"]`);
+    if (!el) continue;
+    el.classList.toggle('down', !s.up);
+    el.classList.toggle('lagging', s.lagMs > 500 && s.up);
+    el.classList.toggle('crowned', s.promoted);
+    applySlaveVisuals(el, s);
+  }
+}
+
+/* ============================================================
+   TEACHING TRIGGERS
+   ============================================================ */
+function checkTeachingTriggers(maxLag) {
+  if (!STATE.running) return;
+  // Lag warning
+  if (maxLag > 800 && STATE.lastAnnouncedLag <= 800) {
+    teach('LAG',
+      `Replication lag exceeded 800ms. In ASYNC mode this is normal under load — but note the read-your-writes hazard: ` +
+      `a client that writes to master and immediately reads from a slave may get STALE data because the write hasn't ` +
+      `propagated yet. This is called a "read-after-write inconsistency".`,
+      'warn'
+    );
+  }
+  STATE.lastAnnouncedLag = maxLag;
+}
+
+/* ============================================================
+   TELEMETRY
+   ============================================================ */
+function updateTelemetry() {
+  const online = STATE.slaves.filter(s => s.up && !s.promoted).length;
+  DOM.mSlaves.textContent = online;
+  DOM.mQps.textContent = STATE.running ? STATE.qps : 0;
+  const maxLag = STATE.slaves.reduce((m, s) => Math.max(m, s.lagMs), 0);
+  DOM.mLag.textContent = Math.round(maxLag) + ' ms';
+  DOM.mLag.className = 'metric-value' + (maxLag > 1000 ? ' bad' : maxLag > 300 ? ' warn' : '');
+  DOM.mLost.textContent = STATE.writesLost;
+  DOM.mLost.className = 'metric-value' + (STATE.writesLost > 0 ? ' bad' : '');
+  DOM.mReadCap.textContent = (online + (STATE.master.up ? 1 : 0)) + '×';
+  DOM.mMode.textContent = STATE.mode.toUpperCase();
+
+  DOM.masterCpu.textContent = Math.round(STATE.master.cpu * 100) + '%';
+  DOM.masterCpu.className = 'val ' + (STATE.master.cpu > 0.85 ? 'bad' : STATE.master.cpu > 0.6 ? 'warn' : '');
+  DOM.masterWrite.textContent = STATE.running ? Math.round(STATE.qps * (1 - STATE.readRatio)) : 0;
+  DOM.masterLag.textContent = Math.round(maxLag) + ' ms';
+  DOM.masterLag.className = 'val ' + (maxLag > 1000 ? 'bad' : maxLag > 300 ? 'warn' : '');
+
+  DOM.masterNode.classList.toggle('down', !STATE.master.up);
+  DOM.replBus.classList.toggle('broken', STATE.networkPartition || !STATE.master.up);
+  DOM.replBusLabel.textContent = STATE.networkPartition
+    ? '✕ REPLICATION BROKEN ✕'
+    : '▼ REPLICATION STREAM ▼';
+}
+
+/* ============================================================
+   LAG BARS
+   ============================================================ */
+function renderLagBars() {
+  let html = '';
+  for (const s of STATE.slaves) {
+    const lag = Math.round(s.lagMs);
+    const pct = Math.min(100, lag / 20);
+    const color = lag > 1000 ? '#ef4444' : lag > 300 ? '#f59e0b' : '#a855f7';
+    html += `
+      <div style="margin-bottom:6px;">
+        <div style="display:flex; justify-content:space-between;">
+          <span>S${s.id}</span>
+          <span style="color:${color};">${lag}ms</span>
+        </div>
+        <div style="height:4px; background:#0a0e19; border-radius:2px; margin-top:2px;">
+          <div style="height:100%; width:${pct}%; background:${color}; border-radius:2px; transition:width 0.3s;"></div>
+        </div>
+      </div>`;
+  }
+  DOM.lagBars.innerHTML = html;
+}
+
+/* ============================================================
+   FAILURE INJECTION
+   ============================================================ */
+function killMaster() {
+  if (!STATE.master.up) {
+    showToast('⚠ Master already down');
+    return;
+  }
+  STATE.master.up = false;
+  STATE.master.isMaster = false;
+  updateTelemetry();
+
+  teach('MASTER DOWN',
+    `The master has FAILED. All writes are now REFUSED — no node in the cluster can accept new writes because ` +
+    `slaves are read-only replicas. This is the single point of failure in master-slave architecture. ` +
+    `Reads can continue from slaves, but any pending writes in flight are lost.`,
+    'error'
+  );
+
+  STATE.writesLost += randInt(3, 10);
+  setTimeout(() => {
+    teach('ELECTION',
+      `Triggering failover: an operator or orchestrator (like Patroni, Orchestrator, or Sentinel) selects the ` +
+      `slave with the LEAST lag and promotes it to become the new master. This is a manual or semi-automated process ` +
+      `in most systems — it takes seconds to minutes and requires the other slaves to be reconfigured to follow the new master.`,
+      'warn'
+    );
+  }, 1200);
+
+  setTimeout(() => {
+    // Find slave with least lag
+    const onlineSlaves = STATE.slaves.filter(s => s.up);
+    if (onlineSlaves.length === 0) {
+      teach('TOTAL FAILURE', `No slaves available to promote. Cluster is completely down.`, 'error');
+      return;
+    }
+    const promoted = onlineSlaves.reduce((a, b) => a.lagMs < b.lagMs ? a : b);
+    promoted.promoted = true;
+    promoted.lagMs = 0;
+    STATE.promotedId = promoted.id;
+
+    // Animate the promotion
+    const el = DOM.slavesContainer.querySelector(`[data-slave-id="${promoted.id}"]`);
+    if (el) {
+      el.classList.add('promoting');
+      setTimeout(() => el.classList.remove('promoting'), 1000);
+    }
+
+    renderSlaveVisuals();
+    updateTelemetry();
+
+    teach('PROMOTED',
+      `SLAVE-${promoted.id} has been promoted to the new MASTER (👑). It has the least replication lag ` +
+      `(${promoted.lagMs}ms), meaning it has the freshest data. The old master stays offline until manually recovered. ` +
+      `The other slaves are now repointed to follow the new master.`,
+      'ok'
+    );
+  }, 2600);
+}
+
+function slowSlave() {
+  const online = STATE.slaves.filter(s => s.up && !s.promoted);
+  if (online.length === 0) { showToast('⚠ No slaves to slow'); return; }
+  const target = online[randInt(0, online.length - 1)];
+  target.slow = true;
+  showToast(`🐌 SLAVE-${target.id} slowed — lag will grow`);
+
+  teach('SLOW SLAVE',
+    `SLAVE-${target.id} has been slowed (simulating disk contention, network throttling, or long-running query). ` +
+    `Its replication lag will grow. If this slave is later promoted, the cluster loses any writes that happened ` +
+    `on master but never reached this slave. This is why monitoring replication lag is critical.`,
+    'warn'
+  );
+}
+
+function networkPartition() {
+  STATE.networkPartition = !STATE.networkPartition;
+  DOM.replBus.classList.toggle('broken', STATE.networkPartition);
+  updateTelemetry();
+
+  if (STATE.networkPartition) {
+    teach('PARTITION',
+      `Network partition injected between master and slaves. The master can still accept writes (clients can reach it), ` +
+      `but slaves no longer receive the replication stream. Slave lag will grow indefinitely. If the partition lasts long ` +
+      `enough, the operator must choose between consistency (block writes) and availability (accept writes that may be lost). ` +
+      `This is a direct manifestation of the CAP theorem.`,
+      'error'
+    );
+    showToast('📡 Network partition active');
+  } else {
+    teach('HEALED',
+      `Network partition healed. Slaves resume receiving the replication stream and their backlog will drain. ` +
+      `If writes were lost during the partition, this is when a resync (full snapshot) or binlog catch-up would occur.`,
+      'ok'
+    );
+    showToast('✔ Network healed');
+  }
+}
+
+function recoverAll() {
+  STATE.master.up = true;
+  STATE.master.isMaster = true;
+  STATE.networkPartition = false;
+  for (const s of STATE.slaves) {
+    s.up = true;
+    s.slow = false;
+    s.promoted = false;
+    s.lagMs = 0;
+  }
+  STATE.promotedId = null;
+  renderSlaves();
+  renderLagBars();
+  updateTelemetry();
+
+  teach('RECOVERED',
+    `All nodes recovered. Master is back in charge. Slaves resynced. In real systems, a failed master that comes ` +
+    `back is usually DEMOTED to a slave — otherwise you'd have two masters accepting writes, causing a split-brain.`,
+    'ok'
+  );
+  showToast('🔄 All nodes recovered');
+}
+
+/* ============================================================
+   BURST + WRITE WAVE
+   ============================================================ */
+function burst() {
+  teach('BURST',
+    `100 mixed queries dispatched. Observe how reads fan out to slaves while writes funnel to the master. ` +
+    `This read-scaling is the primary benefit of master-slave replication.`,
+    'info'
+  );
+  for (let i = 0; i < 100; i++) setTimeout(dispatchQuery, i * 12);
+  showToast('⚡ 100 queries dispatched');
+}
+
+function writeStorm() {
+  teach('WRITE STORM',
+    `Write storm injected — 90% writes. Watch the master saturate: in master-slave, the master is the sole writer, ` +
+    `so write throughput is capped by ONE node. Adding slaves does not help writes at all. This is why write-heavy ` +
+    `workloads (like OLTP with high insert rates) often need sharding or multi-master instead.`,
+    'warn'
+  );
+  // Temporarily force high write ratio for a burst
+  for (let i = 0; i < 80; i++) {
+    setTimeout(() => {
+      const realRatio = STATE.readRatio;
+      STATE.readRatio = 0.1;
+      dispatchQuery();
+      STATE.readRatio = realRatio;
+    }, i * 10);
+  }
+  showToast('🔥 Write storm — master saturated');
+}
+
+/* ============================================================
+   TRAFFIC CONTROL
+   ============================================================ */
+function startTraffic() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+  STATE.tickTimer = setInterval(tick, 100);
+
+  teach('START',
+    `Traffic started at ${STATE.qps} q/s with ${Math.round(STATE.readRatio * 100)}% reads. ` +
+    `Replication mode is ${STATE.mode.toUpperCase()}. In ${
+      STATE.mode === 'async' ? 'async mode, the master commits immediately and slaves catch up asynchronously — lowest latency, but slaves may serve stale data.' :
+      STATE.mode === 'sync' ? 'sync mode, the master waits for at least one slave to acknowledge each write before committing — no data loss, but higher latency.' :
+      'semi-sync mode, the master waits for a configurable number of slave acks — a middle ground between latency and durability.'
+    }`,
+    'ok'
+  );
+}
+
+function stopTraffic() {
+  STATE.running = false;
+  DOM.btnToggle.textContent = '▶ Start Traffic';
+  DOM.btnToggle.classList.add('primary');
+  DOM.btnToggle.classList.remove('danger');
+  clearInterval(STATE.tickTimer);
+  STATE.tickTimer = null;
+  teach('STOP', 'Traffic stopped.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnToggle.addEventListener('click', () => STATE.running ? stopTraffic() : startTraffic());
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnWriteWave.addEventListener('click', writeStorm);
+DOM.btnKillMaster.addEventListener('click', killMaster);
+DOM.btnLagSlave.addEventListener('click', slowSlave);
+DOM.btnNetwork.addEventListener('click', networkPartition);
+DOM.btnRecover.addEventListener('click', recoverAll);
+
+DOM.qpsRange.addEventListener('input', e => {
+  STATE.qps = parseInt(e.target.value);
+  DOM.qpsVal.textContent = STATE.qps;
+});
+DOM.readRange.addEventListener('input', e => {
+  STATE.readRatio = parseInt(e.target.value) / 100;
+  DOM.readVal.textContent = e.target.value + '%';
+});
+
+document.querySelectorAll('input[name="mode"]').forEach(r => {
+  r.addEventListener('change', e => {
+    const old = STATE.mode;
+    STATE.mode = e.target.value;
+    updateTelemetry();
+    const explanations = {
+      async: `Asynchronous replication: master commits immediately, slaves catch up later. Lowest write latency, but if master dies before slaves catch up, the last few writes are LOST. Slaves may serve stale reads.`,
+      sync: `Synchronous replication: master WAITS for at least one slave to confirm each write before committing. Zero data loss — but write latency now includes a network round-trip to a slave. If the slave is slow, the master gets slow.`,
+      semi: `Semi-synchronous replication: master waits for ACK from a quorum of slaves (usually 1 of N). Balances latency vs durability. Used by MySQL semi-sync, PostgreSQL synchronous_commit = remote_write.`
+    };
+    teach('MODE', explanations[STATE.mode], 'purple');
+  });
+});
+
+window.addEventListener('resize', drawConnections);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+initializeCluster();
+drawConnections();
+
+setTimeout(() => {
+  teach('TRADE-OFFS',
+    `Master-slave replication gives you three things: (1) read scaling — add slaves, add read capacity. ` +
+    `(2) high availability — promote a slave if master dies. (3) disaster recovery — slaves can be in different regions. ` +
+    `But it does NOT give you write scaling. And it introduces replication lag, which can cause stale reads.`,
+    'purple'
+  );
+  showToast('👋 Start traffic, then try killing the master', 4000);
+}, 600);
+</script>
+</body>
+</html>

@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Single-Node Database Architecture — Interactive Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 14px 24px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10;
+    position: relative;
+  }
+  header h1 {
+    font-size: 1.1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #3b82f6, #06b6d4);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.7rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 12px;
+  }
+
+  .layout {
+    display: flex;
+    height: calc(100vh - 61px);
+  }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 18px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .panel h3 {
+    font-size: 0.7rem;
+    letter-spacing: 2px;
+    color: #3b82f6;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 9px 14px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .btn:hover { border-color: #3b82f6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .btn.primary:hover { background: #2563eb; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-bottom: 6px;
+  }
+  .slider-row .value { color: #06b6d4; font-weight: 700; font-family: monospace; }
+  input[type=range] {
+    width: 100%;
+    accent-color: #3b82f6;
+    margin-bottom: 12px;
+  }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(59,130,246,0.06) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.7rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+
+  /* === CLIENTS === */
+  .clients-row {
+    position: absolute;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 16px;
+    z-index: 5;
+  }
+  .client {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    border: 2px solid #334155;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    position: relative;
+    transition: all 0.25s;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .client.active {
+    border-color: #06b6d4;
+    box-shadow: 0 0 25px rgba(6,182,212,0.7);
+    transform: scale(1.1);
+  }
+  .client .label {
+    position: absolute;
+    bottom: -18px;
+    font-size: 0.6rem;
+    color: #64748b;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+
+  /* === SERVER NODE (the single node) === */
+  .server-wrap {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -30%);
+    z-index: 4;
+    perspective: 1400px;
+  }
+  .server {
+    width: 360px;
+    background: linear-gradient(160deg, #131a2e 0%, #0a0e19 100%);
+    border: 2px solid #3b82f6;
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow:
+      0 30px 80px rgba(0,0,0,0.7),
+      0 0 40px rgba(59,130,246,0.35),
+      inset 0 1px 0 rgba(255,255,255,0.05);
+    transform-style: preserve-3d;
+    transition: box-shadow 0.3s, transform 0.3s;
+  }
+  .server.busy {
+    animation: serverPulse 0.35s ease;
+  }
+  @keyframes serverPulse {
+    0%   { box-shadow: 0 30px 80px rgba(0,0,0,0.7), 0 0 40px rgba(59,130,246,0.35), inset 0 1px 0 rgba(255,255,255,0.05); }
+    50%  { box-shadow: 0 30px 80px rgba(0,0,0,0.7), 0 0 90px rgba(59,130,246,0.9), inset 0 0 30px rgba(59,130,246,0.3); }
+    100% { box-shadow: 0 30px 80px rgba(0,0,0,0.7), 0 0 40px rgba(59,130,246,0.35), inset 0 1px 0 rgba(255,255,255,0.05); }
+  }
+  .server.critical {
+    border-color: #ef4444;
+    box-shadow:
+      0 30px 80px rgba(0,0,0,0.7),
+      0 0 60px rgba(239,68,68,0.7),
+      inset 0 0 30px rgba(239,68,68,0.15);
+  }
+
+  .server-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .server-title {
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #60a5fa;
+    font-family: monospace;
+  }
+  .server-status {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.3; } }
+  .server.critical .server-status {
+    background: #ef4444;
+    box-shadow: 0 0 12px #ef4444;
+  }
+
+  .cpu-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    color: #64748b;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+    font-family: monospace;
+  }
+  .cpu-label .val { color: #06b6d4; font-weight: 700; }
+
+  .cpu-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 3px;
+    margin-bottom: 12px;
+  }
+  .core {
+    height: 22px;
+    background: #1a1f3a;
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid #0a0e19;
+  }
+  .core::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, #00f2fe, #4facfe);
+    transform-origin: bottom;
+    transform: scaleY(var(--load, 0));
+    transition: transform 0.4s ease;
+    box-shadow: 0 0 8px rgba(0,242,254,0.6);
+  }
+
+  /* Memory */
+  .mem-block {
+    background: #070a14;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+  .mem-bar {
+    width: 100%;
+    height: 14px;
+    background: #0a0e19;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #1e293b;
+    position: relative;
+    margin-top: 6px;
+  }
+  .mem-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #10b981, #06b6d4, #3b82f6);
+    transition: width 0.4s ease, background 0.4s ease;
+    box-shadow: 0 0 10px rgba(59,130,246,0.6);
+  }
+  .mem-fill.warn {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+    box-shadow: 0 0 14px rgba(239,68,68,0.8);
+  }
+
+  /* Disk */
+  .disk-block {
+    background: #070a14;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    font-family: monospace;
+    color: #94a3b8;
+  }
+  .disk-io {
+    color: #06b6d4;
+    font-weight: 700;
+  }
+  .disk-io.busy { color: #f59e0b; }
+
+  /* Bottleneck banner */
+  .bottleneck {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%) translateY(60px);
+    background: linear-gradient(90deg, #7f1d1d, #991b1b);
+    border: 1px solid #ef4444;
+    color: #fecaca;
+    padding: 10px 22px;
+    border-radius: 30px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    box-shadow: 0 0 30px rgba(239,68,68,0.6);
+    opacity: 0;
+    transition: all 0.5s cubic-bezier(.68,-0.55,.27,1.55);
+    z-index: 6;
+    pointer-events: none;
+  }
+  .bottleneck.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Telemetry */
+  .telemetry-pane {
+    width: 300px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 18px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .metric-box {
+    background: rgba(59,130,246,0.06);
+    border: 1px solid rgba(59,130,246,0.2);
+    padding: 12px;
+    border-radius: 10px;
+    text-align: center;
+    transition: all 0.25s ease;
+  }
+  .metric-box.flash {
+    background: rgba(59,130,246,0.18);
+    border-color: rgba(59,130,246,0.8);
+    transform: scale(1.03);
+  }
+  .metric-title {
+    font-size: 0.65rem;
+    color: #60a5fa;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 6px;
+  }
+  .metric-value {
+    font-size: 1.3rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 12px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 12px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 12px rgba(239,68,68,0.5); }
+
+  /* Query log */
+  .log {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 160px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.62rem;
+    line-height: 1.5;
+  }
+  .log-entry {
+    padding: 2px 4px;
+    border-bottom: 1px solid #0f172a;
+    animation: logSlide 0.3s ease;
+  }
+  @keyframes logSlide {
+    from { transform: translateX(-10px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .log-entry.hit  { color: #10b981; }
+  .log-entry.miss { color: #f59e0b; }
+  .log-entry.err  { color: #ef4444; }
+  .log-time { color: #334155; margin-right: 5px; }
+
+  /* Particles */
+  .particle {
+    position: absolute;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 3;
+  }
+  .particle.read  { background: #06b6d4; box-shadow: 0 0 12px #06b6d4; }
+  .particle.write { background: #f59e0b; box-shadow: 0 0 12px #f59e0b; }
+  .particle.disk  { background: #8b5cf6; box-shadow: 0 0 12px #8b5cf6; }
+
+  /* Resource bars */
+  .resource-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.65rem;
+    color: #64748b;
+    font-family: monospace;
+    margin-bottom: 5px;
+  }
+  .resource-row .lbl { width: 60px; }
+  .resource-row .bar {
+    flex: 1;
+    height: 6px;
+    background: #0a0e19;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid #1e293b;
+  }
+  .resource-row .bar-fill {
+    height: 100%;
+    width: 0%;
+    transition: width 0.4s ease;
+  }
+  .resource-row .pct { width: 32px; text-align: right; color: #06b6d4; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #3b82f6;
+    color: #e0e6f0;
+    padding: 12px 24px;
+    border-radius: 30px;
+    font-size: 0.8rem;
+    box-shadow: 0 10px 40px rgba(59,130,246,0.4);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* SVG connections */
+  .connections {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .connections path {
+    stroke: #334155;
+    stroke-width: 1.5;
+    fill: none;
+    stroke-dasharray: 6 6;
+    animation: dash 1.5s linear infinite;
+  }
+  @keyframes dash {
+    to { stroke-dashoffset: -24; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>SINGLE-NODE DATABASE ARCHITECTURE</h1>
+    <span class="sub">MONOLITH · ONE SERVER · ALL RESOURCES</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT: Controls -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Client Traffic</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 50 Queries</button>
+      <button class="btn danger" id="btnOverload">🔥 Overload Server</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Profile</h3>
+      <div class="slider-row"><span>Queries / sec</span><span class="value" id="qpsVal">30</span></div>
+      <input type="range" id="qpsRange" min="1" max="200" value="30">
+
+      <div class="slider-row"><span>Read Ratio</span><span class="value" id="readVal">80%</span></div>
+      <input type="range" id="readRange" min="0" max="100" value="80">
+    </div>
+
+    <div class="panel">
+      <h3>Hardware Config</h3>
+      <div class="slider-row"><span>CPU Cores</span><span class="value" id="coresVal">8</span></div>
+      <input type="range" id="coresRange" min="2" max="32" value="8">
+
+      <div class="slider-row"><span>RAM (GB)</span><span class="value" id="ramVal">16</span></div>
+      <input type="range" id="ramRange" min="2" max="128" value="16">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.7rem; color:#64748b; line-height:2;">
+        <div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#06b6d4;box-shadow:0 0 8px #06b6d4;margin-right:6px;"></span>Read</div>
+        <div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 8px #f59e0b;margin-right:6px;"></span>Write</div>
+        <div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#8b5cf6;box-shadow:0 0 8px #8b5cf6;margin-right:6px;"></span>Disk I/O</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- CENTER: Stage -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">ALL CLIENTS · ONE SERVER · ONE STORAGE</div>
+
+      <div class="clients-row" id="clientsRow">
+        <div class="client" data-id="1">👤<div class="label">CLIENT 1</div></div>
+        <div class="client" data-id="2">👤<div class="label">CLIENT 2</div></div>
+        <div class="client" data-id="3">👤<div class="label">CLIENT 3</div></div>
+        <div class="client" data-id="4">👤<div class="label">CLIENT 4</div></div>
+      </div>
+
+      <svg class="connections" id="connections"></svg>
+
+      <div class="server-wrap">
+        <div class="server" id="server">
+          <div class="server-header">
+            <div class="server-title">DB-NODE-01</div>
+            <div class="server-status"></div>
+          </div>
+
+          <div class="cpu-label">
+            <span>CPU CORES</span>
+            <span class="val" id="cpuPct">0%</span>
+          </div>
+          <div class="cpu-grid" id="cpuGrid"></div>
+
+          <div class="mem-block">
+            <div class="cpu-label">
+              <span>MEMORY (BUFFER POOL)</span>
+              <span class="val" id="memPct">0%</span>
+            </div>
+            <div class="mem-bar"><div class="mem-fill" id="memFill"></div></div>
+          </div>
+
+          <div class="disk-block">
+            <span>💾 DISK I/O</span>
+            <span class="disk-io" id="diskIO">0 ops/s</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bottleneck" id="bottleneck">⚠ SERVER SATURATED — SINGLE POINT OF FAILURE</div>
+    </div>
+  </main>
+
+  <!-- RIGHT: Telemetry -->
+  <aside class="telemetry-pane">
+    <div class="metric-box" id="mbQps">
+      <div class="metric-title">Queries / sec</div>
+      <div class="metric-value" id="mQps">0</div>
+    </div>
+
+    <div class="metric-box" id="mbCpu">
+      <div class="metric-title">CPU Utilization</div>
+      <div class="metric-value" id="mCpu">0%</div>
+    </div>
+
+    <div class="metric-box" id="mbMem">
+      <div class="metric-title">Memory Usage</div>
+      <div class="metric-value" id="mMem">0%</div>
+    </div>
+
+    <div class="metric-box" id="mbLatency">
+      <div class="metric-title">p99 Latency</div>
+      <div class="metric-value" id="mLatency">0 ms</div>
+    </div>
+
+    <div class="metric-box" id="mbQueue">
+      <div class="metric-title">Queue Depth</div>
+      <div class="metric-value" id="mQueue">0</div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:8px;">Resource Pressure</h3>
+      <div class="resource-row">
+        <span class="lbl">CPU</span>
+        <div class="bar"><div class="bar-fill" id="barCpu" style="background:linear-gradient(90deg,#10b981,#06b6d4);"></div></div>
+        <span class="pct" id="pctCpu">0%</span>
+      </div>
+      <div class="resource-row">
+        <span class="lbl">MEM</span>
+        <div class="bar"><div class="bar-fill" id="barMem" style="background:linear-gradient(90deg,#3b82f6,#8b5cf6);"></div></div>
+        <span class="pct" id="pctMem">0%</span>
+      </div>
+      <div class="resource-row">
+        <span class="lbl">DISK</span>
+        <div class="bar"><div class="bar-fill" id="barDisk" style="background:linear-gradient(90deg,#f59e0b,#ef4444);"></div></div>
+        <span class="pct" id="pctDisk">0%</span>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:8px;">Query Log</h3>
+      <div class="log" id="log"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  running: false,
+  qps: 30,
+  readRatio: 0.8,
+  cores: 8,
+  ramGB: 16,
+  cpuLoad: 0,        // 0..1
+  memLoad: 0,        // 0..1
+  diskLoad: 0,       // 0..1
+  queueDepth: 0,
+  totalQueries: 0,
+  latencySamples: [],
+  tickTimer: null,
+  queueTimer: null
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  server: document.getElementById('server'),
+  cpuGrid: document.getElementById('cpuGrid'),
+  cpuPct: document.getElementById('cpuPct'),
+  memFill: document.getElementById('memFill'),
+  memPct: document.getElementById('memPct'),
+  diskIO: document.getElementById('diskIO'),
+  bottleneck: document.getElementById('bottleneck'),
+  connections: document.getElementById('connections'),
+  clientsRow: document.getElementById('clientsRow'),
+  log: document.getElementById('log'),
+  toast: document.getElementById('toast'),
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnOverload: document.getElementById('btnOverload'),
+  qpsRange: document.getElementById('qpsRange'),
+  qpsVal: document.getElementById('qpsVal'),
+  readRange: document.getElementById('readRange'),
+  readVal: document.getElementById('readVal'),
+  coresRange: document.getElementById('coresRange'),
+  coresVal: document.getElementById('coresVal'),
+  ramRange: document.getElementById('ramRange'),
+  ramVal: document.getElementById('ramVal'),
+  mQps: document.getElementById('mQps'),
+  mCpu: document.getElementById('mCpu'),
+  mMem: document.getElementById('mMem'),
+  mLatency: document.getElementById('mLatency'),
+  mQueue: document.getElementById('mQueue'),
+  barCpu: document.getElementById('barCpu'),
+  barMem: document.getElementById('barMem'),
+  barDisk: document.getElementById('barDisk'),
+  pctCpu: document.getElementById('pctCpu'),
+  pctMem: document.getElementById('pctMem'),
+  pctDisk: document.getElementById('pctDisk')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+function nowTime() {
+  return new Date().toTimeString().slice(0, 8);
+}
+
+function showToast(msg, ms = 2200) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function logEvent(msg, level = 'hit') {
+  const div = document.createElement('div');
+  div.className = `log-entry ${level}`;
+  div.innerHTML = `<span class="log-time">${nowTime()}</span>${msg}`;
+  DOM.log.prepend(div);
+  while (DOM.log.children.length > 40) DOM.log.lastChild.remove();
+}
+
+/* ============================================================
+   CPU GRID — render N cores
+   ============================================================ */
+function buildCoreGrid() {
+  DOM.cpuGrid.innerHTML = '';
+  for (let i = 0; i < STATE.cores; i++) {
+    const c = document.createElement('div');
+    c.className = 'core';
+    c.dataset.coreId = i;
+    DOM.cpuGrid.appendChild(c);
+  }
+}
+
+function paintCores() {
+  const cores = DOM.cpuGrid.querySelectorAll('.core');
+  // Each core gets a slightly randomized load to look realistic
+  cores.forEach((c, i) => {
+    const jitter = rand(-0.15, 0.15);
+    const v = clamp(STATE.cpuLoad + jitter, 0, 1);
+    c.style.setProperty('--load', v.toFixed(2));
+  });
+  const totalCorePct = Math.round(STATE.cpuLoad * 100);
+  DOM.cpuPct.textContent = totalCorePct + '%';
+  DOM.cpuPct.style.color = totalCorePct > 85 ? '#ef4444' : totalCorePct > 60 ? '#f59e0b' : '#06b6d4';
+}
+
+/* ============================================================
+   CONNECTION LINES — client → server
+   ============================================================ */
+function drawConnections() {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const serverRect = DOM.server.getBoundingClientRect();
+  const sx = serverRect.left - stageRect.left + serverRect.width / 2;
+  const sy = serverRect.top - stageRect.top;
+
+  let paths = '';
+  DOM.clientsRow.querySelectorAll('.client').forEach(cl => {
+    const r = cl.getBoundingClientRect();
+    const cx = r.left - stageRect.left + r.width / 2;
+    const cy = r.top - stageRect.top + r.height;
+    const midY = (cy + sy) / 2;
+    paths += `<path d="M ${cx} ${cy} C ${cx} ${midY}, ${sx} ${midY}, ${sx} ${sy}"/>`;
+  });
+  DOM.connections.innerHTML = paths;
+}
+
+/* ============================================================
+   PARTICLE — animate a query from client to server
+   ============================================================ */
+function animateQuery(clientEl, isRead) {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const serverRect = DOM.server.getBoundingClientRect();
+  const clientRect = clientEl.getBoundingClientRect();
+
+  const p = document.createElement('div');
+  p.className = `particle ${isRead ? 'read' : 'write'}`;
+  const startX = clientRect.left - stageRect.left + clientRect.width / 2 - 5;
+  const startY = clientRect.top - stageRect.top + clientRect.height - 5;
+  p.style.left = startX + 'px';
+  p.style.top = startY + 'px';
+  DOM.stage.appendChild(p);
+
+  const tx = serverRect.left - stageRect.left + serverRect.width / 2 - 5;
+  const ty = serverRect.top - stageRect.top - 5;
+
+  const dur = 350 + Math.random() * 250;
+  const t0 = performance.now();
+
+  function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    p.style.transform = `translate(${(tx - startX) * e}px, ${(ty - startY) * e}px) scale(${1 - t * 0.3})`;
+    p.style.opacity = String(1 - t * 0.4);
+    if (t < 1) requestAnimationFrame(frame);
+    else {
+      p.remove();
+      DOM.server.classList.remove('busy');
+      void DOM.server.offsetWidth;
+      DOM.server.classList.add('busy');
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ============================================================
+   DISK I/O PARTICLE — server → disk (visually down + fade)
+   ============================================================ */
+function animateDiskIO() {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const serverRect = DOM.server.getBoundingClientRect();
+  const p = document.createElement('div');
+  p.className = 'particle disk';
+  const sx = serverRect.left - stageRect.left + serverRect.width / 2 - 5;
+  const sy = serverRect.top - stageRect.top + serverRect.height - 5;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+  p.animate([
+    { transform: 'translate(0,0) scale(1)', opacity: 1 },
+    { transform: 'translate(0,60px) scale(0.4)', opacity: 0 }
+  ], { duration: 500, easing: 'ease-out' }).onfinish = () => p.remove();
+}
+
+/* ============================================================
+   QUERY DISPATCH — model server work
+   ============================================================ */
+function dispatchQuery() {
+  const isRead = Math.random() < STATE.readRatio;
+  const clientEls = DOM.clientsRow.querySelectorAll('.client');
+  const client = clientEls[Math.floor(Math.random() * clientEls.length)];
+
+  // Highlight client
+  client.classList.add('active');
+  setTimeout(() => client.classList.remove('active'), 200);
+
+  animateQuery(client, isRead);
+
+  // Server-side work
+  const cpuCost = isRead ? 0.008 : 0.018;
+  STATE.cpuLoad = clamp(STATE.cpuLoad + cpuCost, 0, 1);
+
+  // Writes touch disk
+  if (!isRead) {
+    STATE.diskLoad = clamp(STATE.diskLoad + 0.03, 0, 1);
+    if (Math.random() < 0.4) animateDiskIO();
+  } else {
+    // Reads may hit disk if memory is exhausted
+    if (STATE.memLoad > 0.85 && Math.random() < 0.5) {
+      STATE.diskLoad = clamp(STATE.diskLoad + 0.015, 0, 1);
+    }
+  }
+
+  // Memory grows with unique data touched
+  STATE.memLoad = clamp(STATE.memLoad + 0.001, 0, 1);
+
+  STATE.totalQueries++;
+
+  // Latency model — nonlinear when saturated
+  const saturation = Math.max(STATE.cpuLoad, STATE.diskLoad, STATE.memLoad);
+  const queueLatency = STATE.queueDepth * 4;
+  const base = 3 + (isRead ? 0 : 2);
+  const penalty = Math.pow(saturation, 4) * 400;
+  const latency = base + penalty + queueLatency + rand(-1, 1);
+  STATE.latencySamples.push(latency);
+  if (STATE.latencySamples.length > 300) STATE.latencySamples.shift();
+
+  // Queue grows if saturated
+  if (saturation > 0.85) {
+    STATE.queueDepth += Math.random() < 0.6 ? 1 : 0;
+  }
+
+  // Occasional log entry
+  if (Math.random() < 0.35) {
+    const tag = isRead ? 'READ' : 'WRITE';
+    const lvl = saturation > 0.85 ? 'err' : saturation > 0.6 ? 'miss' : 'hit';
+    logEvent(`[${tag}] id=${STATE.totalQueries} → ${latency.toFixed(0)}ms`, lvl);
+  }
+}
+
+/* ============================================================
+   TICK — advance one simulation frame (every 100ms)
+   ============================================================ */
+function tick() {
+  if (!STATE.running) return;
+
+  // Dispatch a batch of queries proportional to qps
+  const batch = Math.max(1, Math.round(STATE.qps / 10));
+  for (let i = 0; i < batch; i++) dispatchQuery();
+}
+
+/* ============================================================
+   DECAY — CPU and disk cool, memory grows slowly, queue drains
+   ============================================================ */
+function decayTick() {
+  STATE.cpuLoad = Math.max(0, STATE.cpuLoad - 0.03);
+  STATE.diskLoad = Math.max(0, STATE.diskLoad - 0.02);
+
+  // Memory is sticky — only drops if idle
+  if (!STATE.running) {
+    STATE.memLoad = Math.max(0, STATE.memLoad - 0.004);
+  }
+
+  // Queue drains slowly if not saturated
+  const saturation = Math.max(STATE.cpuLoad, STATE.diskLoad);
+  if (saturation < 0.7 && STATE.queueDepth > 0) {
+    STATE.queueDepth = Math.max(0, STATE.queueDepth - 1);
+  }
+  // Very slow queue decay when saturated
+  else if (saturation < 0.9 && STATE.queueDepth > 0 && Math.random() < 0.3) {
+    STATE.queueDepth = Math.max(0, STATE.queueDepth - 1);
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function render() {
+  paintCores();
+
+  // Memory bar
+  const memPct = Math.round(STATE.memLoad * 100);
+  DOM.memFill.style.width = memPct + '%';
+  DOM.memFill.classList.toggle('warn', memPct > 80);
+  DOM.memPct.textContent = memPct + '%';
+  DOM.memPct.style.color = memPct > 80 ? '#ef4444' : memPct > 60 ? '#f59e0b' : '#06b6d4';
+
+  // Disk
+  const diskOps = Math.round(STATE.diskLoad * 200);
+  DOM.diskIO.textContent = diskOps + ' ops/s';
+  DOM.diskIO.classList.toggle('busy', STATE.diskLoad > 0.5);
+
+  // Server visual state
+  const saturation = Math.max(STATE.cpuLoad, STATE.diskLoad, STATE.memLoad);
+  DOM.server.classList.toggle('critical', saturation > 0.9);
+
+  // Bottleneck banner
+  DOM.bottleneck.classList.toggle('show', saturation > 0.9);
+
+  // Telemetry
+  DOM.mQps.textContent = STATE.running ? STATE.qps : 0;
+
+  const cpuPct = Math.round(STATE.cpuLoad * 100);
+  DOM.mCpu.textContent = cpuPct + '%';
+  DOM.mCpu.className = 'metric-value' + (cpuPct > 85 ? ' bad' : cpuPct > 60 ? ' warn' : '');
+
+  DOM.mMem.textContent = memPct + '%';
+  DOM.mMem.className = 'metric-value' + (memPct > 85 ? ' bad' : memPct > 60 ? ' warn' : '');
+
+  // p99 latency
+  const sorted = [...STATE.latencySamples].sort((a, b) => a - b);
+  const p99 = sorted.length ? sorted[Math.floor(sorted.length * 0.99)] : 0;
+  DOM.mLatency.textContent = p99.toFixed(0) + ' ms';
+  DOM.mLatency.className = 'metric-value' + (p99 > 300 ? ' bad' : p99 > 100 ? ' warn' : '');
+
+  DOM.mQueue.textContent = STATE.queueDepth;
+  DOM.mQueue.className = 'metric-value' + (STATE.queueDepth > 20 ? ' bad' : STATE.queueDepth > 5 ? ' warn' : '');
+
+  // Resource pressure bars
+  DOM.barCpu.style.width = cpuPct + '%';
+  DOM.pctCpu.textContent = cpuPct + '%';
+  DOM.barMem.style.width = memPct + '%';
+  DOM.pctMem.textContent = memPct + '%';
+  const dPct = Math.round(STATE.diskLoad * 100);
+  DOM.barDisk.style.width = dPct + '%';
+  DOM.pctDisk.textContent = dPct + '%';
+}
+
+/* ============================================================
+   TRAFFIC CONTROL
+   ============================================================ */
+function startTraffic() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+  STATE.tickTimer = setInterval(tick, 100);
+  logEvent('▶ Traffic started', 'hit');
+}
+
+function stopTraffic() {
+  STATE.running = false;
+  DOM.btnToggle.textContent = '▶ Start Traffic';
+  DOM.btnToggle.classList.add('primary');
+  DOM.btnToggle.classList.remove('danger');
+  clearInterval(STATE.tickTimer);
+  STATE.tickTimer = null;
+  logEvent('⏸ Traffic stopped', 'miss');
+}
+
+function burst() {
+  logEvent('⚡ Burst: 50 queries', 'miss');
+  for (let i = 0; i < 50; i++) {
+    setTimeout(dispatchQuery, i * 20);
+  }
+  showToast('⚡ 50-query burst dispatched');
+}
+
+function overload() {
+  STATE.qps = 180;
+  DOM.qpsRange.value = 180;
+  DOM.qpsVal.textContent = '180';
+  if (!STATE.running) startTraffic();
+  showToast('🔥 Server overloaded — watch latency climb');
+  logEvent('🔥 Overload: 180 q/s', 'err');
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.btnToggle.addEventListener('click', () => {
+  STATE.running ? stopTraffic() : startTraffic();
+});
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnOverload.addEventListener('click', overload);
+
+DOM.qpsRange.addEventListener('input', e => {
+  STATE.qps = parseInt(e.target.value);
+  DOM.qpsVal.textContent = STATE.qps;
+});
+DOM.readRange.addEventListener('input', e => {
+  STATE.readRatio = parseInt(e.target.value) / 100;
+  DOM.readVal.textContent = e.target.value + '%';
+});
+DOM.coresRange.addEventListener('input', e => {
+  STATE.cores = parseInt(e.target.value);
+  DOM.coresVal.textContent = STATE.cores;
+  buildCoreGrid();
+});
+DOM.ramRange.addEventListener('input', e => {
+  STATE.ramGB = parseInt(e.target.value);
+  DOM.ramVal.textContent = STATE.ramGB;
+  // More RAM = slower memory pressure
+  STATE.memLoad = Math.max(0, STATE.memLoad * (16 / STATE.ramGB));
+});
+
+window.addEventListener('resize', drawConnections);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+buildCoreGrid();
+drawConnections();
+setInterval(() => { decayTick(); render(); }, 100);
+
+setTimeout(() => showToast('👋 Click START TRAFFIC to begin', 3000), 400);
+</script>
+</body>
+</html>

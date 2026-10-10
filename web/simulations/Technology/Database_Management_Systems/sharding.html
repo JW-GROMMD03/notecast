@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Horizontal Partitioning (Sharding) — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #a855f7, #ec4899, #f59e0b);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(168,85,247,0.15);
+    color: #c084fc;
+    border-color: #a855f7;
+  }
+  .teaching-toggle:hover { background: rgba(168,85,247,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 280px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #c084fc;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #a855f7; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #a855f7; color: #fff; border-color: #a855f7; }
+  .btn.primary:hover { background: #9333ea; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #c084fc; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #a855f7; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(168,85,247,0.06) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* Clients */
+  .clients-row {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    z-index: 5;
+  }
+  .client {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    border: 2px solid #334155;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem;
+    transition: all 0.25s;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .client.active { transform: scale(1.1); }
+  .client.active.read { border-color: #06b6d4; box-shadow: 0 0 20px rgba(6,182,212,0.7); }
+  .client.active.write { border-color: #f59e0b; box-shadow: 0 0 20px rgba(245,158,11,0.7); }
+
+  /* ROUTER */
+  .router-wrap {
+    position: absolute;
+    top: 108px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    text-align: center;
+  }
+  .router {
+    padding: 12px 28px;
+    background: linear-gradient(145deg, #2d1a4a, #1a0e2e);
+    border: 2px solid #a855f7;
+    border-radius: 12px;
+    box-shadow: 0 0 25px rgba(168,85,247,0.4);
+    transition: all 0.2s;
+    display: inline-block;
+  }
+  .router.busy { animation: routerPulse 0.3s ease; }
+  @keyframes routerPulse {
+    0%, 100% { box-shadow: 0 0 25px rgba(168,85,247,0.4); }
+    50%      { box-shadow: 0 0 60px rgba(168,85,247,1); }
+  }
+  .router .title {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #c084fc;
+    font-family: monospace;
+  }
+  .router .formula {
+    font-size: 0.62rem;
+    color: #94a3b8;
+    font-family: monospace;
+    margin-top: 4px;
+    letter-spacing: 1px;
+  }
+  .router .stat {
+    font-size: 0.55rem;
+    color: #64748b;
+    font-family: monospace;
+    margin-top: 3px;
+  }
+
+  /* HASH ANIMATION CANVAS */
+  .hash-viz {
+    position: absolute;
+    top: 200px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 480px;
+    padding: 10px 16px;
+    background: rgba(20, 10, 30, 0.9);
+    border: 1px solid #a855f7;
+    border-radius: 10px;
+    font-family: monospace;
+    font-size: 0.68rem;
+    text-align: center;
+    box-shadow: 0 0 20px rgba(168,85,247,0.3);
+    z-index: 5;
+    transition: all 0.3s;
+    min-height: 40px;
+  }
+  .hash-viz .hash-line {
+    color: #c084fc;
+    font-size: 0.62rem;
+    letter-spacing: 0.5px;
+  }
+  .hash-viz .key-part { color: #f59e0b; font-weight: 700; }
+  .hash-viz .shard-part { color: #10b981; font-weight: 700; }
+
+  /* SHARDS */
+  .shards-container {
+    position: absolute;
+    top: 300px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+    align-content: flex-start;
+    gap: 16px;
+    padding: 8px 20px;
+    perspective: 1200px;
+  }
+
+  .shard {
+    width: 165px;
+    background: linear-gradient(160deg, #1a1226 0%, #0a0e19 100%);
+    border: 1.5px solid #334155;
+    border-radius: 10px;
+    padding: 10px;
+    position: relative;
+    transition: all 0.35s cubic-bezier(.4,0,.2,1);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    transform-style: preserve-3d;
+  }
+  .shard.hot {
+    border-color: #ef4444;
+    box-shadow: 0 0 25px rgba(239,68,68,0.5), 0 10px 25px rgba(0,0,0,0.5);
+  }
+  .shard.cold {
+    border-color: #10b981;
+    box-shadow: 0 0 18px rgba(16,185,129,0.3);
+  }
+  .shard.offline {
+    border-color: #7f1d1d;
+    opacity: 0.35;
+    filter: grayscale(0.8);
+  }
+  .shard.splitting { animation: shardSplit 0.7s ease; }
+  @keyframes shardSplit {
+    0%, 100% { transform: scale(1); }
+    30%      { transform: scale(1.15); box-shadow: 0 0 70px rgba(168,85,247,1); border-color: #a855f7; }
+  }
+  .shard.new { animation: shardSpawn 0.55s cubic-bezier(.68,-0.55,.27,1.55); }
+  @keyframes shardSpawn {
+    0%   { transform: scale(0) translateY(40px); opacity: 0; }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
+  }
+  .shard.busy { animation: shardBusy 0.3s ease; }
+  @keyframes shardBusy {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-6px); box-shadow: 0 20px 40px rgba(168,85,247,0.7); }
+  }
+
+  .shard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .shard-name {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #c084fc;
+    letter-spacing: 1.4px;
+    font-family: monospace;
+  }
+  .shard-status {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  .shard.hot .shard-status { background: #ef4444; box-shadow: 0 0 10px #ef4444; }
+  .shard.offline .shard-status { background: #ef4444; box-shadow: 0 0 8px #ef4444; animation: none; }
+
+  .shard-range {
+    font-size: 0.58rem;
+    color: #64748b;
+    font-family: monospace;
+    background: #070a14;
+    padding: 3px 6px;
+    border-radius: 4px;
+    text-align: center;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+  }
+
+  .load-track {
+    width: 100%;
+    height: 8px;
+    background: #0a0e19;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 6px 0;
+    border: 1px solid #1e293b;
+  }
+  .load-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #10b981, #06b6d4, #a855f7);
+    transition: width 0.4s ease, background 0.4s ease;
+    box-shadow: 0 0 8px rgba(168,85,247,0.6);
+  }
+  .shard.hot .load-fill {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+    box-shadow: 0 0 12px rgba(239,68,68,0.8);
+  }
+
+  .shard-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+    font-size: 0.58rem;
+    font-family: monospace;
+    margin-top: 5px;
+  }
+  .metric-item {
+    background: #070a14;
+    padding: 3px 4px;
+    border-radius: 4px;
+    text-align: center;
+  }
+  .metric-item .lbl { color: #475569; font-size: 0.53rem; display: block; }
+  .metric-item .val { color: #c084fc; font-weight: 700; }
+
+  .shard-rows {
+    font-size: 0.56rem;
+    color: #64748b;
+    margin-top: 5px;
+    text-align: center;
+    font-family: monospace;
+  }
+
+  /* Particle */
+  .particle {
+    position: absolute;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .particle.read  { background: #06b6d4; box-shadow: 0 0 10px #06b6d4; }
+  .particle.write { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+  .particle.route { background: #a855f7; box-shadow: 0 0 10px #a855f7; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(168,85,247,0.06);
+    border: 1px solid rgba(168,85,247,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.58rem;
+    color: #c084fc;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 300px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #a855f7;
+    background: rgba(168,85,247,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #c084fc; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Distribution chart */
+  .dist-chart {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 0.62rem;
+  }
+  .dist-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .dist-row .lbl { color: #c084fc; font-weight: 700; width: 32px; }
+  .dist-row .bar {
+    flex: 1;
+    height: 8px;
+    background: #0a0e19;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #1e293b;
+  }
+  .dist-row .fill {
+    height: 100%;
+    background: linear-gradient(90deg, #a855f7, #ec4899);
+    transition: width 0.4s;
+  }
+  .dist-row .pct { color: #94a3b8; width: 42px; text-align: right; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #a855f7;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(168,85,247,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Shard map — the range table */
+  .shard-map {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 0.6rem;
+    color: #94a3b8;
+    line-height: 1.6;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .shard-map .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+  }
+  .shard-map .key { color: #c084fc; }
+  .shard-map .arrow { color: #64748b; }
+  .shard-map .shard-id { color: #10b981; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>HORIZONTAL PARTITIONING (SHARDING)</h1>
+    <span class="sub">SPLIT ROWS · ROUTE KEYS · SCALE WRITES</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Traffic Control</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 100 Queries</button>
+      <button class="btn warn" id="btnHotspot">🔥 Inject Hotspot</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Profile</h3>
+      <div class="slider-row"><span>Queries / sec</span><span class="value" id="qpsVal">80</span></div>
+      <input type="range" id="qpsRange" min="1" max="400" value="80">
+      <div class="slider-row"><span>Read Ratio</span><span class="value" id="readVal">75%</span></div>
+      <input type="range" id="readRange" min="0" max="100" value="75">
+      <div class="slider-row"><span>Hot-key Skew</span><span class="value" id="skewVal">15%</span></div>
+      <input type="range" id="skewRange" min="0" max="80" value="15">
+    </div>
+
+    <div class="panel">
+      <h3>Routing Strategy</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strategy" value="hash" checked style="accent-color:#a855f7;">
+          Hash(key) mod N
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strategy" value="range" style="accent-color:#a855f7;">
+          Range(key)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strategy" value="consistent" style="accent-color:#a855f7;">
+          Consistent Hashing
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Cluster Operations</h3>
+      <button class="btn success" id="btnAddShard">+ Add Shard</button>
+      <button class="btn" id="btnSplit">✂ Split Hottest Shard</button>
+      <button class="btn danger" id="btnKill">💥 Kill Random Shard</button>
+      <button class="btn success" id="btnRecover">🔄 Recover Shard</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#06b6d4;"></div>Read query</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>Write query</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#a855f7;"></div>Router hop</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>Healthy shard</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>Hot / failed shard</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">SAME SCHEMA · DIFFERENT ROWS · N SHARDS</div>
+
+      <div class="clients-row" id="clientsRow">
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+      </div>
+
+      <svg class="connections" id="connections" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:1;"></svg>
+
+      <div class="router-wrap">
+        <div class="router" id="router">
+          <div class="title">SHARD ROUTER</div>
+          <div class="formula" id="routerFormula">shard = hash(key) mod N</div>
+          <div class="stat" id="routerStat">N = 4 · idle</div>
+        </div>
+      </div>
+
+      <div class="hash-viz" id="hashViz">
+        <div class="hash-line">waiting for a query...</div>
+      </div>
+
+      <div class="shards-container" id="shardsContainer"></div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Shards</div>
+        <div class="metric-value" id="mShards">4</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">QPS</div>
+        <div class="metric-value" id="mQps">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Avg Load</div>
+        <div class="metric-value" id="mLoad">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Skew σ</div>
+        <div class="metric-value" id="mSkew">0.00</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">p99 Latency</div>
+        <div class="metric-value" id="mLatency">0 ms</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Cross-shard</div>
+        <div class="metric-value" id="mCross">0</div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:6px;">📊 Key Distribution</h3>
+      <div class="dist-chart" id="distChart"></div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:6px;">🗺️ Shard Map</h3>
+      <div class="shard-map" id="shardMap"></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  running: false,
+  qps: 80,
+  readRatio: 0.75,
+  skew: 0.15,
+  strategy: 'hash',
+  shards: [],
+  nextShardId: 1,
+  MAX_SHARDS: 8,
+  totalQueries: 0,
+  totalWrites: 0,
+  crossShardQueries: 0,
+  latencySamples: [],
+  tickTimer: null,
+  teaching: true,
+  voiceEnabled: false,
+  hotKey: null,
+  // Key pool: uniform across 0..999, but biased when hotspot
+  keyPool: [],
+  // Per-shard key-hit histogram for the distribution chart
+  keyHits: {},
+  lastAnnouncedLoad: 0,
+  lastAnnouncedSkew: 0
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  shardsContainer: document.getElementById('shardsContainer'),
+  connections: document.getElementById('connections'),
+  router: document.getElementById('router'),
+  routerFormula: document.getElementById('routerFormula'),
+  routerStat: document.getElementById('routerStat'),
+  hashViz: document.getElementById('hashViz'),
+  distChart: document.getElementById('distChart'),
+  shardMap: document.getElementById('shardMap'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnHotspot: document.getElementById('btnHotspot'),
+  btnAddShard: document.getElementById('btnAddShard'),
+  btnSplit: document.getElementById('btnSplit'),
+  btnKill: document.getElementById('btnKill'),
+  btnRecover: document.getElementById('btnRecover'),
+  qpsRange: document.getElementById('qpsRange'),
+  qpsVal: document.getElementById('qpsVal'),
+  readRange: document.getElementById('readRange'),
+  readVal: document.getElementById('readVal'),
+  skewRange: document.getElementById('skewRange'),
+  skewVal: document.getElementById('skewVal'),
+  mShards: document.getElementById('mShards'),
+  mQps: document.getElementById('mQps'),
+  mLoad: document.getElementById('mLoad'),
+  mSkew: document.getElementById('mSkew'),
+  mLatency: document.getElementById('mLatency'),
+  mCross: document.getElementById('mCross'),
+  clientsRow: document.getElementById('clientsRow')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, b));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function simpleHash(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h);
+}
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining horizontal partitioning, also called sharding.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING FEED
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   SHARD MODEL
+   ============================================================ */
+function createShard(keyStart, keyEnd) {
+  return {
+    id: STATE.nextShardId++,
+    keyStart, keyEnd,
+    load: 0,
+    rows: randInt(500_000, 2_000_000),
+    ops: 0,
+    online: true,
+    hot: false
+  };
+}
+
+function initializeCluster(n = 4) {
+  STATE.shards = [];
+  STATE.nextShardId = 1;
+  STATE.keyHits = {};
+  const step = 100 / n;
+  for (let i = 0; i < n; i++) {
+    STATE.shards.push(createShard(Math.floor(i * step), Math.floor((i + 1) * step)));
+  }
+  renderShards();
+  updateTelemetry();
+
+  teach('INIT',
+    `Cluster initialized with ${n} shards. Sharding = horizontal partitioning: the SAME TABLE is split by ROWS ` +
+    `across multiple database nodes. Each shard holds a subset of the rows, but has the complete schema. ` +
+    `Unlike vertical partitioning (which splits by COLUMNS), sharding preserves the row structure everywhere.`,
+    'ok'
+  );
+
+  setTimeout(() => {
+    teach('ROUTING',
+      `Every query must be routed to the correct shard. The router computes: ${STATE.strategy === 'hash' ? 'shard = hash(key) mod N' : STATE.strategy === 'range' ? 'shard = range_lookup(key)' : 'shard = next_clockwise_on_ring(hash(key))'}. ` +
+      `This is O(1) for hash and range, O(log N) for consistent hashing with a sorted ring.`,
+      'purple'
+    );
+  }, 2400);
+}
+
+/* ============================================================
+   ROUTING
+   ============================================================ */
+function pickShardForKey(key) {
+  const online = STATE.shards.filter(s => s.online);
+  const N = online.length;
+  if (N === 0) return null;
+
+  switch (STATE.strategy) {
+    case "hash": {
+      const h = simpleHash(String(key));
+      return online[h % N];
+    }
+    case "range": {
+      const k = ((key % 100) + 100) % 100;
+      for (const s of online) {
+        if (k >= s.keyStart && k < s.keyEnd) return s;
+      }
+      return online[online.length - 1];
+    }
+    case "consistent": {
+      const RING = 360;
+      const points = [];
+      for (const s of online) {
+        for (let v = 0; v < 3; v++) {
+          points.push({ angle: simpleHash(`${s.id}:${v}`) % RING, shard: s });
+        }
+      }
+      points.sort((a, b) => a.angle - b.angle);
+      const ka = simpleHash(String(key)) % RING;
+      for (const p of points) if (p.angle >= ka) return p.shard;
+      return points[0].shard;
+    }
+  }
+  return null;
+}
+
+function describeRoute(key, shard) {
+  const N = STATE.shards.filter(s => s.online).length;
+  switch (STATE.strategy) {
+    case "hash": {
+      const h = simpleHash(String(key));
+      return `hash(<span class="key-part">${key}</span>) = ${h} → ${h} mod ${N} = <span class="shard-part">${h % N}</span> → SHARD-${String(shard.id).padStart(2, '0')}`;
+    }
+    case "range": {
+      const k = ((key % 100) + 100) % 100;
+      return `range(<span class="key-part">${key}</span>) → key in [${shard.keyStart}, ${shard.keyEnd}) → <span class="shard-part">SHARD-${String(shard.id).padStart(2, '0')}</span>`;
+    }
+    case "consistent": {
+      const h = simpleHash(String(key));
+      return `hash(<span class="key-part">${key}</span>) = ${h} mod 360 = ${h % 360}° → next node clockwise → <span class="shard-part">SHARD-${String(shard.id).padStart(2, '0')}</span>`;
+    }
+  }
+  return '';
+}
+
+/* ============================================================
+   KEY GENERATION
+   ============================================================ */
+function generateKey() {
+  if (STATE.hotKey !== null && Math.random() < STATE.skew) return STATE.hotKey;
+  return randInt(0, 999);
+}
+
+/* ============================================================
+   QUERY DISPATCH
+   ============================================================ */
+function dispatchQuery() {
+  const online = STATE.shards.filter(s => s.online);
+  if (online.length === 0) return;
+
+  const isRead = Math.random() < STATE.readRatio;
+  const key = generateKey();
+  const shard = pickShardForKey(key);
+  if (!shard) return;
+
+  STATE.keyHits[shard.id] = (STATE.keyHits[shard.id] || 0) + 1;
+  shard.ops++;
+  shard.load = clamp(shard.load + 0.06, 0, 1);
+  if (!isRead) shard.rows += randInt(1, 5);
+
+  STATE.totalQueries++;
+  if (!isRead) STATE.totalWrites++;
+
+  // Router visual flash
+  DOM.router.classList.remove('busy');
+  void DOM.router.offsetWidth;
+  DOM.router.classList.add('busy');
+
+  // Show the routing computation
+  DOM.hashViz.innerHTML = `<div class="hash-line">${describeRoute(key, shard)}</div>`;
+
+  // Client highlight
+  const clientEls = DOM.clientsRow.querySelectorAll('.client');
+  const client = clientEls[randInt(0, clientEls.length - 1)];
+  client.classList.add('active', isRead ? 'read' : 'write');
+  setTimeout(() => client.classList.remove('active', 'read', 'write'), 220);
+
+  // Particles: client -> router -> shard
+  animateRouteParticle(client, shard, isRead);
+
+  // Latency model
+  const ownLoad = shard.load;
+  const base = 4;
+  const ownPenalty = Math.pow(ownLoad, 3) * 220;
+  const hotPenalty = shard.hot ? 180 : 0;
+  const jitter = rand(-2, 2);
+  const latency = Math.max(1, base + ownPenalty + hotPenalty + jitter);
+  STATE.latencySamples.push(latency);
+  if (STATE.latencySamples.length > 400) STATE.latencySamples.shift();
+
+  // Shard visual pulse
+  const shardEl = DOM.shardsContainer.querySelector(`[data-shard-id="${shard.id}"]`);
+  if (shardEl) {
+    shardEl.classList.remove('busy');
+    void shardEl.offsetWidth;
+    shardEl.classList.add('busy');
+  }
+}
+
+/* ============================================================
+   PARTICLES
+   ============================================================ */
+function animateRouteParticle(client, shard, isRead) {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const cr = client.getBoundingClientRect();
+  const rr = DOM.router.getBoundingClientRect();
+  const shardEl = DOM.shardsContainer.querySelector(`[data-shard-id="${shard.id}"]`);
+  if (!shardEl) return;
+  const sr = shardEl.getBoundingClientRect();
+
+  // Hop 1: client → router
+  const p1 = document.createElement('div');
+  p1.className = 'particle route';
+  const sx1 = cr.left - stageRect.left + cr.width / 2 - 4;
+  const sy1 = cr.top - stageRect.top + cr.height - 4;
+  const tx1 = rr.left - stageRect.left + rr.width / 2 - 4;
+  const ty1 = rr.top - stageRect.top + rr.height - 4;
+  p1.style.left = sx1 + 'px';
+  p1.style.top = sy1 + 'px';
+  DOM.stage.appendChild(p1);
+
+  const dur1 = 200;
+  const t0 = performance.now();
+  (function hop1(now) {
+    const t = Math.min(1, (now - t0) / dur1);
+    const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    p1.style.transform = `translate(${(tx1 - sx1) * e}px, ${(ty1 - sy1) * e}px)`;
+    p1.style.opacity = String(1 - t * 0.3);
+    if (t < 1) requestAnimationFrame(hop1);
+    else {
+      p1.remove();
+      // Hop 2: router → shard
+      const p2 = document.createElement('div');
+      p2.className = `particle ${isRead ? 'read' : 'write'}`;
+      const sx2 = tx1;
+      const sy2 = ty1;
+      const tx2 = sr.left - stageRect.left + sr.width / 2 - 4;
+      const ty2 = sr.top - stageRect.top + sr.height / 2 - 4;
+      p2.style.left = sx2 + 'px';
+      p2.style.top = sy2 + 'px';
+      DOM.stage.appendChild(p2);
+
+      const dur2 = 240;
+      const t2 = performance.now();
+      (function hop2(now2) {
+        const t = Math.min(1, (now2 - t2) / dur2);
+        const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+        p2.style.transform = `translate(${(tx2 - sx2) * e}px, ${(ty2 - sy2) * e}px)`;
+        p2.style.opacity = String(1 - t * 0.4);
+        if (t < 1) requestAnimationFrame(hop2);
+        else p2.remove();
+      })(t2);
+    }
+  })(t0);
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderShards() {
+  DOM.shardsContainer.innerHTML = '';
+  for (const s of STATE.shards) {
+    DOM.shardsContainer.appendChild(buildShardEl(s));
+  }
+  renderShardMap();
+  renderDistribution();
+}
+
+function buildShardEl(s) {
+  const el = document.createElement('div');
+  el.className = 'shard new';
+  el.dataset.shardId = s.id;
+  el.innerHTML = `
+    <div class="shard-header">
+      <div class="shard-name">SHARD-${String(s.id).padStart(2, '0')}</div>
+      <div class="shard-status"></div>
+    </div>
+    <div class="shard-range">keys [${s.keyStart}, ${s.keyEnd})</div>
+    <div class="load-track"><div class="load-fill"></div></div>
+    <div class="shard-metrics">
+      <div class="metric-item"><span class="lbl">LOAD</span><span class="val load-val">0%</span></div>
+      <div class="metric-item"><span class="lbl">OPS</span><span class="val ops-val">0</span></div>
+    </div>
+    <div class="shard-rows">${(s.rows / 1_000_000).toFixed(2)}M rows</div>
+  `;
+  applyShardVisuals(el, s);
+  return el;
+}
+
+function applyShardVisuals(el, s) {
+  const fill = el.querySelector('.load-fill');
+  const lv = el.querySelector('.load-val');
+  const ops = el.querySelector('.ops-val');
+  fill.style.width = (s.load * 100).toFixed(0) + '%';
+  lv.textContent = (s.load * 100).toFixed(0) + '%';
+  ops.textContent = s.ops;
+  el.classList.toggle('hot', s.hot || s.load > 0.85);
+  el.classList.toggle('cold', s.load < 0.15 && !s.hot && s.online);
+  el.classList.toggle('offline', !s.online);
+}
+
+function renderShardsLightweight() {
+  for (const s of STATE.shards) {
+    const el = DOM.shardsContainer.querySelector(`[data-shard-id="${s.id}"]`);
+    if (el) applyShardVisuals(el, s);
+  }
+}
+
+/* ============================================================
+   SHARD MAP
+   ============================================================ */
+function renderShardMap() {
+  const N = STATE.shards.filter(s => s.online).length;
+  let html = `<div style="color:#64748b; font-size:0.56rem; margin-bottom:4px;">ROUTING TABLE — ${STATE.strategy.toUpperCase()}</div>`;
+  if (STATE.strategy === 'hash') {
+    html += `<div style="color:#c084fc; font-size:0.58rem; line-height:1.5;">hash(key) % ${N} → SHARD-XX</div>`;
+    html += `<div style="color:#94a3b8; font-size:0.55rem; margin-top:3px;">N=${N} → all keys reshuffle when N changes ⚠</div>`;
+  } else if (STATE.strategy === 'range') {
+    for (const s of STATE.shards) {
+      if (!s.online) continue;
+      html += `<div class="row"><span class="key">[${s.keyStart}, ${s.keyEnd})</span><span class="arrow">→</span><span class="shard-id">SHARD-${String(s.id).padStart(2, '0')}</span></div>`;
+    }
+  } else {
+    html += `<div style="color:#c084fc; font-size:0.58rem; line-height:1.5;">3 virtual nodes per shard on a 360° ring</div>`;
+    html += `<div style="color:#94a3b8; font-size:0.55rem; margin-top:3px;">Adding a shard only moves ~1/N of keys ✓</div>`;
+  }
+  DOM.shardMap.innerHTML = html;
+}
+
+/* ============================================================
+   DISTRIBUTION CHART
+   ============================================================ */
+function renderDistribution() {
+  const totalHits = Object.values(STATE.keyHits).reduce((a, b) => a + b, 0) || 1;
+  let html = '';
+  for (const s of STATE.shards) {
+    const hits = STATE.keyHits[s.id] || 0;
+    const pct = (hits / totalHits) * 100;
+    const color = !s.online ? '#7f1d1d' : s.load > 0.85 ? '#ef4444' : s.load > 0.6 ? '#f59e0b' : '#10b981';
+    html += `
+      <div class="dist-row">
+        <span class="lbl">S${String(s.id).padStart(2,'0')}</span>
+        <div class="bar"><div class="fill" style="width:${pct}%; background:${color};"></div></div>
+        <span class="pct">${pct.toFixed(1)}%</span>
+      </div>`;
+  }
+  DOM.distChart.innerHTML = html;
+}
+
+/* ============================================================
+   TELEMETRY
+   ============================================================ */
+function updateTelemetry() {
+  const online = STATE.shards.filter(s => s.online);
+  const N = online.length;
+  const loads = online.map(s => s.load);
+  const avg = loads.length ? loads.reduce((a, b) => a + b, 0) / loads.length : 0;
+  const variance = loads.length ? loads.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / loads.length : 0;
+  const stddev = Math.sqrt(variance);
+
+  const sorted = [...STATE.latencySamples].sort((a, b) => a - b);
+  const p99 = sorted.length ? sorted[Math.floor(sorted.length * 0.99)] : 0;
+
+  DOM.mShards.textContent = N + (STATE.shards.length !== N ? `/${STATE.shards.length}` : '');
+  DOM.mQps.textContent = STATE.running ? STATE.qps : 0;
+  DOM.mLoad.textContent = Math.round(avg * 100) + '%';
+  DOM.mLoad.className = 'metric-value' + (avg > 0.85 ? ' bad' : avg > 0.6 ? ' warn' : '');
+  DOM.mSkew.textContent = stddev.toFixed(2);
+  DOM.mSkew.className = 'metric-value' + (stddev > 0.3 ? ' bad' : stddev > 0.15 ? ' warn' : '');
+  DOM.mLatency.textContent = p99.toFixed(0) + ' ms';
+  DOM.mLatency.className = 'metric-value' + (p99 > 300 ? ' bad' : p99 > 100 ? ' warn' : '');
+  DOM.mCross.textContent = STATE.crossShardQueries;
+
+  DOM.routerStat.textContent = `N = ${N} · ${STATE.running ? STATE.qps + ' q/s' : 'idle'}`;
+  DOM.routerFormula.textContent = STATE.strategy === 'hash' ? 'shard = hash(key) mod N'
+    : STATE.strategy === 'range' ? 'shard = range_lookup(key)'
+    : 'shard = next_clockwise(hash(key))';
+
+  // Teaching triggers
+  checkTeachingTriggers(avg, stddev, p99);
+}
+
+function checkTeachingTriggers(avg, stddev, p99) {
+  if (!STATE.running) return;
+  if (avg > 0.7 && STATE.lastAnnouncedLoad <= 0.7) {
+    teach('LOAD',
+      `Average shard load crossed 70%. In sharding, each shard can only scale up to its own hardware limits. ` +
+      `Once a shard saturates, no other shard can help — it doesn't have that shard's data.`,
+      'warn'
+    );
+  }
+  STATE.lastAnnouncedLoad = avg;
+
+  if (stddev > 0.25 && STATE.lastAnnouncedSkew <= 0.25) {
+    teach('SKEW',
+      `Load imbalance detected (σ = ${stddev.toFixed(2)}). Keys are not uniformly distributed. In hash sharding, ` +
+      `a skilled adversary can pick keys that all hash to one shard (hash DoS). In range sharding, monotonic keys ` +
+      `like timestamps always hit the last shard — the "hot tail" problem.`,
+      'warn'
+    );
+  }
+  STATE.lastAnnouncedSkew = stddev;
+}
+
+/* ============================================================
+   TRAFFIC
+   ============================================================ */
+function tick() {
+  if (!STATE.running) return;
+  const batch = Math.max(1, Math.round(STATE.qps / 10));
+  for (let i = 0; i < batch; i++) dispatchQuery();
+}
+
+/* ============================================================
+   DECAY
+   ============================================================ */
+setInterval(() => {
+  for (const s of STATE.shards) {
+    s.load = Math.max(0, s.load - 0.03);
+    s.hot = s.load > 0.85;
+  }
+  renderShardsLightweight();
+  renderDistribution();
+  updateTelemetry();
+}, 400);
+
+/* ============================================================
+   CLUSTER OPS
+   ============================================================ */
+function addShard() {
+  if (STATE.shards.length >= STATE.MAX_SHARDS) {
+    showToast('⚠ Max shards reached');
+    return;
+  }
+  const N = STATE.shards.length + 1;
+  const step = 100 / N;
+
+  // Rebalance range boundaries
+  for (let i = 0; i < N; i++) {
+    if (i < STATE.shards.length) {
+      STATE.shards[i].keyStart = Math.floor(i * step);
+      STATE.shards[i].keyEnd = Math.floor((i + 1) * step);
+    } else {
+      STATE.shards.push(createShard(Math.floor(i * step), Math.floor((i + 1) * step)));
+    }
+  }
+
+  renderShards();
+  updateTelemetry();
+
+  teach('SCALE OUT',
+    `Added SHARD-${STATE.shards.length}. Total shards: ${N}. Key ranges were rebalanced — each existing shard gave ` +
+    `up part of its range to the new shard. This is how sharding scales horizontally: by partitioning the key ` +
+    `space into more slices.`,
+    'ok'
+  );
+
+  if (STATE.strategy === 'hash') {
+    setTimeout(() => {
+      teach('⚠ RESHUFFLE',
+        `Hash mod N changed from ${N - 1} to ${N}. Because the routing formula is hash(key) % N, almost ALL keys ` +
+        `now map to different shards than before. This triggers a massive data migration. This is the fundamental ` +
+        `weakness of modular hashing — consistent hashing fixes it by only moving ~1/N of keys.`,
+        'error'
+      );
+    }, 800);
+  } else if (STATE.strategy === 'consistent') {
+    setTimeout(() => {
+      teach('✓ EFFICIENT',
+        `Consistent hashing: adding SHARD-${STATE.shards.length} only moved ~1/${N} of the keys (the ones whose ` +
+        `hash falls between the new shard's virtual nodes and its predecessor). The other ~${Math.round((1 - 1/N) * 100)}% ` +
+        `of keys stayed put. This is the key advantage — O(K/N) data movement instead of O(K).`,
+        'ok'
+      );
+    }, 800);
+  }
+}
+
+function splitHottestShard() {
+  if (STATE.shards.length >= STATE.MAX_SHARDS) {
+    showToast('⚠ Max shards reached');
+    return;
+  }
+  let hottest = STATE.shards[0];
+  for (const s of STATE.shards) if (s.load > hottest.load) hottest = s;
+
+  const mid = Math.floor((hottest.keyStart + hottest.keyEnd) / 2);
+  const oldEnd = hottest.keyEnd;
+
+  hottest.keyEnd = mid;
+  hottest.load *= 0.55;
+  hottest.rows = Math.floor(hottest.rows / 2);
+  hottest.hot = false;
+
+  const newShard = createShard(mid, oldEnd);
+  newShard.rows = Math.floor(newShard.rows / 2);
+
+  const idx = STATE.shards.indexOf(hottest);
+  STATE.shards.splice(idx + 1, 0, newShard);
+
+  const el = DOM.shardsContainer.querySelector(`[data-shard-id="${hottest.id}"]`);
+  if (el) {
+    el.classList.add('splitting');
+    setTimeout(() => el.classList.remove('splitting'), 700);
+  }
+
+  renderShards();
+  updateTelemetry();
+
+  teach('SPLIT',
+    `Split SHARD-${hottest.id} into two: [${hottest.keyStart}, ${mid}) and [${mid}, ${oldEnd}). The new shard ` +
+    `owns half the data. This is the standard remedy for a hot shard under RANGE partitioning. Under HASH ` +
+    `partitioning, splitting requires rehashing (much more expensive).`,
+    'ok'
+  );
+}
+
+function killShard() {
+  const online = STATE.shards.filter(s => s.online);
+  if (online.length <= 1) {
+    showToast('⚠ Cannot kill last shard');
+    teach('BLOCKED',
+      `Cannot kill the last shard. In sharding, the last shard owns a unique key range — killing it means losing ` +
+      `access to that entire range. Production systems use replica shards (2-3×) for every primary shard.`,
+      'error'
+    );
+    return;
+  }
+  const victim = online[randInt(0, online.length - 1)];
+  victim.online = false;
+  victim.load = 0;
+
+  renderShardsLightweight();
+  updateTelemetry();
+
+  teach('SHARD DOWN',
+    `SHARD-${victim.id} failed. Its key range [${victim.keyStart}, ${victim.keyEnd}) is now UNREACHABLE. ` +
+    `Queries routed to that range return errors. Other shards CANNOT help — they don't have those rows. ` +
+    `This is the single biggest risk of sharding: every shard is a single point of failure for its slice.`,
+    'error'
+  );
+  showToast(`💥 SHARD-${victim.id} failed`);
+}
+
+function recoverShard() {
+  const offline = STATE.shards.filter(s => !s.online);
+  if (offline.length === 0) {
+    showToast('✔ All shards online');
+    return;
+  }
+  const s = offline[0];
+  s.online = true;
+  s.load = 0.05;
+
+  renderShardsLightweight();
+  updateTelemetry();
+
+  teach('RECOVERED',
+    `SHARD-${s.id} is back online. Its key range is available again. In real systems without replicas, recovery ` +
+    `means replaying its WAL or restoring from backup. With replicas, the surviving replica is promoted instantly ` +
+    `and a new replica is rebuilt in the background.`,
+    'ok'
+  );
+  showToast(`🔄 SHARD-${s.id} recovered`);
+}
+
+/* ============================================================
+   HOTSPOT
+   ============================================================ */
+function injectHotspot() {
+  STATE.hotKey = randInt(0, 999);
+  STATE.skew = 0.75;
+  DOM.skewRange.value = 75;
+  DOM.skewVal.textContent = '75%';
+
+  const shard = pickShardForKey(STATE.hotKey);
+  if (shard) shard.hot = true;
+
+  renderShardsLightweight();
+  updateTelemetry();
+
+  teach('HOTSPOT',
+    `Injected hotspot on key ${STATE.hotKey}. 75% of traffic now hits this one key — and its shard. ` +
+    `The router CANNOT spread this load; only one shard owns this key. This is the "celebrity problem" — real-world ` +
+    `celebrity IDs, viral tweets, popular products. Solutions: cache the hot key, split the shard, or use a different ` +
+    `key for the same logical entity.`,
+    'error'
+  );
+
+  setTimeout(() => {
+    STATE.hotKey = null;
+    STATE.skew = 0.15;
+    DOM.skewRange.value = 15;
+    DOM.skewVal.textContent = '15%';
+    teach('COOLDOWN', 'Hotspot cooled. Skew returned to baseline 15%.', 'info', false);
+  }, 12000);
+}
+
+/* ============================================================
+   BURST
+   ============================================================ */
+function burst() {
+  teach('BURST',
+    `100 queries dispatched. Watch how the router distributes them — if keys are uniform, load spreads evenly. ` +
+    `If not, some shards absorb more than others. Skew is the enemy of sharding.`,
+    'info'
+  );
+  for (let i = 0; i < 100; i++) setTimeout(dispatchQuery, i * 8);
+  showToast('⚡ 100-query burst dispatched');
+}
+
+/* ============================================================
+   STRATEGY SWITCH
+   ============================================================ */
+function setStrategy(newStrategy) {
+  const old = STATE.strategy;
+  STATE.strategy = newStrategy;
+  STATE.shards.forEach(s => s.load = 0);
+  STATE.keyHits = {};
+  renderShardsLightweight();
+  renderShardMap();
+  renderDistribution();
+  updateTelemetry();
+
+  const descriptions = {
+    hash: `Hash-based: shard = hash(key) % N. Uniform distribution IF the hash function is good. But N changes cause complete reshuffling.`,
+    range: `Range-based: each shard owns a contiguous [start, end) of the key space. Efficient splits — only one range moves when growing. But monotonic keys (timestamps) create a hot tail.`,
+    consistent: `Consistent hashing: shards are placed on a virtual ring (3 virtual nodes each). Adding a shard moves only ~1/N of keys. Used by Cassandra, DynamoDB, Riak.`
+  };
+
+  teach('STRATEGY',
+    `Switched from ${old.toUpperCase()} to ${newStrategy.toUpperCase()}. ${descriptions[newStrategy]}`,
+    'purple'
+  );
+}
+
+/* ============================================================
+   CONTROLS
+   ============================================================ */
+function startTraffic() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+  STATE.tickTimer = setInterval(tick, 100);
+
+  teach('START',
+    `Traffic started at ${STATE.qps} q/s. Each query is routed to exactly one shard. Watch the hash computation ` +
+    `appear below the router — that's the routing logic in real time. Cross-shard queries (needed for JOINs across ` +
+    `shards) are the expensive case we're avoiding.`,
+    'ok'
+  );
+}
+
+function stopTraffic() {
+  STATE.running = false;
+  DOM.btnToggle.textContent = '▶ Start Traffic';
+  DOM.btnToggle.classList.add('primary');
+  DOM.btnToggle.classList.remove('danger');
+  clearInterval(STATE.tickTimer);
+  STATE.tickTimer = null;
+  teach('STOP', 'Traffic stopped.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnToggle.addEventListener('click', () => STATE.running ? stopTraffic() : startTraffic());
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnHotspot.addEventListener('click', injectHotspot);
+DOM.btnAddShard.addEventListener('click', addShard);
+DOM.btnSplit.addEventListener('click', splitHottestShard);
+DOM.btnKill.addEventListener('click', killShard);
+DOM.btnRecover.addEventListener('click', recoverShard);
+
+DOM.qpsRange.addEventListener('input', e => {
+  STATE.qps = parseInt(e.target.value);
+  DOM.qpsVal.textContent = STATE.qps;
+});
+DOM.readRange.addEventListener('input', e => {
+  STATE.readRatio = parseInt(e.target.value) / 100;
+  DOM.readVal.textContent = e.target.value + '%';
+});
+DOM.skewRange.addEventListener('input', e => {
+  STATE.skew = parseInt(e.target.value) / 100;
+  DOM.skewVal.textContent = e.target.value + '%';
+});
+
+document.querySelectorAll('input[name="strategy"]').forEach(r => {
+  r.addEventListener('change', e => setStrategy(e.target.value));
+});
+
+window.addEventListener('resize', () => {});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+initializeCluster(4);
+
+setTimeout(() => {
+  teach('WHY SHARD',
+    `Three reasons to shard: (1) Write throughput — a single DB has a write ceiling; N shards give N times the write ` +
+    `capacity. (2) Storage — a single disk has finite space; N shards multiply it. (3) Locality — you can place ` +
+    `user data in the shard closest to them geographically. The cost: cross-shard queries, hot partitions, and ` +
+    `rebalancing complexity.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('VOCAB',
+      `Terminology across vendors: "shard" = MongoDB, "partition" = Cassandra, "region" = HBase, "tablet" = Bigtable, ` +
+      `"vnode" = Cassandra, "chunk" = Vitess, "range" = Spanner. They all mean the same thing: a slice of rows that ` +
+      `lives on one node.`,
+      'info'
+    );
+  }, 3500);
+
+  showToast('👋 Start traffic, then trigger a hotspot', 4000);
+}, 700);
+</script>
+</body>
+</html>

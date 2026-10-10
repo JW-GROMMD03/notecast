@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peer-to-Peer Database Architecture — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #14b8a6, #06b6d4);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(20,184,166,0.15);
+    color: #5eead4;
+    border-color: #14b8a6;
+  }
+  .teaching-toggle:hover { background: rgba(20,184,166,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 260px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #5eead4;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #14b8a6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #14b8a6; color: #032824; border-color: #14b8a6; }
+  .btn.primary:hover { background: #0d9488; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #5eead4; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #14b8a6; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(20,184,166,0.06) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* Topology mode toggle */
+  .topology-badge {
+    position: absolute;
+    top: 12px;
+    left: 20px;
+    background: rgba(20,184,166,0.15);
+    border: 1px solid #14b8a6;
+    color: #5eead4;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.62rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    font-family: monospace;
+    z-index: 6;
+  }
+
+  /* Clients */
+  .clients-row {
+    position: absolute;
+    top: 46px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    z-index: 5;
+  }
+  .client {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    border: 2px solid #334155;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.95rem;
+    transition: all 0.25s;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .client.write {
+    border-color: #f97316;
+    box-shadow: 0 0 20px rgba(249,115,22,0.7);
+    transform: scale(1.1);
+  }
+  .client.read {
+    border-color: #06b6d4;
+    box-shadow: 0 0 20px rgba(6,182,212,0.7);
+    transform: scale(1.1);
+  }
+
+  /* PEER CANVAS — nodes placed on a ring */
+  .peers-container {
+    position: absolute;
+    top: 100px;
+    left: 0; right: 0; bottom: 0;
+    z-index: 4;
+  }
+
+  .peer {
+    position: absolute;
+    width: 130px;
+    background: linear-gradient(160deg, #0d1f26 0%, #070a14 100%);
+    border: 2px solid #14b8a6;
+    border-radius: 50%;
+    padding: 18px 8px;
+    text-align: center;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.6), 0 0 20px rgba(20,184,166,0.35);
+    transition: all 0.35s cubic-bezier(.4,0,.2,1);
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    z-index: 5;
+  }
+  .peer.busy {
+    animation: peerPulse 0.35s ease;
+  }
+  @keyframes peerPulse {
+    0%, 100% { box-shadow: 0 15px 35px rgba(0,0,0,0.6), 0 0 20px rgba(20,184,166,0.35); }
+    50%      { box-shadow: 0 15px 35px rgba(0,0,0,0.6), 0 0 60px rgba(20,184,166,1); }
+  }
+  .peer.down {
+    border-color: #7f1d1d;
+    opacity: 0.35;
+    filter: grayscale(0.7);
+  }
+  .peer.gossiping {
+    border-color: #fbbf24;
+    box-shadow: 0 0 35px rgba(251,191,36,0.8);
+  }
+  .peer.stale {
+    border-color: #f59e0b;
+    box-shadow: 0 0 25px rgba(245,158,11,0.6);
+  }
+  .peer.converged {
+    border-color: #10b981;
+    box-shadow: 0 0 20px rgba(16,185,129,0.6);
+  }
+
+  .peer-name {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 1.4px;
+    color: #5eead4;
+    font-family: monospace;
+    margin-bottom: 3px;
+  }
+  .peer-status {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: blink 1.4s ease-in-out infinite;
+    display: inline-block;
+    margin-bottom: 4px;
+  }
+  .peer.down .peer-status { background: #ef4444; box-shadow: 0 0 8px #ef4444; animation: none; }
+  .peer.stale .peer-status { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+
+  .peer-metric {
+    font-size: 0.55rem;
+    color: #64748b;
+    font-family: monospace;
+    margin-top: 2px;
+  }
+  .peer-metric .val { color: #5eead4; font-weight: 700; }
+  .peer-metric .val.warn { color: #f59e0b; }
+  .peer-metric .val.bad  { color: #ef4444; }
+
+  /* Data snapshot mini-table */
+  .peer-data {
+    background: #04070d;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 3px 4px;
+    margin-top: 5px;
+    font-family: monospace;
+    font-size: 0.5rem;
+    color: #94a3b8;
+    height: 30px;
+    overflow: hidden;
+    line-height: 1.4;
+  }
+
+  /* Connections SVG */
+  .connections {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .connections path {
+    stroke: #14b8a6;
+    stroke-width: 1;
+    fill: none;
+    opacity: 0.25;
+  }
+  .connections path.active {
+    stroke: #fbbf24;
+    stroke-width: 2;
+    opacity: 0.9;
+    filter: drop-shadow(0 0 6px rgba(251,191,36,0.9));
+  }
+  .connections path.broken {
+    stroke: #7f1d1d;
+    stroke-dasharray: 3 4;
+    opacity: 0.3;
+  }
+
+  /* Particles */
+  .particle {
+    position: absolute;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 6;
+  }
+  .particle.read    { background: #06b6d4; box-shadow: 0 0 10px #06b6d4; }
+  .particle.write   { background: #f97316; box-shadow: 0 0 10px #f97316; }
+  .particle.gossip  { background: #fbbf24; box-shadow: 0 0 10px #fbbf24; }
+  .particle.antientropy { background: #8b5cf6; box-shadow: 0 0 10px #8b5cf6; }
+  .particle.heal    { background: #10b981; box-shadow: 0 0 10px #10b981; }
+
+  /* RIGHT: TEACHING */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(20,184,166,0.06);
+    border: 1px solid rgba(20,184,166,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.58rem;
+    color: #5eead4;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 340px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #14b8a6;
+    background: rgba(20,184,166,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #14b8a6; background: rgba(20,184,166,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(20,184,166,0.15); color: #5eead4; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #14b8a6;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(20,184,166,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Convergence bar */
+  .convergence-panel {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 0.62rem;
+  }
+  .conv-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    color: #94a3b8;
+  }
+  .conv-row .val { color: #5eead4; font-weight: 700; }
+  .conv-row .val.good { color: #10b981; }
+  .conv-row .val.warn { color: #f59e0b; }
+  .conv-row .val.bad  { color: #ef4444; }
+
+  .conv-bar {
+    height: 6px;
+    background: #0a0e19;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 3px;
+  }
+  .conv-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #14b8a6);
+    transition: width 0.4s ease;
+    box-shadow: 0 0 6px rgba(20,184,166,0.6);
+  }
+
+  /* Antientropy visualization */
+  .merkle-tree {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15,23,42,0.95);
+    border: 1px solid #8b5cf6;
+    border-radius: 10px;
+    padding: 10px 16px;
+    z-index: 8;
+    font-family: monospace;
+    font-size: 0.6rem;
+    color: #a78bfa;
+    display: none;
+    animation: fadeIn 0.4s ease;
+  }
+  .merkle-tree.show { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(10px); } }
+  .merkle-tree .node {
+    display: inline-block;
+    padding: 2px 6px;
+    margin: 2px;
+    background: rgba(139,92,246,0.15);
+    border: 1px solid #8b5cf6;
+    border-radius: 4px;
+  }
+  .merkle-tree .node.match { background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981; }
+  .merkle-tree .node.diff  { background: rgba(239,68,68,0.15); border-color: #ef4444; color: #f87171; }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>PEER-TO-PEER DATABASE</h1>
+    <span class="sub">GOSSIP · ANTI-ENTROPY · EVENTUAL CONSISTENCY · NO LEADER</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Traffic Control</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 60 Queries</button>
+      <button class="btn warn" id="btnGossipRound">📢 Force Gossip Round</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Profile</h3>
+      <div class="slider-row"><span>Queries / sec</span><span class="value" id="qpsVal">40</span></div>
+      <input type="range" id="qpsRange" min="1" max="250" value="40">
+      <div class="slider-row"><span>Read Ratio</span><span class="value" id="readVal">50%</span></div>
+      <input type="range" id="readRange" min="0" max="100" value="50">
+      <div class="slider-row"><span>Gossip Fanout</span><span class="value" id="fanoutVal">2</span></div>
+      <input type="range" id="fanoutRange" min="1" max="5" value="2">
+    </div>
+
+    <div class="panel">
+      <h3>Anti-Entropy</h3>
+      <button class="btn purple" id="btnAntiEntropy" style="background:#6d28d9; color:#fff; border-color:#6d28d9;">🌳 Run Merkle Sync</button>
+      <button class="btn success" id="btnHealAll">🔄 Heal All Peers</button>
+    </div>
+
+    <div class="panel">
+      <h3>Failure Injection</h3>
+      <button class="btn danger" id="btnKillPeer">💥 Kill Random Peer</button>
+      <button class="btn warn" id="btnPartition">📡 Network Partition</button>
+      <button class="btn warn" id="btnIsolate">🏝️ Isolate a Peer</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#06b6d4;"></div>Read</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f97316;"></div>Write</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fbbf24;"></div>Gossip (rumor)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6;"></div>Merkle anti-entropy</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>Converged peer</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">EVERY NODE IS EQUAL · NO MASTER · CONSENSUS VIA GOSSIP</div>
+      <div class="topology-badge" id="topologyBadge">TOPOLOGY: RING</div>
+
+      <div class="clients-row" id="clientsRow">
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+      </div>
+
+      <svg class="connections" id="connections"></svg>
+      <div class="peers-container" id="peersContainer"></div>
+
+      <div class="merkle-tree" id="merkleTree">
+        <div style="color:#a78bfa; font-weight:800; letter-spacing:1.5px; margin-bottom:6px;">
+          🌳 MERKLE TREE COMPARISON
+        </div>
+        <div id="merkleContent"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Live Peers</div>
+        <div class="metric-value" id="mPeers">6</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">QPS</div>
+        <div class="metric-value" id="mQps">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Gossip Rate</div>
+        <div class="metric-value" id="mGossip">0/s</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Converged</div>
+        <div class="metric-value" id="mConverged">100%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Divergent Keys</div>
+        <div class="metric-value" id="mDivergent">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Anti-Entropy</div>
+        <div class="metric-value" id="mAnti" style="font-size:0.85rem;">IDLE</div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:6px;">📊 Convergence Tracker</h3>
+      <div class="convergence-panel" id="convPanel"></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  running: false,
+  qps: 40,
+  readRatio: 0.5,
+  fanout: 2,
+  peers: [],                // { id, name, x, y, up, isolated, data: Map, stale: false }
+  totalQueries: 0,
+  totalWrites: 0,
+  gossipRounds: 0,
+  latencySamples: [],
+  tickTimer: null,
+  gossipTimer: null,
+  teaching: true,
+  voiceEnabled: false,
+  networkPartition: false,
+  peerCount: 6,
+  keyPool: [1,2,3,4,5,6,7,8],
+  lastConvergence: 100,
+  antiEntropyActive: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  peersContainer: document.getElementById('peersContainer'),
+  connections: document.getElementById('connections'),
+  merkleTree: document.getElementById('merkleTree'),
+  merkleContent: document.getElementById('merkleContent'),
+  convPanel: document.getElementById('convPanel'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  topologyBadge: document.getElementById('topologyBadge'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnGossipRound: document.getElementById('btnGossipRound'),
+  btnAntiEntropy: document.getElementById('btnAntiEntropy'),
+  btnHealAll: document.getElementById('btnHealAll'),
+  btnKillPeer: document.getElementById('btnKillPeer'),
+  btnPartition: document.getElementById('btnPartition'),
+  btnIsolate: document.getElementById('btnIsolate'),
+  qpsRange: document.getElementById('qpsRange'),
+  qpsVal: document.getElementById('qpsVal'),
+  readRange: document.getElementById('readRange'),
+  readVal: document.getElementById('readVal'),
+  fanoutRange: document.getElementById('fanoutRange'),
+  fanoutVal: document.getElementById('fanoutVal'),
+  mPeers: document.getElementById('mPeers'),
+  mQps: document.getElementById('mQps'),
+  mGossip: document.getElementById('mGossip'),
+  mConverged: document.getElementById('mConverged'),
+  mDivergent: document.getElementById('mDivergent'),
+  mAnti: document.getElementById('mAnti'),
+  clientsRow: document.getElementById('clientsRow')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining peer to peer database architecture.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING FEED
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   INIT CLUSTER — 6 peers in a ring
+   ============================================================ */
+function initializeCluster() {
+  STATE.peers = [];
+  STATE.gossipRounds = 0;
+  STATE.totalWrites = 0;
+  STATE.totalQueries = 0;
+
+  const N = STATE.peerCount;
+  for (let i = 0; i < N; i++) {
+    const angle = (i / N) * Math.PI * 2 - Math.PI / 2;
+    STATE.peers.push({
+      id: i,
+      name: `PEER-${String.fromCharCode(65 + i)}`,
+      angle,
+      up: true,
+      isolated: false,
+      data: new Map(),    // key -> { value, ts, version }
+      stale: false,
+      lastGossipAt: 0
+    });
+  }
+  renderPeers();
+  drawMesh();
+  updateTelemetry();
+
+  teach('INIT',
+    `Cluster initialized with ${N} peer nodes in a ring topology. There is NO master, NO leader, NO router — ` +
+    `every peer is equal. Any peer can accept writes. Peers periodically exchange information with a random subset ` +
+    `of their neighbors (fanout = ${STATE.fanout}), spreading updates epidemically like a rumor.`,
+    'ok'
+  );
+
+  setTimeout(() => {
+    teach('GOSSIP',
+      `Gossip protocol: every ${1000}ms, each peer picks ${STATE.fanout} random neighbors and exchanges state. ` +
+      `Information spreads in O(log N) rounds — with 6 peers, all nodes converge within ~3 rounds. ` +
+      `This is how Cassandra propagates cluster metadata, how DynamoDB tracks membership, and how Bitcoin ` +
+      `nodes relay transactions.`,
+      'purple'
+    );
+  }, 2600);
+
+  setTimeout(() => {
+    teach('CONSISTENCY',
+      `The cost of decentralization: EVENTUAL consistency. When a peer writes, other peers don't see it ` +
+      `immediately — they see it after gossip propagates. If you read from the wrong peer too soon, you get ` +
+      `a STALE value. Real P2P systems mitigate this with read repairs, hinted handoff, and quorum reads.`,
+      'warn'
+    );
+  }, 5000);
+}
+
+/* ============================================================
+   RENDER PEERS — position on a circle
+   ============================================================ */
+function renderPeers() {
+  DOM.peersContainer.innerHTML = '';
+  const container = DOM.peersContainer.getBoundingClientRect();
+  const cx = container.width / 2;
+  const cy = container.height / 2;
+  const radius = Math.min(cx, cy) * 0.62;
+
+  for (const p of STATE.peers) {
+    const x = cx + Math.cos(p.angle) * radius;
+    const y = cy + Math.sin(p.angle) * radius;
+    p.x = x; p.y = y;
+    const el = buildPeerEl(p);
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    DOM.peersContainer.appendChild(el);
+  }
+}
+
+function buildPeerEl(p) {
+  const el = document.createElement('div');
+  el.className = 'peer';
+  el.dataset.peerId = p.id;
+  el.innerHTML = `
+    <div class="peer-name">${p.name}</div>
+    <div class="peer-status"></div>
+    <div class="peer-metric">KEYS <span class="val keys-val">0</span></div>
+    <div class="peer-metric">VER <span class="val ver-val">0</span></div>
+    <div class="peer-data"></div>
+  `;
+  el.addEventListener('click', () => inspectPeer(p.id));
+  applyPeerVisuals(el, p);
+  return el;
+}
+
+function applyPeerVisuals(el, p) {
+  el.classList.toggle('down', !p.up);
+  el.classList.toggle('stale', p.stale && p.up && !p.isolated);
+  el.classList.toggle('gossiping', Date.now() - p.lastGossipAt < 300);
+  const maxVer = Math.max(0, ...Array.from(p.data.values()).map(v => v.version || 0));
+  el.querySelector('.keys-val').textContent = p.data.size;
+  el.querySelector('.ver-val').textContent = maxVer;
+
+  const table = el.querySelector('.peer-data');
+  const entries = Array.from(p.data.entries()).slice(-2);
+  table.innerHTML = entries.length
+    ? entries.map(([k, v]) => `<div>k${k}=${v.value}</div>`).join('')
+    : '<div style="color:#475569;">(empty)</div>';
+}
+
+function renderPeerVisuals() {
+  for (const p of STATE.peers) {
+    const el = DOM.peersContainer.querySelector(`[data-peer-id="${p.id}"]`);
+    if (el) applyPeerVisuals(el, p);
+  }
+}
+
+/* ============================================================
+   MESH LINES — connect neighbors on the ring + random shortcuts
+   ============================================================ */
+function drawMesh() {
+  const containerRect = DOM.peersContainer.getBoundingClientRect();
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const offsetX = containerRect.left - stageRect.left;
+  const offsetY = containerRect.top - stageRect.top;
+
+  let paths = '';
+  const N = STATE.peers.length;
+
+  // Ring edges (each peer connected to next)
+  for (let i = 0; i < N; i++) {
+    const a = STATE.peers[i];
+    const b = STATE.peers[(i + 1) % N];
+    const broken = STATE.networkPartition || !a.up || !b.up || a.isolated || b.isolated;
+    paths += `<path class="${broken ? 'broken' : ''}" d="M ${offsetX + a.x} ${offsetY + a.y} L ${offsetX + b.x} ${offsetY + b.y}"/>`;
+  }
+
+  // A few shortcuts for realistic gossip topology
+  for (let i = 0; i < N; i++) {
+    const a = STATE.peers[i];
+    const j = (i + 2) % N;
+    const b = STATE.peers[j];
+    if (i < j) {
+      const broken = STATE.networkPartition || !a.up || !b.up || a.isolated || b.isolated;
+      paths += `<path class="${broken ? 'broken' : ''}" d="M ${offsetX + a.x} ${offsetY + a.y} L ${offsetX + b.x} ${offsetY + b.y}" style="opacity:0.15;"/>`;
+    }
+  }
+
+  DOM.connections.innerHTML = paths;
+}
+
+function highlightEdge(peerA, peerB, duration = 300) {
+  const containerRect = DOM.peersContainer.getBoundingClientRect();
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const offsetX = containerRect.left - stageRect.left;
+  const offsetY = containerRect.top - stageRect.top;
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('class', 'active');
+  path.setAttribute('d', `M ${offsetX + peerA.x} ${offsetY + peerA.y} L ${offsetX + peerB.x} ${offsetY + peerB.y}`);
+  path.style.stroke = '#fbbf24';
+  path.style.strokeWidth = '2.5';
+  path.style.opacity = '1';
+  path.style.filter = 'drop-shadow(0 0 8px rgba(251,191,36,1))';
+
+  DOM.connections.appendChild(path);
+  setTimeout(() => path.remove(), duration);
+}
+
+/* ============================================================
+   PARTICLE ANIMATION
+   ============================================================ */
+function animatePeerParticle(from, to, kind) {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const containerRect = DOM.peersContainer.getBoundingClientRect();
+  const offsetX = containerRect.left - stageRect.left;
+  const offsetY = containerRect.top - stageRect.top;
+
+  const p = document.createElement('div');
+  p.className = `particle ${kind}`;
+  const sx = offsetX + from.x - 4;
+  const sy = offsetY + from.y - 4;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const tx = offsetX + to.x - 4;
+  const ty = offsetY + to.y - 4;
+  const dur = 450;
+  const t0 = performance.now();
+
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    p.style.transform = `translate(${(tx - sx) * e}px, ${(ty - sy) * e}px)`;
+    p.style.opacity = String(1 - t * 0.3);
+    if (t < 1) requestAnimationFrame(frame);
+    else p.remove();
+  })(t0);
+}
+
+function animateClientToPeer(clientEl, peer) {
+  if (!clientEl) return;
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const containerRect = DOM.peersContainer.getBoundingClientRect();
+  const cr = clientEl.getBoundingClientRect();
+  const offsetX = containerRect.left - stageRect.left;
+  const offsetY = containerRect.top - stageRect.top;
+
+  const p = document.createElement('div');
+  p.className = 'particle write';
+  const sx = cr.left - stageRect.left + cr.width / 2 - 4;
+  const sy = cr.top - stageRect.top + cr.height - 4;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const tx = offsetX + peer.x - 4;
+  const ty = offsetY + peer.y - 4;
+  const dur = 400;
+  const t0 = performance.now();
+
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    p.style.transform = `translate(${(tx - sx) * e}px, ${(ty - sy) * e}px)`;
+    p.style.opacity = String(1 - t * 0.3);
+    if (t < 1) requestAnimationFrame(frame);
+    else {
+      p.remove();
+      const el = DOM.peersContainer.querySelector(`[data-peer-id="${peer.id}"]`);
+      if (el) {
+        el.classList.remove('busy');
+        void el.offsetWidth;
+        el.classList.add('busy');
+      }
+    }
+  })(t0);
+}
+
+/* ============================================================
+   DISPATCH QUERY
+   ============================================================ */
+function dispatchQuery() {
+  const alive = STATE.peers.filter(p => p.up && !p.isolated);
+  if (alive.length === 0) return;
+
+  const isRead = Math.random() < STATE.readRatio;
+  const peer = alive[randInt(0, alive.length - 1)];
+  const clientEls = DOM.clientsRow.querySelectorAll('.client');
+  const client = clientEls[randInt(0, clientEls.length - 1)];
+
+  client.classList.add(isRead ? 'read' : 'write');
+  setTimeout(() => client.classList.remove(isRead ? 'read' : 'write'), 200);
+  animateClientToPeer(client, peer);
+
+  STATE.totalQueries++;
+
+  if (isRead) return;
+
+  // WRITE: this peer owns the new version locally, then relies on gossip
+  const key = STATE.keyPool[randInt(0, STATE.keyPool.length - 1)];
+  const now = Date.now();
+  const existing = peer.data.get(key);
+  const version = (existing?.version || 0) + 1;
+  const value = String(randInt(100, 999));
+
+  peer.data.set(key, { value, ts: now, version });
+  STATE.totalWrites++;
+
+  // Schedule gossip to fanout neighbors
+  setTimeout(() => gossipFrom(peer, key, { value, ts: now, version }), rand(50, 200));
+}
+
+/* ============================================================
+   GOSSIP — spread a value to a random subset of neighbors
+   ============================================================ */
+function gossipFrom(source, key, value) {
+  if (!source.up || source.isolated || STATE.networkPartition) return;
+
+  const candidates = STATE.peers.filter(p => p.id !== source.id && p.up && !p.isolated);
+  if (candidates.length === 0) return;
+
+  // Pick `fanout` random targets
+  const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+  const targets = shuffled.slice(0, Math.min(STATE.fanout, shuffled.length));
+
+  for (const t of targets) {
+    highlightEdge(source, t, 280);
+    animatePeerParticle(source, t, 'gossip');
+
+    // Apply to target if newer
+    const existing = t.data.get(key);
+    if (!existing || existing.version < value.version) {
+      t.data.set(key, { ...value });
+      // This target should spread further in next gossip round
+      if (Math.random() < 0.6) {
+        setTimeout(() => gossipFrom(t, key, value), rand(100, 300));
+      }
+    }
+  }
+
+  STATE.gossipRounds++;
+  source.lastGossipAt = Date.now();
+}
+
+/* ============================================================
+   GOSSIP LOOP — periodic rounds across the cluster
+   ============================================================ */
+function periodicGossip() {
+  const alive = STATE.peers.filter(p => p.up && !p.isolated);
+  if (alive.length < 2) return;
+
+  for (const source of alive) {
+    if (source.data.size === 0) continue;
+    // Pick a random key to gossip
+    const keys = Array.from(source.data.keys());
+    const key = keys[randInt(0, keys.length - 1)];
+    const value = source.data.get(key);
+    gossipFrom(source, key, value);
+  }
+}
+
+/* ============================================================
+   CONVERGENCE — how many peers agree on each key
+   ============================================================ */
+function computeConvergence() {
+  const alive = STATE.peers.filter(p => p.up);
+  if (alive.length === 0) return { convergence: 100, divergent: 0 };
+
+  // For each key in any peer, check if all alive peers have the same version
+  const allKeys = new Set();
+  for (const p of alive) for (const k of p.data.keys()) allKeys.add(k);
+
+  let divergent = 0;
+  let totalChecks = 0;
+
+  for (const key of allKeys) {
+    const versions = alive.map(p => p.data.get(key)?.version || 0);
+    const maxV = Math.max(...versions);
+    const minV = Math.min(...versions);
+    if (maxV !== minV) divergent++;
+    totalChecks++;
+  }
+
+  const convergence = totalChecks === 0 ? 100 : Math.round(((totalChecks - divergent) / totalChecks) * 100);
+  return { convergence, divergent, aliveCount: alive.length };
+}
+
+function updateConvergenceUI() {
+  const { convergence, divergent, aliveCount } = computeConvergence();
+  const convEl = document.getElementById('mConverged');
+  convEl.textContent = convergence + '%';
+  convEl.className = 'metric-value' + (convergence < 60 ? ' bad' : convergence < 90 ? ' warn' : '');
+
+  document.getElementById('mDivergent').textContent = divergent;
+  document.getElementById('mDivergent').className = 'metric-value' + (divergent > 3 ? ' bad' : divergent > 0 ? ' warn' : '');
+
+  // Convergence panel
+  DOM.convPanel.innerHTML = `
+    <div class="conv-row"><span>Peers alive</span><span class="val">${aliveCount}</span></div>
+    <div class="conv-row"><span>Keys tracked</span><span class="val">${Array.from(new Set(STATE.peers.flatMap(p => Array.from(p.data.keys())))).length}</span></div>
+    <div class="conv-row"><span>Converged</span><span class="val ${convergence >= 90 ? 'good' : convergence >= 60 ? 'warn' : 'bad'}">${convergence}%</span></div>
+    <div class="conv-bar"><div class="conv-bar-fill" style="width:${convergence}%; background:${convergence >= 90 ? 'linear-gradient(90deg,#10b981,#14b8a6)' : convergence >= 60 ? 'linear-gradient(90deg,#f59e0b,#f97316)' : 'linear-gradient(90deg,#ef4444,#dc2626)'};"></div></div>
+    <div class="conv-row" style="font-size:0.55rem; color:#475569; margin-top:6px;">
+      Convergence = % of keys that all living peers agree on
+    </div>
+  `;
+
+  // Detect convergence spike (teaching moment)
+  if (convergence < STATE.lastConvergence - 15 && STATE.running && STATE.totalWrites > 20) {
+    teach('DIVERGENCE',
+      `Convergence dropped from ${STATE.lastConvergence}% to ${convergence}%. This means ${divergent} keys have ` +
+      `DIFFERENT versions on different peers. Gossip hasn't spread them yet. Eventually, the next gossip rounds ` +
+      `will sync them — but until then, reads from unsynced peers return STALE data.`,
+      'warn'
+    );
+  }
+  STATE.lastConvergence = convergence;
+}
+
+/* ============================================================
+   MERKLE ANTI-ENTROPY — full sync between two peers
+   ============================================================ */
+function runAntiEntropy() {
+  if (STATE.antiEntropyActive) return;
+  STATE.antiEntropyActive = true;
+  DOM.mAnti.textContent = 'RUNNING';
+  DOM.mAnti.className = 'metric-value warn';
+
+  const alive = STATE.peers.filter(p => p.up && !p.isolated);
+  if (alive.length < 2) {
+    STATE.antiEntropyActive = false;
+    DOM.mAnti.textContent = 'IDLE';
+    DOM.mAnti.className = 'metric-value';
+    return;
+  }
+
+  // Pick two random alive peers
+  const shuffled = [...alive].sort(() => Math.random() - 0.5);
+  const [a, b] = shuffled;
+
+  teach('ANTI-ENTROPY',
+    `Starting Merkle-tree anti-entropy sync between ${a.name} and ${b.name}. ` +
+    `Each peer builds a Merkle tree of its key-value hashes. The roots are compared — if they match, no sync needed. ` +
+    `If not, they descend into the tree, exchanging only the branches that DIFFER. This is vastly cheaper than ` +
+    `shipping the entire dataset. Used by Cassandra, DynamoDB, and Riak.`,
+    'purple'
+  );
+
+  // Build merkle tree visualization
+  const keys = new Set([...a.data.keys(), ...b.data.keys()]);
+  let merkleHTML = '<div style="color:#94a3b8; font-size:0.6rem;">Comparing keys: ' + Array.from(keys).join(', ') + '</div><div style="margin-top:6px;">';
+  const diffs = [];
+  for (const key of keys) {
+    const va = a.data.get(key);
+    const vb = b.data.get(key);
+    const same = va && vb && va.version === vb.version;
+    merkleHTML += `<span class="node ${same ? 'match' : 'diff'}">k${key} v${va?.version || 0}/${vb?.version || 0}</span>`;
+    if (!same) diffs.push(key);
+  }
+  merkleHTML += '</div>';
+  DOM.merkleContent.innerHTML = merkleHTML;
+  DOM.merkleTree.classList.add('show');
+
+  // Animate the exchange
+  setTimeout(() => {
+    for (const key of diffs) {
+      animatePeerParticle(a, b, 'antientropy');
+      animatePeerParticle(b, a, 'antientropy');
+    }
+  }, 500);
+
+  // After 1.5s, merge differences
+  setTimeout(() => {
+    for (const key of keys) {
+      const va = a.data.get(key);
+      const vb = b.data.get(key);
+      if (!va && vb) a.data.set(key, { ...vb });
+      else if (!vb && va) b.data.set(key, { ...va });
+      else if (va && vb && va.version !== vb.version) {
+        // Merge: newer version wins
+        const winner = va.version > vb.version ? va : vb;
+        a.data.set(key, { ...winner });
+        b.data.set(key, { ...winner });
+      }
+    }
+    renderPeerVisuals();
+    updateConvergenceUI();
+
+    // Show green particles
+    for (const key of diffs) animatePeerParticle(a, b, 'heal');
+
+    DOM.merkleTree.classList.remove('show');
+    STATE.antiEntropyActive = false;
+    DOM.mAnti.textContent = 'SYNCED';
+    DOM.mAnti.className = 'metric-value';
+    setTimeout(() => {
+      DOM.mAnti.textContent = 'IDLE';
+    }, 2000);
+
+    teach('SYNCED',
+      `Anti-entropy complete: ${diffs.length} divergent key${diffs.length === 1 ? '' : 's'} reconciled between ${a.name} and ${b.name}. ` +
+      `Only the mismatched branches were exchanged — not the full dataset. In production this runs in the background ` +
+      `and handles millions of keys.`,
+      'ok'
+    );
+  }, 1800);
+}
+
+/* ============================================================
+   INSPECT PEER (on click)
+   ============================================================ */
+function inspectPeer(id) {
+  const p = STATE.peers[id];
+  if (!p) return;
+  if (!p.up) { showToast(`${p.name} is offline`); return; }
+  const contents = Array.from(p.data.entries()).map(([k, v]) => `k${k}=${v.value} (v${v.version})`).join(', ');
+  showToast(`${p.name}: [${contents || 'empty'}]`, 3000);
+  teach('INSPECT',
+    `${p.name} local state: ${p.data.size} keys. Data on P2P systems can differ between peers temporarily — ` +
+    `this is normal and is what eventual consistency means. Over time, gossip converges everyone.`,
+    'info', false
+  );
+}
+
+/* ============================================================
+   TELEMETRY
+   ============================================================ */
+function updateTelemetry() {
+  const alive = STATE.peers.filter(p => p.up).length;
+  DOM.mPeers.textContent = alive + '/' + STATE.peers.length;
+  DOM.mPeers.className = 'metric-value' + (alive < STATE.peers.length / 2 ? ' bad' : alive < STATE.peers.length ? ' warn' : '');
+  DOM.mQps.textContent = STATE.running ? STATE.qps : 0;
+  DOM.mGossip.textContent = STATE.gossipRounds + '/s';
+  updateConvergenceUI();
+
+  // Update topology badge
+  DOM.topologyBadge.textContent = STATE.networkPartition ? 'TOPOLOGY: PARTITIONED' : 'TOPOLOGY: RING';
+  DOM.topologyBadge.style.borderColor = STATE.networkPartition ? '#ef4444' : '#14b8a6';
+  DOM.topologyBadge.style.color = STATE.networkPartition ? '#f87171' : '#5eead4';
+}
+
+/* ============================================================
+   MAIN LOOP
+   ============================================================ */
+function tick() {
+  if (!STATE.running) return;
+  const batch = Math.max(1, Math.round(STATE.qps / 10));
+  for (let i = 0; i < batch; i++) dispatchQuery();
+}
+
+function decayAndUpdate() {
+  // Peers gradually become stale if they haven't participated in gossip
+  const now = Date.now();
+  for (const p of STATE.peers) {
+    p.stale = p.up && !p.isolated && (now - p.lastGossipAt > 4000) && p.data.size > 0;
+  }
+  renderPeerVisuals();
+  updateTelemetry();
+
+  // Contextual teaching — fires only on state transition
+  checkTeachingTriggers();
+}
+
+function checkTeachingTriggers() {
+  const { convergence, divergent } = computeConvergence();
+  if (!STATE.running) return;
+
+  if (divergent > 5 && STATE.lastDivergentWarn !== 'high') {
+    STATE.lastDivergentWarn = 'high';
+    teach('STALE READS',
+      `${divergent} keys have divergent values across peers. Any client reading from an unsynced peer gets a STALE value. ` +
+      `This is the price of eventual consistency. Real P2P databases offer tunable consistency — you can request ` +
+      `a QUORUM read (ask 2+ peers, take the newest) at the cost of latency.`,
+      'warn'
+    );
+    setTimeout(() => { STATE.lastDivergentWarn = null; }, 8000);
+  }
+}
+
+/* ============================================================
+   CONTROLS
+   ============================================================ */
+function startTraffic() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+  STATE.tickTimer = setInterval(tick, 100);
+
+  teach('START',
+    `Traffic started at ${STATE.qps} q/s. Writes go to a random alive peer. Reads come from a random peer ` +
+    `and may return stale data if that peer hasn't received the latest version through gossip yet. ` +
+    `Watch the divergence counter — it's the visible signature of eventual consistency.`,
+    'ok'
+  );
+}
+
+function stopTraffic() {
+  STATE.running = false;
+  DOM.btnToggle.textContent = '▶ Start Traffic';
+  DOM.btnToggle.classList.add('primary');
+  DOM.btnToggle.classList.remove('danger');
+  clearInterval(STATE.tickTimer);
+  STATE.tickTimer = null;
+  teach('STOP', 'Traffic stopped.', 'info', false);
+}
+
+function burst() {
+  teach('BURST',
+    `100 writes dispatched rapidly across peers. Watch the divergence counter climb — gossip hasn't yet propagated ` +
+    `these new versions everywhere. Convergence will recover within a few gossip rounds.`,
+    'info'
+  );
+  for (let i = 0; i < 100; i++) setTimeout(dispatchQuery, i * 8);
+  showToast('⚡ 100-query burst');
+}
+
+function forceGossipRound() {
+  teach('GOSSIP ROUND',
+    `Forcing a manual gossip round. Every alive peer now exchanges state with ${STATE.fanout} random neighbors. ` +
+    `This mimics the periodic anti-entropy protocol that runs in real P2P databases every few seconds.`,
+    'purple'
+  );
+  periodicGossip();
+  updateConvergenceUI();
+  showToast('📢 Gossip round executed');
+}
+
+function killPeer() {
+  const alive = STATE.peers.filter(p => p.up);
+  if (alive.length <= 2) {
+    showToast('⚠ Too few peers to kill');
+    return;
+  }
+  const victim = alive[randInt(0, alive.length - 1)];
+  victim.up = false;
+  victim.isolated = false;
+  renderPeerVisuals();
+  drawMesh();
+  updateTelemetry();
+
+  teach('PEER DOWN',
+    `${victim.name} has failed. In a P2P system, this is NORMAL and expected. Other peers continue operating ` +
+    `independently — no failover election, no leader promotion. The data that only ${victim.name} had becomes ` +
+    `UNREACHABLE until it comes back or anti-entropy restores it from a replica. ` +
+    `P2P systems often replicate every key on multiple peers for exactly this reason.`,
+    'warn'
+  );
+  showToast(`💥 ${victim.name} down`);
+}
+
+function togglePartition() {
+  STATE.networkPartition = !STATE.networkPartition;
+  drawMesh();
+  updateTelemetry();
+
+  if (STATE.networkPartition) {
+    teach('PARTITION',
+      `Network partition — the cluster is split. Each side continues accepting writes, but gossip CANNOT cross the ` +
+      `divide. Both sides diverge. This is the CAP-theorem scenario at its core: P2P chooses availability and ` +
+      `eventual consistency over immediate consistency. When healed, Merkle anti-entropy reconciles.`,
+      'error'
+    );
+    showToast('📡 Partition active — peers diverging');
+  } else {
+    teach('HEALED',
+      `Partition healed. Gossip resumes. Divergent keys will reconcile automatically through the next few gossip rounds. ` +
+      `For a faster, more efficient reconciliation, anti-entropy uses Merkle trees to identify exactly what diverged.`,
+      'ok'
+    );
+    showToast('✔ Partition healed');
+  }
+}
+
+function isolatePeer() {
+  const alive = STATE.peers.filter(p => p.up && !p.isolated);
+  if (alive.length <= 2) { showToast('⚠ Too few peers to isolate'); return; }
+  const victim = alive[randInt(0, alive.length - 1)];
+  victim.isolated = true;
+  renderPeerVisuals();
+  drawMesh();
+  updateTelemetry();
+
+  teach('ISOLATED',
+    `${victim.name} is now isolated — it can still receive local writes but cannot gossip with anyone. ` +
+    `Its data becomes a fork. When the isolation ends, anti-entropy will merge its changes back, and any conflicting ` +
+    `keys will be resolved using a conflict strategy (LWW, version vectors, or CRDT merge).`,
+    'warn'
+  );
+  showToast(`🏝️ ${victim.name} isolated`);
+
+  setTimeout(() => {
+    if (victim.isolated) {
+      victim.isolated = false;
+      renderPeerVisuals();
+      drawMesh();
+      teach('REJOIN',
+        `${victim.name} rejoined. It will now participate in gossip and anti-entropy to reconcile any divergent keys. ` +
+        `Its local writes will propagate out, and remote writes will flow in.`,
+        'ok'
+      );
+    }
+  }, 8000);
+}
+
+function healAll() {
+  STATE.networkPartition = false;
+  for (const p of STATE.peers) {
+    p.up = true;
+    p.isolated = false;
+    p.stale = false;
+  }
+  renderPeers();
+  drawMesh();
+  updateTelemetry();
+  teach('RECOVERED', 'All peers online and connected.', 'ok');
+  showToast('🔄 All peers healed');
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnToggle.addEventListener('click', () => STATE.running ? stopTraffic() : startTraffic());
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnGossipRound.addEventListener('click', forceGossipRound);
+DOM.btnAntiEntropy.addEventListener('click', runAntiEntropy);
+DOM.btnHealAll.addEventListener('click', healAll);
+DOM.btnKillPeer.addEventListener('click', killPeer);
+DOM.btnPartition.addEventListener('click', togglePartition);
+DOM.btnIsolate.addEventListener('click', isolatePeer);
+
+DOM.qpsRange.addEventListener('input', e => {
+  STATE.qps = parseInt(e.target.value);
+  DOM.qpsVal.textContent = STATE.qps;
+});
+DOM.readRange.addEventListener('input', e => {
+  STATE.readRatio = parseInt(e.target.value) / 100;
+  DOM.readVal.textContent = e.target.value + '%';
+});
+DOM.fanoutRange.addEventListener('input', e => {
+  STATE.fanout = parseInt(e.target.value);
+  DOM.fanoutVal.textContent = STATE.fanout;
+  teach('FANOUT',
+    `Gossip fanout changed to ${STATE.fanout}. Higher fanout = faster propagation but more network traffic. ` +
+    `Real systems typically use fanout 3 with periodic full anti-entropy to heal any missed rumors.`,
+    'purple', false
+  );
+});
+
+window.addEventListener('resize', () => {
+  renderPeers();
+  drawMesh();
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+initializeCluster();
+drawMesh();
+setInterval(decayAndUpdate, 400);
+STATE.gossipTimer = setInterval(periodicGossip, 1000);
+
+setTimeout(() => {
+  teach('WHY P2P',
+    `Peer-to-peer architecture exists for three reasons: (1) No central point of failure — no master to elect. ` +
+    `(2) Massive scale — every node is equal, so the network grows as O(N²) in connections. (3) Geo-distribution — ` +
+    `every node serves its local region. The cost: you must handle conflicts, and you have only EVENTUAL consistency.`,
+    'purple'
+  );
+  showToast('👋 Start traffic, then click peers to inspect them', 4000);
+}, 800);
+</script>
+</body>
+</html>

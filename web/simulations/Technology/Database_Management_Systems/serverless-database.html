@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Serverless Database Architecture — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #0ea5e9, #22d3ee, #67e8f9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(14,165,233,0.15);
+    color: #7dd3fc;
+    border-color: #0ea5e9;
+  }
+  .teaching-toggle:hover { background: rgba(14,165,233,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 260px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #7dd3fc;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #0ea5e9; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #0ea5e9; color: #fff; border-color: #0ea5e9; }
+  .btn.primary:hover { background: #0284c7; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #7dd3fc; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #0ea5e9; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(14,165,233,0.06) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* Clients */
+  .clients-row {
+    position: absolute;
+    top: 46px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    z-index: 5;
+  }
+  .client {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    border: 2px solid #334155;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem;
+    transition: all 0.25s;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .client.warm {
+    border-color: #22d3ee;
+    box-shadow: 0 0 20px rgba(34,211,238,0.7);
+  }
+  .client.cold {
+    border-color: #f59e0b;
+    box-shadow: 0 0 20px rgba(245,158,11,0.7);
+    animation: coldShiver 0.4s ease;
+  }
+  @keyframes coldShiver {
+    0%, 100% { transform: scale(1); }
+    25% { transform: scale(1.08) translateX(-2px); }
+    75% { transform: scale(1.08) translateX(2px); }
+  }
+
+  /* API Gateway */
+  .gateway {
+    position: absolute;
+    top: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 220px;
+    padding: 12px 18px;
+    background: linear-gradient(145deg, #0c4a6e, #082f49);
+    border: 2px solid #0ea5e9;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 0 25px rgba(14,165,233,0.4);
+    z-index: 5;
+    transition: all 0.3s;
+  }
+  .gateway.busy {
+    animation: gwPulse 0.35s ease;
+  }
+  @keyframes gwPulse {
+    0%, 100% { box-shadow: 0 0 25px rgba(14,165,233,0.4); }
+    50%      { box-shadow: 0 0 60px rgba(14,165,233,1); }
+  }
+  .gateway .gw-title {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #7dd3fc;
+    font-family: monospace;
+  }
+  .gateway .gw-sub {
+    font-size: 0.56rem;
+    color: #64748b;
+    margin-top: 3px;
+    font-family: monospace;
+    letter-spacing: 1px;
+  }
+
+  /* Connection arrow */
+  .arrow-down {
+    position: absolute;
+    top: 200px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2px;
+    height: 30px;
+    background: linear-gradient(180deg, #0ea5e9, transparent);
+    z-index: 2;
+  }
+
+  /* WARM POOL */
+  .warm-pool {
+    position: absolute;
+    top: 245px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    min-height: 120px;
+    border: 2px dashed #22d3ee;
+    border-radius: 14px;
+    padding: 12px;
+    background: rgba(34,211,238,0.04);
+    z-index: 3;
+    transition: all 0.4s;
+  }
+  .warm-pool.empty {
+    border-color: #334155;
+    background: rgba(51,65,85,0.05);
+  }
+  .pool-label {
+    position: absolute;
+    top: -9px;
+    left: 14px;
+    background: #02040a;
+    padding: 0 8px;
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #22d3ee;
+    font-weight: 800;
+    font-family: monospace;
+    text-transform: uppercase;
+  }
+  .warm-pool.empty .pool-label { color: #475569; }
+
+  .pool-instances {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+
+  .instance {
+    width: 90px;
+    padding: 8px;
+    border-radius: 8px;
+    background: linear-gradient(145deg, #0f1e2e, #071018);
+    border: 2px solid #0ea5e9;
+    text-align: center;
+    transition: all 0.3s;
+    position: relative;
+  }
+  .instance.busy {
+    animation: instPulse 0.3s ease;
+  }
+  @keyframes instPulse {
+    0%, 100% { box-shadow: 0 0 15px rgba(14,165,233,0.3); }
+    50%      { box-shadow: 0 0 40px rgba(14,165,233,1); }
+  }
+  .instance.spawning {
+    border-color: #f59e0b;
+    animation: spawnAnim 0.5s cubic-bezier(.68,-0.55,.27,1.55);
+  }
+  @keyframes spawnAnim {
+    0% { transform: scale(0); opacity: 0; }
+    60% { transform: scale(1.15); opacity: 1; border-color: #f59e0b; }
+    100% { transform: scale(1); opacity: 1; border-color: #0ea5e9; }
+  }
+  .instance.dying {
+    animation: dieAnim 0.5s ease forwards;
+  }
+  @keyframes dieAnim {
+    to { transform: scale(0); opacity: 0; }
+  }
+  .instance.cold {
+    border-color: #f59e0b;
+    filter: brightness(0.7);
+  }
+  .inst-name {
+    font-size: 0.6rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: #7dd3fc;
+    font-family: monospace;
+  }
+  .instance.spawning .inst-name { color: #fbbf24; }
+  .inst-status {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-family: monospace;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+  .inst-status.warm { color: #22d3ee; }
+  .inst-status.cold { color: #f59e0b; }
+  .inst-status.busy { color: #10b981; }
+
+  /* COLD STORAGE */
+  .cold-storage {
+    position: absolute;
+    top: 430px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    padding: 12px;
+    border: 2px dashed #475569;
+    border-radius: 14px;
+    background: rgba(30,41,59,0.15);
+    position: absolute;
+    z-index: 3;
+  }
+  .cold-label {
+    position: absolute;
+    top: -9px;
+    left: 14px;
+    background: #02040a;
+    padding: 0 8px;
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #94a3b8;
+    font-weight: 800;
+    font-family: monospace;
+    text-transform: uppercase;
+  }
+
+  .cold-bar {
+    height: 22px;
+    background: linear-gradient(90deg, #1e293b, #334155);
+    border-radius: 5px;
+    overflow: hidden;
+    position: relative;
+    margin-top: 6px;
+    border: 1px solid #334155;
+  }
+  .cold-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #64748b, #94a3b8);
+    transition: width 0.5s;
+    box-shadow: 0 0 10px rgba(148,163,184,0.5);
+  }
+  .cold-bar-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+    font-family: monospace;
+    font-weight: 700;
+    color: #e2e8f0;
+    letter-spacing: 1.5px;
+  }
+  .cold-metric-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+    font-family: monospace;
+    font-size: 0.6rem;
+    text-align: center;
+  }
+  .cold-metric-item {
+    background: #070a14;
+    padding: 5px 3px;
+    border-radius: 5px;
+    border: 1px solid #1e293b;
+  }
+  .cold-metric-item .lbl { color: #475569; font-size: 0.52rem; display: block; }
+  .cold-metric-item .val { color: #94a3b8; font-weight: 700; display: block; margin-top: 2px; }
+  .cold-metric-item .val.hot { color: #fbbf24; }
+
+  /* Cold start visualization */
+  .cold-start-banner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.7);
+    background: linear-gradient(135deg, #78350f, #7c2d12);
+    border: 2px solid #f59e0b;
+    border-radius: 14px;
+    padding: 14px 26px;
+    color: #fed7aa;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-align: center;
+    z-index: 12;
+    box-shadow: 0 0 50px rgba(245,158,11,0.7);
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(.68,-0.55,.27,1.55);
+  }
+  .cold-start-banner.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  .cold-start-banner .big {
+    font-size: 1.2rem;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  /* Particles */
+  .particle {
+    position: absolute;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 6;
+  }
+  .particle.request    { background: #22d3ee; box-shadow: 0 0 10px #22d3ee; }
+  .particle.warmup     { background: #f59e0b; box-shadow: 0 0 12px #f59e0b; }
+  .particle.hot        { background: #10b981; box-shadow: 0 0 10px #10b981; }
+  .particle.cooldown   { background: #94a3b8; box-shadow: 0 0 8px #94a3b8; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(14,165,233,0.06);
+    border: 1px solid rgba(14,165,233,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.58rem;
+    color: #7dd3fc;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 340px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #0ea5e9;
+    background: rgba(14,165,233,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #0ea5e9; background: rgba(14,165,233,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(14,165,233,0.15); color: #7dd3fc; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Cost tracker */
+  .cost-tracker {
+    background: linear-gradient(145deg, rgba(16,185,129,0.08), rgba(14,165,233,0.04));
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .cost-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #10b981;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    font-family: monospace;
+  }
+  .cost-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.68rem;
+    color: #94a3b8;
+    font-family: monospace;
+    margin-bottom: 3px;
+  }
+  .cost-row .val { color: #10b981; font-weight: 700; }
+  .cost-row .val.big { font-size: 1rem; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #0ea5e9;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(14,165,233,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>SERVERLESS DATABASE</h1>
+    <span class="sub">AUTOSCALE · SCALE-TO-ZERO · PAY-PER-USE · COLD STARTS</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Traffic Control</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Traffic Spike</button>
+      <button class="btn warn" id="btnIdle">💤 Force Idle (60s)</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Profile</h3>
+      <div class="slider-row"><span>Queries / sec</span><span class="value" id="qpsVal">20</span></div>
+      <input type="range" id="qpsRange" min="0" max="300" value="20">
+      <div class="slider-row"><span>Read Ratio</span><span class="value" id="readVal">85%</span></div>
+      <input type="range" id="readRange" min="0" max="100" value="85">
+    </div>
+
+    <div class="panel">
+      <h3>Autoscaler Config</h3>
+      <div class="slider-row"><span>Scale-up threshold</span><span class="value" id="threshVal">70%</span></div>
+      <input type="range" id="threshRange" min="30" max="95" value="70">
+      <div class="slider-row"><span>Idle timeout</span><span class="value" id="idleVal">10s</span></div>
+      <input type="range" id="idleRange" min="3" max="30" value="10">
+      <div class="slider-row"><span>Cold start cost</span><span class="value" id="coldVal">800ms</span></div>
+      <input type="range" id="coldRange" min="200" max="2000" step="100" value="800">
+    </div>
+
+    <div class="panel">
+      <h3>Provider Mode</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="mode" value="standard" checked style="accent-color:#0ea5e9;">
+          Standard (Aurora Serverless)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="mode" value="edge" style="accent-color:#0ea5e9;">
+          Edge (D1/PlanetScale)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="mode" value="htap" style="accent-color:#0ea5e9;">
+          HTAP (Neon/Supabase)
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#22d3ee;"></div>Request (warm)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>Cold start</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>Hot path</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#94a3b8;"></div>Cooldown</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">AUTOSCALING · SCALE-TO-ZERO · PAY-PER-SECOND</div>
+
+      <div class="clients-row" id="clientsRow">
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+      </div>
+
+      <div class="gateway" id="gateway">
+        <div class="gw-title">API GATEWAY</div>
+        <div class="gw-sub" id="gwSub">ROUTING · AUTH · RATE LIMIT</div>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <div class="warm-pool empty" id="warmPool">
+        <div class="pool-label">WARM INSTANCE POOL</div>
+        <div class="pool-instances" id="poolInstances">
+          <div style="color:#475569; font-family:monospace; font-size:0.68rem; padding:14px;">
+            ∅ no warm instances — scaled to zero
+          </div>
+        </div>
+      </div>
+
+      <div class="cold-storage">
+        <div class="cold-label">COLD STORAGE (S3-like)</div>
+        <div class="cold-bar">
+          <div class="cold-bar-fill" id="coldFill" style="width:100%;"></div>
+          <div class="cold-bar-text" id="coldText">DATA PERSISTED — 24 GB</div>
+        </div>
+        <div class="cold-metric-row">
+          <div class="cold-metric-item"><span class="lbl">READ COST</span><span class="val" id="storageRead">$0.00</span></div>
+          <div class="cold-metric-item"><span class="lbl">COMPUTE COST</span><span class="val hot" id="computeCost">$0.00</span></div>
+          <div class="cold-metric-item"><span class="lbl">IDLE COST</span><span class="val" id="idleCost">$0.00</span></div>
+        </div>
+      </div>
+
+      <div class="cold-start-banner" id="coldStartBanner">
+        <span class="big">❄️ COLD START</span>
+        Provisioning a new instance... this request will be slow.
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Warm Instances</div>
+        <div class="metric-value" id="mWarm">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">QPS</div>
+        <div class="metric-value" id="mQps">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">p99 Latency</div>
+        <div class="metric-value" id="mLatency">0 ms</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Cold Starts</div>
+        <div class="metric-value" id="mCold">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Avg Load</div>
+        <div class="metric-value" id="mLoad">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Billed Secs</div>
+        <div class="metric-value" id="mBilled">0</div>
+      </div>
+    </div>
+
+    <div class="cost-tracker">
+      <div class="cost-title">💵 Live Cost Meter</div>
+      <div class="cost-row"><span>Compute (vCPU·s)</span><span class="val" id="costCompute">$0.0000</span></div>
+      <div class="cost-row"><span>Storage I/O</span><span class="val" id="costStorage">$0.0000</span></div>
+      <div class="cost-row"><span>Total this session</span><span class="val big" id="costTotal">$0.0000</span></div>
+      <div style="font-size:0.58rem; color:#64748b; margin-top:6px; font-family:monospace; line-height:1.4;">
+        Serverless pricing ≈ $0.06/vCPU-hour + $0.10/GB-month storage. You pay only when instances are warm.
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  running: false,
+  qps: 20,
+  readRatio: 0.85,
+  warmThreshold: 0.70,
+  idleTimeoutSec: 10,
+  coldStartMs: 800,
+  mode: 'standard',
+  // Cluster state
+  warmInstances: [],    // { id, load, warming: false, spawnedAt }
+  nextInstanceId: 1,
+  maxInstances: 8,
+  // Metrics
+  totalQueries: 0,
+  totalWrites: 0,
+  coldStarts: 0,
+  latencySamples: [],
+  // Cost
+  costCompute: 0,
+  costStorage: 0,
+  billedSeconds: 0,
+  // Timing
+  tickTimer: null,
+  lastActivityAt: 0,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  lastWarmCount: 0,
+  lastAnnouncedIdle: false,
+  coldStartBannerTimeout: null
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  warmPool: document.getElementById('warmPool'),
+  poolInstances: document.getElementById('poolInstances'),
+  gateway: document.getElementById('gateway'),
+  gwSub: document.getElementById('gwSub'),
+  coldFill: document.getElementById('coldFill'),
+  coldText: document.getElementById('coldText'),
+  coldStartBanner: document.getElementById('coldStartBanner'),
+  storageRead: document.getElementById('storageRead'),
+  computeCost: document.getElementById('computeCost'),
+  idleCost: document.getElementById('idleCost'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnIdle: document.getElementById('btnIdle'),
+  qpsRange: document.getElementById('qpsRange'),
+  qpsVal: document.getElementById('qpsVal'),
+  readRange: document.getElementById('readRange'),
+  readVal: document.getElementById('readVal'),
+  threshRange: document.getElementById('threshRange'),
+  threshVal: document.getElementById('threshVal'),
+  idleRange: document.getElementById('idleRange'),
+  idleVal: document.getElementById('idleVal'),
+  coldRange: document.getElementById('coldRange'),
+  coldVal: document.getElementById('coldVal'),
+  mWarm: document.getElementById('mWarm'),
+  mQps: document.getElementById('mQps'),
+  mLatency: document.getElementById('mLatency'),
+  mCold: document.getElementById('mCold'),
+  mLoad: document.getElementById('mLoad'),
+  mBilled: document.getElementById('mBilled'),
+  costCompute: document.getElementById('costCompute'),
+  costStorage: document.getElementById('costStorage'),
+  costTotal: document.getElementById('costTotal'),
+  clientsRow: document.getElementById('clientsRow')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining serverless database architecture.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING FEED
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   INSTANCE MANAGEMENT
+   ============================================================ */
+function spawnInstance() {
+  if (STATE.warmInstances.length >= STATE.maxInstances) return null;
+  const inst = {
+    id: STATE.nextInstanceId++,
+    load: 0,
+    warming: true,
+    spawnedAt: Date.now()
+  };
+  STATE.warmInstances.push(inst);
+  renderWarmPool();
+  STATE.coldStarts++;
+
+  // Show cold start banner
+  showColdStartBanner();
+
+  // Simulate cold start delay
+  const coldMs = STATE.coldStartMs;
+  setTimeout(() => {
+    inst.warming = false;
+    renderWarmPool();
+  }, coldMs);
+
+  return inst;
+}
+
+function killInstance(id) {
+  const idx = STATE.warmInstances.findIndex(i => i.id === id);
+  if (idx === -1) return;
+  STATE.warmInstances[idx].dying = true;
+  renderWarmPool();
+  setTimeout(() => {
+    STATE.warmInstances = STATE.warmInstances.filter(i => i.id !== id);
+    renderWarmPool();
+  }, 500);
+}
+
+function showColdStartBanner() {
+  DOM.coldStartBanner.classList.add('show');
+  clearTimeout(STATE.coldStartBannerTimeout);
+  STATE.coldStartBannerTimeout = setTimeout(() => {
+    DOM.coldStartBanner.classList.remove('show');
+  }, 1200);
+}
+
+/* ============================================================
+   RENDER WARM POOL
+   ============================================================ */
+function renderWarmPool() {
+  if (STATE.warmInstances.length === 0) {
+    DOM.warmPool.classList.add('empty');
+    DOM.poolInstances.innerHTML = `<div style="color:#475569; font-family:monospace; font-size:0.68rem; padding:14px;">∅ no warm instances — scaled to zero</div>`;
+    return;
+  }
+  DOM.warmPool.classList.remove('empty');
+  DOM.poolInstances.innerHTML = '';
+  for (const inst of STATE.warmInstances) {
+    const el = document.createElement('div');
+    el.className = 'instance';
+    el.dataset.instanceId = inst.id;
+    if (inst.warming) el.classList.add('spawning');
+    if (inst.dying) el.classList.add('dying');
+    if (inst.load > 0.75) el.classList.add('cold');
+
+    let statusText = 'WARM', statusClass = 'warm';
+    if (inst.warming) { statusText = 'SPAWNING'; statusClass = 'cold'; }
+    else if (inst.dying) { statusText = 'DYING'; statusClass = 'cold'; }
+    else if (inst.load > 0.6) { statusText = 'BUSY'; statusClass = 'busy'; }
+
+    el.innerHTML = `
+      <div class="inst-name">I-${String(inst.id).padStart(2,'0')}</div>
+      <div class="inst-status ${statusClass}">${statusText}</div>
+      <div style="height:3px; background:#0a0e19; border-radius:2px; overflow:hidden; margin-top:4px;">
+        <div style="height:100%; width:${Math.round(inst.load*100)}%; background:${inst.load > 0.75 ? '#ef4444' : inst.load > 0.5 ? '#f59e0b' : '#10b981'}; transition:width 0.3s;"></div>
+      </div>
+      <div style="font-size:0.5rem; color:#64748b; font-family:monospace; margin-top:2px;">
+        ${Math.round(inst.load * 100)}%
+      </div>
+    `;
+    DOM.poolInstances.appendChild(el);
+  }
+}
+
+function renderWarmInstancesLightweight() {
+  for (const inst of STATE.warmInstances) {
+    const el = DOM.poolInstances.querySelector(`[data-instance-id="${inst.id}"]`);
+    if (!el) continue;
+    const bar = el.querySelector('.inst-status');
+    const loadBar = el.querySelector('div > div');
+    if (loadBar) loadBar.style.width = Math.round(inst.load * 100) + '%';
+    const loadText = el.querySelector('div:last-child');
+    if (loadText) loadText.textContent = Math.round(inst.load * 100) + '%';
+    el.classList.toggle('cold', inst.load > 0.75);
+  }
+}
+
+/* ============================================================
+   DISPATCH QUERY
+   ============================================================ */
+async function dispatchQuery() {
+  const isRead = Math.random() < STATE.readRatio;
+  const clientEls = DOM.clientsRow.querySelectorAll('.client');
+  const client = clientEls[randInt(0, clientEls.length - 1)];
+
+  client.classList.add('warm');
+  setTimeout(() => client.classList.remove('warm'), 200);
+
+  STATE.totalQueries++;
+  STATE.lastActivityAt = Date.now();
+
+  // Route through gateway
+  DOM.gateway.classList.remove('busy');
+  void DOM.gateway.offsetWidth;
+  DOM.gateway.classList.add('busy');
+
+  animateGateway(client);
+
+  // Find a warm (non-warming, non-dying) instance
+  let availableInstances = STATE.warmInstances.filter(i => !i.warming && !i.dying);
+
+  // If none available, COLD START
+  if (availableInstances.length === 0) {
+    client.classList.add('cold');
+    setTimeout(() => client.classList.remove('cold'), 500);
+
+    const newInst = spawnInstance();
+    if (newInst) {
+      // Queue this request until instance is warm
+      await new Promise(resolve => setTimeout(resolve, STATE.coldStartMs + 50));
+      // Very high latency for this request
+      const coldLatency = STATE.coldStartMs + 20 + rand(-10, 20);
+      STATE.latencySamples.push(coldLatency);
+      if (STATE.latencySamples.length > 300) STATE.latencySamples.shift();
+
+      if (newInst) {
+        newInst.load = clamp(newInst.load + 0.1, 0, 1);
+      }
+      if (isRead) STATE.costStorage += 0.00001;  // cold read hits storage
+      updateCost();
+      renderWarmPool();
+      return;
+    }
+  }
+
+  // Pick the least-loaded warm instance (load balancing)
+  availableInstances.sort((a, b) => a.load - b.load);
+  const inst = availableInstances[0];
+
+  inst.load = clamp(inst.load + (isRead ? 0.04 : 0.08), 0, 1);
+  if (!isRead) STATE.totalWrites++;
+
+  // Latency: warm requests are fast
+  const latency = 4 + Math.pow(inst.load, 3) * 80 + rand(-1, 2);
+  STATE.latencySamples.push(latency);
+  if (STATE.latencySamples.length > 300) STATE.latencySamples.shift();
+
+  if (!isRead) STATE.costStorage += 0.000005;
+  updateCost();
+  renderWarmInstancesLightweight();
+  animateQueryToInstance(client, inst);
+}
+
+/* ============================================================
+   PARTICLES
+   ============================================================ */
+function animateGateway(client) {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const cr = client.getBoundingClientRect();
+  const gw = DOM.gateway.getBoundingClientRect();
+
+  const p = document.createElement('div');
+  p.className = 'particle request';
+  const sx = cr.left - stageRect.left + cr.width / 2 - 4;
+  const sy = cr.top - stageRect.top + cr.height - 4;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const tx = gw.left - stageRect.left + gw.width / 2 - 4;
+  const ty = gw.top - stageRect.top - 4;
+  const dur = 240;
+  const t0 = performance.now();
+
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    p.style.transform = `translate(${(tx - sx) * e}px, ${(ty - sy) * e}px)`;
+    p.style.opacity = String(1 - t * 0.4);
+    if (t < 1) requestAnimationFrame(frame);
+    else p.remove();
+  })(t0);
+}
+
+function animateQueryToInstance(client, inst) {
+  const instEl = DOM.poolInstances.querySelector(`[data-instance-id="${inst.id}"]`);
+  if (!instEl) return;
+
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const gw = DOM.gateway.getBoundingClientRect();
+  const ir = instEl.getBoundingClientRect();
+
+  const p = document.createElement('div');
+  p.className = 'particle hot';
+  const sx = gw.left - stageRect.left + gw.width / 2 - 4;
+  const sy = gw.top - stageRect.top + gw.height - 4;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const tx = ir.left - stageRect.left + ir.width / 2 - 4;
+  const ty = ir.top - stageRect.top - 4;
+  const dur = 200;
+  const t0 = performance.now();
+
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    p.style.transform = `translate(${(tx - sx) * t}px, ${(ty - sy) * t}px)`;
+    p.style.opacity = String(1 - t * 0.4);
+    if (t < 1) requestAnimationFrame(frame);
+    else {
+      p.remove();
+      instEl.classList.remove('busy');
+      void instEl.offsetWidth;
+      instEl.classList.add('busy');
+    }
+  })(t0);
+}
+
+/* ============================================================
+   AUTOSCALER
+   ============================================================ */
+function autoscaleTick() {
+  const N = STATE.warmInstances.filter(i => !i.dying).length;
+  if (N === 0 && !STATE.running && STATE.totalQueries > 0) {
+    // idle — nothing to do
+  }
+
+  const avgLoad = N > 0 ? STATE.warmInstances.reduce((a, i) => a + i.load, 0) / N : 0;
+
+  // Scale UP: if avg load exceeds threshold
+  if (STATE.running && N > 0 && avgLoad > STATE.warmThreshold && N < STATE.maxInstances) {
+    if (Math.random() < 0.15) {  // don't spam
+      spawnInstance();
+      teach('SCALE UP',
+        `Autoscaler: average load ${Math.round(avgLoad * 100)}% exceeds threshold ${Math.round(STATE.warmThreshold * 100)}%. ` +
+        `Provisioning a new instance. Cold start cost: ~${STATE.coldStartMs}ms. This is the hidden tax of serverless — ` +
+        `the platform must warm a sandbox, mount the storage, and load your data before serving.`,
+        'purple'
+      );
+    }
+  }
+
+  // Scale DOWN: if idle for too long
+  const idleMs = Date.now() - STATE.lastActivityAt;
+  if (N > 0 && idleMs > STATE.idleTimeoutSec * 1000) {
+    const victim = STATE.warmInstances.filter(i => !i.warming && !i.dying)[0];
+    if (victim) {
+      killInstance(victim.id);
+      if (!STATE.lastAnnouncedIdle) {
+        STATE.lastAnnouncedIdle = true;
+        teach('SCALE DOWN',
+          `Idle timeout reached (${STATE.idleTimeoutSec}s). Shutting down warm instance. Serverless databases ` +
+          `scale back to ZERO — you pay nothing while idle. But the next request triggers a cold start, so the first ` +
+          `call after idle pays a latency penalty. This is the fundamental trade-off of scale-to-zero.`,
+          'warn'
+        );
+      }
+    }
+  }
+  if (idleMs < STATE.idleTimeoutSec * 1000) {
+    STATE.lastAnnouncedIdle = false;
+  }
+}
+
+/* ============================================================
+   COST ACCOUNTING
+   ============================================================ */
+function updateCost() {
+  const N = STATE.warmInstances.filter(i => !i.dying).length;
+  // Assume each warm instance = 1 vCPU. Compute cost at $0.06/hr
+  // We bill in 100ms ticks, so per tick: 0.06 / 36000 = 0.00000167
+  const tickCost = N * (0.06 / 36000) * (STATE.mode === 'edge' ? 0.6 : STATE.mode === 'htap' ? 0.8 : 1);
+  STATE.costCompute += tickCost;
+  STATE.billedSeconds += N * 0.1;
+
+  DOM.costCompute.textContent = '$' + STATE.costCompute.toFixed(4);
+  DOM.costStorage.textContent = '$' + STATE.costStorage.toFixed(4);
+  DOM.costTotal.textContent = '$' + (STATE.costCompute + STATE.costStorage).toFixed(4);
+  DOM.computeCost.textContent = '$' + STATE.costCompute.toFixed(4);
+  DOM.storageRead.textContent = '$' + STATE.costStorage.toFixed(4);
+  DOM.idleCost.textContent = N === 0 ? '$0.0000' : '$' + (STATE.costCompute * 0.3).toFixed(4);
+}
+
+/* ============================================================
+   DECAY & RENDER
+   ============================================================ */
+function decayTick() {
+  for (const inst of STATE.warmInstances) {
+    inst.load = Math.max(0, inst.load - 0.03);
+  }
+  renderWarmInstancesLightweight();
+  updateTelemetry();
+  autoscaleTick();
+  updateCost();
+}
+
+/* ============================================================
+   TELEMETRY
+   ============================================================ */
+function updateTelemetry() {
+  const warm = STATE.warmInstances.filter(i => !i.warming && !i.dying).length;
+  const spawning = STATE.warmInstances.filter(i => i.warming).length;
+
+  DOM.mWarm.textContent = warm + (spawning > 0 ? `+${spawning}` : '');
+  DOM.mWarm.className = 'metric-value' + (warm === 0 ? ' warn' : '');
+
+  DOM.mQps.textContent = STATE.running ? STATE.qps : 0;
+  DOM.mCold.textContent = STATE.coldStarts;
+  DOM.mCold.className = 'metric-value' + (STATE.coldStarts > 10 ? ' bad' : STATE.coldStarts > 3 ? ' warn' : '');
+
+  const loads = STATE.warmInstances.filter(i => !i.warming && !i.dying).map(i => i.load);
+  const avg = loads.length ? loads.reduce((a, b) => a + b, 0) / loads.length : 0;
+  DOM.mLoad.textContent = Math.round(avg * 100) + '%';
+  DOM.mLoad.className = 'metric-value' + (avg > 0.85 ? ' bad' : avg > 0.6 ? ' warn' : '');
+
+  DOM.mBilled.textContent = STATE.billedSeconds.toFixed(0);
+
+  const sorted = [...STATE.latencySamples].sort((a, b) => a - b);
+  const p99 = sorted.length ? sorted[Math.floor(sorted.length * 0.99)] : 0;
+  DOM.mLatency.textContent = p99.toFixed(0) + ' ms';
+  DOM.mLatency.className = 'metric-value' + (p99 > 500 ? ' bad' : p99 > 150 ? ' warn' : '');
+
+  // Storage display
+  const dataSize = 24 + STATE.totalWrites * 0.001;
+  DOM.coldText.textContent = `DATA PERSISTED — ${dataSize.toFixed(1)} GB`;
+
+  // Gateway status
+  DOM.gwSub.textContent = `${STATE.running ? STATE.qps : 0} QPS · ${warm} WARM · ${STATE.mode.toUpperCase()}`;
+
+  // Contextual teaching triggers
+  checkTeachingTriggers(warm);
+}
+
+function checkTeachingTriggers(warm) {
+  if (warm !== STATE.lastWarmCount) {
+    if (warm === 0 && STATE.lastWarmCount > 0) {
+      // Scaled to zero
+      // (already announced by scale-down)
+    } else if (warm > STATE.lastWarmCount + 1) {
+      // Rapid scale-up
+      teach('BURST SCALE',
+        `Autoscaler scaled from ${STATE.lastWarmCount} to ${warm} instances in response to a traffic spike. ` +
+        `Serverless scales fast but each new instance pays a cold start. Real Aurora Serverless scales in ~5s steps. ` +
+        `Cloudflare D1 scales nearly instantly because instances are edge-local.`,
+        'info', false
+      );
+    }
+    STATE.lastWarmCount = warm;
+  }
+}
+
+/* ============================================================
+   MAIN TICK
+   ============================================================ */
+function tick() {
+  if (!STATE.running || STATE.qps === 0) return;
+  const batch = Math.max(1, Math.round(STATE.qps / 10));
+  for (let i = 0; i < batch; i++) dispatchQuery();
+}
+
+/* ============================================================
+   CONTROLS
+   ============================================================ */
+function startTraffic() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+  STATE.tickTimer = setInterval(tick, 100);
+
+  teach('START',
+    `Traffic started at ${STATE.qps} q/s. Watch the autoscaler react: with 0 warm instances, the FIRST query ` +
+    `triggers a cold start (~${STATE.coldStartMs}ms). After warm-up, subsequent queries are fast (10-20ms). ` +
+    `The cost meter only ticks while instances are warm — that's the whole point of serverless.`,
+    'ok'
+  );
+}
+
+function stopTraffic() {
+  STATE.running = false;
+  DOM.btnToggle.textContent = '▶ Start Traffic';
+  DOM.btnToggle.classList.add('primary');
+  DOM.btnToggle.classList.remove('danger');
+  clearInterval(STATE.tickTimer);
+  STATE.tickTimer = null;
+  teach('STOP', 'Traffic stopped. Warm instances will scale to zero after idle timeout.', 'info', false);
+}
+
+function burstTraffic() {
+  teach('SPIKE',
+    `Traffic spike injected: 200 q/s burst. The autoscaler will spawn additional instances. Watch for cold start ` +
+    `banners as each new instance warms up. Real serverless DBs handle spikes by pre-warming pools — but ` +
+    `cold starts are still the fundamental trade-off of scale-to-zero.`,
+    'warn'
+  );
+  const realQps = STATE.qps;
+  STATE.qps = 200;
+  DOM.qpsRange.value = 200;
+  DOM.qpsVal.textContent = '200';
+  if (!STATE.running) startTraffic();
+  setTimeout(() => {
+    STATE.qps = realQps;
+    DOM.qpsRange.value = realQps;
+    DOM.qpsVal.textContent = realQps;
+  }, 8000);
+  showToast('⚡ Traffic spike — 200 q/s for 8s');
+}
+
+function forceIdle() {
+  teach('IDLE',
+    `Forcing a 60-second idle period. All warm instances will shut down, returning the database to ZERO state. ` +
+    `This is what makes serverless economical for intermittent workloads — you literally pay nothing while idle. ` +
+    `The trade-off: the next request after idle pays the full cold start cost.`,
+    'purple'
+  );
+  STATE.lastActivityAt = Date.now() - (STATE.idleTimeoutSec + 1) * 1000;
+  // Force immediate scale-down
+  for (const inst of [...STATE.warmInstances]) {
+    if (!inst.warming && !inst.dying) {
+      killInstance(inst.id);
+    }
+  }
+  showToast('💤 Idle forced — instances scaling to zero');
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnToggle.addEventListener('click', () => STATE.running ? stopTraffic() : startTraffic());
+DOM.btnBurst.addEventListener('click', burstTraffic);
+DOM.btnIdle.addEventListener('click', forceIdle);
+
+DOM.qpsRange.addEventListener('input', e => {
+  STATE.qps = parseInt(e.target.value);
+  DOM.qpsVal.textContent = STATE.qps;
+});
+DOM.readRange.addEventListener('input', e => {
+  STATE.readRatio = parseInt(e.target.value) / 100;
+  DOM.readVal.textContent = e.target.value + '%';
+});
+DOM.threshRange.addEventListener('input', e => {
+  STATE.warmThreshold = parseInt(e.target.value) / 100;
+  DOM.threshVal.textContent = e.target.value + '%';
+});
+DOM.idleRange.addEventListener('input', e => {
+  STATE.idleTimeoutSec = parseInt(e.target.value);
+  DOM.idleVal.textContent = STATE.idleTimeoutSec + 's';
+});
+DOM.coldRange.addEventListener('input', e => {
+  STATE.coldStartMs = parseInt(e.target.value);
+  DOM.coldVal.textContent = STATE.coldStartMs + 'ms';
+  teach('COLD START',
+    `Cold start cost set to ${STATE.coldStartMs}ms. Real cold starts vary: Lambda/Postgres ~500ms–2s. ` +
+    `Neon uses a "compute pool" to reduce this to ~200ms. D1 on Cloudflare edges is ~50ms. ` +
+    `The lower this number, the more you can afford to scale to zero.`,
+    'info', false
+  );
+});
+
+document.querySelectorAll('input[name="mode"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.mode = e.target.value;
+    const descriptions = {
+      standard: `Standard mode: full serverless DB (Aurora Serverless v2, Azure SQL Serverless). Cold starts 500ms–2s, scales up to 128 vCPUs, billed per second of usage.`,
+      edge: `Edge mode: compute runs at the CDN edge (Cloudflare D1, Turso). Cold starts ~50ms. Reads are FREE because they use edge replicas. Writes route to a primary region.`,
+      htap: `HTAP mode: hybrid transactional/analytical (Neon, Supabase, PlanetScale). Compute is decoupled from storage via a custom storage engine. Branches are copy-on-write — instant. Cold starts ~300ms with a warm pool.`
+    };
+    teach('MODE', descriptions[STATE.mode], 'purple');
+  });
+});
+
+window.addEventListener('resize', () => {});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+renderWarmPool();
+
+// Warm tick: decay + telemetry
+setInterval(decayTick, 100);
+
+setTimeout(() => {
+  teach('CONCEPT',
+    `Serverless databases are a specific answer to a specific problem: intermittent workloads. If your app ` +
+    `receives 10 queries/minute, you don't want a $50/month always-on Postgres. Serverless gives you the same ` +
+    `SQL interface at $0 when idle. This is only possible because the platform decouples storage from compute — ` +
+    `storage is always on (S3-like), but compute spins up on demand.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('TRADE-OFFS',
+      `Three trade-offs you'll experience: (1) Cold starts — first request is slow. (2) Connection limits — ` +
+      `traditional connection pools break; serverless DBs use HTTP or Data API instead. (3) Tail latency — the p99 ` +
+      `includes cold starts, so it looks terrible even if your p50 is 5ms. Watch the p99 here — it will spike whenever ` +
+      `a cold start happens.`,
+      'warn'
+    );
+  }, 3500);
+
+  showToast('👋 Click START TRAFFIC — watch the first query trigger a cold start', 4500);
+}, 700);
+</script>
+</body>
+</html>

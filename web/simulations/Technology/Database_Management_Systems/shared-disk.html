@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shared-Disk Architecture — Interactive Simulator with Narration</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 12px 24px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+    position: relative;
+  }
+  header h1 {
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #06b6d4, #10b981);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.68rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 12px;
+  }
+  .voice-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 7px 14px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle:hover { border-color: #10b981; }
+  .voice-toggle .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+
+  .layout { display: flex; height: calc(100vh - 57px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 12px;
+  }
+  .panel h3 {
+    font-size: 0.68rem;
+    letter-spacing: 2px;
+    color: #06b6d4;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 9px 14px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 7px;
+  }
+  .btn:hover { border-color: #06b6d4; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #06b6d4; color: #032126; border-color: #06b6d4; }
+  .btn.primary:hover { background: #0891b2; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.74rem;
+    color: #94a3b8;
+    margin-bottom: 5px;
+  }
+  .slider-row .value { color: #22d3ee; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #06b6d4; margin-bottom: 10px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(6,182,212,0.07) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.68rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* === LIVE NOTES OVERLAY === */
+  .live-notes {
+    position: absolute;
+    top: 52px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 720px;
+    width: 90%;
+    background: rgba(6, 24, 33, 0.92);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(6,182,212,0.4);
+    border-left: 4px solid #06b6d4;
+    border-radius: 8px;
+    padding: 12px 18px;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: #cbd5e1;
+    z-index: 8;
+    transition: all 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5), 0 0 25px rgba(6,182,212,0.15);
+  }
+  .live-notes.hidden {
+    transform: translateX(-50%) translateY(-80px);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .live-notes .note-badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    letter-spacing: 1.5px;
+    color: #06b6d4;
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+  .live-notes .note-badge.error { color: #ef4444; }
+  .live-notes .note-badge.warn  { color: #f59e0b; }
+  .live-notes .note-badge.ok    { color: #10b981; }
+
+  /* Clients */
+  .clients-row {
+    position: absolute;
+    top: 145px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 16px;
+    z-index: 5;
+  }
+  .client {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    border: 2px solid #334155;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem;
+    position: relative;
+    transition: all 0.25s;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .client.active {
+    border-color: #06b6d4;
+    box-shadow: 0 0 25px rgba(6,182,212,0.8);
+    transform: scale(1.1);
+  }
+  .client .label {
+    position: absolute;
+    bottom: -16px;
+    font-size: 0.55rem;
+    color: #64748b;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+
+  /* Compute layer */
+  .compute-layer {
+    position: absolute;
+    top: 260px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 24px;
+    z-index: 4;
+  }
+  .compute-node {
+    width: 150px;
+    background: linear-gradient(160deg, #131a2e 0%, #0a0e19 100%);
+    border: 2px solid #06b6d4;
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.6), 0 0 20px rgba(6,182,212,0.25);
+    transition: all 0.3s;
+    position: relative;
+  }
+  .compute-node.busy {
+    animation: nodePulse 0.35s ease;
+  }
+  @keyframes nodePulse {
+    0%, 100% { box-shadow: 0 15px 40px rgba(0,0,0,0.6), 0 0 20px rgba(6,182,212,0.25); }
+    50%      { box-shadow: 0 15px 40px rgba(0,0,0,0.6), 0 0 55px rgba(6,182,212,0.9); }
+  }
+  .compute-node.offline {
+    border-color: #7f1d1d;
+    opacity: 0.4;
+    filter: grayscale(0.8);
+  }
+  .compute-node.offline .compute-name::after {
+    content: ' [FAILED]';
+    color: #ef4444;
+    font-size: 0.6rem;
+  }
+
+  .compute-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .compute-name {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    color: #22d3ee;
+    font-family: monospace;
+  }
+  .compute-status {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  .compute-node.offline .compute-status {
+    background: #ef4444;
+    box-shadow: 0 0 8px #ef4444;
+    animation: none;
+  }
+
+  .core-mini-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2px;
+    margin-bottom: 6px;
+  }
+  .core-mini {
+    height: 9px;
+    background: #1a1f3a;
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+  }
+  .core-mini::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, #67e8f9, #06b6d4);
+    transform-origin: bottom;
+    transform: scaleY(var(--load, 0));
+    transition: transform 0.4s ease;
+    box-shadow: 0 0 6px rgba(6,182,212,0.6);
+  }
+
+  .node-metric-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.6rem;
+    color: #64748b;
+    font-family: monospace;
+    margin-bottom: 2px;
+  }
+  .node-metric-row .val { color: #22d3ee; font-weight: 700; }
+  .node-metric-row .val.warn { color: #f59e0b; }
+  .node-metric-row .val.bad  { color: #ef4444; }
+
+  /* SAN fabric */
+  .san-fabric {
+    position: absolute;
+    top: 430px;
+    left: 8%;
+    right: 8%;
+    height: 42px;
+    background: linear-gradient(180deg, rgba(6,182,212,0.18), rgba(6,182,212,0.05));
+    border-top: 2px solid #06b6d4;
+    border-bottom: 2px solid #06b6d4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    letter-spacing: 3px;
+    color: #22d3ee;
+    text-transform: uppercase;
+    font-weight: 700;
+    box-shadow: 0 0 25px rgba(6,182,212,0.3);
+    z-index: 3;
+    transition: box-shadow 0.4s;
+  }
+  .san-fabric.loaded {
+    box-shadow: 0 0 60px rgba(6,182,212,0.8), inset 0 0 20px rgba(6,182,212,0.3);
+  }
+  .san-fabric.locked {
+    background: linear-gradient(180deg, rgba(239,68,68,0.2), rgba(239,68,68,0.05));
+    border-color: #ef4444;
+    box-shadow: 0 0 60px rgba(239,68,68,0.8);
+  }
+
+  /* Shared disk */
+  .shared-disk-wrap {
+    position: absolute;
+    top: 500px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4;
+  }
+  .shared-disk {
+    width: 420px;
+    background: linear-gradient(160deg, #0f172a 0%, #070a14 100%);
+    border: 2px dashed #06b6d4;
+    border-radius: 14px;
+    padding: 14px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.6), 0 0 30px rgba(6,182,212,0.25);
+    transition: all 0.3s;
+  }
+  .shared-disk.locked {
+    border-color: #ef4444;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.6), 0 0 50px rgba(239,68,68,0.7);
+  }
+  .disk-title {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #22d3ee;
+    text-align: center;
+    margin-bottom: 10px;
+    font-family: monospace;
+  }
+  .disk-platters {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .platter {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, #0a0e19, #1e293b, #0a0e19, #1e293b, #0a0e19);
+    border: 2px solid #334155;
+    position: relative;
+    overflow: hidden;
+  }
+  .platter.spinning {
+    animation: spin 2s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .platter::after {
+    content: '';
+    position: absolute;
+    inset: 8px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%, #0a0e19, transparent);
+  }
+
+  .disk-metric {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    font-size: 0.65rem;
+    font-family: monospace;
+    text-align: center;
+  }
+  .disk-metric-item {
+    background: #070a14;
+    padding: 6px 4px;
+    border-radius: 5px;
+    border: 1px solid #1e293b;
+  }
+  .disk-metric-item .lbl { color: #475569; font-size: 0.55rem; letter-spacing: 0.5px; }
+  .disk-metric-item .val { color: #22d3ee; font-weight: 700; display: block; margin-top: 2px; }
+  .disk-metric-item .val.warn { color: #f59e0b; }
+  .disk-metric-item .val.bad  { color: #ef4444; }
+
+  /* Particle */
+  .particle {
+    position: absolute;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .particle.read  { background: #06b6d4; box-shadow: 0 0 10px #06b6d4; }
+  .particle.write { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+  .particle.io    { background: #8b5cf6; box-shadow: 0 0 10px #8b5cf6; }
+  .particle.lock  { background: #ef4444; box-shadow: 0 0 14px #ef4444; }
+
+  /* Telemetry pane */
+  .telemetry-pane {
+    width: 300px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .metric-box {
+    background: rgba(6,182,212,0.06);
+    border: 1px solid rgba(6,182,212,0.2);
+    padding: 10px;
+    border-radius: 10px;
+    text-align: center;
+    transition: all 0.25s ease;
+  }
+  .metric-box.flash {
+    background: rgba(6,182,212,0.18);
+    border-color: rgba(6,182,212,0.8);
+    transform: scale(1.03);
+  }
+  .metric-title {
+    font-size: 0.62rem;
+    color: #22d3ee;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 4px;
+  }
+  .metric-value {
+    font-size: 1.2rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 12px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 12px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 12px rgba(239,68,68,0.5); }
+
+  .log {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 130px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.6rem;
+    line-height: 1.5;
+  }
+  .log-entry {
+    padding: 2px 4px;
+    border-bottom: 1px solid #0f172a;
+    animation: logSlide 0.3s ease;
+  }
+  @keyframes logSlide {
+    from { transform: translateX(-10px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .log-entry.hit  { color: #10b981; }
+  .log-entry.miss { color: #f59e0b; }
+  .log-entry.err  { color: #ef4444; }
+  .log-time { color: #334155; margin-right: 5px; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #06b6d4;
+    color: #e0e6f0;
+    padding: 12px 24px;
+    border-radius: 30px;
+    font-size: 0.8rem;
+    box-shadow: 0 10px 40px rgba(6,182,212,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .connections {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .connections path {
+    stroke: #06b6d4;
+    stroke-width: 1.2;
+    fill: none;
+    stroke-dasharray: 5 5;
+    opacity: 0.45;
+    animation: dash 1.5s linear infinite;
+  }
+  @keyframes dash { to { stroke-dashoffset: -20; } }
+
+  /* Script display of current narration */
+  .narration-box {
+    background: #070a14;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 10px;
+    min-height: 60px;
+    max-height: 100px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.55;
+    color: #94a3b8;
+    font-style: italic;
+  }
+  .narration-box .speaking {
+    color: #22d3ee;
+    font-style: normal;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>SHARED-DISK ARCHITECTURE</h1>
+    <span class="sub">SAN · GLOBAL CACHE · CLUSTERED DB</span>
+  </div>
+  <button class="voice-toggle" id="voiceToggle">
+    <span class="dot"></span>
+    <span id="voiceLabel">VOICE: OFF</span>
+  </button>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Cluster Operations</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 80 Queries</button>
+      <button class="btn danger" id="btnKill">💥 Kill Random Node</button>
+      <button class="btn success" id="btnRecover">🔄 Recover Node</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Profile</h3>
+      <div class="slider-row"><span>Queries / sec</span><span class="value" id="qpsVal">60</span></div>
+      <input type="range" id="qpsRange" min="1" max="300" value="60">
+
+      <div class="slider-row"><span>Read Ratio</span><span class="value" id="readVal">70%</span></div>
+      <input type="range" id="readRange" min="0" max="100" value="70">
+    </div>
+
+    <div class="panel">
+      <h3>Cluster Size</h3>
+      <div class="slider-row"><span>Compute Nodes</span><span class="value" id="nodesVal">4</span></div>
+      <input type="range" id="nodesRange" min="2" max="6" value="4">
+      <div style="font-size:0.62rem; color:#64748b; line-height:1.4;">
+        All nodes share the same disk over SAN. Global cache coherence keeps data consistent.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Live Narration</h3>
+      <div class="narration-box" id="narrationBox">
+        Waiting for simulation to start...
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.66rem; color:#64748b; line-height:1.9;">
+        <div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#06b6d4;box-shadow:0 0 8px #06b6d4;margin-right:6px;"></span>Read</div>
+        <div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 8px #f59e0b;margin-right:6px;"></span>Write</div>
+        <div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#8b5cf6;box-shadow:0 0 8px #8b5cf6;margin-right:6px;"></span>Disk I/O</div>
+        <div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 8px #ef4444;margin-right:6px;"></span>Lock / Block</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- CENTER -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">MULTIPLE COMPUTE · ONE SHARED DISK · GLOBAL COHERENCE</div>
+
+      <!-- Live notes -->
+      <div class="live-notes hidden" id="liveNotes">
+        <div class="note-badge" id="noteBadge">SYSTEM</div>
+        <div id="noteText">Ready.</div>
+      </div>
+
+      <div class="clients-row" id="clientsRow">
+        <div class="client">👤<div class="label">CLIENT 1</div></div>
+        <div class="client">👤<div class="label">CLIENT 2</div></div>
+        <div class="client">👤<div class="label">CLIENT 3</div></div>
+      </div>
+
+      <svg class="connections" id="connections"></svg>
+
+      <div class="compute-layer" id="computeLayer"></div>
+
+      <div class="san-fabric" id="sanFabric">◄ SHARED SAN FABRIC ►</div>
+
+      <div class="shared-disk-wrap">
+        <div class="shared-disk" id="sharedDisk">
+          <div class="disk-title">◉ SHARED DISK ARRAY ◉</div>
+          <div class="disk-platters" id="diskPlatters">
+            <div class="platter"></div>
+            <div class="platter"></div>
+            <div class="platter"></div>
+            <div class="platter"></div>
+          </div>
+          <div class="disk-metric">
+            <div class="disk-metric-item">
+              <div class="lbl">IOPS</div>
+              <div class="val" id="diskIops">0</div>
+            </div>
+            <div class="disk-metric-item">
+              <div class="lbl">GLOBAL LOCKS</div>
+              <div class="val" id="diskLocks">0</div>
+            </div>
+            <div class="disk-metric-item">
+              <div class="lbl">COHERENCE</div>
+              <div class="val" id="diskCoherence">0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT PANEL -->
+  <aside class="telemetry-pane">
+    <div class="metric-box">
+      <div class="metric-title">Active Nodes</div>
+      <div class="metric-value" id="mNodes">4</div>
+    </div>
+
+    <div class="metric-box">
+      <div class="metric-title">Queries / sec</div>
+      <div class="metric-value" id="mQps">0</div>
+    </div>
+
+    <div class="metric-box">
+      <div class="metric-title">SAN Bandwidth</div>
+      <div class="metric-value" id="mSan">0%</div>
+    </div>
+
+    <div class="metric-box">
+      <div class="metric-title">Disk IOPS</div>
+      <div class="metric-value" id="mIops">0</div>
+    </div>
+
+    <div class="metric-box">
+      <div class="metric-title">Global Lock Wait</div>
+      <div class="metric-value" id="mLockWait">0 ms</div>
+    </div>
+
+    <div class="metric-box">
+      <div class="metric-title">p99 Latency</div>
+      <div class="metric-value" id="mLatency">0 ms</div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:8px;">Query Log</h3>
+      <div class="log" id="log"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  running: false,
+  qps: 60,
+  readRatio: 0.7,
+  nodeCount: 4,
+  nodes: [],              // { id, load, online }
+  sanLoad: 0,             // 0..1 — shared bus pressure
+  diskLoad: 0,            // 0..1 — IOPS
+  globalLocks: 0,         // count of active global locks
+  lockWaitMs: 0,
+  coherenceTraffic: 0,    // 0..1
+  totalQueries: 0,
+  latencySamples: [],
+  tickTimer: null,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  computeLayer: document.getElementById('computeLayer'),
+  connections: document.getElementById('connections'),
+  clientsRow: document.getElementById('clientsRow'),
+  sanFabric: document.getElementById('sanFabric'),
+  sharedDisk: document.getElementById('sharedDisk'),
+  diskPlatters: document.getElementById('diskPlatters'),
+  diskIops: document.getElementById('diskIops'),
+  diskLocks: document.getElementById('diskLocks'),
+  diskCoherence: document.getElementById('diskCoherence'),
+  liveNotes: document.getElementById('liveNotes'),
+  noteBadge: document.getElementById('noteBadge'),
+  noteText: document.getElementById('noteText'),
+  narrationBox: document.getElementById('narrationBox'),
+  log: document.getElementById('log'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnKill: document.getElementById('btnKill'),
+  btnRecover: document.getElementById('btnRecover'),
+  qpsRange: document.getElementById('qpsRange'),
+  qpsVal: document.getElementById('qpsVal'),
+  readRange: document.getElementById('readRange'),
+  readVal: document.getElementById('readVal'),
+  nodesRange: document.getElementById('nodesRange'),
+  nodesVal: document.getElementById('nodesVal'),
+  mNodes: document.getElementById('mNodes'),
+  mQps: document.getElementById('mQps'),
+  mSan: document.getElementById('mSan'),
+  mIops: document.getElementById('mIops'),
+  mLockWait: document.getElementById('mLockWait'),
+  mLatency: document.getElementById('mLatency')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function showToast(msg, ms = 2200) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function logEvent(msg, level = 'hit') {
+  const div = document.createElement('div');
+  div.className = `log-entry ${level}`;
+  div.innerHTML = `<span class="log-time">${nowTime()}</span>${msg}`;
+  DOM.log.prepend(div);
+  while (DOM.log.children.length > 40) DOM.log.lastChild.remove();
+}
+
+/* ============================================================
+   VOICE ENGINE (Web Speech API with chunking + dedup)
+   ============================================================ */
+const Voice = {
+  enabled: false,
+  queue: [],
+  speaking: false,
+  lastSpoken: '',
+  lastSpokenAt: 0,
+
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      this.queue = [];
+      this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice narration enabled. Explaining shared disk architecture.");
+    }
+  },
+
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    // Dedup identical messages within 3s
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 3000) return;
+    this.lastSpoken = text;
+    this.lastSpokenAt = now;
+
+    this.queue.push(text);
+    this.updateNarrationBox(text);
+    if (!this.speaking) this._drain();
+  },
+
+  _drain() {
+    if (this.queue.length === 0) {
+      this.speaking = false;
+      return;
+    }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05;
+    u.pitch = 1.0;
+    u.volume = 1.0;
+
+    // Prefer English voices
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+                  || voices.find(v => v.lang === 'en-US')
+                  || voices.find(v => v.lang.startsWith('en'));
+    if (preferred) u.voice = preferred;
+
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+
+    window.speechSynthesis.speak(u);
+  },
+
+  updateNarrationBox(text) {
+    DOM.narrationBox.innerHTML = `<span class="speaking">🔊</span> ${text}`;
+  }
+};
+
+/* ============================================================
+   LIVE NOTES — displayed on stage, changes with state
+   ============================================================ */
+let currentNote = '';
+function setNote(text, kind = 'info') {
+  if (text === currentNote) return;
+  currentNote = text;
+  DOM.noteText.textContent = text;
+  DOM.liveNotes.classList.remove('hidden');
+  DOM.noteBadge.className = 'note-badge';
+  DOM.noteBadge.textContent = 'STATUS';
+  if (kind === 'error') { DOM.noteBadge.classList.add('error'); DOM.noteBadge.textContent = '⚠ ALERT'; }
+  if (kind === 'warn')  { DOM.noteBadge.classList.add('warn');  DOM.noteBadge.textContent = '◆ WARNING'; }
+  if (kind === 'ok')    { DOM.noteBadge.classList.add('ok');    DOM.noteBadge.textContent = '✔ OK'; }
+
+  // Narrate the note if it's a state change
+  Voice.say(text);
+}
+
+/* ============================================================
+   BUILD CLUSTER
+   ============================================================ */
+function buildCluster() {
+  STATE.nodes = [];
+  DOM.computeLayer.innerHTML = '';
+  for (let i = 0; i < STATE.nodeCount; i++) {
+    STATE.nodes.push({ id: i, load: 0, online: true });
+    const node = document.createElement('div');
+    node.className = 'compute-node';
+    node.dataset.nodeId = i;
+    node.innerHTML = `
+      <div class="compute-header">
+        <div class="compute-name">NODE-${String(i + 1).padStart(2, '0')}</div>
+        <div class="compute-status"></div>
+      </div>
+      <div class="core-mini-grid">
+        <div class="core-mini"></div><div class="core-mini"></div>
+        <div class="core-mini"></div><div class="core-mini"></div>
+      </div>
+      <div class="node-metric-row"><span>CPU</span><span class="val cpu-val">0%</span></div>
+      <div class="node-metric-row"><span>CACHE HIT</span><span class="val cache-val">0%</span></div>
+      <div class="node-metric-row"><span>QPS</span><span class="val qps-val">0</span></div>
+    `;
+    DOM.computeLayer.appendChild(node);
+  }
+  DOM.mNodes.textContent = STATE.nodes.filter(n => n.online).length;
+  drawConnections();
+}
+
+/* ============================================================
+   CONNECTIONS
+   ============================================================ */
+function drawConnections() {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const sanRect = DOM.sanFabric.getBoundingClientRect();
+  const sanY = sanRect.top - stageRect.top;
+
+  let paths = '';
+  DOM.computeLayer.querySelectorAll('.compute-node').forEach(node => {
+    const r = node.getBoundingClientRect();
+    const x = r.left - stageRect.left + r.width / 2;
+    const y = r.top - stageRect.top + r.height;
+    paths += `<path d="M ${x} ${y} L ${x} ${sanY}"/>`;
+  });
+  DOM.connections.innerHTML = paths;
+}
+
+/* ============================================================
+   PARTICLES
+   ============================================================ */
+function animateQuery(clientEl, nodeIdx, isRead) {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const clientRect = clientEl.getBoundingClientRect();
+  const node = DOM.computeLayer.querySelector(`[data-node-id="${nodeIdx}"]`);
+  if (!node) return;
+  const nodeRect = node.getBoundingClientRect();
+
+  const p = document.createElement('div');
+  p.className = `particle ${isRead ? 'read' : 'write'}`;
+  const sx = clientRect.left - stageRect.left + clientRect.width / 2 - 4.5;
+  const sy = clientRect.top - stageRect.top + clientRect.height - 5;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const tx = nodeRect.left - stageRect.left + nodeRect.width / 2 - 4.5;
+  const ty = nodeRect.top - stageRect.top - 5;
+  const dur = 280 + Math.random() * 200;
+  const t0 = performance.now();
+
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    p.style.transform = `translate(${(tx - sx) * e}px, ${(ty - sy) * e}px)`;
+    p.style.opacity = String(1 - t * 0.3);
+    if (t < 1) requestAnimationFrame(frame);
+    else {
+      p.remove();
+      node.classList.remove('busy');
+      void node.offsetWidth;
+      node.classList.add('busy');
+    }
+  })(t0);
+}
+
+function animateToDisk(fromNodeIdx, kind) {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const node = DOM.computeLayer.querySelector(`[data-node-id="${fromNodeIdx}"]`);
+  const disk = DOM.sharedDisk;
+  if (!node) return;
+  const nr = node.getBoundingClientRect();
+  const dr = disk.getBoundingClientRect();
+
+  const p = document.createElement('div');
+  p.className = `particle ${kind}`;
+  const sx = nr.left - stageRect.left + nr.width / 2 - 4.5;
+  const sy = nr.top - stageRect.top + nr.height - 5;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const tx = dr.left - stageRect.left + dr.width / 2 - 4.5;
+  const ty = dr.top - stageRect.top + 30;
+  const dur = 350;
+  const t0 = performance.now();
+
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    p.style.transform = `translate(${(tx - sx) * e}px, ${(ty - sy) * e}px)`;
+    p.style.opacity = String(1 - t * 0.4);
+    if (t < 1) requestAnimationFrame(frame);
+    else p.remove();
+  })(t0);
+}
+
+/* ============================================================
+   QUERY DISPATCH
+   ============================================================ */
+let lastNarratedState = '';
+
+function dispatchQuery() {
+  const online = STATE.nodes.filter(n => n.online);
+  if (online.length === 0) return;
+
+  const isRead = Math.random() < STATE.readRatio;
+  const node = online[Math.floor(Math.random() * online.length)];
+  const clientEls = DOM.clientsRow.querySelectorAll('.client');
+  const client = clientEls[Math.floor(Math.random() * clientEls.length)];
+
+  client.classList.add('active');
+  setTimeout(() => client.classList.remove('active'), 180);
+
+  animateQuery(client, node.id, isRead);
+
+  // Node work
+  const cpuCost = isRead ? 0.006 : 0.013;
+  node.load = clamp(node.load + cpuCost, 0, 1);
+
+  // Every query goes over SAN for cache/disk access
+  STATE.sanLoad = clamp(STATE.sanLoad + (isRead ? 0.003 : 0.007), 0, 1);
+
+  // Writes → disk + global lock
+  if (!isRead) {
+    STATE.diskLoad = clamp(STATE.diskLoad + 0.012, 0, 1);
+    STATE.globalLocks = Math.min(50, STATE.globalLocks + 1);
+    if (Math.random() < 0.4) animateToDisk(node.id, 'io');
+    if (Math.random() < 0.3) animateToDisk(node.id, 'lock');
+  } else {
+    // Reads may hit disk if cache miss
+    if (Math.random() < 0.25) {
+      STATE.diskLoad = clamp(STATE.diskLoad + 0.004, 0, 1);
+      if (Math.random() < 0.5) animateToDisk(node.id, 'io');
+    }
+  }
+
+  // Coherence traffic — each node must invalidate caches when data changes
+  STATE.coherenceTraffic = clamp(
+    STATE.coherenceTraffic + 0.001 * online.length + (isRead ? 0 : 0.004),
+    0, 1
+  );
+
+  STATE.totalQueries++;
+
+  // Lock wait time grows with global lock count
+  STATE.lockWaitMs = STATE.globalLocks * 4 + STATE.sanLoad * 80;
+
+  // Latency
+  const ownLoad = node.load;
+  const sanPenalty = Math.pow(STATE.sanLoad, 2) * 320;
+  const coherencePenalty = Math.pow(STATE.coherenceTraffic, 2) * 220;
+  const lockPenalty = Math.pow(STATE.globalLocks / 50, 2) * 200;
+  const ownPenalty = Math.pow(ownLoad, 3) * 60;
+  const latency = 4 + ownPenalty + sanPenalty + coherencePenalty + lockPenalty + rand(-1, 1);
+
+  STATE.latencySamples.push(latency);
+  if (STATE.latencySamples.length > 300) STATE.latencySamples.shift();
+
+  if (Math.random() < 0.2) {
+    const lvl = latency > 300 ? 'err' : latency > 100 ? 'miss' : 'hit';
+    logEvent(`[${isRead ? 'R' : 'W'}] n${node.id + 1} → ${latency.toFixed(0)}ms`, lvl);
+  }
+}
+
+function tick() {
+  if (!STATE.running) return;
+  const online = STATE.nodes.filter(n => n.online).length;
+  if (online === 0) return;
+  const batch = Math.max(1, Math.round(STATE.qps / 10));
+  for (let i = 0; i < batch; i++) dispatchQuery();
+}
+
+/* ============================================================
+   DECAY
+   ============================================================ */
+function decayTick() {
+  STATE.sanLoad = Math.max(0, STATE.sanLoad - 0.025);
+  STATE.diskLoad = Math.max(0, STATE.diskLoad - 0.02);
+  STATE.coherenceTraffic = Math.max(0, STATE.coherenceTraffic - 0.01);
+  STATE.globalLocks = Math.max(0, STATE.globalLocks - 0.3);
+  for (const n of STATE.nodes) {
+    n.load = Math.max(0, n.load - 0.03);
+  }
+}
+
+/* ============================================================
+   NARRATION LOGIC — reacts to state changes
+   ============================================================ */
+function updateNarration() {
+  const online = STATE.nodes.filter(n => n.online).length;
+  const sanPct = Math.round(STATE.sanLoad * 100);
+  const lockCount = Math.round(STATE.globalLocks);
+  const avgLatency = STATE.latencySamples.length
+    ? STATE.latencySamples.reduce((a, b) => a + b, 0) / STATE.latencySamples.length
+    : 0;
+
+  let key = '';
+  let msg = '';
+  let kind = 'info';
+
+  if (online === 0) {
+    key = 'total-failure';
+    msg = 'All compute nodes are offline. The shared disk is intact, but no node can serve queries. This is total cluster failure.';
+    kind = 'error';
+  } else if (online === 1 && STATE.nodeCount > 1) {
+    key = 'one-node-left';
+    msg = `Only 1 of ${STATE.nodeCount} nodes is online. The cluster continues to serve traffic thanks to shared-disk design — but with reduced throughput.`;
+    kind = 'warn';
+  } else if (sanPct > 85) {
+    key = 'san-saturated';
+    msg = `SAN fabric at ${sanPct}% — the shared disk is becoming the bottleneck. Adding more compute nodes won't help: they'll all queue on the same SAN.`;
+    kind = 'error';
+  } else if (lockCount > 20) {
+    key = 'lock-contention';
+    msg = `Global lock count is ${lockCount}. Multiple nodes are competing for the same data pages. Lock manager is a shared bottleneck in shared-disk systems.`;
+    kind = 'warn';
+  } else if (sanPct > 60) {
+    key = 'san-high';
+    msg = `SAN traffic at ${sanPct}%. Every cache miss and every write crosses the fabric. This is the fundamental trade-off: shared storage gives you easy failover but caps aggregate bandwidth.`;
+    kind = 'warn';
+  } else if (STATE.running && online >= 2) {
+    key = 'healthy';
+    msg = `Cluster healthy. ${online} nodes online, SAN at ${sanPct}%, average latency ${avgLatency.toFixed(0)}ms. Each node keeps its own buffer pool; global locks enforce write consistency.`;
+    kind = 'ok';
+  } else if (!STATE.running) {
+    key = 'idle';
+    msg = 'Idle. Click Start Traffic to see how compute nodes share a single disk over the SAN fabric.';
+  }
+
+  if (key !== lastNarratedState) {
+    lastNarratedState = key;
+    setNote(msg, kind);
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function render() {
+  // Per-node visuals
+  DOM.computeLayer.querySelectorAll('.compute-node').forEach((el, i) => {
+    const n = STATE.nodes[i];
+    if (!n) return;
+    el.classList.toggle('offline', !n.online);
+
+    el.querySelectorAll('.core-mini').forEach(c => {
+      const jitter = rand(-0.12, 0.12);
+      c.style.setProperty('--load', clamp(n.load + jitter, 0, 1).toFixed(2));
+    });
+
+    const cpuVal = el.querySelector('.cpu-val');
+    const cpuPct = Math.round(n.load * 100);
+    cpuVal.textContent = cpuPct + '%';
+    cpuVal.className = 'val ' + (cpuPct > 85 ? 'bad' : cpuPct > 60 ? 'warn' : '');
+
+    // Cache hit rate — drops under SAN pressure
+    const cacheHit = Math.max(20, Math.round(95 - STATE.sanLoad * 60 + rand(-3, 3)));
+    const cEl = el.querySelector('.cache-val');
+    cEl.textContent = cacheHit + '%';
+    cEl.className = 'val ' + (cacheHit < 50 ? 'bad' : cacheHit < 70 ? 'warn' : '');
+
+    const onlineCount = STATE.nodes.filter(x => x.online).length || 1;
+    el.querySelector('.qps-val').textContent =
+      STATE.running && n.online ? Math.round(STATE.qps / onlineCount) : 0;
+  });
+
+  // SAN
+  const sanPct = Math.round(STATE.sanLoad * 100);
+  DOM.sanFabric.classList.toggle('loaded', STATE.sanLoad > 0.6);
+  DOM.sanFabric.classList.toggle('locked', STATE.globalLocks > 20);
+
+  // Disk
+  const diskPct = Math.round(STATE.diskLoad * 100);
+  const iops = Math.round(STATE.diskLoad * 800);
+  DOM.diskIops.textContent = iops;
+  DOM.diskLocks.textContent = Math.round(STATE.globalLocks);
+  DOM.diskCoherence.textContent = Math.round(STATE.coherenceTraffic * 100) + '%';
+  DOM.sharedDisk.classList.toggle('locked', STATE.globalLocks > 20);
+
+  DOM.diskPlatters.querySelectorAll('.platter').forEach((p, i) => {
+    p.classList.toggle('spinning', STATE.diskLoad > 0.1 && i < Math.ceil(STATE.diskLoad * 4));
+  });
+
+  // Telemetry
+  DOM.mNodes.textContent = STATE.nodes.filter(n => n.online).length;
+  DOM.mQps.textContent = STATE.running ? STATE.qps : 0;
+  DOM.mSan.textContent = sanPct + '%';
+  DOM.mSan.className = 'metric-value' + (sanPct > 85 ? ' bad' : sanPct > 60 ? ' warn' : '');
+  DOM.mIops.textContent = iops;
+  DOM.mLockWait.textContent = STATE.lockWaitMs.toFixed(0) + ' ms';
+  DOM.mLockWait.className = 'metric-value' + (STATE.lockWaitMs > 150 ? ' bad' : STATE.lockWaitMs > 60 ? ' warn' : '');
+
+  const sorted = [...STATE.latencySamples].sort((a, b) => a - b);
+  const p99 = sorted.length ? sorted[Math.floor(sorted.length * 0.99)] : 0;
+  DOM.mLatency.textContent = p99.toFixed(0) + ' ms';
+  DOM.mLatency.className = 'metric-value' + (p99 > 400 ? ' bad' : p99 > 150 ? ' warn' : '');
+
+  // Narrate
+  updateNarration();
+}
+
+/* ============================================================
+   CONTROLS
+   ============================================================ */
+function startTraffic() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+  STATE.tickTimer = setInterval(tick, 100);
+  logEvent('▶ Traffic started', 'hit');
+  Voice.say('Traffic started. Multiple compute nodes are now serving queries against the shared disk.');
+}
+
+function stopTraffic() {
+  STATE.running = false;
+  DOM.btnToggle.textContent = '▶ Start Traffic';
+  DOM.btnToggle.classList.add('primary');
+  DOM.btnToggle.classList.remove('danger');
+  clearInterval(STATE.tickTimer);
+  STATE.tickTimer = null;
+  logEvent('⏸ Traffic stopped', 'miss');
+  Voice.say('Traffic stopped.');
+}
+
+function burst() {
+  logEvent('⚡ Burst: 80 queries', 'miss');
+  Voice.say('Burst of eighty queries dispatched. Watch the SAN bandwidth spike.');
+  for (let i = 0; i < 80; i++) setTimeout(dispatchQuery, i * 12);
+  showToast('⚡ 80-query burst dispatched');
+}
+
+function killNode() {
+  const online = STATE.nodes.filter(n => n.online);
+  if (online.length <= 1) {
+    showToast('⚠ Cannot kill last remaining node');
+    Voice.say('Cannot kill the last remaining node. The cluster would be down.');
+    return;
+  }
+  const victim = online[Math.floor(Math.random() * online.length)];
+  victim.online = false;
+  victim.load = 0;
+  logEvent(`💥 Node ${victim.id + 1} killed`, 'err');
+  Voice.say(`Node ${victim.id + 1} has failed. The cluster continues serving traffic on remaining nodes because storage is shared. This is the key advantage of shared-disk architecture: failover without data rebalancing.`);
+  showToast(`💥 Node ${victim.id + 1} killed — cluster survives`);
+}
+
+function recoverNode() {
+  const offline = STATE.nodes.filter(n => !n.online);
+  if (offline.length === 0) {
+    showToast('✔ All nodes already online');
+    return;
+  }
+  const node = offline[0];
+  node.online = true;
+  logEvent(`🔄 Node ${node.id + 1} recovered`, 'hit');
+  Voice.say(`Node ${node.id + 1} is back online. It immediately sees the current data from the shared disk — no data copy or rebalance needed.`);
+  showToast(`🔄 Node ${node.id + 1} recovered`);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.btnToggle.addEventListener('click', () => STATE.running ? stopTraffic() : startTraffic());
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnKill.addEventListener('click', killNode);
+DOM.btnRecover.addEventListener('click', recoverNode);
+
+DOM.qpsRange.addEventListener('input', e => {
+  STATE.qps = parseInt(e.target.value);
+  DOM.qpsVal.textContent = STATE.qps;
+});
+DOM.readRange.addEventListener('input', e => {
+  STATE.readRatio = parseInt(e.target.value) / 100;
+  DOM.readVal.textContent = e.target.value + '%';
+});
+DOM.nodesRange.addEventListener('input', e => {
+  STATE.nodeCount = parseInt(e.target.value);
+  DOM.nodesVal.textContent = STATE.nodeCount;
+  buildCluster();
+  Voice.say(`Cluster resized to ${STATE.nodeCount} compute nodes, all sharing the same disk.`);
+});
+
+window.addEventListener('resize', drawConnections);
+
+// Load voices when they're ready
+if (window.speechSynthesis) {
+  window.speechSynthesis.onvoiceschanged = () => {};
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+buildCluster();
+drawConnections();
+setInterval(() => { decayTick(); render(); }, 100);
+setTimeout(() => {
+  showToast('👋 Enable VOICE, then Start Traffic', 3500);
+  setNote('Idle. Click Start Traffic to see how compute nodes share a single disk over the SAN fabric.', 'info');
+}, 400);
+</script>
+</body>
+</html>

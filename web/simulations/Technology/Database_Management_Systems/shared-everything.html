@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shared-Everything Architecture — Interactive Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 14px 24px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10;
+    position: relative;
+  }
+  header h1 {
+    font-size: 1.1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #8b5cf6, #06b6d4);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.7rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 12px;
+  }
+
+  .layout { display: flex; height: calc(100vh - 61px); }
+
+  .controls-pane {
+    width: 300px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 18px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .panel h3 {
+    font-size: 0.7rem;
+    letter-spacing: 2px;
+    color: #8b5cf6;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 9px 14px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .btn:hover { border-color: #8b5cf6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+  .btn.primary:hover { background: #7c3aed; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-bottom: 6px;
+  }
+  .slider-row .value { color: #a78bfa; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #8b5cf6; margin-bottom: 12px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(139,92,246,0.07) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.7rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* Clients */
+  .clients-row {
+    position: absolute;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 16px;
+    z-index: 5;
+  }
+  .client {
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    border: 2px solid #334155;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem;
+    position: relative;
+    transition: all 0.25s;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .client.active {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 25px rgba(139,92,246,0.8);
+    transform: scale(1.1);
+  }
+  .client .label {
+    position: absolute;
+    bottom: -18px;
+    font-size: 0.55rem;
+    color: #64748b;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+
+  /* Compute Nodes Layer */
+  .compute-layer {
+    position: absolute;
+    top: 190px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 28px;
+    z-index: 4;
+  }
+  .compute-node {
+    width: 190px;
+    background: linear-gradient(160deg, #131a2e 0%, #0a0e19 100%);
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.6), 0 0 25px rgba(139,92,246,0.3);
+    transition: all 0.3s;
+    position: relative;
+  }
+  .compute-node.busy {
+    animation: nodePulse 0.35s ease;
+  }
+  @keyframes nodePulse {
+    0%, 100% { box-shadow: 0 15px 40px rgba(0,0,0,0.6), 0 0 25px rgba(139,92,246,0.3); }
+    50%      { box-shadow: 0 15px 40px rgba(0,0,0,0.6), 0 0 60px rgba(139,92,246,0.9); }
+  }
+  .compute-node.hot {
+    border-color: #f59e0b;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.6), 0 0 40px rgba(245,158,11,0.6);
+  }
+  .compute-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .compute-name {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    color: #a78bfa;
+    font-family: monospace;
+  }
+  .compute-status {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.3; } }
+  .compute-node.hot .compute-status {
+    background: #ef4444; box-shadow: 0 0 10px #ef4444;
+  }
+
+  .core-mini-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2px;
+    margin-bottom: 8px;
+  }
+  .core-mini {
+    height: 10px;
+    background: #1a1f3a;
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+  }
+  .core-mini::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, #c4b5fd, #8b5cf6);
+    transform-origin: bottom;
+    transform: scaleY(var(--load, 0));
+    transition: transform 0.4s ease;
+    box-shadow: 0 0 6px rgba(139,92,246,0.6);
+  }
+
+  .node-metric-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.62rem;
+    color: #64748b;
+    font-family: monospace;
+    margin-bottom: 3px;
+  }
+  .node-metric-row .val { color: #a78bfa; font-weight: 700; }
+  .node-metric-row .val.warn { color: #f59e0b; }
+  .node-metric-row .val.bad  { color: #ef4444; }
+
+  /* Shared Fabric Bus */
+  .shared-bus {
+    position: absolute;
+    top: 400px;
+    left: 10%;
+    right: 10%;
+    height: 44px;
+    background: linear-gradient(180deg, rgba(139,92,246,0.15), rgba(139,92,246,0.05));
+    border-top: 2px solid #8b5cf6;
+    border-bottom: 2px solid #8b5cf6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    letter-spacing: 3px;
+    color: #a78bfa;
+    text-transform: uppercase;
+    font-weight: 700;
+    box-shadow: 0 0 30px rgba(139,92,246,0.3);
+    z-index: 3;
+  }
+  .shared-bus.loaded {
+    box-shadow: 0 0 60px rgba(139,92,246,0.8), inset 0 0 20px rgba(139,92,246,0.3);
+  }
+  .bus-saturation {
+    position: absolute;
+    bottom: -18px;
+    right: 0;
+    font-size: 0.6rem;
+    color: #a78bfa;
+    font-family: monospace;
+    letter-spacing: 1px;
+  }
+  .bus-saturation.warn { color: #f59e0b; }
+  .bus-saturation.bad  { color: #ef4444; }
+
+  /* Shared resources — Memory + Disk */
+  .shared-resources {
+    position: absolute;
+    top: 480px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 24px;
+    z-index: 4;
+  }
+  .shared-block {
+    width: 280px;
+    background: linear-gradient(160deg, #0f172a 0%, #070a14 100%);
+    border: 2px dashed #8b5cf6;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  }
+  .shared-block.contended {
+    border-color: #f59e0b;
+    animation: contentPulse 1s ease-in-out infinite;
+  }
+  @keyframes contentPulse {
+    0%, 100% { box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    50%      { box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 40px rgba(245,158,11,0.6); }
+  }
+  .shared-title {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    color: #a78bfa;
+    text-align: center;
+    margin-bottom: 8px;
+    font-family: monospace;
+  }
+  .shared-bar {
+    width: 100%;
+    height: 12px;
+    background: #0a0e19;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #1e293b;
+    margin-bottom: 6px;
+  }
+  .shared-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #10b981, #06b6d4, #8b5cf6);
+    transition: width 0.4s ease;
+    box-shadow: 0 0 10px rgba(139,92,246,0.6);
+  }
+  .shared-bar-fill.warn { background: linear-gradient(90deg, #f59e0b, #ef4444); }
+  .shared-metric {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    color: #64748b;
+    font-family: monospace;
+  }
+  .shared-metric .val { color: #a78bfa; font-weight: 700; }
+
+  /* Contention warning overlay */
+  .contention-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at 50% 60%, transparent 30%, rgba(245,158,11,0.08) 80%);
+    opacity: 0;
+    transition: opacity 0.4s;
+    z-index: 2;
+  }
+  .contention-overlay.show { opacity: 1; }
+
+  /* Particle */
+  .particle {
+    position: absolute;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .particle.read  { background: #06b6d4; box-shadow: 0 0 12px #06b6d4; }
+  .particle.write { background: #f59e0b; box-shadow: 0 0 12px #f59e0b; }
+  .particle.mem   { background: #8b5cf6; box-shadow: 0 0 12px #8b5cf6; }
+  .particle.lock  { background: #ef4444; box-shadow: 0 0 12px #ef4444; }
+
+  /* Telemetry */
+  .telemetry-pane {
+    width: 300px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 18px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .metric-box {
+    background: rgba(139,92,246,0.06);
+    border: 1px solid rgba(139,92,246,0.2);
+    padding: 12px;
+    border-radius: 10px;
+    text-align: center;
+    transition: all 0.25s ease;
+  }
+  .metric-box.flash {
+    background: rgba(139,92,246,0.18);
+    border-color: rgba(139,92,246,0.8);
+    transform: scale(1.03);
+  }
+  .metric-title {
+    font-size: 0.65rem;
+    color: #a78bfa;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 6px;
+  }
+  .metric-value {
+    font-size: 1.3rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 12px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 12px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 12px rgba(239,68,68,0.5); }
+
+  .log {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 150px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.62rem;
+    line-height: 1.5;
+  }
+  .log-entry {
+    padding: 2px 4px;
+    border-bottom: 1px solid #0f172a;
+    animation: logSlide 0.3s ease;
+  }
+  @keyframes logSlide {
+    from { transform: translateX(-10px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .log-entry.hit  { color: #10b981; }
+  .log-entry.miss { color: #f59e0b; }
+  .log-entry.err  { color: #ef4444; }
+  .log-time { color: #334155; margin-right: 5px; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #8b5cf6;
+    color: #e0e6f0;
+    padding: 12px 24px;
+    border-radius: 30px;
+    font-size: 0.8rem;
+    box-shadow: 0 10px 40px rgba(139,92,246,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .connections {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .connections path {
+    stroke: #8b5cf6;
+    stroke-width: 1.2;
+    fill: none;
+    stroke-dasharray: 5 5;
+    opacity: 0.5;
+    animation: dash 1.5s linear infinite;
+  }
+  @keyframes dash { to { stroke-dashoffset: -20; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>SHARED-EVERYTHING ARCHITECTURE</h1>
+    <span class="sub">SMP · SHARED BUS · ONE OS IMAGE</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Client Traffic</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 60 Queries</button>
+      <button class="btn danger" id="btnContend">🔥 Force Contention</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Profile</h3>
+      <div class="slider-row"><span>Queries / sec</span><span class="value" id="qpsVal">40</span></div>
+      <input type="range" id="qpsRange" min="1" max="250" value="40">
+
+      <div class="slider-row"><span>Read Ratio</span><span class="value" id="readVal">70%</span></div>
+      <input type="range" id="readRange" min="0" max="100" value="70">
+    </div>
+
+    <div class="panel">
+      <h3>Scale Compute</h3>
+      <div class="slider-row"><span>CPU Sockets</span><span class="value" id="socketsVal">3</span></div>
+      <input type="range" id="socketsRange" min="2" max="6" value="3">
+      <div style="font-size:0.65rem; color:#64748b; line-height:1.4; margin-top:4px;">
+        Each socket = 4 cores. Cores scale linearly <em>until</em> bus saturates.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.7rem; color:#64748b; line-height:2;">
+        <div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#06b6d4;box-shadow:0 0 8px #06b6d4;margin-right:6px;"></span>Read</div>
+        <div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 8px #f59e0b;margin-right:6px;"></span>Write</div>
+        <div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#8b5cf6;box-shadow:0 0 8px #8b5cf6;margin-right:6px;"></span>Memory fetch</div>
+        <div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 8px #ef4444;margin-right:6px;"></span>Bus contention</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">SHARED MEMORY · SHARED DISK · SHARED BUS · SYMMETRIC MULTIPROCESSING</div>
+
+      <div class="clients-row" id="clientsRow">
+        <div class="client" data-id="1">👤<div class="label">CLIENT 1</div></div>
+        <div class="client" data-id="2">👤<div class="label">CLIENT 2</div></div>
+        <div class="client" data-id="3">👤<div class="label">CLIENT 3</div></div>
+        <div class="client" data-id="4">👤<div class="label">CLIENT 4</div></div>
+      </div>
+
+      <svg class="connections" id="connections"></svg>
+
+      <div class="compute-layer" id="computeLayer"></div>
+
+      <div class="shared-bus" id="sharedBus">
+        ◄ SHARED SYSTEM BUS ►
+        <div class="bus-saturation" id="busSat">BUS: 0%</div>
+      </div>
+
+      <div class="shared-resources">
+        <div class="shared-block" id="memBlock">
+          <div class="shared-title">SHARED MEMORY</div>
+          <div class="shared-bar"><div class="shared-bar-fill" id="memFill"></div></div>
+          <div class="shared-metric">
+            <span>CONTENTION</span>
+            <span class="val" id="memCont">0%</span>
+          </div>
+        </div>
+
+        <div class="shared-block" id="diskBlock">
+          <div class="shared-title">SHARED DISK</div>
+          <div class="shared-bar"><div class="shared-bar-fill" id="diskFill"></div></div>
+          <div class="shared-metric">
+            <span>IOPS</span>
+            <span class="val" id="diskIops">0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="contention-overlay" id="contentionOverlay"></div>
+    </div>
+  </main>
+
+  <aside class="telemetry-pane">
+    <div class="metric-box" id="mbQps">
+      <div class="metric-title">Queries / sec</div>
+      <div class="metric-value" id="mQps">0</div>
+    </div>
+
+    <div class="metric-box">
+      <div class="metric-title">Total Cores</div>
+      <div class="metric-value" id="mCores">12</div>
+    </div>
+
+    <div class="metric-box">
+      <div class="metric-title">Bus Saturation</div>
+      <div class="metric-value" id="mBus">0%</div>
+    </div>
+
+    <div class="metric-box">
+      <div class="metric-title">Cache Coherence Cost</div>
+      <div class="metric-value" id="mCoherence">0 ns</div>
+    </div>
+
+    <div class="metric-box">
+      <div class="metric-title">p99 Latency</div>
+      <div class="metric-value" id="mLatency">0 ms</div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:8px;">Scaling Efficiency</h3>
+      <div style="font-size:0.68rem; color:#64748b; font-family:monospace; line-height:1.7;">
+        <div>Sockets: <span id="eSockets" style="color:#a78bfa;font-weight:700;">3</span></div>
+        <div>Linear speedup: <span id="eLinear" style="color:#10b981;font-weight:700;">3.00×</span></div>
+        <div>Actual speedup: <span id="eActual" style="color:#f59e0b;font-weight:700;">1.00×</span></div>
+        <div>Efficiency: <span id="eEff" style="color:#06b6d4;font-weight:700;">33%</span></div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:8px;">Query Log</h3>
+      <div class="log" id="log"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  running: false,
+  qps: 40,
+  readRatio: 0.7,
+  sockets: 3,
+  busLoad: 0,           // 0..1 — the fundamental bottleneck
+  memContention: 0,     // cache coherence traffic
+  diskContention: 0,
+  cpuLoads: [],         // per-socket
+  totalQueries: 0,
+  latencySamples: [],
+  tickTimer: null
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  computeLayer: document.getElementById('computeLayer'),
+  connections: document.getElementById('connections'),
+  clientsRow: document.getElementById('clientsRow'),
+  sharedBus: document.getElementById('sharedBus'),
+  busSat: document.getElementById('busSat'),
+  memFill: document.getElementById('memFill'),
+  memCont: document.getElementById('memCont'),
+  memBlock: document.getElementById('memBlock'),
+  diskFill: document.getElementById('diskFill'),
+  diskIops: document.getElementById('diskIops'),
+  diskBlock: document.getElementById('diskBlock'),
+  contentionOverlay: document.getElementById('contentionOverlay'),
+  log: document.getElementById('log'),
+  toast: document.getElementById('toast'),
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnContend: document.getElementById('btnContend'),
+  qpsRange: document.getElementById('qpsRange'),
+  qpsVal: document.getElementById('qpsVal'),
+  readRange: document.getElementById('readRange'),
+  readVal: document.getElementById('readVal'),
+  socketsRange: document.getElementById('socketsRange'),
+  socketsVal: document.getElementById('socketsVal'),
+  mQps: document.getElementById('mQps'),
+  mCores: document.getElementById('mCores'),
+  mBus: document.getElementById('mBus'),
+  mCoherence: document.getElementById('mCoherence'),
+  mLatency: document.getElementById('mLatency'),
+  eSockets: document.getElementById('eSockets'),
+  eLinear: document.getElementById('eLinear'),
+  eActual: document.getElementById('eActual'),
+  eEff: document.getElementById('eEff')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function showToast(msg, ms = 2200) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function logEvent(msg, level = 'hit') {
+  const div = document.createElement('div');
+  div.className = `log-entry ${level}`;
+  div.innerHTML = `<span class="log-time">${nowTime()}</span>${msg}`;
+  DOM.log.prepend(div);
+  while (DOM.log.children.length > 40) DOM.log.lastChild.remove();
+}
+
+/* ============================================================
+   BUILD COMPUTE NODES (sockets)
+   ============================================================ */
+function buildComputeNodes() {
+  DOM.computeLayer.innerHTML = '';
+  STATE.cpuLoads = [];
+  for (let i = 0; i < STATE.sockets; i++) {
+    STATE.cpuLoads.push(0);
+    const node = document.createElement('div');
+    node.className = 'compute-node';
+    node.dataset.socketId = i;
+    node.innerHTML = `
+      <div class="compute-header">
+        <div class="compute-name">SOCKET-${String(i + 1).padStart(2, '0')}</div>
+        <div class="compute-status"></div>
+      </div>
+      <div class="core-mini-grid">
+        <div class="core-mini"></div><div class="core-mini"></div>
+        <div class="core-mini"></div><div class="core-mini"></div>
+      </div>
+      <div class="node-metric-row">
+        <span>CPU</span>
+        <span class="val cpu-val">0%</span>
+      </div>
+      <div class="node-metric-row">
+        <span>L2 MISS</span>
+        <span class="val cache-val">0%</span>
+      </div>
+      <div class="node-metric-row">
+        <span>QPS</span>
+        <span class="val qps-val">0</span>
+      </div>
+    `;
+    DOM.computeLayer.appendChild(node);
+  }
+  DOM.mCores.textContent = STATE.sockets * 4;
+  drawConnections();
+}
+
+/* ============================================================
+   CONNECTIONS — client → sockets, sockets → bus
+   ============================================================ */
+function drawConnections() {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const busRect = DOM.sharedBus.getBoundingClientRect();
+  const busY = busRect.top - stageRect.top;
+
+  let paths = '';
+
+  DOM.computeLayer.querySelectorAll('.compute-node').forEach(node => {
+    const r = node.getBoundingClientRect();
+    const x = r.left - stageRect.left + r.width / 2;
+    const y = r.top - stageRect.top + r.height;
+    paths += `<path d="M ${x} ${y} L ${x} ${busY}"/>`;
+  });
+
+  DOM.clientsRow.querySelectorAll('.client').forEach(cl => {
+    const cr = cl.getBoundingClientRect();
+    const cx = cr.left - stageRect.left + cr.width / 2;
+    const cy = cr.top - stageRect.top + cr.height;
+    const firstNode = DOM.computeLayer.querySelector('.compute-node');
+    if (firstNode) {
+      const nr = firstNode.getBoundingClientRect();
+      const nx = nr.left - stageRect.left + nr.width / 2;
+      const ny = nr.top - stageRect.top;
+      paths += `<path d="M ${cx} ${cy} C ${cx} ${(cy + ny) / 2}, ${nx} ${(cy + ny) / 2}, ${nx} ${ny}" stroke-dasharray="3 6" opacity="0.3"/>`;
+    }
+  });
+
+  DOM.connections.innerHTML = paths;
+}
+
+/* ============================================================
+   PARTICLES
+   ============================================================ */
+function animateQueryToNode(clientEl, socketIdx, isRead) {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const clientRect = clientEl.getBoundingClientRect();
+  const node = DOM.computeLayer.querySelector(`[data-socket-id="${socketIdx}"]`);
+  if (!node) return;
+  const nodeRect = node.getBoundingClientRect();
+
+  const p = document.createElement('div');
+  p.className = `particle ${isRead ? 'read' : 'write'}`;
+  const startX = clientRect.left - stageRect.left + clientRect.width / 2 - 5;
+  const startY = clientRect.top - stageRect.top + clientRect.height - 5;
+  p.style.left = startX + 'px';
+  p.style.top = startY + 'px';
+  DOM.stage.appendChild(p);
+
+  const tx = nodeRect.left - stageRect.left + nodeRect.width / 2 - 5;
+  const ty = nodeRect.top - stageRect.top - 5;
+
+  const dur = 300 + Math.random() * 200;
+  const t0 = performance.now();
+
+  function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    p.style.transform = `translate(${(tx - startX) * e}px, ${(ty - startY) * e}px)`;
+    p.style.opacity = String(1 - t * 0.3);
+    if (t < 1) requestAnimationFrame(frame);
+    else {
+      p.remove();
+      node.classList.remove('busy');
+      void node.offsetWidth;
+      node.classList.add('busy');
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+function animateBusTraffic(fromSocketIdx, kind) {
+  // kind: 'mem' | 'lock' | 'write'
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const node = DOM.computeLayer.querySelector(`[data-socket-id="${fromSocketIdx}"]`);
+  const bus = DOM.sharedBus;
+  if (!node) return;
+  const nr = node.getBoundingClientRect();
+  const br = bus.getBoundingClientRect();
+
+  const p = document.createElement('div');
+  p.className = `particle ${kind}`;
+  const startX = nr.left - stageRect.left + nr.width / 2 - 5;
+  const startY = nr.top - stageRect.top + nr.height - 5;
+  p.style.left = startX + 'px';
+  p.style.top = startY + 'px';
+  DOM.stage.appendChild(p);
+
+  const tx = nr.left - stageRect.left + nr.width / 2 - 5;
+  const ty = br.top - stageRect.top - 5;
+
+  const dur = 220;
+  const t0 = performance.now();
+  function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    p.style.transform = `translate(0, ${(ty - startY) * t}px)`;
+    p.style.opacity = String(1 - t * 0.5);
+    if (t < 1) requestAnimationFrame(frame);
+    else p.remove();
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ============================================================
+   SIMULATION CORE
+   ============================================================ */
+function dispatchQuery() {
+  const isRead = Math.random() < STATE.readRatio;
+  const clientEls = DOM.clientsRow.querySelectorAll('.client');
+  const client = clientEls[Math.floor(Math.random() * clientEls.length)];
+
+  client.classList.add('active');
+  setTimeout(() => client.classList.remove('active'), 200);
+
+  // Pick a socket — round robin or random
+  const socketIdx = Math.floor(Math.random() * STATE.sockets);
+  animateQueryToNode(client, socketIdx, isRead);
+
+  // === THE PHYSICS OF SHARED-EVERYTHING ===
+  //
+  // Each socket's work is limited by:
+  //   1. Its own CPU capacity (per-socket load)
+  //   2. Access to shared bus for memory/disk
+  //
+  // The bus is the shared resource — every socket's memory access
+  // competes for it. This is the fundamental scaling limit.
+
+  // Local CPU cost
+  const cpuCost = isRead ? 0.006 : 0.014;
+  STATE.cpuLoads[socketIdx] = clamp(STATE.cpuLoads[socketIdx] + cpuCost, 0, 1);
+
+  // Every query touches the bus at least once (memory access)
+  const busCost = isRead ? 0.004 : 0.008;
+  STATE.busLoad = clamp(STATE.busLoad + busCost, 0, 1);
+
+  // Cache coherence: reads cause broadcasts to invalidate other cores' caches
+  // More sockets = more coherence traffic = more bus pressure
+  STATE.memContention = clamp(
+    STATE.memContention + (STATE.sockets * 0.0015) + (isRead ? 0 : 0.005),
+    0, 1
+  );
+
+  // Random memory fetch particle
+  if (Math.random() < 0.3) animateBusTraffic(socketIdx, 'mem');
+
+  // Writes cause lock acquisition on shared memory — the killer
+  if (!isRead) {
+    STATE.diskContention = clamp(STATE.diskContention + 0.02, 0, 1);
+    if (Math.random() < 0.5) animateBusTraffic(socketIdx, 'lock');
+  }
+
+  STATE.totalQueries++;
+
+  // Latency model:
+  // Base cost + own socket load penalty + bus saturation penalty + coherence penalty
+  const ownLoad = STATE.cpuLoads[socketIdx];
+  const busPenalty = Math.pow(STATE.busLoad, 2) * 500;
+  const coherencePenalty = Math.pow(STATE.memContention, 2) * 300;
+  const ownPenalty = Math.pow(ownLoad, 3) * 100;
+  const latency = 3 + ownPenalty + busPenalty + coherencePenalty + rand(-1, 1);
+
+  STATE.latencySamples.push(latency);
+  if (STATE.latencySamples.length > 300) STATE.latencySamples.shift();
+
+  // Log occasionally
+  if (Math.random() < 0.25) {
+    const tag = isRead ? 'R' : 'W';
+    const lvl = STATE.busLoad > 0.85 ? 'err' : STATE.busLoad > 0.6 ? 'miss' : 'hit';
+    logEvent(`[${tag}] sock=${socketIdx + 1} → ${latency.toFixed(0)}ms`, lvl);
+  }
+}
+
+function tick() {
+  if (!STATE.running) return;
+  const batch = Math.max(1, Math.round(STATE.qps / 10));
+  for (let i = 0; i < batch; i++) dispatchQuery();
+}
+
+/* ============================================================
+   DECAY — everything cools, memory contention is sticky
+   ============================================================ */
+function decayTick() {
+  STATE.busLoad = Math.max(0, STATE.busLoad - 0.025);
+  STATE.memContention = Math.max(0, STATE.memContention - 0.008);
+  STATE.diskContention = Math.max(0, STATE.diskContention - 0.02);
+  for (let i = 0; i < STATE.cpuLoads.length; i++) {
+    STATE.cpuLoads[i] = Math.max(0, STATE.cpuLoads[i] - 0.03);
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function render() {
+  // Per-socket visuals
+  DOM.computeLayer.querySelectorAll('.compute-node').forEach((node, i) => {
+    const load = STATE.cpuLoads[i] || 0;
+    const isHot = load > 0.85 || STATE.busLoad > 0.9;
+    node.classList.toggle('hot', isHot);
+
+    node.querySelectorAll('.core-mini').forEach(c => {
+      const jitter = rand(-0.12, 0.12);
+      c.style.setProperty('--load', clamp(load + jitter, 0, 1).toFixed(2));
+    });
+
+    const cpuVal = node.querySelector('.cpu-val');
+    const cpuPct = Math.round(load * 100);
+    cpuVal.textContent = cpuPct + '%';
+    cpuVal.className = 'val ' + (cpuPct > 85 ? 'bad' : cpuPct > 60 ? 'warn' : '');
+
+    // Cache miss rate — driven by coherence traffic
+    const cacheMiss = Math.min(100, Math.round(STATE.memContention * 100 + rand(0, 8)));
+    const cacheVal = node.querySelector('.cache-val');
+    cacheVal.textContent = cacheMiss + '%';
+    cacheVal.className = 'val ' + (cacheMiss > 70 ? 'bad' : cacheMiss > 40 ? 'warn' : '');
+
+    const qpsVal = node.querySelector('.qps-val');
+    qpsVal.textContent = STATE.running ? Math.round(STATE.qps / STATE.sockets) : 0;
+  });
+
+  // Shared bus
+  const busPct = Math.round(STATE.busLoad * 100);
+  DOM.busSat.textContent = `BUS: ${busPct}%`;
+  DOM.busSat.className = 'bus-saturation ' + (busPct > 85 ? 'bad' : busPct > 60 ? 'warn' : '');
+  DOM.sharedBus.classList.toggle('loaded', STATE.busLoad > 0.6);
+
+  // Memory contention
+  const memPct = Math.round(STATE.memContention * 100);
+  DOM.memFill.style.width = memPct + '%';
+  DOM.memFill.classList.toggle('warn', memPct > 60);
+  DOM.memCont.textContent = memPct + '%';
+  DOM.memCont.style.color = memPct > 60 ? '#f59e0b' : '#a78bfa';
+  DOM.memBlock.classList.toggle('contended', memPct > 60);
+
+  // Disk
+  const diskPct = Math.round(STATE.diskContention * 100);
+  DOM.diskFill.style.width = diskPct + '%';
+  DOM.diskFill.classList.toggle('warn', diskPct > 60);
+  DOM.diskIops.textContent = Math.round(STATE.diskContention * 400);
+  DOM.diskBlock.classList.toggle('contended', diskPct > 60);
+
+  // Contention overlay
+  DOM.contentionOverlay.classList.toggle('show', STATE.busLoad > 0.7 || STATE.memContention > 0.7);
+
+  // Telemetry
+  DOM.mQps.textContent = STATE.running ? STATE.qps : 0;
+
+  DOM.mBus.textContent = busPct + '%';
+  DOM.mBus.className = 'metric-value' + (busPct > 85 ? ' bad' : busPct > 60 ? ' warn' : '');
+
+  const coh = Math.round(STATE.memContention * 800);
+  DOM.mCoherence.textContent = coh + ' ns';
+  DOM.mCoherence.className = 'metric-value' + (coh > 500 ? ' bad' : coh > 250 ? ' warn' : '');
+
+  const sorted = [...STATE.latencySamples].sort((a, b) => a - b);
+  const p99 = sorted.length ? sorted[Math.floor(sorted.length * 0.99)] : 0;
+  DOM.mLatency.textContent = p99.toFixed(0) + ' ms';
+  DOM.mLatency.className = 'metric-value' + (p99 > 400 ? ' bad' : p99 > 150 ? ' warn' : '');
+
+  // Scaling efficiency — how much of linear speedup are we actually getting?
+  const linear = STATE.sockets;
+  // Actual speedup is capped by how saturated the bus is
+  const actual = linear * (1 - Math.pow(STATE.busLoad, 1.5));
+  const eff = Math.round((actual / linear) * 100);
+  DOM.eSockets.textContent = STATE.sockets;
+  DOM.eLinear.textContent = linear.toFixed(2) + '×';
+  DOM.eActual.textContent = Math.max(0.1, actual).toFixed(2) + '×';
+  DOM.eEff.textContent = eff + '%';
+  DOM.eEff.style.color = eff > 70 ? '#10b981' : eff > 40 ? '#f59e0b' : '#ef4444';
+}
+
+/* ============================================================
+   CONTROLS
+   ============================================================ */
+function startTraffic() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+  STATE.tickTimer = setInterval(tick, 100);
+  logEvent('▶ Traffic started', 'hit');
+}
+
+function stopTraffic() {
+  STATE.running = false;
+  DOM.btnToggle.textContent = '▶ Start Traffic';
+  DOM.btnToggle.classList.add('primary');
+  DOM.btnToggle.classList.remove('danger');
+  clearInterval(STATE.tickTimer);
+  STATE.tickTimer = null;
+  logEvent('⏸ Traffic stopped', 'miss');
+}
+
+function burst() {
+  logEvent('⚡ Burst: 60 queries', 'miss');
+  for (let i = 0; i < 60; i++) setTimeout(dispatchQuery, i * 15);
+  showToast('⚡ 60-query burst dispatched');
+}
+
+function forceContention() {
+  STATE.busLoad = 0.95;
+  STATE.memContention = 0.9;
+  STATE.diskContention = 0.85;
+  showToast('🔥 Contention forced — watch scaling efficiency collapse');
+  logEvent('🔥 Bus contention injected', 'err');
+  if (!STATE.running) startTraffic();
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.btnToggle.addEventListener('click', () => STATE.running ? stopTraffic() : startTraffic());
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnContend.addEventListener('click', forceContention);
+
+DOM.qpsRange.addEventListener('input', e => {
+  STATE.qps = parseInt(e.target.value);
+  DOM.qpsVal.textContent = STATE.qps;
+});
+DOM.readRange.addEventListener('input', e => {
+  STATE.readRatio = parseInt(e.target.value) / 100;
+  DOM.readVal.textContent = e.target.value + '%';
+});
+DOM.socketsRange.addEventListener('input', e => {
+  STATE.sockets = parseInt(e.target.value);
+  DOM.socketsVal.textContent = STATE.sockets;
+  buildComputeNodes();
+});
+
+window.addEventListener('resize', drawConnections);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+buildComputeNodes();
+drawConnections();
+setInterval(() => { decayTick(); render(); }, 100);
+setTimeout(() => showToast('👋 Start traffic, then add sockets — watch efficiency drop', 3500), 400);
+</script>
+</body>
+</html>

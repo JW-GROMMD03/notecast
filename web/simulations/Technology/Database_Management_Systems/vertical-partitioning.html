@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vertical Partitioning — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #22d3ee, #0ea5e9, #6366f1);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(34,211,238,0.15);
+    color: #7dd3fc;
+    border-color: #22d3ee;
+  }
+  .teaching-toggle:hover { background: rgba(34,211,238,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 280px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #7dd3fc;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #22d3ee; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #22d3ee; color: #052e3a; border-color: #22d3ee; }
+  .btn.primary:hover { background: #06b6d4; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.purple { background: #6d28d9; color: #fff; border-color: #6d28d9; }
+  .btn.purple:hover { background: #5b21b6; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #7dd3fc; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #22d3ee; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(34,211,238,0.06) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* MONOLITH TABLE */
+  .monolith-wrap {
+    position: absolute;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    transition: all 0.6s cubic-bezier(.68,-0.55,.27,1.55);
+  }
+  .monolith-wrap.hidden {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-30px) scale(0.85);
+    pointer-events: none;
+  }
+  .monolith {
+    background: linear-gradient(160deg, #131a2e 0%, #0a0e19 100%);
+    border: 2px solid #22d3ee;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.7), 0 0 30px rgba(34,211,238,0.4);
+  }
+  .monolith-title {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #7dd3fc;
+    font-family: monospace;
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  .mono-table {
+    display: grid;
+    grid-template-columns: 60px 100px 100px 100px 120px 100px;
+    gap: 1px;
+    font-family: monospace;
+    font-size: 0.6rem;
+  }
+  .mono-cell {
+    padding: 5px 6px;
+    background: #070a14;
+    border: 1px solid #1e293b;
+    color: #cbd5e1;
+    text-align: center;
+    transition: all 0.3s;
+  }
+  .mono-cell.header {
+    background: #1a2035;
+    color: #7dd3fc;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+  }
+  .mono-cell.highlight-cold {
+    background: rgba(34,211,238,0.15);
+    color: #7dd3fc;
+    border-color: #22d3ee;
+    box-shadow: inset 0 0 12px rgba(34,211,238,0.3);
+  }
+  .mono-cell.highlight-hot {
+    background: rgba(245,158,11,0.15);
+    color: #fbbf24;
+    border-color: #f59e0b;
+    box-shadow: inset 0 0 12px rgba(245,158,11,0.3);
+  }
+
+  /* SPLIT ARROW */
+  .split-arrow {
+    position: absolute;
+    top: 235px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 1.5rem;
+    color: #22d3ee;
+    z-index: 4;
+    transition: all 0.4s;
+    text-shadow: 0 0 20px rgba(34,211,238,0.9);
+    opacity: 0;
+  }
+  .split-arrow.show {
+    opacity: 1;
+    animation: arrowBounce 1.2s ease-in-out infinite;
+  }
+  @keyframes arrowBounce {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50%      { transform: translateX(-50%) translateY(8px); }
+  }
+
+  /* PARTITIONS LAYER */
+  .partitions-wrap {
+    position: absolute;
+    top: 280px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 8px 20px;
+    z-index: 5;
+  }
+
+  .partition {
+    width: 200px;
+    background: linear-gradient(160deg, #0f1e2e 0%, #070a14 100%);
+    border: 2px solid #22d3ee;
+    border-radius: 12px;
+    padding: 10px;
+    transition: all 0.35s cubic-bezier(.4,0,.2,1);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.5), 0 0 20px rgba(34,211,238,0.25);
+    position: relative;
+  }
+  .partition.hot {
+    border-color: #f59e0b;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.5), 0 0 35px rgba(245,158,11,0.6);
+  }
+  .partition.busy {
+    animation: partPulse 0.3s ease;
+  }
+  @keyframes partPulse {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(34,211,238,0.7); }
+  }
+  .partition.new {
+    animation: partSpawn 0.55s cubic-bezier(.68,-0.55,.27,1.55);
+  }
+  @keyframes partSpawn {
+    0%   { transform: scale(0) translateY(30px); opacity: 0; }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
+  }
+
+  .part-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .part-name {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    color: #7dd3fc;
+    font-family: monospace;
+  }
+  .part-badge {
+    font-size: 0.5rem;
+    padding: 2px 6px;
+    border-radius: 8px;
+    background: rgba(34,211,238,0.15);
+    color: #7dd3fc;
+    font-family: monospace;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+  }
+  .partition.hot .part-badge {
+    background: rgba(245,158,11,0.15);
+    color: #fbbf24;
+  }
+
+  .part-cols {
+    background: #070a14;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 5px;
+    font-family: monospace;
+    font-size: 0.55rem;
+    color: #94a3b8;
+    margin-bottom: 6px;
+    min-height: 48px;
+    line-height: 1.5;
+  }
+  .part-col-item {
+    display: inline-block;
+    padding: 1px 5px;
+    background: rgba(34,211,238,0.1);
+    border: 1px solid rgba(34,211,238,0.3);
+    border-radius: 3px;
+    color: #7dd3fc;
+    margin: 1px;
+    font-size: 0.52rem;
+  }
+
+  .part-metric {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.58rem;
+    color: #64748b;
+    font-family: monospace;
+    margin-bottom: 2px;
+  }
+  .part-metric .val { color: #7dd3fc; font-weight: 700; }
+  .part-metric .val.warn { color: #f59e0b; }
+  .part-metric .val.bad  { color: #ef4444; }
+
+  .part-bar {
+    height: 4px;
+    background: #0a0e19;
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 4px 0;
+    border: 1px solid #1e293b;
+  }
+  .part-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #10b981, #22d3ee);
+    transition: width 0.4s, background 0.4s;
+  }
+  .partition.hot .part-bar-fill {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+  }
+
+  /* Particle */
+  .particle {
+    position: absolute;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 6;
+  }
+  .particle.hot  { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+  .particle.cold { background: #22d3ee; box-shadow: 0 0 10px #22d3ee; }
+  .particle.join { background: #8b5cf6; box-shadow: 0 0 10px #8b5cf6; }
+  .particle.scan { background: #10b981; box-shadow: 0 0 10px #10b981; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(34,211,238,0.06);
+    border: 1px solid rgba(34,211,238,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.58rem;
+    color: #7dd3fc;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #22d3ee;
+    background: rgba(34,211,238,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #22d3ee; background: rgba(34,211,238,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(34,211,238,0.15); color: #7dd3fc; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Column access heatmap */
+  .heatmap {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 0.6rem;
+  }
+  .heatmap-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .heatmap-row .lbl { color: #7dd3fc; font-weight: 700; width: 82px; font-size: 0.55rem; }
+  .heatmap-row .bar {
+    flex: 1;
+    height: 6px;
+    background: #0a0e19;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid #1e293b;
+  }
+  .heatmap-row .fill {
+    height: 100%;
+    background: linear-gradient(90deg, #22d3ee, #6366f1);
+    transition: width 0.4s;
+  }
+  .heatmap-row .pct { color: #94a3b8; width: 38px; text-align: right; font-size: 0.55rem; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #22d3ee;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(34,211,238,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>VERTICAL PARTITIONING</h1>
+    <span class="sub">SPLIT COLUMNS · HOT/COLD · COLUMN STORES</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Traffic Control</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 100 Queries</button>
+      <button class="btn warn" id="btnReport">📊 Run Analytics Query</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Profile</h3>
+      <div class="slider-row"><span>Queries / sec</span><span class="value" id="qpsVal">60</span></div>
+      <input type="range" id="qpsRange" min="1" max="300" value="60">
+      <div class="slider-row"><span>OLTP ratio</span><span class="value" id="oltpVal">85%</span></div>
+      <input type="range" id="oltpRange" min="0" max="100" value="85">
+      <div style="font-size:0.6rem; color:#64748b; margin-top:-4px; line-height:1.4;">
+        OLTP = row lookups (hot path) · OLAP = column scans (cold path)
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Partition Schema</h3>
+      <div style="font-size:0.66rem; color:#94a3b8; line-height:1.6;">
+        <label style="display:flex; align-items:center; gap:6px; margin-bottom:4px; cursor:pointer;">
+          <input type="checkbox" id="chkHot" checked style="accent-color:#22d3ee;">
+          Hot partition (id, name, email, status)
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; margin-bottom:4px; cursor:pointer;">
+          <input type="checkbox" id="chkProfile" checked style="accent-color:#22d3ee;">
+          Profile partition (bio, avatar_url)
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; margin-bottom:4px; cursor:pointer;">
+          <input type="checkbox" id="chkAnalytics" checked style="accent-color:#22d3ee;">
+          Analytics partition (created_at, last_login)
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="chkAudit" checked style="accent-color:#22d3ee;">
+          Audit partition (updated_at, version)
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Operations</h3>
+      <button class="btn purple" id="btnFullTable">📋 Show FULL TABLE</button>
+      <button class="btn purple" id="btnSplitAll">✂ Split into Partitions</button>
+      <button class="btn danger" id="btnDrop">💥 Drop Cold Partition</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>Hot column access</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#22d3ee;"></div>Cold column access</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6;"></div>JOIN to join partitions</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>Full column scan</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">SAME ROWS · DIFFERENT COLUMN GROUPS · JOINED BY PRIMARY KEY</div>
+
+      <!-- Monolith view (before split) -->
+      <div class="monolith-wrap" id="monolithWrap">
+        <div class="monolith">
+          <div class="monolith-title">📋 USERS TABLE (MONOLITH)</div>
+          <div class="mono-table" id="monoTable"></div>
+        </div>
+      </div>
+
+      <!-- Split arrow -->
+      <div class="split-arrow" id="splitArrow">▼ ▼ ▼</div>
+
+      <!-- Partitions view -->
+      <div class="partitions-wrap" id="partitionsWrap"></div>
+
+      <svg class="connections" id="connections" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:2;"></svg>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Partitions</div>
+        <div class="metric-value" id="mPartitions">4</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">QPS</div>
+        <div class="metric-value" id="mQps">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Row Reads</div>
+        <div class="metric-value" id="mRowReads">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Col Scans</div>
+        <div class="metric-value" id="mColScans">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">JOIN Cost</div>
+        <div class="metric-value" id="mJoin">0 ms</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">I/O Saved</div>
+        <div class="metric-value" id="mIoSaved">0%</div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:6px;">🔥 Column Access Heatmap</h3>
+      <div class="heatmap" id="heatmap"></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  running: false,
+  qps: 60,
+  oltpRatio: 0.85,
+  totalQueries: 0,
+  rowReads: 0,
+  colScans: 0,
+  // Columns with partition assignment
+  columns: [
+    { name: 'id',           partition: 'hot',       hot: true,  cold: false, bytes: 8    },
+    { name: 'name',         partition: 'hot',       hot: true,  cold: false, bytes: 32   },
+    { name: 'email',        partition: 'hot',       hot: true,  cold: false, bytes: 64   },
+    { name: 'status',       partition: 'hot',       hot: true,  cold: false, bytes: 4    },
+    { name: 'bio',          partition: 'profile',   hot: false, cold: true,  bytes: 512  },
+    { name: 'avatar_url',   partition: 'profile',   hot: false, cold: true,  bytes: 256  },
+    { name: 'created_at',   partition: 'analytics', hot: false, cold: true,  bytes: 8    },
+    { name: 'last_login',   partition: 'analytics', hot: false, cold: true,  bytes: 8    },
+    { name: 'updated_at',   partition: 'audit',     hot: false, cold: true,  bytes: 8    },
+    { name: 'version',      partition: 'audit',     hot: false, cold: true,  bytes: 4    }
+  ],
+  partitions: [],  // { id, name, columns[], hot, load, ops, dropped }
+  splitMode: 'split', // 'full' | 'split'
+  // Column hit counter for heatmap
+  columnHits: {},
+  teaching: true,
+  voiceEnabled: false,
+  lastIoSaved: 0
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  monolithWrap: document.getElementById('monolithWrap'),
+  monoTable: document.getElementById('monoTable'),
+  splitArrow: document.getElementById('splitArrow'),
+  partitionsWrap: document.getElementById('partitionsWrap'),
+  connections: document.getElementById('connections'),
+  heatmap: document.getElementById('heatmap'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnReport: document.getElementById('btnReport'),
+  btnFullTable: document.getElementById('btnFullTable'),
+  btnSplitAll: document.getElementById('btnSplitAll'),
+  btnDrop: document.getElementById('btnDrop'),
+  qpsRange: document.getElementById('qpsRange'),
+  qpsVal: document.getElementById('qpsVal'),
+  oltpRange: document.getElementById('oltpRange'),
+  oltpVal: document.getElementById('oltpVal'),
+  chkHot: document.getElementById('chkHot'),
+  chkProfile: document.getElementById('chkProfile'),
+  chkAnalytics: document.getElementById('chkAnalytics'),
+  chkAudit: document.getElementById('chkAudit'),
+  mPartitions: document.getElementById('mPartitions'),
+  mQps: document.getElementById('mQps'),
+  mRowReads: document.getElementById('mRowReads'),
+  mColScans: document.getElementById('mColScans'),
+  mJoin: document.getElementById('mJoin'),
+  mIoSaved: document.getElementById('mIoSaved')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, b));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining vertical partitioning.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING FEED
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   BUILD MONOLITH VIEW
+   ============================================================ */
+function buildMonolith() {
+  const header = ['id', 'name', 'email', 'status', 'bio', 'avatar_url'];
+  let html = '';
+  header.forEach(h => {
+    const col = STATE.columns.find(c => c.name === h);
+    const hot = col?.hot;
+    html += `<div class="mono-cell header ${hot ? 'highlight-hot' : 'highlight-cold'}">${h}</div>`;
+  });
+  // 4 sample rows
+  const rows = [
+    [1, 'Alice', 'a@x.io', 'A', 'Loves DBs', '/a.png'],
+    [2, 'Bob',   'b@x.io', 'A', 'Runner',    '/b.png'],
+    [3, 'Carol', 'c@x.io', 'I', 'Designer',  '/c.png'],
+    [4, 'Dave',  'd@x.io', 'A', 'Writer',    '/d.png']
+  ];
+  rows.forEach(r => {
+    r.forEach((v, i) => {
+      const col = STATE.columns.find(c => c.name === header[i]);
+      const hot = col?.hot;
+      html += `<div class="mono-cell ${hot ? 'highlight-hot' : 'highlight-cold'}">${v}</div>`;
+    });
+  });
+  DOM.monoTable.innerHTML = html;
+}
+
+/* ============================================================
+   BUILD PARTITIONS
+   ============================================================ */
+const PARTITION_DEFS = [
+  { id: 'hot',       name: 'HOT',        desc: 'frequently accessed', enabled: true  },
+  { id: 'profile',   name: 'PROFILE',    desc: 'large text/urls',     enabled: true  },
+  { id: 'analytics', name: 'ANALYTICS',  desc: 'timestamps',          enabled: true  },
+  { id: 'audit',     name: 'AUDIT',      desc: 'versioning',          enabled: true  }
+];
+
+function buildPartitions() {
+  STATE.partitions = PARTITION_DEFS.map(def => {
+    const cols = STATE.columns.filter(c => c.partition === def.id);
+    const enabled = document.getElementById(
+      def.id === 'hot' ? 'chkHot' :
+      def.id === 'profile' ? 'chkProfile' :
+      def.id === 'analytics' ? 'chkAnalytics' : 'chkAudit'
+    ).checked;
+    return {
+      id: def.id,
+      name: `PART-${def.name}`,
+      desc: def.desc,
+      columns: cols,
+      hot: def.id === 'hot',
+      load: 0,
+      ops: 0,
+      enabled,
+      dropped: false
+    };
+  });
+  renderPartitions();
+  renderHeatmap();
+  updateTelemetry();
+}
+
+function renderPartitions() {
+  DOM.partitionsWrap.innerHTML = '';
+  for (const p of STATE.partitions) {
+    if (!p.enabled || p.dropped) continue;
+    DOM.partitionsWrap.appendChild(buildPartitionEl(p));
+  }
+}
+
+function buildPartitionEl(p) {
+  const el = document.createElement('div');
+  el.className = 'partition new';
+  if (p.hot) el.classList.add('hot');
+  el.dataset.partitionId = p.id;
+
+  const colsHTML = p.columns.map(c => `<span class="part-col-item">${c.name}</span>`).join('');
+
+  el.innerHTML = `
+    <div class="part-header">
+      <div class="part-name">${p.name}</div>
+      <div class="part-badge">${p.columns.length} COLS</div>
+    </div>
+    <div style="font-size:0.55rem; color:#64748b; font-family:monospace; margin-bottom:4px;">
+      ${p.desc} · JOINED BY <span style="color:#a855f7; font-weight:700;">id</span>
+    </div>
+    <div class="part-cols">${colsHTML}</div>
+    <div class="part-metric">
+      <span>LOAD</span>
+      <span class="val load-val">0%</span>
+    </div>
+    <div class="part-bar"><div class="part-bar-fill"></div></div>
+    <div class="part-metric">
+      <span>OPS</span>
+      <span class="val ops-val">0</span>
+    </div>
+  `;
+  return el;
+}
+
+function renderPartitionVisuals() {
+  for (const p of STATE.partitions) {
+    const el = DOM.partitionsWrap.querySelector(`[data-partition-id="${p.id}"]`);
+    if (!el) continue;
+    const loadVal = el.querySelector('.load-val');
+    const opsVal = el.querySelector('.ops-val');
+    const fill = el.querySelector('.part-bar-fill');
+    loadVal.textContent = Math.round(p.load * 100) + '%';
+    loadVal.className = 'val load-val ' + (p.load > 0.85 ? 'bad' : p.load > 0.6 ? 'warn' : '');
+    opsVal.textContent = p.ops;
+    fill.style.width = Math.round(p.load * 100) + '%';
+  }
+}
+
+/* ============================================================
+   HEATMAP
+   ============================================================ */
+function renderHeatmap() {
+  const totalHits = Object.values(STATE.columnHits).reduce((a, b) => a + b, 0) || 1;
+  let html = '';
+  for (const c of STATE.columns) {
+    const hits = STATE.columnHits[c.name] || 0;
+    const pct = totalHits > 1 ? (hits / totalHits) * 100 : 0;
+    const color = c.hot ? 'linear-gradient(90deg,#f59e0b,#ef4444)' : 'linear-gradient(90deg,#22d3ee,#6366f1)';
+    html += `
+      <div class="heatmap-row">
+        <span class="lbl">${c.name}</span>
+        <div class="bar"><div class="fill" style="width:${pct}%; background:${color};"></div></div>
+        <span class="pct">${pct.toFixed(0)}%</span>
+      </div>`;
+  }
+  DOM.heatmap.innerHTML = html;
+}
+
+/* ============================================================
+   QUERY DISPATCH
+   ============================================================ */
+function dispatchQuery(isAnalytics = false) {
+  // Decide: OLTP (row lookup on hot partition) or OLAP (column scan)
+  const isOLTP = isAnalytics ? false : (Math.random() < STATE.oltpRatio);
+
+  if (isOLTP) {
+    // Row lookup: touches hot columns + JOINs to get optional columns
+    const hotPartition = STATE.partitions.find(p => p.id === 'hot' && p.enabled && !p.dropped);
+    if (!hotPartition) return;
+    const hotCols = ['id', 'name', 'email', 'status'];
+    hotCols.forEach(cn => {
+      STATE.columnHits[cn] = (STATE.columnHits[cn] || 0) + 1;
+    });
+    hotPartition.load = clamp(hotPartition.load + 0.05, 0, 1);
+    hotPartition.ops++;
+    STATE.rowReads++;
+    STATE.totalQueries++;
+
+    pulsePartition(hotPartition.id);
+    animateColumnAccess(hotPartition.id, 'hot');
+  } else {
+    // Analytics: scan cold columns on analytics/profile partitions
+    const analyticsPartition = STATE.partitions.find(p => p.id === 'analytics' && p.enabled && !p.dropped);
+    const profilePartition = STATE.partitions.find(p => p.id === 'profile' && p.enabled && !p.dropped);
+    const targets = [analyticsPartition, profilePartition].filter(Boolean);
+    if (targets.length === 0) return;
+
+    for (const target of targets) {
+      target.load = clamp(target.load + 0.02, 0, 1);
+      target.ops++;
+      pulsePartition(target.id);
+      animateColumnAccess(target.id, 'cold');
+    }
+    STATE.colScans++;
+    STATE.totalQueries++;
+
+    const coldCols = ['bio', 'avatar_url', 'created_at', 'last_login'];
+    coldCols.forEach(cn => {
+      STATE.columnHits[cn] = (STATE.columnHits[cn] || 0) + 1;
+    });
+
+    // If the query needs a column from a different partition AND they're both split, JOIN cost
+    const isSplit = STATE.splitMode === 'split';
+    if (isSplit && targets.length > 1) {
+      // Joins between partitions cost something
+      setTimeout(() => animateJoin(targets[0].id, targets[1].id), 250);
+    }
+  }
+
+  renderPartitionVisuals();
+  renderHeatmap();
+  updateTelemetry();
+}
+
+function pulsePartition(id) {
+  const el = DOM.partitionsWrap.querySelector(`[data-partition-id="${id}"]`);
+  if (!el) return;
+  el.classList.remove('busy');
+  void el.offsetWidth;
+  el.classList.add('busy');
+}
+
+function animateColumnAccess(partitionId, kind) {
+  const el = DOM.partitionsWrap.querySelector(`[data-partition-id="${partitionId}"]`);
+  if (!el) return;
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  const p = document.createElement('div');
+  p.className = `particle ${kind === 'hot' ? 'hot' : 'cold'}`;
+  const tx = r.left - stageRect.left + r.width / 2 - 4;
+  const ty = r.top - stageRect.top + r.height / 2 - 4;
+  const sx = tx;
+  const sy = stageRect.height - 40;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const dur = 350;
+  const t0 = performance.now();
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    p.style.transform = `translate(0, ${(ty - sy) * t}px)`;
+    p.style.opacity = String(1 - t * 0.5);
+    if (t < 1) requestAnimationFrame(frame);
+    else p.remove();
+  })(t0);
+}
+
+function animateJoin(fromId, toId) {
+  const fromEl = DOM.partitionsWrap.querySelector(`[data-partition-id="${fromId}"]`);
+  const toEl = DOM.partitionsWrap.querySelector(`[data-partition-id="${toId}"]`);
+  if (!fromEl || !toEl) return;
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const fr = fromEl.getBoundingClientRect();
+  const tr = toEl.getBoundingClientRect();
+  const sx = fr.left - stageRect.left + fr.width / 2 - 4;
+  const sy = fr.top - stageRect.top + 20;
+  const tx = tr.left - stageRect.left + tr.width / 2 - 4;
+  const ty = tr.top - stageRect.top + 20;
+
+  const p = document.createElement('div');
+  p.className = 'particle join';
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const dur = 400;
+  const t0 = performance.now();
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    p.style.transform = `translate(${(tx - sx) * e}px, ${(ty - sy) * e}px)`;
+    p.style.opacity = String(1 - t * 0.3);
+    if (t < 1) requestAnimationFrame(frame);
+    else p.remove();
+  })(t0);
+}
+
+/* ============================================================
+   TELEMETRY
+   ============================================================ */
+function updateTelemetry() {
+  const active = STATE.partitions.filter(p => p.enabled && !p.dropped).length;
+  DOM.mPartitions.textContent = active;
+  DOM.mQps.textContent = STATE.running ? STATE.qps : 0;
+  DOM.mRowReads.textContent = STATE.rowReads;
+  DOM.mColScans.textContent = STATE.colScans;
+
+  // JOIN cost
+  const joinCost = STATE.splitMode === 'split' && active > 1 ? 3 + active * 2 : 0;
+  DOM.mJoin.textContent = joinCost + ' ms';
+  DOM.mJoin.className = 'metric-value' + (joinCost > 10 ? ' warn' : '');
+
+  // I/O saved = (bytes we DIDN'T have to fetch) / (bytes in full row)
+  const totalBytes = STATE.columns.reduce((a, c) => a + c.bytes, 0);
+  const hotBytes = STATE.columns.filter(c => c.hot).reduce((a, c) => a + c.bytes, 0);
+  const ioPct = STATE.splitMode === 'split' ? Math.round(((totalBytes - hotBytes) / totalBytes) * 100) : 0;
+  DOM.mIoSaved.textContent = ioPct + '%';
+  DOM.mIoSaved.className = 'metric-value' + (ioPct > 60 ? '' : ioPct > 30 ? ' warn' : '');
+}
+
+/* ============================================================
+   SPLIT / MERGE
+   ============================================================ */
+function showFullTable() {
+  STATE.splitMode = 'full';
+  DOM.monolithWrap.classList.remove('hidden');
+  DOM.splitArrow.classList.remove('show');
+  DOM.partitionsWrap.style.opacity = '0.2';
+  DOM.partitionsWrap.style.pointerEvents = 'none';
+
+  teach('MONOLITH',
+    `Showing the FULL TABLE. Every row contains every column — the hot OLTP columns AND the cold analytical columns. ` +
+    `When you SELECT name, email FROM users WHERE id = 42, the database must still load the ENTIRE row from disk, ` +
+    `including the 512-byte bio and the avatar URL you don't need. This is called "reading dead weight". ` +
+    `Vertical partitioning fixes this by putting cold columns in separate tables.`,
+    'warn'
+  );
+  updateTelemetry();
+}
+
+function splitAllPartitions() {
+  STATE.splitMode = 'split';
+  DOM.monolithWrap.classList.add('hidden');
+  DOM.splitArrow.classList.add('show');
+  DOM.partitionsWrap.style.opacity = '1';
+  DOM.partitionsWrap.style.pointerEvents = 'auto';
+  buildPartitions();
+
+  teach('SPLIT',
+    `Table split into ${STATE.partitions.filter(p => p.enabled).length} vertical partitions. Each partition holds a ` +
+    `SUBSET OF COLUMNS, and every row is present in every partition — the partitions are joined by the primary key. ` +
+    `Row lookups now only fetch the hot partition (id, name, email, status), which is dramatically smaller and fits ` +
+    `in cache. Cold columns are only fetched when actually needed.`,
+    'ok'
+  );
+
+  const hotBytes = STATE.columns.filter(c => c.hot).reduce((a, c) => a + c.bytes, 0);
+  const totalBytes = STATE.columns.reduce((a, c) => a + c.bytes, 0);
+  const saved = Math.round(((totalBytes - hotBytes) / totalBytes) * 100);
+
+  setTimeout(() => {
+    teach('WHY IT WORKS',
+      `The hot partition is ${hotBytes} bytes/row vs the full row at ${totalBytes} bytes. That's a ${saved}% reduction ` +
+      `in I/O per row lookup. For a table with 100M rows, this is the difference between fitting in RAM and not. ` +
+      `The cold columns can even be moved to a different storage tier (S3, cold blocks).`,
+      'purple'
+    );
+  }, 1600);
+}
+
+function dropColdPartition() {
+  const cold = STATE.partitions.find(p => !p.hot && p.enabled && !p.dropped);
+  if (!cold) {
+    showToast('⚠ No cold partitions to drop');
+    return;
+  }
+  cold.dropped = true;
+  cold.enabled = false;
+  renderPartitions();
+
+  teach('DROPPED',
+    `Dropped ${cold.name}. In real systems, dropping a column in a wide table is expensive (rewrite the table). ` +
+    `But dropping a whole vertical partition is a simple DROP TABLE — instant, no rewrite. This is a huge operational ` +
+    `win of vertical partitioning. Cold data can be archived to cheaper storage without touching the hot path.`,
+    'ok'
+  );
+  showToast(`💥 ${cold.name} dropped`);
+}
+
+/* ============================================================
+   TRAFFIC
+   ============================================================ */
+function tick() {
+  if (!STATE.running) return;
+  const batch = Math.max(1, Math.round(STATE.qps / 10));
+  for (let i = 0; i < batch; i++) dispatchQuery();
+}
+
+setInterval(() => {
+  for (const p of STATE.partitions) {
+    p.load = Math.max(0, p.load - 0.03);
+  }
+  renderPartitionVisuals();
+  updateTelemetry();
+}, 400);
+
+function startTraffic() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+  STATE.tickTimer = setInterval(tick, 100);
+
+  teach('START',
+    `Traffic started at ${STATE.qps} q/s. ${Math.round(STATE.oltpRatio * 100)}% of queries are OLTP row lookups ` +
+    `(hit the HOT partition only). The rest are analytics scans (hit cold partitions). Watch how the hot partition ` +
+    `stays small but busy, while cold partitions are large but rarely touched.`,
+    'ok'
+  );
+}
+
+function stopTraffic() {
+  STATE.running = false;
+  DOM.btnToggle.textContent = '▶ Start Traffic';
+  DOM.btnToggle.classList.add('primary');
+  DOM.btnToggle.classList.remove('danger');
+  clearInterval(STATE.tickTimer);
+  STATE.tickTimer = null;
+  teach('STOP', 'Traffic stopped.', 'info', false);
+}
+
+function burst() {
+  teach('BURST',
+    `100 mixed queries dispatched. Watch the OLTP path (hot partition) stay fast while OLAP scans on cold partitions ` +
+    `take longer — but they don't slow down the OLTP path at all, because they're on different partitions.`,
+    'info'
+  );
+  for (let i = 0; i < 100; i++) setTimeout(dispatchQuery, i * 8);
+  showToast('⚡ 100 queries dispatched');
+}
+
+function analyticsQuery() {
+  teach('ANALYTICS',
+    `Running an analytics query: SELECT AVG(age), COUNT(*) FROM users GROUP BY status. This scans COLUMNS, not rows. ` +
+    `In a column store (or column-partitioned table), only the needed columns are read — the rest of the row is never touched. ` +
+    `This is 10-100× faster than row-store scans on wide tables.`,
+    'purple'
+  );
+  // Fire 20 analytics queries
+  for (let i = 0; i < 20; i++) {
+    setTimeout(() => dispatchQuery(true), i * 60);
+  }
+  showToast('📊 Analytics scan dispatched');
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnToggle.addEventListener('click', () => STATE.running ? stopTraffic() : startTraffic());
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnReport.addEventListener('click', analyticsQuery);
+DOM.btnFullTable.addEventListener('click', showFullTable);
+DOM.btnSplitAll.addEventListener('click', splitAllPartitions);
+DOM.btnDrop.addEventListener('click', dropColdPartition);
+
+DOM.qpsRange.addEventListener('input', e => {
+  STATE.qps = parseInt(e.target.value);
+  DOM.qpsVal.textContent = STATE.qps;
+});
+DOM.oltpRange.addEventListener('input', e => {
+  STATE.oltpRatio = parseInt(e.target.value) / 100;
+  DOM.oltpVal.textContent = e.target.value + '%';
+});
+
+['chkHot', 'chkProfile', 'chkAnalytics', 'chkAudit'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => {
+    buildPartitions();
+  });
+});
+
+window.addEventListener('resize', () => {});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+buildMonolith();
+buildPartitions();
+setTimeout(() => splitAllPartitions(), 100);
+
+setTimeout(() => {
+  teach('CONCEPT',
+    `Vertical partitioning splits a table by COLUMNS. Every column still has the same number of rows as the original, ` +
+    `but no partition has all the columns. This is the mirror image of horizontal partitioning, which splits by ROWS ` +
+    `but keeps all columns. Both can be combined into "composite partitioning" — splitting by both rows AND columns.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('COLUMN STORES',
+      `Modern column stores (Snowflake, BigQuery, Redshift, ClickHouse) take this idea to its extreme: they store ` +
+      `EVERY column separately, always. This makes analytics 100× faster because a query like "AVG(age)" reads only ` +
+      `one column's file. Row stores (Postgres, MySQL) keep rows together, which is better for point lookups like ` +
+      `SELECT * FROM users WHERE id=42.`,
+      'info'
+    );
+  }, 3800);
+
+  showToast('👋 Try FULL TABLE vs SPLIT to compare', 4000);
+}, 800);
+</script>
+</body>
+</html>

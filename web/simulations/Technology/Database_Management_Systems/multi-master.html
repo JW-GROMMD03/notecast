@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Master Replication — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #ec4899, #f97316);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(236,72,153,0.15);
+    color: #f472b6;
+    border-color: #ec4899;
+  }
+  .teaching-toggle:hover { background: rgba(236,72,153,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 260px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #f472b6;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #ec4899; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #ec4899; color: #fff; border-color: #ec4899; }
+  .btn.primary:hover { background: #db2777; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #f472b6; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #ec4899; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(236,72,153,0.06) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* Clients */
+  .clients-row {
+    position: absolute;
+    top: 46px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 14px;
+    z-index: 5;
+  }
+  .client {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    border: 2px solid #334155;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem;
+    transition: all 0.25s;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .client.write {
+    border-color: #f97316;
+    box-shadow: 0 0 20px rgba(249,115,22,0.7);
+    transform: scale(1.1);
+  }
+  .client.read {
+    border-color: #06b6d4;
+    box-shadow: 0 0 20px rgba(6,182,212,0.7);
+    transform: scale(1.1);
+  }
+
+  /* MASTERS CONTAINER — 3 masters in a triangle */
+  .masters-container {
+    position: absolute;
+    top: 130px;
+    left: 0; right: 0;
+    height: 320px;
+    z-index: 4;
+  }
+
+  .master {
+    position: absolute;
+    width: 220px;
+    background: linear-gradient(160deg, #2a1030 0%, #0a0e19 100%);
+    border: 2px solid #ec4899;
+    border-radius: 12px;
+    padding: 11px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.7), 0 0 25px rgba(236,72,153,0.4);
+    transition: all 0.3s;
+    transform: translate(-50%, 0);
+  }
+  .master.busy {
+    animation: masterPulse 0.3s ease;
+  }
+  @keyframes masterPulse {
+    0%, 100% { box-shadow: 0 20px 50px rgba(0,0,0,0.7), 0 0 25px rgba(236,72,153,0.4); }
+    50%      { box-shadow: 0 20px 50px rgba(0,0,0,0.7), 0 0 70px rgba(236,72,153,1); }
+  }
+  .master.down {
+    border-color: #7f1d1d;
+    opacity: 0.35;
+    filter: grayscale(0.7);
+  }
+  .master.has-conflict {
+    border-color: #ef4444;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.7), 0 0 50px rgba(239,68,68,0.9);
+    animation: conflictFlash 0.4s ease;
+  }
+  @keyframes conflictFlash {
+    0%, 100% { transform: translate(-50%, 0) scale(1); }
+    50% { transform: translate(-50%, 0) scale(1.06); }
+  }
+
+  .master-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .master-name {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    color: #f472b6;
+    font-family: monospace;
+  }
+  .master-crown {
+    font-size: 0.6rem;
+    color: #fbbf24;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+  }
+  .master-status {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  .master.down .master-status {
+    background: #ef4444; box-shadow: 0 0 10px #ef4444; animation: none;
+  }
+  .master-metric-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.6rem;
+    color: #64748b;
+    font-family: monospace;
+    margin-bottom: 2px;
+  }
+  .master-metric-row .val { color: #f472b6; font-weight: 700; }
+  .master-metric-row .val.warn { color: #f59e0b; }
+  .master-metric-row .val.bad { color: #ef4444; }
+
+  .row-table {
+    background: #070a14;
+    border: 1px solid #1e293b;
+    border-radius: 5px;
+    padding: 5px 7px;
+    font-family: monospace;
+    font-size: 0.56rem;
+    color: #94a3b8;
+    margin-top: 5px;
+    max-height: 52px;
+    overflow: hidden;
+    line-height: 1.4;
+  }
+  .row-table .row-item {
+    animation: logSlide 0.3s ease;
+    display: flex;
+    justify-content: space-between;
+  }
+  .row-table .row-item.conflict { color: #f87171; font-weight: 700; }
+  .row-table .row-item.win { color: #10b981; }
+  @keyframes logSlide {
+    from { transform: translateX(-10px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  /* Replication mesh lines */
+  .mesh-line {
+    stroke: #ec4899;
+    stroke-width: 1.2;
+    fill: none;
+    stroke-dasharray: 5 5;
+    opacity: 0.5;
+    animation: dash 1.5s linear infinite;
+  }
+  .mesh-line.broken { stroke: #7f1d1d; opacity: 0.15; animation: none; }
+  @keyframes dash { to { stroke-dashoffset: -20; } }
+
+  /* Particles */
+  .particle {
+    position: absolute;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 5;
+    font-size: 0.6rem;
+    line-height: 8px;
+    text-align: center;
+    color: #fff;
+    font-weight: 800;
+  }
+  .particle.read     { background: #06b6d4; box-shadow: 0 0 10px #06b6d4; }
+  .particle.write    { background: #f97316; box-shadow: 0 0 10px #f97316; }
+  .particle.repl     { background: #ec4899; box-shadow: 0 0 10px #ec4899; }
+  .particle.conflict { background: #ef4444; box-shadow: 0 0 14px #ef4444; width: 12px; height: 12px; line-height: 12px; }
+  .particle.resolved { background: #10b981; box-shadow: 0 0 12px #10b981; }
+
+  /* RIGHT: Teaching panel */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(236,72,153,0.06);
+    border: 1px solid rgba(236,72,153,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.58rem;
+    color: #f472b6;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 380px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #ec4899;
+    background: rgba(236,72,153,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #ec4899; background: rgba(236,72,153,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(236,72,153,0.15); color: #f472b6; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #ec4899;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(236,72,153,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Conflict resolution panel */
+  .conflict-panel {
+    position: absolute;
+    top: 470px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15,23,42,0.95);
+    border: 2px solid #ef4444;
+    border-radius: 12px;
+    padding: 14px 22px;
+    z-index: 10;
+    box-shadow: 0 0 40px rgba(239,68,68,0.6);
+    display: none;
+    min-width: 500px;
+    animation: conflictIn 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+  }
+  .conflict-panel.show { display: block; }
+  @keyframes conflictIn {
+    0% { transform: translateX(-50%) scale(0.7); opacity: 0; }
+    100% { transform: translateX(-50%) scale(1); opacity: 1; }
+  }
+  .conflict-title {
+    font-size: 0.72rem;
+    letter-spacing: 2px;
+    color: #f87171;
+    font-weight: 800;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+  .conflict-row {
+    display: flex;
+    gap: 16px;
+    font-family: monospace;
+    font-size: 0.7rem;
+    color: #cbd5e1;
+    margin-bottom: 6px;
+  }
+  .conflict-row .k { color: #64748b; min-width: 90px; }
+  .conflict-row .v { color: #f87171; font-weight: 700; }
+  .conflict-row .v.win { color: #10b981; }
+  .conflict-verdict {
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: rgba(16,185,129,0.1);
+    border-left: 3px solid #10b981;
+    font-size: 0.7rem;
+    color: #a7f3d0;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>MULTI-MASTER REPLICATION</h1>
+    <span class="sub">MULTI-WRITER · CONFLICT RESOLUTION · CRDTs · QUORUM</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Traffic Control</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 60 Queries</button>
+      <button class="btn warn" id="btnDivergent">⚔ Trigger Divergent Writes</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Profile</h3>
+      <div class="slider-row"><span>Queries / sec</span><span class="value" id="qpsVal">60</span></div>
+      <input type="range" id="qpsRange" min="1" max="300" value="60">
+      <div class="slider-row"><span>Read Ratio</span><span class="value" id="readVal">60%</span></div>
+      <input type="range" id="readRange" min="0" max="100" value="60">
+      <div class="slider-row"><span>Contention</span><span class="value" id="contVal">20%</span></div>
+      <input type="range" id="contRange" min="0" max="90" value="20">
+    </div>
+
+    <div class="panel">
+      <h3>Conflict Strategy</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strategy" value="lww" checked style="accent-color:#ec4899;">
+          Last-Write-Wins (LWW)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strategy" value="version" style="accent-color:#ec4899;">
+          Version Vectors
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strategy" value="crdt" style="accent-color:#ec4899;">
+          CRDT (merge)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strategy" value="quorum" style="accent-color:#ec4899;">
+          Quorum (R+W > N)
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Failure Injection</h3>
+      <button class="btn danger" id="btnKillMaster">💥 Kill a Master</button>
+      <button class="btn warn" id="btnPartition">📡 Network Partition</button>
+      <button class="btn success" id="btnRecover">🔄 Heal Network</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#06b6d4;"></div>Read</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f97316;"></div>Write to master</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ec4899;"></div>Master→master repl</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>Conflict detected</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>Conflict resolved</div>
+    </div>
+  </aside>
+
+  <!-- CENTER STAGE -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">N WRITERS · BIDIRECTIONAL REPLICATION · CONFLICT RESOLUTION</div>
+
+      <div class="clients-row" id="clientsRow">
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+      </div>
+
+      <svg class="connections" id="connections" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:1;"></svg>
+
+      <div class="masters-container" id="mastersContainer"></div>
+
+      <div class="conflict-panel" id="conflictPanel">
+        <div class="conflict-title">⚠ CONFLICT DETECTED</div>
+        <div id="conflictBody"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Masters</div>
+        <div class="metric-value" id="mMasters">3</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">QPS</div>
+        <div class="metric-value" id="mQps">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Write Capacity</div>
+        <div class="metric-value" id="mWriteCap">3×</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Conflicts</div>
+        <div class="metric-value" id="mConflicts">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Resolved</div>
+        <div class="metric-value" id="mResolved">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Repl Lag</div>
+        <div class="metric-value" id="mLag">0 ms</div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:6px;">⚔ Conflict Log</h3>
+      <div id="conflictLog" style="font-family:monospace; font-size:0.62rem; color:#94a3b8; max-height:100px; overflow-y:auto;"></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  running: false,
+  qps: 60,
+  readRatio: 0.6,
+  contention: 0.2,           // probability two masters touch same key
+  strategy: 'lww',           // lww | version | crdt | quorum
+  masters: [],               // { id, name, cpu, up, writes, data: Map(key -> {value, ts, version}) }
+  totalQueries: 0,
+  totalWrites: 0,
+  conflicts: 0,
+  resolved: 0,
+  networkPartition: false,
+  latencySamples: [],
+  tickTimer: null,
+  teaching: true,
+  voiceEnabled: false,
+  keyPool: [1,2,3,4,5,6,7,8,9,10],  // small pool to force contention
+  lastAnnouncedConflicts: 0
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  mastersContainer: document.getElementById('mastersContainer'),
+  connections: document.getElementById('connections'),
+  conflictPanel: document.getElementById('conflictPanel'),
+  conflictBody: document.getElementById('conflictBody'),
+  conflictLog: document.getElementById('conflictLog'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnDivergent: document.getElementById('btnDivergent'),
+  btnKillMaster: document.getElementById('btnKillMaster'),
+  btnPartition: document.getElementById('btnPartition'),
+  btnRecover: document.getElementById('btnRecover'),
+  qpsRange: document.getElementById('qpsRange'),
+  qpsVal: document.getElementById('qpsVal'),
+  readRange: document.getElementById('readRange'),
+  readVal: document.getElementById('readVal'),
+  contRange: document.getElementById('contRange'),
+  contVal: document.getElementById('contVal'),
+  mMasters: document.getElementById('mMasters'),
+  mQps: document.getElementById('mQps'),
+  mWriteCap: document.getElementById('mWriteCap'),
+  mConflicts: document.getElementById('mConflicts'),
+  mResolved: document.getElementById('mResolved'),
+  mLag: document.getElementById('mLag'),
+  clientsRow: document.getElementById('clientsRow')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining multi master replication and conflict resolution.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING FEED
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   INITIALIZE CLUSTER
+   ============================================================ */
+function initializeCluster() {
+  STATE.masters = [];
+  STATE.conflicts = 0;
+  STATE.resolved = 0;
+  STATE.totalWrites = 0;
+  STATE.totalQueries = 0;
+  DOM.conflictLog.innerHTML = '';
+
+  // Create 3 masters positioned in a triangle
+  for (let i = 0; i < 3; i++) {
+    STATE.masters.push({
+      id: i,
+      name: `MASTER-${String.fromCharCode(65 + i)}`,
+      cpu: 0,
+      up: true,
+      writes: 0,
+      data: new Map()   // key -> { value, ts, version }
+    });
+  }
+  renderMasters();
+  drawMesh();
+  updateTelemetry();
+
+  teach('INIT',
+    `Cluster initialized: 3 masters (A, B, C). In multi-master, EVERY master accepts writes. ` +
+    `Each master asynchronously replicates its writes to the other two. This means write throughput scales with the ` +
+    `number of masters — unlike master-slave where the master was the sole bottleneck. But there's a cost: ` +
+    `two masters can write to the same key at the same time. That's a CONFLICT, and we need a strategy to resolve it.`,
+    'ok'
+  );
+
+  setTimeout(() => {
+    teach('TRADE-OFF',
+      `The CAP theorem says: under a network partition you can have Consistency OR Availability, not both. ` +
+      `Multi-master chooses AVAILABILITY (every master keeps accepting writes) at the cost of eventual consistency. ` +
+      `This is how Cassandra, Riak, DynamoDB, CouchDB, and MySQL Group Replication work.`,
+      'purple'
+    );
+  }, 2800);
+}
+
+/* ============================================================
+   RENDER MASTERS
+   ============================================================ */
+function renderMasters() {
+  DOM.mastersContainer.innerHTML = '';
+  const positions = [
+    { left: '22%', top: '10px' },   // A - left
+    { left: '50%', top: '10px' },   // B - center
+    { left: '78%', top: '10px' }    // C - right
+  ];
+  for (let i = 0; i < STATE.masters.length; i++) {
+    const m = STATE.masters[i];
+    const el = buildMasterEl(m);
+    el.style.left = positions[i].left;
+    el.style.top = positions[i].top;
+    DOM.mastersContainer.appendChild(el);
+  }
+}
+
+function buildMasterEl(m) {
+  const el = document.createElement('div');
+  el.className = 'master';
+  el.dataset.masterId = m.id;
+  el.innerHTML = `
+    <div class="master-header">
+      <div class="master-name">${m.name}</div>
+      <div class="master-crown">👑 WRITER</div>
+      <div class="master-status"></div>
+    </div>
+    <div class="master-metric-row"><span>CPU</span><span class="val cpu-val">0%</span></div>
+    <div class="master-metric-row"><span>WRITES</span><span class="val writes-val">0</span></div>
+    <div class="master-metric-row"><span>ROWS</span><span class="val rows-val">0</span></div>
+    <div class="row-table"></div>
+  `;
+  applyMasterVisuals(el, m);
+  return el;
+}
+
+function applyMasterVisuals(el, m) {
+  el.classList.toggle('down', !m.up);
+  const cpuPct = Math.round(m.cpu * 100);
+  const cpuVal = el.querySelector('.cpu-val');
+  cpuVal.textContent = cpuPct + '%';
+  cpuVal.className = 'val ' + (cpuPct > 85 ? 'bad' : cpuPct > 60 ? 'warn' : '');
+
+  el.querySelector('.writes-val').textContent = m.writes;
+  el.querySelector('.rows-val').textContent = m.data.size;
+
+  // Show up to 4 rows
+  const table = el.querySelector('.row-table');
+  const entries = Array.from(m.data.entries()).slice(-4);
+  if (entries.length === 0) {
+    table.innerHTML = '<div style="color:#475569;">(no data yet)</div>';
+  } else {
+    table.innerHTML = entries.map(([k, v]) => {
+      const conf = v.conflict ? 'conflict' : '';
+      return `<div class="row-item ${conf}"><span>key${k}</span><span>${v.value}</span></div>`;
+    }).join('');
+  }
+}
+
+function renderMasterVisuals() {
+  for (const m of STATE.masters) {
+    const el = DOM.mastersContainer.querySelector(`[data-master-id="${m.id}"]`);
+    if (el) applyMasterVisuals(el, m);
+  }
+}
+
+/* ============================================================
+   MESH LINES — bidirectional between all masters
+   ============================================================ */
+function drawMesh() {
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const masterEls = DOM.mastersContainer.querySelectorAll('.master');
+  const centers = Array.from(masterEls).map(el => {
+    const r = el.getBoundingClientRect();
+    return { x: r.left - stageRect.left + r.width / 2, y: r.top - stageRect.top + r.height / 2 };
+  });
+
+  let paths = '';
+  for (let i = 0; i < centers.length; i++) {
+    for (let j = i + 1; j < centers.length; j++) {
+      const broken = STATE.networkPartition || !STATE.masters[i].up || !STATE.masters[j].up;
+      paths += `<path class="mesh-line ${broken ? 'broken' : ''}" d="M ${centers[i].x} ${centers[i].y} L ${centers[j].x} ${centers[j].y}"/>`;
+    }
+  }
+  DOM.connections.innerHTML = paths;
+}
+
+/* ============================================================
+   PARTICLES
+   ============================================================ */
+function animateParticle(fromEl, toEl, kind, label = '') {
+  if (!fromEl || !toEl) return;
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const fr = fromEl.getBoundingClientRect();
+  const tr = toEl.getBoundingClientRect();
+  const sx = fr.left - stageRect.left + fr.width / 2 - 4;
+  const sy = fr.top - stageRect.top + fr.height / 2 - 4;
+  const tx = tr.left - stageRect.left + tr.width / 2 - 4;
+  const ty = tr.top - stageRect.top + tr.height / 2 - 4;
+
+  const p = document.createElement('div');
+  p.className = `particle ${kind}`;
+  p.textContent = label;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const dur = 320;
+  const t0 = performance.now();
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    p.style.transform = `translate(${(tx - sx) * e}px, ${(ty - sy) * e}px)`;
+    p.style.opacity = String(1 - t * 0.3);
+    if (t < 1) requestAnimationFrame(frame);
+    else p.remove();
+  })(t0);
+}
+
+function animateClientToMaster(clientEl, masterEl, isRead) {
+  if (!clientEl || !masterEl) return;
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const cr = clientEl.getBoundingClientRect();
+  const mr = masterEl.getBoundingClientRect();
+  const sx = cr.left - stageRect.left + cr.width / 2 - 4;
+  const sy = cr.top - stageRect.top + cr.height - 4;
+  const tx = mr.left - stageRect.left + mr.width / 2 - 4;
+  const ty = mr.top - stageRect.top - 4;
+
+  const p = document.createElement('div');
+  p.className = `particle ${isRead ? 'read' : 'write'}`;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const dur = 300;
+  const t0 = performance.now();
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    p.style.transform = `translate(${(tx - sx) * e}px, ${(ty - sy) * e}px)`;
+    p.style.opacity = String(1 - t * 0.4);
+    if (t < 1) requestAnimationFrame(frame);
+    else {
+      p.remove();
+      masterEl.classList.remove('busy');
+      void masterEl.offsetWidth;
+      masterEl.classList.add('busy');
+    }
+  })(t0);
+}
+
+/* ============================================================
+   CONFLICT RESOLUTION STRATEGIES
+   ============================================================ */
+function resolveConflict(key, writes) {
+  // writes: [{ masterId, value, ts, version }]
+  // Returns { winner, reason, merged }
+  const strategy = STATE.strategy;
+  const allMasters = STATE.masters.filter(m => m.up);
+
+  switch (strategy) {
+    case 'lww': {
+      // Last Write Wins: highest ts wins
+      const winner = writes.reduce((a, b) => a.ts > b.ts ? a : b);
+      return {
+        winner,
+        reason: `LWW: pick highest timestamp. ${winner.value} (ts=${winner.ts}) beats the others.`,
+        note: 'Deterministic but loses data — the losing writes vanish.'
+      };
+    }
+    case 'version': {
+      // Version vectors: if one dominates, it wins. Otherwise conflict flagged.
+      // Simplified: pick highest version number, note the tie complexity
+      const sorted = [...writes].sort((a, b) => b.version - a.version);
+      const winner = sorted[0];
+      return {
+        winner,
+        reason: `Version vector: v${winner.version} dominates. Winner: ${winner.value}.`,
+        note: 'Detects true concurrent writes — you can then trigger app-level merge.'
+      };
+    }
+    case 'crdt': {
+      // CRDT: merge deterministically. For simplicity, take the max numeric value.
+      const numValues = writes.map(w => parseInt(w.value) || 0);
+      const merged = Math.max(...numValues);
+      return {
+        winner: { value: String(merged), masterId: 'merged', ts: Date.now(), version: 0 },
+        reason: `CRDT merge: take max of concurrent values → ${merged}.`,
+        note: 'CRDTs guarantee convergence. No conflict is truly lost — it\'s mathematically merged.'
+      };
+    }
+    case 'quorum': {
+      // Quorum: majority vote. R+W > N ensures consistency.
+      // With 3 masters, 2-of-3 needed.
+      const tally = {};
+      writes.forEach(w => { tally[w.value] = (tally[w.value] || 0) + 1; });
+      const [topValue, topCount] = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
+      return {
+        winner: writes.find(w => w.value === topValue),
+        reason: `Quorum: ${topCount}/${writes.length} masters agree on ${topValue}.`,
+        note: 'Quorum requires R + W > N. With N=3, W=2, R=2 guarantees at least one reader sees the latest write.'
+      };
+    }
+  }
+}
+
+/* ============================================================
+   DISPATCH QUERY
+   ============================================================ */
+function dispatchQuery() {
+  const onlineMasters = STATE.masters.filter(m => m.up);
+  if (onlineMasters.length === 0) return;
+
+  const isRead = Math.random() < STATE.readRatio;
+  const key = STATE.keyPool[randInt(0, STATE.keyPool.length - 1)];
+  const master = onlineMasters[randInt(0, onlineMasters.length - 1)];
+  const masterEl = DOM.mastersContainer.querySelector(`[data-master-id="${master.id}"]`);
+  const clientEls = DOM.clientsRow.querySelectorAll('.client');
+  const client = clientEls[randInt(0, clientEls.length - 1)];
+
+  client.classList.add(isRead ? 'read' : 'write');
+  setTimeout(() => client.classList.remove(isRead ? 'read' : 'write'), 200);
+
+  animateClientToMaster(client, masterEl, isRead);
+  master.cpu = clamp(master.cpu + (isRead ? 0.006 : 0.012), 0, 1);
+
+  if (isRead) {
+    // Reads just look up local data
+    STATE.totalQueries++;
+    return;
+  }
+
+  // WRITE
+  master.writes++;
+  STATE.totalWrites++;
+
+  const now = Date.now();
+  const write = {
+    masterId: master.id,
+    value: String(randInt(100, 999)),
+    ts: now,
+    version: (master.data.get(key)?.version || 0) + 1
+  };
+
+  // Detect conflict: if this key was written by ANOTHER master recently
+  const others = STATE.masters.filter(m => m.id !== master.id && m.up && m.data.has(key));
+  const conflictingWrite = others.find(m => now - m.data.get(key).ts < 2000 && Math.random() < STATE.contention);
+
+  if (conflictingWrite) {
+    // REAL CONFLICT!
+    master.data.set(key, { ...write, conflict: true });
+    STATE.conflicts++;
+
+    const conflictWrites = [
+      write,
+      { ...conflictingWrite.data.get(key), masterId: conflictingWrite.id }
+    ];
+
+    showConflictPanel(key, conflictWrites);
+    highlightConflict(master.id, conflictingWrite.id);
+    logConflict(key, conflictWrites);
+
+    const resolution = resolveConflict(key, conflictWrites);
+    STATE.resolved++;
+
+    // Apply resolution everywhere
+    setTimeout(() => {
+      for (const m of STATE.masters) {
+        if (m.up) m.data.set(key, { value: resolution.winner.value, ts: now, version: 0 });
+      }
+      renderMasterVisuals();
+    }, 800);
+
+    teach('CONFLICT',
+      `Conflict on key ${key}: ${master.name} wrote "${write.value}" while ${conflictingWrite.name} ` +
+      `wrote "${conflictingWrite.data.get(key).value}" concurrently. Strategy "${STATE.strategy.toUpperCase()}" ` +
+      `resolves it: ${resolution.reason}`,
+      'error'
+    );
+
+    setTimeout(() => {
+      teach('RESOLUTION', resolution.note, 'ok', false);
+    }, 1500);
+  } else {
+    // No conflict: write and replicate
+    master.data.set(key, write);
+    renderMasterVisuals();
+
+    // Replicate to other masters
+    for (const other of STATE.masters) {
+      if (other.id === master.id || !other.up) continue;
+      if (STATE.networkPartition && Math.random() < 0.9) continue;
+      const otherEl = DOM.mastersContainer.querySelector(`[data-master-id="${other.id}"]`);
+      setTimeout(() => {
+        animateParticle(masterEl, otherEl, 'repl');
+        // Apply replicated write if it doesn't conflict locally
+        const existing = other.data.get(key);
+        if (!existing || existing.ts < write.ts) {
+          other.data.set(key, { ...write, version: write.version });
+        }
+      }, rand(50, 250));
+    }
+  }
+
+  STATE.totalQueries++;
+}
+
+/* ============================================================
+   CONFLICT UI
+   ============================================================ */
+function showConflictPanel(key, writes) {
+  DOM.conflictPanel.classList.add('show');
+  DOM.conflictBody.innerHTML = writes.map(w => `
+    <div class="conflict-row">
+      <span class="k">${STATE.masters[w.masterId]?.name || 'MASTER-' + w.masterId}:</span>
+      <span class="v">key${key} = "${w.value}"  (ts=${w.ts % 100000})</span>
+    </div>
+  `).join('') + `
+    <div class="conflict-verdict">
+      <strong>Strategy: ${STATE.strategy.toUpperCase()}</strong> — resolving...
+    </div>
+  `;
+
+  clearTimeout(showConflictPanel._t);
+  showConflictPanel._t = setTimeout(() => {
+    DOM.conflictPanel.classList.remove('show');
+  }, 2400);
+}
+
+function highlightConflict(idA, idB) {
+  [idA, idB].forEach(id => {
+    const el = DOM.mastersContainer.querySelector(`[data-master-id="${id}"]`);
+    if (el) {
+      el.classList.add('has-conflict');
+      setTimeout(() => el.classList.remove('has-conflict'), 600);
+    }
+  });
+}
+
+function logConflict(key, writes) {
+  const entry = document.createElement('div');
+  entry.style.cssText = 'padding:3px 5px; border-bottom:1px solid #0f172a; animation: logSlide 0.3s ease;';
+  entry.innerHTML = `<span style="color:#64748b;">${nowTime()}</span> ` +
+    `<span style="color:#f87171;">⚔</span> ` +
+    `<span style="color:#cbd5e1;">key${key}</span> ` +
+    `<span style="color:#ec4899;">[${writes.map(w => w.value).join(' vs ')}]</span>`;
+  DOM.conflictLog.prepend(entry);
+  while (DOM.conflictLog.children.length > 20) DOM.conflictLog.lastChild.remove();
+}
+
+/* ============================================================
+   TICK
+   ============================================================ */
+function tick() {
+  if (!STATE.running) return;
+  const batch = Math.max(1, Math.round(STATE.qps / 10));
+  for (let i = 0; i < batch; i++) dispatchQuery();
+}
+
+/* ============================================================
+   DECAY
+   ============================================================ */
+setInterval(() => {
+  for (const m of STATE.masters) m.cpu = Math.max(0, m.cpu - 0.03);
+
+  // Detect divergence: if masters' data for a key differs, flag it
+  renderMasterVisuals();
+  updateTelemetry();
+  checkTeachingTriggers();
+}, 400);
+
+/* ============================================================
+   TEACHING TRIGGERS
+   ============================================================ */
+function checkTeachingTriggers() {
+  if (!STATE.running) return;
+  // Conflict count spikes
+  if (STATE.conflicts - STATE.lastAnnouncedConflicts > 5) {
+    teach('CONTENTION',
+      `Conflict rate is high (>5 in the last few seconds). This happens when many clients write the same keys ` +
+      `across different masters. Real systems often raise contention % at peak hours on popular items — like a ` +
+      `flash sale on one product.`,
+      'warn', false
+    );
+    STATE.lastAnnouncedConflicts = STATE.conflicts;
+  }
+}
+
+/* ============================================================
+   TELEMETRY
+   ============================================================ */
+function updateTelemetry() {
+  const online = STATE.masters.filter(m => m.up).length;
+  DOM.mMasters.textContent = online;
+  DOM.mQps.textContent = STATE.running ? STATE.qps : 0;
+  DOM.mWriteCap.textContent = online + '×';
+  DOM.mConflicts.textContent = STATE.conflicts;
+  DOM.mConflicts.className = 'metric-value' + (STATE.conflicts > 30 ? ' bad' : STATE.conflicts > 10 ? ' warn' : '');
+  DOM.mResolved.textContent = STATE.resolved;
+  DOM.mLag.textContent = STATE.networkPartition ? '∞' : randInt(5, 40) + ' ms';
+  DOM.mLag.className = 'metric-value' + (STATE.networkPartition ? ' bad' : '');
+}
+
+/* ============================================================
+   CONTROLS
+   ============================================================ */
+function startTraffic() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+  STATE.tickTimer = setInterval(tick, 100);
+  teach('START',
+    `Traffic started at ${STATE.qps} q/s with ${Math.round(STATE.readRatio * 100)}% reads. ` +
+    `Writes can hit ANY of the ${STATE.masters.filter(m => m.up).length} masters. Watch for conflicts as ` +
+    `the same key gets written simultaneously from two masters. Conflict strategy is ${STATE.strategy.toUpperCase()}.`,
+    'ok'
+  );
+}
+
+function stopTraffic() {
+  STATE.running = false;
+  DOM.btnToggle.textContent = '▶ Start Traffic';
+  DOM.btnToggle.classList.add('primary');
+  DOM.btnToggle.classList.remove('danger');
+  clearInterval(STATE.tickTimer);
+  STATE.tickTimer = null;
+  teach('STOP', 'Traffic stopped.', 'info', false);
+}
+
+function burst() {
+  teach('BURST',
+    `100 queries dispatched rapidly. Bursts are when multi-master conflicts spike — many clients hitting the ` +
+    `same keys at once across different masters. Watch the conflict counter tick up.`,
+    'info'
+  );
+  for (let i = 0; i < 100; i++) setTimeout(dispatchQuery, i * 8);
+  showToast('⚡ 100-query burst dispatched');
+}
+
+function triggerDivergent() {
+  // Force both masters to write the SAME key simultaneously
+  const online = STATE.masters.filter(m => m.up);
+  if (online.length < 2) { showToast('⚠ Need at least 2 masters'); return; }
+  const key = STATE.keyPool[randInt(0, STATE.keyPool.length - 1)];
+  const [mA, mB] = online.sort(() => Math.random() - 0.5).slice(0, 2);
+
+  const mAEl = DOM.mastersContainer.querySelector(`[data-master-id="${mA.id}"]`);
+  const mBEl = DOM.mastersContainer.querySelector(`[data-master-id="${mB.id}"]`);
+
+  // Force both to write same key
+  const now = Date.now();
+  mA.data.set(key, { value: 'AAA', ts: now, version: 1, conflict: true });
+  mB.data.set(key, { value: 'BBB', ts: now - 50, version: 1, conflict: true });
+
+  STATE.conflicts++;
+  showConflictPanel(key, [
+    { masterId: mA.id, value: 'AAA', ts: now, version: 1 },
+    { masterId: mB.id, value: 'BBB', ts: now - 50, version: 1 }
+  ]);
+  highlightConflict(mA.id, mB.id);
+  logConflict(key, [
+    { masterId: mA.id, value: 'AAA', ts: now },
+    { masterId: mB.id, value: 'BBB', ts: now - 50 }
+  ]);
+
+  const resolution = resolveConflict(key, [
+    { masterId: mA.id, value: 'AAA', ts: now, version: 1 },
+    { masterId: mB.id, value: 'BBB', ts: now - 50, version: 1 }
+  ]);
+  STATE.resolved++;
+
+  teach('DIVERGENT WRITES',
+    `Forced concurrent write to key ${key}: ${mA.name} wrote "AAA" at ts=${now % 100000}, ` +
+    `${mB.name} wrote "BBB" at ts=${(now - 50) % 100000}. These are genuinely concurrent — neither saw the other. ` +
+    `This is the fundamental multi-master problem. Strategy: ${STATE.strategy.toUpperCase()} → ${resolution.reason}`,
+    'error'
+  );
+  setTimeout(() => {
+    for (const m of STATE.masters) if (m.up) m.data.set(key, { value: resolution.winner.value, ts: now, version: 0 });
+    renderMasterVisuals();
+  }, 1000);
+
+  showToast('⚔ Divergent write injected');
+}
+
+function killMaster() {
+  const online = STATE.masters.filter(m => m.up);
+  if (online.length <= 1) { showToast('⚠ Cannot kill last master'); return; }
+  const victim = online[randInt(0, online.length - 1)];
+  victim.up = false;
+  renderMasterVisuals();
+  drawMesh();
+  updateTelemetry();
+
+  teach('MASTER DOWN',
+    `${victim.name} has failed. Unlike master-slave, the cluster keeps ACCEPTING WRITES because the remaining ` +
+    `${STATE.masters.filter(m => m.up).length} masters are all writers. Availability is preserved. ` +
+    `The trade-off: writes that ${victim.name} accepted but hadn't replicated yet are LOST. ` +
+    `This is called the "data loss window" of multi-master.`,
+    'warn'
+  );
+  showToast(`💥 ${victim.name} killed — cluster still available`);
+}
+
+function partition() {
+  STATE.networkPartition = !STATE.networkPartition;
+  drawMesh();
+  updateTelemetry();
+
+  if (STATE.networkPartition) {
+    teach('PARTITION',
+      `Network partition injected. Each master is now an isolated island — it accepts writes but CANNOT see the ` +
+      `others. This is where multi-master truly shines (availability) and truly suffers (divergence). When the ` +
+      `partition heals, every key that was written on two sides must be merged. The longer the partition, the ` +
+      `more conflicts. Real systems use version vectors to detect this precisely.`,
+      'error'
+    );
+    showToast('📡 Network partitioned — masters diverging');
+  } else {
+    teach('HEALED',
+      `Network healed. Masters can see each other again. Now the reconciliation phase kicks in: every key that ` +
+      `diverged must be resolved via ${STATE.strategy.toUpperCase()}. If you have many diverged keys, this is ` +
+      `called a "repair storm" — Merkle trees and anti-entropy help find what needs merging.`,
+      'ok'
+    );
+    showToast('✔ Network healed — reconciling');
+  }
+}
+
+function recoverAll() {
+  STATE.networkPartition = false;
+  for (const m of STATE.masters) {
+    m.up = true;
+    m.cpu = 0;
+  }
+  renderMasters();
+  drawMesh();
+  updateTelemetry();
+  teach('RECOVERED', 'All masters back online. Cluster fully consistent.', 'ok');
+  showToast('🔄 All masters recovered');
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnToggle.addEventListener('click', () => STATE.running ? stopTraffic() : startTraffic());
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnDivergent.addEventListener('click', triggerDivergent);
+DOM.btnKillMaster.addEventListener('click', killMaster);
+DOM.btnPartition.addEventListener('click', partition);
+DOM.btnRecover.addEventListener('click', recoverAll);
+
+DOM.qpsRange.addEventListener('input', e => {
+  STATE.qps = parseInt(e.target.value);
+  DOM.qpsVal.textContent = STATE.qps;
+});
+DOM.readRange.addEventListener('input', e => {
+  STATE.readRatio = parseInt(e.target.value) / 100;
+  DOM.readVal.textContent = e.target.value + '%';
+});
+DOM.contRange.addEventListener('input', e => {
+  STATE.contention = parseInt(e.target.value) / 100;
+  DOM.contVal.textContent = e.target.value + '%';
+});
+
+document.querySelectorAll('input[name="strategy"]').forEach(r => {
+  r.addEventListener('change', e => {
+    const old = STATE.strategy;
+    STATE.strategy = e.target.value;
+    const explanations = {
+      lww: `Last-Write-Wins: the write with the highest timestamp wins. Simple, deterministic, but SILENTLY LOSES DATA. Real-world example: Cassandra default. Timestamps depend on clock sync — a skewed clock can silently discard the "wrong" write.`,
+      version: `Version Vectors: track causality. Each row carries a version vector showing which masters have seen which writes. True concurrent writes are flagged as conflicts and escalated to the app for custom merge logic.`,
+      crdt: `Conflict-free Replicated Data Types: special data structures (counters, sets, maps) that merge mathematically. Every replica converges to the same state regardless of order. Used in Figma, Automerge, and collaborative editors.`,
+      quorum: `Quorum: R + W > N guarantees that every read overlaps at least one writer. With N=3 masters, W=2 and R=2 means every read touches at least 2 masters. Higher latency, but strong consistency without coordination.`
+    };
+    teach('STRATEGY', `Switched from ${old.toUpperCase()} to ${e.target.value.toUpperCase()}. ${explanations[e.target.value]}`, 'purple');
+  });
+});
+
+window.addEventListener('resize', () => {
+  drawMesh();
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+initializeCluster();
+
+setTimeout(() => {
+  teach('WHY MULTI-MASTER',
+    `Multi-master exists because of three problems it solves: (1) Write scaling — the master-slave master was a bottleneck. ` +
+    `(2) Geo-distribution — writes can go to the nearest region, cutting latency. (3) Availability — no single writer to fail. ` +
+    `The price: conflict resolution. Every multi-master system has to answer "what happens when two writers touch the same key?"`,
+    'purple'
+  );
+  showToast('👋 Start traffic, then trigger divergent writes', 4000);
+}, 700);
+</script>
+</body>
+</html>

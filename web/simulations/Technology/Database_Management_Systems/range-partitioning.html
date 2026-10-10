@@ -1,0 +1,1714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Range Partitioning — Interactive Teaching Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #10b981, #14b8a6, #22d3ee);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(16,185,129,0.15);
+    color: #6ee7b7;
+    border-color: #10b981;
+  }
+  .teaching-toggle:hover { background: rgba(16,185,129,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 280px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #6ee7b7;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #10b981; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #10b981; color: #fff; border-color: #10b981; }
+  .btn.primary:hover { background: #059669; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #6ee7b7; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #10b981; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(16,185,129,0.06) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* Clients */
+  .clients-row {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    z-index: 5;
+  }
+  .client {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    border: 2px solid #334155;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.95rem;
+    transition: all 0.25s;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .client.active { transform: scale(1.1); }
+  .client.active.insert { border-color: #f59e0b; box-shadow: 0 0 20px rgba(245,158,11,0.7); }
+  .client.active.scan   { border-color: #22d3ee; box-shadow: 0 0 20px rgba(34,211,238,0.7); }
+
+  /* Router */
+  .router-wrap {
+    position: absolute;
+    top: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    text-align: center;
+  }
+  .router {
+    padding: 10px 26px;
+    background: linear-gradient(145deg, #0d2e21, #051a12);
+    border: 2px solid #10b981;
+    border-radius: 12px;
+    box-shadow: 0 0 25px rgba(16,185,129,0.4);
+    display: inline-block;
+    transition: all 0.2s;
+  }
+  .router.busy { animation: routerPulse 0.3s ease; }
+  @keyframes routerPulse {
+    0%, 100% { box-shadow: 0 0 25px rgba(16,185,129,0.4); }
+    50%      { box-shadow: 0 0 60px rgba(16,185,129,1); }
+  }
+  .router .title {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #6ee7b7;
+    font-family: monospace;
+  }
+  .router .formula {
+    font-size: 0.6rem;
+    color: #94a3b8;
+    font-family: monospace;
+    margin-top: 3px;
+  }
+
+  /* Key space ruler */
+  .keyspace-wrap {
+    position: absolute;
+    top: 175px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 86%;
+    z-index: 5;
+    transition: all 0.3s;
+  }
+  .keyspace-ruler {
+    height: 40px;
+    background: linear-gradient(90deg, #0a0e19, #131a2e);
+    border: 2px solid #334155;
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+    transition: border-color 0.3s;
+  }
+  .keyspace-ruler.active {
+    border-color: #10b981;
+    box-shadow: 0 0 25px rgba(16,185,129,0.5), inset 0 0 20px rgba(0,0,0,0.5);
+  }
+  .ruler-ticks {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .ruler-tick {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 1px;
+    background: rgba(100, 116, 139, 0.3);
+  }
+  .ruler-tick.major {
+    background: rgba(100, 116, 139, 0.6);
+  }
+  .ruler-tick-label {
+    position: absolute;
+    top: 100%;
+    transform: translateX(-50%);
+    font-size: 0.52rem;
+    color: #64748b;
+    font-family: monospace;
+    margin-top: 4px;
+    white-space: nowrap;
+  }
+
+  /* Range segments */
+  .range-segment {
+    position: absolute;
+    top: 0; bottom: 0;
+    border-right: 2px dashed #334155;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    font-size: 0.6rem;
+    color: #94a3b8;
+    transition: all 0.35s;
+    overflow: hidden;
+  }
+  .range-segment.hot {
+    background: linear-gradient(180deg, rgba(239,68,68,0.25), rgba(239,68,68,0.08));
+    color: #fca5a5;
+    border-right-color: #ef4444;
+  }
+  .range-segment.warm {
+    background: linear-gradient(180deg, rgba(245,158,11,0.2), rgba(245,158,11,0.05));
+    color: #fcd34d;
+    border-right-color: #f59e0b;
+  }
+  .range-segment.cold {
+    background: linear-gradient(180deg, rgba(16,185,129,0.15), rgba(16,185,129,0.04));
+    color: #6ee7b7;
+    border-right-color: #10b981;
+  }
+  .range-segment.offline {
+    background: rgba(127,29,29,0.25);
+    color: #f87171;
+    border-right-color: #7f1d1d;
+    opacity: 0.5;
+  }
+  .range-segment.splitting {
+    animation: segSplit 0.7s ease;
+  }
+  @keyframes segSplit {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.08); box-shadow: 0 0 40px rgba(139,92,246,1); z-index: 10; }
+  }
+  .range-segment .seg-label {
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    z-index: 1;
+  }
+  .range-segment .seg-load {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: linear-gradient(180deg, transparent, rgba(239,68,68,0.5));
+    transition: height 0.4s;
+    pointer-events: none;
+  }
+
+  /* Heat bar — visual indicator of write distribution */
+  .heat-bar {
+    margin-top: 12px;
+    height: 12px;
+    background: #0a0e19;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+  }
+  .heat-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
+    transition: width 0.4s;
+  }
+  .heat-bar-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    font-size: 0.6rem;
+    color: #cbd5e1;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  /* SHARDS/SEGMENTS detail cards */
+  .segments-container {
+    position: absolute;
+    top: 310px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+    align-content: flex-start;
+    gap: 12px;
+    padding: 8px 20px;
+    z-index: 4;
+  }
+
+  .segment-card {
+    width: 180px;
+    background: linear-gradient(160deg, #0d1f1a 0%, #070a14 100%);
+    border: 2px solid #334155;
+    border-radius: 10px;
+    padding: 10px;
+    transition: all 0.35s;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    position: relative;
+  }
+  .segment-card.hot {
+    border-color: #ef4444;
+    box-shadow: 0 0 25px rgba(239,68,68,0.5), 0 10px 25px rgba(0,0,0,0.5);
+    animation: hotFlash 1s ease-in-out infinite;
+  }
+  @keyframes hotFlash {
+    0%, 100% { box-shadow: 0 0 25px rgba(239,68,68,0.5), 0 10px 25px rgba(0,0,0,0.5); }
+    50%      { box-shadow: 0 0 45px rgba(239,68,68,0.9), 0 10px 25px rgba(0,0,0,0.5); }
+  }
+  .segment-card.cold { border-color: #10b981; }
+  .segment-card.warm { border-color: #f59e0b; }
+  .segment-card.offline {
+    border-color: #7f1d1d;
+    opacity: 0.4;
+    filter: grayscale(0.7);
+  }
+  .segment-card.new { animation: cardSpawn 0.55s cubic-bezier(.68,-0.55,.27,1.55); }
+  @keyframes cardSpawn {
+    0%   { transform: scale(0) translateY(30px); opacity: 0; }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
+  }
+  .segment-card.busy {
+    animation: cardBusy 0.3s ease;
+  }
+  @keyframes cardBusy {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(16,185,129,0.6); }
+  }
+
+  .seg-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .seg-name {
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: #6ee7b7;
+    letter-spacing: 1.2px;
+    font-family: monospace;
+  }
+  .segment-card.hot .seg-name { color: #fca5a5; }
+  .segment-card.warm .seg-name { color: #fcd34d; }
+  .segment-card.offline .seg-name { color: #f87171; }
+
+  .seg-status {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  .segment-card.hot .seg-status { background: #ef4444; box-shadow: 0 0 10px #ef4444; }
+  .segment-card.offline .seg-status { background: #ef4444; animation: none; }
+
+  .seg-range {
+    font-size: 0.56rem;
+    color: #64748b;
+    font-family: monospace;
+    background: #070a14;
+    padding: 3px 6px;
+    border-radius: 4px;
+    text-align: center;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+  }
+  .seg-load-track {
+    width: 100%;
+    height: 7px;
+    background: #0a0e19;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 6px 0;
+    border: 1px solid #1e293b;
+  }
+  .seg-load-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #10b981, #22d3ee);
+    transition: width 0.4s, background 0.4s;
+  }
+  .segment-card.hot .seg-load-fill {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+  }
+  .seg-metric-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.58rem;
+    color: #64748b;
+    font-family: monospace;
+  }
+  .seg-metric-row .val { color: #6ee7b7; font-weight: 700; }
+  .seg-metric-row .val.warn { color: #f59e0b; }
+  .seg-metric-row .val.bad { color: #ef4444; }
+
+  /* Particle */
+  .particle {
+    position: absolute;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 6;
+  }
+  .particle.insert { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+  .particle.scan   { background: #22d3ee; box-shadow: 0 0 10px #22d3ee; }
+  .particle.split  { background: #a855f7; box-shadow: 0 0 12px #a855f7; }
+  .particle.route  { background: #10b981; box-shadow: 0 0 10px #10b981; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(16,185,129,0.06);
+    border: 1px solid rgba(16,185,129,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.58rem;
+    color: #6ee7b7;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 300px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #10b981;
+    background: rgba(16,185,129,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #10b981; background: rgba(16,185,129,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  /* Range map */
+  .range-map {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 0.6rem;
+    color: #94a3b8;
+    line-height: 1.6;
+    max-height: 100px;
+    overflow-y: auto;
+  }
+  .range-map .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+    border-bottom: 1px solid #0a0e19;
+  }
+  .range-map .key { color: #6ee7b7; }
+  .range-map .arrow { color: #64748b; }
+  .range-map .seg-id { color: #10b981; font-weight: 700; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #10b981;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(16,185,129,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Current query visualization */
+  .query-viz {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 0.62rem;
+    min-height: 44px;
+    color: #94a3b8;
+    line-height: 1.5;
+  }
+  .query-viz .k { color: #f59e0b; font-weight: 700; }
+  .query-viz .s { color: #10b981; font-weight: 700; }
+  .query-viz .m { color: #64748b; }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>RANGE PARTITIONING</h1>
+    <span class="sub">SORTED KEY SPACE · RANGE SCANS · HOT TAIL</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Traffic Control</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 100 Queries</button>
+      <button class="btn warn" id="btnTimeSeries">⏰ Time-series writes</button>
+      <button class="btn" id="btnRangeScan">📏 Range SCAN query</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Profile</h3>
+      <div class="slider-row"><span>Queries / sec</span><span class="value" id="qpsVal">80</span></div>
+      <input type="range" id="qpsRange" min="1" max="300" value="80">
+      <div class="slider-row"><span>Read Ratio</span><span class="value" id="readVal">40%</span></div>
+      <input type="range" id="readRange" min="0" max="100" value="40">
+    </div>
+
+    <div class="panel">
+      <h3>Key Distribution</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="dist" value="uniform" checked style="accent-color:#10b981;">
+          Uniform (random)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="dist" value="timeseries" style="accent-color:#10b981;">
+          Time-series (monotonic ↑)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="dist" value="sequential" style="accent-color:#10b981;">
+          Sequential IDs
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Segment Operations</h3>
+      <button class="btn success" id="btnAddSeg">+ Add Segment</button>
+      <button class="btn" id="btnSplitHot">✂ Split Hot Segment</button>
+      <button class="btn danger" id="btnKill">💥 Kill Segment</button>
+      <button class="btn success" id="btnRecover">🔄 Recover</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>INSERT (write)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#22d3ee;"></div>Range SCAN</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>Healthy segment</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>Hot tail</div>
+    </div>
+  </aside>
+
+  <!-- CENTER -->
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">KEY SPACE IS SORTED · EACH SEGMENT OWNS A CONTIGUOUS RANGE</div>
+
+      <div class="clients-row" id="clientsRow">
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+        <div class="client">👤</div>
+      </div>
+
+      <div class="router-wrap">
+        <div class="router" id="router">
+          <div class="title">RANGE ROUTER</div>
+          <div class="formula" id="routerFormula">route(key) = find segment where start ≤ key &lt; end</div>
+        </div>
+      </div>
+
+      <div class="keyspace-wrap">
+        <div class="keyspace-ruler" id="keyspaceRuler">
+          <div class="ruler-ticks" id="rulerTicks"></div>
+        </div>
+        <div class="heat-bar">
+          <div class="heat-bar-fill" id="heatBarFill" style="width:0%;"></div>
+          <div class="heat-bar-label" id="heatBarLabel">WRITE HEAT — 0%</div>
+        </div>
+      </div>
+
+      <svg class="connections" id="connections" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:2;"></svg>
+
+      <div class="segments-container" id="segmentsContainer"></div>
+    </div>
+  </main>
+
+  <!-- RIGHT: TEACHING -->
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Segments</div>
+        <div class="metric-value" id="mSegments">5</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">QPS</div>
+        <div class="metric-value" id="mQps">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Hottest Seg</div>
+        <div class="metric-value" id="mHottest">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Coldest Seg</div>
+        <div class="metric-value" id="mColdest">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Skew</div>
+        <div class="metric-value" id="mSkew">0.00</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Range Scans</div>
+        <div class="metric-value" id="mScans">0</div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:6px;">🔍 Current Query</h3>
+      <div class="query-viz" id="queryViz">
+        <span class="m">waiting for traffic...</span>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:10px;">
+      <h3 style="margin-bottom:6px;">🗺️ Range Map</h3>
+      <div class="range-map" id="rangeMap"></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  running: false,
+  qps: 80,
+  readRatio: 0.4,
+  distribution: 'uniform',  // uniform | timeseries | sequential
+  segments: [],              // { id, start, end, load, ops, rows, online, hot, color }
+  nextSegId: 1,
+  MAX_SEGMENTS: 12,
+  // Counters
+  totalQueries: 0,
+  totalInserts: 0,
+  totalScans: 0,
+  // Key cursor for sequential/timeseries
+  seqKey: 500,
+  latencySamples: [],
+  tickTimer: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  lastAnnouncedSkew: 0,
+  lastAnnouncedHotTail: false,
+  // Hot key counter
+  writeHistogram: new Array(100).fill(0)
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  keyspaceRuler: document.getElementById('keyspaceRuler'),
+  rulerTicks: document.getElementById('rulerTicks'),
+  heatBarFill: document.getElementById('heatBarFill'),
+  heatBarLabel: document.getElementById('heatBarLabel'),
+  segmentsContainer: document.getElementById('segmentsContainer'),
+  connections: document.getElementById('connections'),
+  queryViz: document.getElementById('queryViz'),
+  rangeMap: document.getElementById('rangeMap'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  router: document.getElementById('router'),
+  routerFormula: document.getElementById('routerFormula'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnTimeSeries: document.getElementById('btnTimeSeries'),
+  btnRangeScan: document.getElementById('btnRangeScan'),
+  btnAddSeg: document.getElementById('btnAddSeg'),
+  btnSplitHot: document.getElementById('btnSplitHot'),
+  btnKill: document.getElementById('btnKill'),
+  btnRecover: document.getElementById('btnRecover'),
+  qpsRange: document.getElementById('qpsRange'),
+  qpsVal: document.getElementById('qpsVal'),
+  readRange: document.getElementById('readRange'),
+  readVal: document.getElementById('readVal'),
+  mSegments: document.getElementById('mSegments'),
+  mQps: document.getElementById('mQps'),
+  mHottest: document.getElementById('mHottest'),
+  mColdest: document.getElementById('mColdest'),
+  mSkew: document.getElementById('mSkew'),
+  mScans: document.getElementById('mScans'),
+  clientsRow: document.getElementById('clientsRow')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const rand = (a, b) => Math.random() * (b - a) + a;
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, b));
+const nowTime = () => new Date().toTimeString().slice(0, 8);
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining range partitioning.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING FEED
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   INITIALIZE SEGMENTS
+   ============================================================ */
+function initializeSegments(n = 5) {
+  STATE.segments = [];
+  STATE.nextSegId = 1;
+  STATE.writeHistogram = new Array(100).fill(0);
+  STATE.seqKey = 500;
+
+  const step = 1000 / n;
+  for (let i = 0; i < n; i++) {
+    STATE.segments.push({
+      id: STATE.nextSegId++,
+      start: Math.floor(i * step),
+      end: Math.floor((i + 1) * step),
+      load: 0,
+      ops: 0,
+      rows: randInt(500_000, 2_000_000),
+      online: true,
+      hot: false
+    });
+  }
+
+  renderRulerTicks();
+  renderSegments();
+  renderRangeMap();
+  updateTelemetry();
+
+  teach('INIT',
+    `Cluster initialized with ${n} range segments covering [0, 1000). Every segment owns a CONTIGUOUS range ` +
+    `of the sorted key space. Unlike hash sharding, ordering is preserved: keys 0–199 all live on Segment-01, ` +
+    `keys 200–399 on Segment-02, and so on. This is the natural fit for time-series, auto-increment IDs, ` +
+    `and any sorted access pattern.`,
+    'ok'
+  );
+
+  setTimeout(() => {
+    teach('ROUTING',
+      `Range router is O(log N) with a binary search over segment boundaries. It's also stateful in the sense that ` +
+      `it must know the current segment ranges — when a segment splits, the router's routing table must be updated. ` +
+      `Compare with hash routing (O(1) but reshuffles on N change). Range routing wins on rebalance efficiency.`,
+      'purple'
+    );
+  }, 2600);
+}
+
+/* ============================================================
+   RENDER TICKS ON RULER
+   ============================================================ */
+function renderRulerTicks() {
+  let html = '';
+  for (let i = 0; i <= 1000; i += 100) {
+    html += `<div class="ruler-tick major" style="left:${(i / 1000) * 100}%;">
+      <div class="ruler-tick-label">${i}</div>
+    </div>`;
+  }
+  for (let i = 50; i <= 950; i += 100) {
+    html += `<div class="ruler-tick" style="left:${(i / 1000) * 100}%;"></div>`;
+  }
+  DOM.rulerTicks.innerHTML = html;
+}
+
+/* ============================================================
+   RENDER SEGMENTS ON THE RULER (visual bars)
+   ============================================================ */
+function renderRulerSegments() {
+  // Remove old segments from ruler
+  DOM.keyspaceRuler.querySelectorAll('.range-segment').forEach(s => s.remove());
+  for (const seg of STATE.segments) {
+    const left = (seg.start / 1000) * 100;
+    const width = ((seg.end - seg.start) / 1000) * 100;
+    const el = document.createElement('div');
+    el.className = 'range-segment';
+    el.dataset.segId = seg.id;
+    el.style.left = left + '%';
+    el.style.width = width + '%';
+    if (!seg.online) el.classList.add('offline');
+    else if (seg.load > 0.7) el.classList.add('hot');
+    else if (seg.load > 0.4) el.classList.add('warm');
+    else el.classList.add('cold');
+
+    el.innerHTML = `
+      <div class="seg-label">S${String(seg.id).padStart(2, '0')}</div>
+      <div class="seg-load" style="height:${Math.round(seg.load * 100)}%;"></div>
+    `;
+    DOM.keyspaceRuler.appendChild(el);
+  }
+}
+
+/* ============================================================
+   RENDER SEGMENT CARDS
+   ============================================================ */
+function renderSegments() {
+  DOM.segmentsContainer.innerHTML = '';
+  for (const seg of STATE.segments) {
+    DOM.segmentsContainer.appendChild(buildSegmentCard(seg));
+  }
+  renderRulerSegments();
+}
+
+function buildSegmentCard(seg) {
+  const el = document.createElement('div');
+  el.className = 'segment-card new';
+  el.dataset.segId = seg.id;
+  const loadClass = !seg.online ? 'offline' : seg.load > 0.7 ? 'hot' : seg.load > 0.4 ? 'warm' : 'cold';
+  el.classList.add(loadClass);
+
+  el.innerHTML = `
+    <div class="seg-header">
+      <div class="seg-name">SEG-${String(seg.id).padStart(2, '0')}</div>
+      <div class="seg-status"></div>
+    </div>
+    <div class="seg-range">[${seg.start}, ${seg.end})</div>
+    <div class="seg-load-track"><div class="seg-load-fill"></div></div>
+    <div class="seg-metric-row">
+      <span>LOAD</span><span class="val load-val">0%</span>
+    </div>
+    <div class="seg-metric-row">
+      <span>OPS</span><span class="val ops-val">0</span>
+    </div>
+    <div class="seg-metric-row">
+      <span>ROWS</span><span class="val rows-val">${(seg.rows / 1_000_000).toFixed(2)}M</span>
+    </div>
+  `;
+  applySegmentVisuals(el, seg);
+  return el;
+}
+
+function applySegmentVisuals(el, seg) {
+  const fill = el.querySelector('.seg-load-fill');
+  const loadVal = el.querySelector('.load-val');
+  const opsVal = el.querySelector('.ops-val');
+  const loadPct = Math.round(seg.load * 100);
+  fill.style.width = loadPct + '%';
+  loadVal.textContent = loadPct + '%';
+  loadVal.className = 'val load-val ' + (loadPct > 85 ? 'bad' : loadPct > 60 ? 'warn' : '');
+  opsVal.textContent = seg.ops;
+
+  el.classList.toggle('hot', seg.load > 0.7 && seg.online);
+  el.classList.toggle('warm', seg.load > 0.4 && seg.load <= 0.7 && seg.online);
+  el.classList.toggle('cold', seg.load <= 0.4 && seg.online);
+  el.classList.toggle('offline', !seg.online);
+}
+
+function renderSegmentVisualsLightweight() {
+  for (const seg of STATE.segments) {
+    const el = DOM.segmentsContainer.querySelector(`[data-seg-id="${seg.id}"]`);
+    if (el) applySegmentVisuals(el, seg);
+  }
+  renderRulerSegments();
+}
+
+/* ============================================================
+   RANGE MAP
+   ============================================================ */
+function renderRangeMap() {
+  let html = '';
+  for (const seg of STATE.segments) {
+    const status = !seg.online ? '✕' : seg.load > 0.7 ? '🔥' : seg.load > 0.4 ? '◆' : '●';
+    html += `<div class="row">
+      <span class="key">[${seg.start}, ${seg.end})</span>
+      <span class="arrow">→</span>
+      <span class="seg-id">SEG-${String(seg.id).padStart(2, '0')} ${status}</span>
+    </div>`;
+  }
+  DOM.rangeMap.innerHTML = html;
+}
+
+/* ============================================================
+   ROUTE A KEY
+   ============================================================ */
+function routeKey(key) {
+  for (const seg of STATE.segments) {
+    if (seg.online && key >= seg.start && key < seg.end) return seg;
+  }
+  return null;
+}
+
+/* ============================================================
+   QUERY GENERATION
+   ============================================================ */
+function generateKey() {
+  switch (STATE.distribution) {
+    case 'uniform':
+      return randInt(0, 999);
+    case 'timeseries':
+      // Monotonic — mostly high values (recent timestamps)
+      return clamp(Math.floor(950 + rand(-30, 49)), 0, 999);
+    case 'sequential':
+      // Cursor-like incrementing
+      STATE.seqKey = (STATE.seqKey + randInt(1, 5)) % 1000;
+      return STATE.seqKey;
+  }
+  return randInt(0, 999);
+}
+
+/* ============================================================
+   DISPATCH QUERY
+   ============================================================ */
+function dispatchQuery(isRangeScan = false) {
+  const onlineSegs = STATE.segments.filter(s => s.online);
+  if (onlineSegs.length === 0) return;
+
+  let key, isInsert = false;
+
+  if (isRangeScan) {
+    // Range scan: pick a random start, scan say 100 units
+    const scanStart = randInt(0, 900);
+    const scanEnd = scanStart + 100;
+    // Find all segments overlapping [scanStart, scanEnd)
+    const involved = STATE.segments.filter(s => s.online && !(s.end <= scanStart || s.start >= scanEnd));
+    if (involved.length === 0) return;
+
+    STATE.totalScans++;
+    STATE.totalQueries++;
+
+    // Show query
+    DOM.queryViz.innerHTML = `<span class="m">SCAN:</span> SELECT * WHERE key BETWEEN <span class="k">${scanStart}</span> AND <span class="k">${scanEnd}</span> → hits <span class="s">${involved.length}</span> segment(s)`;
+
+    // Bump load on each involved segment
+    for (const s of involved) {
+      s.load = clamp(s.load + 0.03, 0, 1);
+      s.ops++;
+      pulseSegment(s.id);
+      animateScan(s.id);
+    }
+
+    // If a scan spans multiple segments, that's a "range query amplification"
+    if (involved.length > 1) {
+      // Teaching point when it happens
+      if (Math.random() < 0.08) {
+        teach('SCAN',
+          `A range scan from ${scanStart} to ${scanEnd} touched ${involved.length} segments. Cross-segment scans ` +
+          `are the range partitioning analog of cross-shard queries. On one hand, they're efficient because ranges ` +
+          `are contiguous (few segments touched). On the other hand, they can't be parallelized within a single segment.`,
+          'info', false
+        );
+      }
+    }
+    return;
+  }
+
+  // Point query or insert
+  isInsert = Math.random() > STATE.readRatio;
+  key = generateKey();
+  const seg = routeKey(key);
+
+  if (!seg) {
+    DOM.queryViz.innerHTML = `<span class="m">no segment for key</span> <span class="k">${key}</span>`;
+    return;
+  }
+
+  seg.ops++;
+  seg.load = clamp(seg.load + (isInsert ? 0.06 : 0.03), 0, 1);
+  if (isInsert) {
+    seg.rows += randInt(1, 5);
+    STATE.totalInserts++;
+    STATE.writeHistogram[Math.floor(key / 10)] = (STATE.writeHistogram[Math.floor(key / 10)] || 0) + 1;
+  }
+  STATE.totalQueries++;
+
+  // Show query
+  const op = isInsert ? 'INSERT' : 'SELECT';
+  DOM.queryViz.innerHTML = `<span class="m">${op}:</span> key = <span class="k">${key}</span> → segment [${seg.start}, ${seg.end}) → <span class="s">SEG-${String(seg.id).padStart(2, '0')}</span>`;
+
+  // Client highlight
+  const clientEls = DOM.clientsRow.querySelectorAll('.client');
+  const client = clientEls[randInt(0, clientEls.length - 1)];
+  client.classList.add('active', isInsert ? 'insert' : 'scan');
+  setTimeout(() => client.classList.remove('active', 'insert', 'scan'), 220);
+
+  pulseSegment(seg.id);
+  animateInsert(seg.id, isInsert);
+  updateHeatBar();
+}
+
+function pulseSegment(id) {
+  const el = DOM.segmentsContainer.querySelector(`[data-seg-id="${id}"]`);
+  if (!el) return;
+  el.classList.remove('busy');
+  void el.offsetWidth;
+  el.classList.add('busy');
+}
+
+function animateInsert(segId, isInsert) {
+  const el = DOM.segmentsContainer.querySelector(`[data-seg-id="${segId}"]`);
+  if (!el) return;
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  const tx = r.left - stageRect.left + r.width / 2 - 4;
+  const ty = r.top - stageRect.top + r.height / 2 - 4;
+  const sx = tx;
+  const sy = 130;
+
+  const p = document.createElement('div');
+  p.className = `particle ${isInsert ? 'insert' : 'scan'}`;
+  p.style.left = sx + 'px';
+  p.style.top = sy + 'px';
+  DOM.stage.appendChild(p);
+
+  const dur = 380;
+  const t0 = performance.now();
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    p.style.transform = `translate(0, ${(ty - sy) * e}px)`;
+    p.style.opacity = String(1 - t * 0.4);
+    if (t < 1) requestAnimationFrame(frame);
+    else p.remove();
+  })(t0);
+}
+
+function animateScan(segId) {
+  const el = DOM.segmentsContainer.querySelector(`[data-seg-id="${segId}"]`);
+  if (!el) return;
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  const p = document.createElement('div');
+  p.className = 'particle scan';
+  const tx = r.left - stageRect.left + r.width / 2 - 4;
+  const ty = r.top - stageRect.top + r.height / 2 - 4;
+  p.style.left = tx + 'px';
+  p.style.top = ty + 'px';
+  DOM.stage.appendChild(p);
+
+  const dur = 400;
+  const t0 = performance.now();
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    p.style.transform = `scale(${1 + t * 2})`;
+    p.style.opacity = String(1 - t);
+    if (t < 1) requestAnimationFrame(frame);
+    else p.remove();
+  })(t0);
+}
+
+/* ============================================================
+   HEAT BAR — visualize where writes are concentrated
+   ============================================================ */
+function updateHeatBar() {
+  const total = STATE.writeHistogram.reduce((a, b) => a + b, 0);
+  if (total === 0) {
+    DOM.heatBarFill.style.width = '0%';
+    DOM.heatBarLabel.textContent = 'WRITE HEAT — 0%';
+    return;
+  }
+
+  // Find the bin with the most writes
+  const max = Math.max(...STATE.writeHistogram);
+  const hotBin = STATE.writeHistogram.indexOf(max);
+  const hotPct = Math.round((max / total) * 100);
+
+  // The heat bar shows the position of the hot bin AND the concentration
+  // We position it as a horizontal bar: width = hotPct, offset by hotBin position
+  const binPct = (hotBin / 100) * 100;
+  DOM.heatBarFill.style.width = hotPct + '%';
+  DOM.heatBarFill.style.marginLeft = binPct + '%';
+  DOM.heatBarLabel.textContent = `WRITE HEAT — ${hotPct}% in [${hotBin * 10}, ${(hotBin + 1) * 10})`;
+}
+
+/* ============================================================
+   TELEMETRY
+   ============================================================ */
+function updateTelemetry() {
+  const online = STATE.segments.filter(s => s.online);
+  const N = online.length;
+  const loads = online.map(s => s.load);
+  const avg = loads.length ? loads.reduce((a, b) => a + b, 0) / loads.length : 0;
+  const variance = loads.length ? loads.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / loads.length : 0;
+  const stddev = Math.sqrt(variance);
+  const hottest = loads.length ? Math.max(...loads) : 0;
+  const coldest = loads.length ? Math.min(...loads) : 0;
+
+  DOM.mSegments.textContent = N + (STATE.segments.length !== N ? `/${STATE.segments.length}` : '');
+  DOM.mQps.textContent = STATE.running ? STATE.qps : 0;
+  DOM.mHottest.textContent = Math.round(hottest * 100) + '%';
+  DOM.mHottest.className = 'metric-value' + (hottest > 0.85 ? ' bad' : hottest > 0.6 ? ' warn' : '');
+  DOM.mColdest.textContent = Math.round(coldest * 100) + '%';
+  DOM.mSkew.textContent = stddev.toFixed(2);
+  DOM.mSkew.className = 'metric-value' + (stddev > 0.3 ? ' bad' : stddev > 0.15 ? ' warn' : '');
+  DOM.mScans.textContent = STATE.totalScans;
+
+  // Contextual teaching — hot tail detection
+  if (STATE.running && hottest - coldest > 0.5 && !STATE.lastAnnouncedHotTail) {
+    STATE.lastAnnouncedHotTail = true;
+    teach('HOT TAIL',
+      `HOT TAIL DETECTED: the hottest segment is at ${Math.round(hottest * 100)}% while the coldest is at ${Math.round(coldest * 100)}%. ` +
+      `This is the classic range partitioning failure mode. When keys are monotonic (like timestamps), every new write ` +
+      `goes to the LAST segment. That segment saturates while earlier segments sit idle. ` +
+      `Real fix: pre-split by hash prefix, or reverse the timestamp (write to the first byte flipped).`,
+      'error'
+    );
+    setTimeout(() => { STATE.lastAnnouncedHotTail = false; }, 15000);
+  }
+  STATE.lastAnnouncedSkew = stddev;
+}
+
+/* ============================================================
+   DECAY
+   ============================================================ */
+setInterval(() => {
+  for (const s of STATE.segments) s.load = Math.max(0, s.load - 0.03);
+  renderSegmentVisualsLightweight();
+  renderRangeMap();
+  updateTelemetry();
+  updateHeatBar();
+}, 400);
+
+/* ============================================================
+   TRAFFIC
+   ============================================================ */
+function tick() {
+  if (!STATE.running) return;
+  const batch = Math.max(1, Math.round(STATE.qps / 10));
+  for (let i = 0; i < batch; i++) dispatchQuery();
+}
+
+function startTraffic() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+  STATE.tickTimer = setInterval(tick, 100);
+
+  const descriptions = {
+    uniform: `Uniform distribution: keys are random in [0, 1000). All segments get roughly equal load — range partitioning works perfectly.`,
+    timeseries: `Time-series: keys are monotonic timestamps near 950+. ALL new writes go to the LAST segment. This is the classic hot-tail problem.`,
+    sequential: `Sequential IDs: keys increment one at a time from a cursor. Again, writes concentrate on the "current" segment.`
+  };
+
+  teach('START',
+    `Traffic started at ${STATE.qps} q/s with ${Math.round(STATE.readRatio * 100)}% reads. ${descriptions[STATE.distribution]}`,
+    'ok'
+  );
+}
+
+function stopTraffic() {
+  STATE.running = false;
+  DOM.btnToggle.textContent = '▶ Start Traffic';
+  DOM.btnToggle.classList.add('primary');
+  DOM.btnToggle.classList.remove('danger');
+  clearInterval(STATE.tickTimer);
+  STATE.tickTimer = null;
+  teach('STOP', 'Traffic stopped.', 'info', false);
+}
+
+function burst() {
+  teach('BURST',
+    `100 queries dispatched. Under uniform distribution, load spreads evenly. Under time-series, all writes will ` +
+    `concentrate on one segment and create a hotspot.`,
+    'info'
+  );
+  for (let i = 0; i < 100; i++) setTimeout(dispatchQuery, i * 8);
+  showToast('⚡ 100-query burst dispatched');
+}
+
+function timeSeriesMode() {
+  STATE.distribution = 'timeseries';
+  document.querySelector('input[name="dist"][value="timeseries"]').checked = true;
+  if (!STATE.running) startTraffic();
+  teach('TIME-SERIES',
+    `Switched to time-series distribution. All new writes now have keys near 950–999 (recent timestamps). ` +
+    `Watch the LAST segment absorb every write while earlier segments idle. This is why naive range partitioning ` +
+    `is wrong for time-series data. The fix used by InfluxDB, TimescaleDB, and ClickHouse: partition by a HASH ` +
+    `of (timestamp + series_id) instead of raw timestamp.`,
+    'error'
+  );
+  showToast('⏰ Time-series mode active');
+}
+
+function rangeScanQuery() {
+  if (!STATE.running) startTraffic();
+  teach('RANGE SCAN',
+    `Executing a range scan: SELECT * FROM events WHERE key BETWEEN a AND b. Unlike hash partitioning (where ranges ` +
+    `would hit EVERY shard), range partitioning routes the scan to only the segments that overlap the range. ` +
+    `This is the signature advantage of range partitioning: efficient range queries.`,
+    'purple'
+  );
+  // Fire 10 range scans
+  for (let i = 0; i < 10; i++) setTimeout(() => dispatchQuery(true), i * 150);
+  showToast('📏 Range scan dispatched');
+}
+
+/* ============================================================
+   SEGMENT OPERATIONS
+   ============================================================ */
+function addSegment() {
+  if (STATE.segments.length >= STATE.MAX_SEGMENTS) {
+    showToast('⚠ Max segments reached');
+    return;
+  }
+  // Find the largest segment and split it in half — that's how we add a segment in range partitioning
+  let largest = STATE.segments[0];
+  for (const s of STATE.segments) {
+    if ((s.end - s.start) > (largest.end - largest.start)) largest = s;
+  }
+
+  const mid = Math.floor((largest.start + largest.end) / 2);
+  const oldEnd = largest.end;
+
+  // Shrink original
+  largest.end = mid;
+  largest.rows = Math.floor(largest.rows / 2);
+  largest.load *= 0.55;
+
+  // Create new segment
+  const newSeg = {
+    id: STATE.nextSegId++,
+    start: mid,
+    end: oldEnd,
+    load: 0,
+    ops: 0,
+    rows: Math.floor(largest.rows * rand(0.8, 1.2)),
+    online: true,
+    hot: false
+  };
+
+  const idx = STATE.segments.indexOf(largest);
+  STATE.segments.splice(idx + 1, 0, newSeg);
+
+  renderSegments();
+  renderRangeMap();
+  updateTelemetry();
+
+  teach('ADD SEGMENT',
+    `Added SEG-${newSeg.id} by splitting the largest segment [${largest.start}, ${oldEnd}) into ` +
+    `[${largest.start}, ${mid}) and [${mid}, ${oldEnd}). Only ONE segment was affected — the data that moved came ` +
+    `exclusively from the split segment. Compare with hash mod N, where adding a shard reshuffles almost ALL keys. ` +
+    `This is the core reason range partitioning is chosen for time-series and ordered workloads.`,
+    'ok'
+  );
+  showToast(`✅ Added SEG-${newSeg.id}`);
+}
+
+function splitHottestSegment() {
+  if (STATE.segments.length >= STATE.MAX_SEGMENTS) {
+    showToast('⚠ Max segments reached');
+    return;
+  }
+  let hottest = STATE.segments[0];
+  for (const s of STATE.segments) {
+    if (s.load > hottest.load) hottest = s;
+  }
+
+  const mid = Math.floor((hottest.start + hottest.end) / 2);
+  const oldEnd = hottest.end;
+
+  hottest.end = mid;
+  hottest.load *= 0.5;
+  hottest.rows = Math.floor(hottest.rows / 2);
+
+  const newSeg = {
+    id: STATE.nextSegId++,
+    start: mid,
+    end: oldEnd,
+    load: hottest.load * 0.3,
+    ops: 0,
+    rows: Math.floor(hottest.rows * rand(0.9, 1.1)),
+    online: true,
+    hot: false
+  };
+
+  const idx = STATE.segments.indexOf(hottest);
+  STATE.segments.splice(idx + 1, 0, newSeg);
+
+  // Animate split on ruler
+  const rulerSeg = DOM.keyspaceRuler.querySelector(`.range-segment[data-seg-id="${hottest.id}"]`);
+  if (rulerSeg) {
+    rulerSeg.classList.add('splitting');
+    setTimeout(() => rulerSeg.classList.remove('splitting'), 700);
+  }
+
+  renderSegments();
+  renderRangeMap();
+  updateTelemetry();
+
+  teach('SPLIT HOT',
+    `Split the hottest segment [${hottest.start}, ${oldEnd}) into two halves. Load is redistributed instantly. ` +
+    `This is the standard remedy for a hot segment under range partitioning: split the hot range into two. ` +
+    `Compare with hash partitioning, where you cannot split a single shard — you must rehash everything.`,
+    'ok'
+  );
+
+  // Animate the split
+  setTimeout(() => {
+    animateSplitDataFlow(hottest.id, newSeg.id);
+  }, 300);
+
+  showToast(`✂ Split SEG-${hottest.id}`);
+}
+
+function animateSplitDataFlow(fromId, toId) {
+  const fromEl = DOM.segmentsContainer.querySelector(`[data-seg-id="${fromId}"]`);
+  const toEl = DOM.segmentsContainer.querySelector(`[data-seg-id="${toId}"]`);
+  if (!fromEl || !toEl) return;
+  const stageRect = DOM.stage.getBoundingClientRect();
+  const fr = fromEl.getBoundingClientRect();
+  const tr = toEl.getBoundingClientRect();
+  const sx = fr.left - stageRect.left + fr.width / 2 - 4;
+  const sy = fr.top - stageRect.top + fr.height / 2 - 4;
+  const tx = tr.left - stageRect.left + tr.width / 2 - 4;
+  const ty = tr.top - stageRect.top + tr.height / 2 - 4;
+
+  for (let i = 0; i < 6; i++) {
+    setTimeout(() => {
+      const p = document.createElement('div');
+      p.className = 'particle split';
+      p.style.left = sx + 'px';
+      p.style.top = sy + 'px';
+      DOM.stage.appendChild(p);
+
+      const dur = 500;
+      const t0 = performance.now();
+      (function frame(now) {
+        const t = Math.min(1, (now - t0) / dur);
+        const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+        p.style.transform = `translate(${(tx - sx) * e}px, ${(ty - sy) * e}px)`;
+        p.style.opacity = String(1 - t * 0.3);
+        if (t < 1) requestAnimationFrame(frame);
+        else p.remove();
+      })(t0);
+    }, i * 100);
+  }
+}
+
+function killSegment() {
+  const online = STATE.segments.filter(s => s.online);
+  if (online.length <= 1) {
+    showToast('⚠ Cannot kill last segment');
+    teach('BLOCKED',
+      `Cannot kill the last segment. In range partitioning, each segment owns a contiguous range — losing the last ` +
+      `one means losing access to its whole range. Production systems use replicas (2-3×) for every segment.`,
+      'error'
+    );
+    return;
+  }
+  const victim = online[randInt(0, online.length - 1)];
+  victim.online = false;
+  victim.load = 0;
+
+  renderSegmentVisualsLightweight();
+  renderRangeMap();
+  updateTelemetry();
+
+  teach('SEGMENT DOWN',
+    `SEG-${victim.id} failed. Its range [${victim.start}, ${victim.end}) is now UNREACHABLE. Queries that route to ` +
+    `this range return errors. Other segments CANNOT help — they don't own this key range. This is the range ` +
+    `partitioning single point of failure: each segment is a range-scoped liability.`,
+    'error'
+  );
+  showToast(`💥 SEG-${victim.id} failed`);
+}
+
+function recoverSegment() {
+  const offline = STATE.segments.filter(s => !s.online);
+  if (offline.length === 0) {
+    showToast('✔ All segments online');
+    return;
+  }
+  const s = offline[0];
+  s.online = true;
+  s.load = 0.05;
+
+  renderSegmentVisualsLightweight();
+  renderRangeMap();
+  updateTelemetry();
+
+  teach('RECOVERED',
+    `SEG-${s.id} is back online. Its range is available again. In real systems without replicas, recovery means ` +
+    `replaying its WAL or restoring from backup. With replicas, the surviving replica is promoted and a new replica ` +
+    `is rebuilt in the background.`,
+    'ok'
+  );
+  showToast(`🔄 SEG-${s.id} recovered`);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnToggle.addEventListener('click', () => STATE.running ? stopTraffic() : startTraffic());
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnTimeSeries.addEventListener('click', timeSeriesMode);
+DOM.btnRangeScan.addEventListener('click', rangeScanQuery);
+DOM.btnAddSeg.addEventListener('click', addSegment);
+DOM.btnSplitHot.addEventListener('click', splitHottestSegment);
+DOM.btnKill.addEventListener('click', killSegment);
+DOM.btnRecover.addEventListener('click', recoverSegment);
+
+DOM.qpsRange.addEventListener('input', e => {
+  STATE.qps = parseInt(e.target.value);
+  DOM.qpsVal.textContent = STATE.qps;
+});
+DOM.readRange.addEventListener('input', e => {
+  STATE.readRatio = parseInt(e.target.value) / 100;
+  DOM.readVal.textContent = e.target.value + '%';
+});
+
+document.querySelectorAll('input[name="dist"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.distribution = e.target.value;
+    STATE.writeHistogram = new Array(100).fill(0);
+    const descriptions = {
+      uniform: `Uniform: keys spread evenly. All segments share load equally.`,
+      timeseries: `Time-series: keys are recent timestamps. All writes land on the LAST segment.`,
+      sequential: `Sequential: keys increment one at a time. Writes concentrate on the "current" segment.`
+    };
+    teach('DISTRIBUTION', `Switched to ${e.target.value.toUpperCase()}. ${descriptions[e.target.value]}`, 'purple');
+  });
+});
+
+window.addEventListener('resize', () => {});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+initializeSegments(5);
+
+setTimeout(() => {
+  teach('WHY RANGE',
+    `Range partitioning exists because some workloads are naturally ordered. Try: SELECT * FROM events WHERE ts > X. ` +
+    `In range partitioning, this scan touches only the segments containing that timestamp range — maybe 1-2 segments. ` +
+    `In hash partitioning, the same query would fan out to ALL shards (because consecutive timestamps hash to ` +
+    `unrelated positions). Range partitioning optimizes for RANGE SCANS at the cost of vulnerability to hot tails.`,
+    'purple'
+  );
+
+  setTimeout(() => {
+    teach('REAL SYSTEMS',
+      `Range partitioning is used by: Bigtable (tablets are sorted ranges), HBase (regions = ranges), ` +
+      `Spanner (directory ranges), CockroachDB (key ranges), TiKV (regions), and every time-series DB ` +
+      `(InfluxDB, TimescaleDB, ClickHouse's MergeTree). The hot-tail problem is universally known — every one ` +
+      `of these systems uses a composite key (timestamp + hash of tag) to spread writes.`,
+      'info'
+    );
+  }, 4000);
+
+  showToast('👋 Try TIME-SERIES mode to see the hot tail', 4500);
+}, 700);
+</script>
+</body>
+</html>
