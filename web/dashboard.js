@@ -77,7 +77,6 @@ const FACULTY_DATA = {
 };
 
 // --- DYNAMIC MODULE ROUTING ENGINE ---
-// Maps specific courses to their custom HTML files, with a fallback for unbuilt courses.
 const COURSE_MODULES = {
   "Database_Management_Systems": [
     { file: "single-node.html", name: "Single-Node Database Architecture" },
@@ -155,7 +154,7 @@ async function init() {
     });
   });
 
-  // 2. Wire Cascading Dropdowns for Static Library (Zero Timeout Path)
+  // 2. Wire Cascading Dropdowns for Static Library
   const facultySelect = document.getElementById("facultySelect");
   const courseDropdown = document.getElementById("courseDropdown");
   const moduleDropdown = document.getElementById("moduleDropdown");
@@ -187,7 +186,6 @@ async function init() {
       launchBtn.disabled = true;
 
       if (course) {
-        // Automatically check if custom modules exist for this course, otherwise load the 3 defaults
         const modulesToLoad = COURSE_MODULES[course] || COURSE_MODULES["default_fallback"];
         
         modulesToLoad.forEach(mod => {
@@ -210,15 +208,15 @@ async function init() {
 
       if (!faculty || !course || !moduleFile) return alert("Please make a complete selection.");
 
-      // Direct local file mapping for instant execution
-      const filePath = `${faculty}/${course}/${moduleFile}`;
-      const readableTitle = `${course.replace(/_/g, " ")} — ${moduleDropdown.options[moduleDropdown.selectedIndex].text}`;
-
-      window.location.href = `simulator.html?file=${encodeURIComponent(filePath)}&title=${encodeURIComponent(readableTitle)}`;
+      // CRITICAL FIX: Bypass the simulator wrapper completely and open the raw HTML file natively
+      const rawFilePath = `simulations/${faculty}/${course}/${moduleFile}`;
+      
+      // Opens the simulation in a new tab giving it complete full-screen real estate
+      window.open(rawFilePath, '_blank');
     });
   }
 
-  // 3. Wire Custom AI Generation (With 120s Extended Client Timeout and Cloud Gateway Error Catching)
+  // 3. Wire Custom AI Generation (Stays constrained in the LLM UI Wrapper)
   const generateSimBtn = document.getElementById("generateSimBtn");
   if (generateSimBtn) {
     generateSimBtn.addEventListener("click", async () => {
@@ -245,12 +243,13 @@ async function init() {
         }
 
         sessionStorage.setItem("active_sim_schema", JSON.stringify(schema));
+        
+        // Custom generation safely routes to the simulator.html wrapper window
         window.location.href = `simulator.html?topic=${encodeURIComponent(topic)}`;
       } catch (err) {
         clearTimeout(timeoutId);
         console.error("Simulation Generation Error:", err);
         
-        // Friendly alert intercepting Render proxy drops
         if (err.name === 'AbortError' || (err.message && (err.message.includes("502") || err.message.includes("504") || err.message.includes("empty response")))) {
           alert(`Network Timeout: The cloud provider dropped the connection because the AI took longer than 30 seconds to generate the environment.\n\nPlease use the "Pre-Compiled Academic Library" dropdown above instead for instant access without generation limits.`);
         } else {
