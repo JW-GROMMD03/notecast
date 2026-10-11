@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cache Invalidation &amp; Cache-Aside Patterns — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #14b8a6, #06b6d4, #3b82f6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(20,184,166,0.15);
+    color: #5eead4;
+    border-color: #14b8a6;
+  }
+  .teaching-toggle:hover { background: rgba(20,184,166,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #5eead4;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #14b8a6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #14b8a6; color: #042f2e; border-color: #14b8a6; }
+  .btn.primary:hover { background: #0d9488; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #5eead4; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #14b8a6; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(20,184,166,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* PATTERN HEADER */
+  .pattern-header {
+    background: #070a14;
+    border: 2px solid #14b8a6;
+    border-radius: 12px;
+    padding: 12px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 0 25px rgba(20,184,166,0.15);
+    flex-shrink: 0;
+  }
+  .pattern-title {
+    font-family: monospace;
+    font-size: 0.85rem;
+    font-weight: 900;
+    letter-spacing: 2px;
+    color: #5eead4;
+    text-transform: uppercase;
+  }
+  .pattern-desc {
+    font-family: monospace;
+    font-size: 0.6rem;
+    color: #64748b;
+    letter-spacing: 0.5px;
+    margin-top: 3px;
+  }
+  .pattern-stats {
+    display: flex;
+    gap: 20px;
+    font-family: monospace;
+    font-size: 0.62rem;
+  }
+  .pattern-stats .stat-item {
+    color: #64748b;
+    letter-spacing: 0.5px;
+    text-align: right;
+  }
+  .pattern-stats .stat-item .val {
+    color: #5eead4;
+    font-weight: 900;
+    font-size: 0.9rem;
+    display: block;
+    margin-top: 2px;
+  }
+  .pattern-stats .stat-item .val.good { color: #6ee7b7; }
+  .pattern-stats .stat-item .val.bad { color: #fca5a5; }
+
+  /* CACHE CANVAS */
+  .cache-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #06b6d4;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(6,182,212,0.15);
+    min-height: 0;
+  }
+  .cache-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #cacheCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(20,184,166,0.06);
+    border: 1px solid rgba(20,184,166,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #5eead4;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #14b8a6;
+    background: rgba(20,184,166,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(20,184,166,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(20,184,166,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #5eead4;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #14b8a6;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(20,184,166,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #14b8a6;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #5eead4;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(20,184,166,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.stale { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+  .status-banner.fresh { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>CACHE INVALIDATION</h1>
+    <span class="sub">CACHE-ASIDE · WRITE-THROUGH · TTL · STAMPEDE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Client Operations</h3>
+      <button class="btn primary" id="btnRead">📖 Read (key: user:1)</button>
+      <button class="btn warn" id="btnWrite">📝 Write (user:1 = new value)</button>
+      <button class="btn" id="btnWriteThrough">🚀 Write-Through</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Invalidation Strategy</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.68rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strat" value="ttl" checked style="accent-color:#14b8a6;">
+          TTL expiration
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strat" value="write" style="accent-color:#14b8a6;">
+          Write-through
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strat" value="invalid" style="accent-color:#14b8a6;">
+          Invalidate on write
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strat" value="none" style="accent-color:#14b8a6;">
+          No invalidation (worst)
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Fault Injection</h3>
+      <button class="btn danger" id="btnStale">🐛 Serve Stale Data</button>
+      <button class="btn warn" id="btnStampede">⚡ Cache Stampede</button>
+      <button class="btn danger" id="btnFlush">💥 Cache Flush</button>
+    </div>
+
+    <div class="panel">
+      <h3>Config</h3>
+      <div class="slider-row"><span>TTL (seconds)</span><span class="value" id="ttlVal">5</span></div>
+      <input type="range" id="ttlRange" min="1" max="30" value="5">
+      <div class="slider-row"><span>Cache size</span><span class="value" id="sizeVal">4</span></div>
+      <input type="range" id="sizeRange" min="2" max="10" value="4">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:3px;margin-right:6px;"></span>Cache HIT (fast)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:3px;margin-right:6px;"></span>Cache MISS (slow)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:3px;margin-right:6px;"></span>STALE data served</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">FAST · STALE · INVALIDATION · THE HARDEST PROBLEM IN CS</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="pattern-header">
+          <div>
+            <div class="pattern-title" id="algoTitle">CACHE-ASIDE</div>
+            <div class="pattern-desc" id="algoDesc">App checks cache first; on miss, fetch from DB and populate cache</div>
+          </div>
+          <div class="pattern-stats">
+            <div class="stat-item">Hits<span class="val good" id="statHits">0</span></div>
+            <div class="stat-item">Misses<span class="val bad" id="statMisses">0</span></div>
+            <div class="stat-item">Hit Rate<span class="val" id="statRate">0%</span></div>
+          </div>
+        </div>
+
+        <div class="cache-wrap">
+          <div class="cache-title">
+            <span>🗄️ CACHE + DATABASE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="cacheHint">— cache is empty —</span>
+          </div>
+          <canvas id="cacheCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Hit Rate</div>
+        <div class="metric-value good" id="mHitRate">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Avg Latency</div>
+        <div class="metric-value" id="mLatency">0 ms</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Stale Reads</div>
+        <div class="metric-value bad" id="mStale">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">DB Load</div>
+        <div class="metric-value warn" id="mDbLoad">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Cache Strategies</div>
+      <div class="info-row"><span class="lbl">Cache-aside</span><span class="val good">App manages</span></div>
+      <div class="info-row"><span class="lbl">Write-through</span><span class="val">Cache updates DB</span></div>
+      <div class="info-row"><span class="lbl">Write-behind</span><span class="val warn">Async DB update</span></div>
+      <div class="info-row"><span class="lbl">Read-through</span><span class="val">Cache fetches on miss</span></div>
+      <div class="info-row"><span class="lbl">Invalidation</span><span class="val bad">Famous "hard problem"</span></div>
+      <div class="info-row"><span class="lbl">Stampede</span><span class="val bad">Many misses at once</span></div>
+      <div class="info-row"><span class="lbl">Systems</span><span class="val">Redis, Memcached, Varnish</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  cache: {},              // key -> { value, expiresAt, insertedAt }
+  database: {             // source of truth
+    'user:1': { value: 'Alice', version: 1 },
+    'user:2': { value: 'Bob', version: 1 },
+    'user:3': { value: 'Carol', version: 1 }
+  },
+  nextVersion: 1,
+  strategy: 'ttl',        // ttl | write | invalid | none
+  ttl: 5,
+  cacheSize: 4,
+  // Stats
+  hits: 0,
+  misses: 0,
+  staleReads: 0,
+  totalOps: 0,
+  latencySum: 0,
+  dbLoad: 0,
+  // Visual particles
+  particles: [],
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+/* ============================================================
+   DOM
+   ============================================================ */
+const DOM = {
+  cacheCanvas: document.getElementById('cacheCanvas'),
+  cacheHint: document.getElementById('cacheHint'),
+  algoTitle: document.getElementById('algoTitle'),
+  algoDesc: document.getElementById('algoDesc'),
+  statHits: document.getElementById('statHits'),
+  statMisses: document.getElementById('statMisses'),
+  statRate: document.getElementById('statRate'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Buttons  btnRead: document.getElementById('btnRead'),
+  btnWrite: document.getElementById('btnWrite'),
+  btnWriteThrough: document.getElementById('btnWriteThrough'),
+  btnReset: document.getElementById('btnReset'),
+  btnStale: document.getElementById('btnStale'),
+  btnStampede: document.getElementById('btnStampede'),
+  btnFlush: document.getElementById('btnFlush'),
+  ttlRange: document.getElementById('ttlRange'),
+  ttlVal: document.getElementById('ttlVal'),
+  sizeRange: document.getElementById('sizeRange'),
+  sizeVal: document.getElementById('sizeVal'),
+  // Metrics
+  mHitRate: document.getElementById('mHitRate'),
+  mLatency: document.getElementById('mLatency'),
+  mStale: document.getElementById('mStale'),
+  mDbLoad: document.getElementById('mDbLoad'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining cache invalidation patterns.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   CACHE OPERATIONS
+   ============================================================ */
+async function clientRead(key = 'user:1') {
+  STATE.totalOps++;
+  const startTime = performance.now();
+
+  // Clean expired cache entries
+  cleanExpired();
+
+  // Spawn particle from client to cache
+  spawnParticle('client-cache', key);
+
+  if (STATE.cache[key]) {
+    // CACHE HIT
+    STATE.hits++;
+    const elapsed = performance.now() - startTime + 2; // fast
+    STATE.latencySum += elapsed;
+    showStatus(`✅ HIT: ${key} = "${STATE.cache[key].value}" (2ms)`, 'fresh');
+
+    // Check if stale (strategy = none, or ttl not yet expired but DB changed)
+    const dbVal = STATE.database[key]?.value;
+    if (dbVal && dbVal !== STATE.cache[key].value) {
+      STATE.staleReads++;
+      teach('STALE READ',
+        `Cache returned "${STATE.cache[key].value}" but the database has "${dbVal}". The cache is STALE — it returned old data. This is the classic cache invalidation problem: the cache holds a value that was correct when written but the underlying data changed.`,
+        'error'
+      );
+      showStatus(`⚠️ STALE: cache="${STATE.cache[key].value}" vs db="${dbVal}"`, 'stale');
+    } else {
+      teach('CACHE HIT',
+        `Read ${key} → HIT. Cache returned "${STATE.cache[key].value}" in 2ms. This is why we cache: instead of a 50ms DB query, we got a 2ms memory lookup. At scale, 25x faster responses means 25x more capacity.`,
+        'ok', false
+      );
+    }
+  } else {
+    // CACHE MISS
+    STATE.misses++;
+    STATE.dbLoad++;
+    const elapsed = 40 + Math.random() * 30;
+    STATE.latencySum += elapsed;
+    showStatus(`⚠️ MISS: ${key} not in cache — fetching from DB (${elapsed.toFixed(0)}ms)`);
+    spawnParticle('cache-db', key);
+
+    await sleep(150);
+
+    const dbVal = STATE.database[key]?.value || 'NOT_FOUND';
+    // Populate cache
+    STATE.cache[key] = {
+      value: dbVal,
+      expiresAt: performance.now() + STATE.ttl * 1000,
+      insertedAt: performance.now()
+    };
+    // LRU eviction
+    enforceCacheSize();
+
+    teach('CACHE MISS',
+      `Read ${key} → MISS. Cache didn't have it, so we paid the full ${elapsed.toFixed(0)}ms cost of a DB query. Then we populated the cache so the NEXT read is fast. This is the cache-aside pattern: the application manages both the cache and the source of truth.`,
+      'warn', false
+    );
+
+    spawnParticle('db-cache', key);
+  }
+
+  updateMetrics();
+  drawCache();
+}
+
+async function clientWrite(key = 'user:1', newValue = null) {
+  STATE.nextVersion++;
+  const value = newValue || `Value_v${STATE.nextVersion}`;
+  STATE.database[key] = { value, version: STATE.nextVersion };
+  showStatus(`📝 DB updated: ${key} = "${value}"`);
+  spawnParticle('client-db', key);
+
+  teach('WRITE TO DB',
+    `Wrote "${value}" to the database. The source of truth has changed. Now the big question: what happens to the cache? This is where cache invalidation strategies diverge.`,
+    'purple'
+  );
+
+  await sleep(200);
+
+  // Apply strategy
+  if (STATE.strategy === 'ttl') {
+    // Do nothing — TTL will expire it
+    if (STATE.cache[key]) {
+      // Reduce TTL to a small value so it expires soon
+      STATE.cache[key].expiresAt = performance.now() + 1500;
+      teach('TTL STRATEGY',
+        `TTL strategy: the cache will keep serving the OLD value until the TTL expires. For up to ${STATE.ttl}s, reads will be STALE. This is the trade-off: simple, but eventual consistency with a variable window. The old value was set to expire in 1.5s to demo this.`,
+        'warn'
+      );
+    }
+  } else if (STATE.strategy === 'write') {
+    // Write-through: update cache at same time as DB
+    STATE.cache[key] = {
+      value,
+      expiresAt: performance.now() + STATE.ttl * 1000,
+      insertedAt: performance.now()
+    };
+    teach('WRITE-THROUGH',
+      `Write-through: the cache is updated in the SAME operation as the database. Reads always see fresh data. Cost: every write now pays the cache update too (and possibly a distributed lock). But no stale reads.`,
+      'ok'
+    );
+  } else if (STATE.strategy === 'invalid') {
+    // Invalidate on write
+    delete STATE.cache[key];
+    teach('INVALIDATE-ON-WRITE',
+      `Invalidate-on-write: the cache entry was DELETED. The next read will MISS and fetch the fresh value from the DB. This is the classic cache-aside invalidation pattern. No stale reads after the next fetch, but the next read is slow (miss).`,
+      'ok'
+    );
+  } else {
+    // none: no invalidation
+    teach('NO INVALIDATION',
+      `No invalidation strategy — cache is left untouched. Future reads will serve STALE data until the TTL expires (or forever if TTL is infinite). This is the worst-case scenario and the cause of countless production bugs.`,
+      'error'
+    );
+  }
+
+  updateMetrics();
+  drawCache();
+}
+
+async function writeThrough() {
+  STATE.strategy = 'write';
+  document.querySelector('input[name="strat"][value="write"]').checked = true;
+  await clientWrite();
+}
+
+function cleanExpired() {
+  const now = performance.now();
+  let removed = 0;
+  for (const key of Object.keys(STATE.cache)) {
+    if (STATE.cache[key].expiresAt < now) {
+      delete STATE.cache[key];
+      removed++;
+    }
+  }
+  if (removed > 0) {
+    drawCache();
+  }
+}
+
+function enforceCacheSize() {
+  const keys = Object.keys(STATE.cache);
+  if (keys.length <= STATE.cacheSize) return;
+  // Remove the oldest
+  const oldest = keys.reduce((a, b) =>
+    STATE.cache[a].insertedAt < STATE.cache[b].insertedAt ? a : b
+  );
+  delete STATE.cache[oldest];
+}
+
+/* ============================================================
+   FAULT INJECTION
+   ============================================================ */
+function serveStale() {
+  // Force all cache entries to have wrong (old) values
+  for (const key of Object.keys(STATE.cache)) {
+    STATE.cache[key].value = 'OLD_' + STATE.cache[key].value;
+    STATE.cache[key].expiresAt = performance.now() + 60000; // long TTL
+  }
+  showStatus('🐛 All cache entries corrupted', 'stale');
+  teach('STALE DATA',
+    `Forced the cache to hold old values. Any read now returns stale data even though the DB has newer values. In real systems this happens when: writes bypass the cache, invalidation events are lost, or a cache node is partitioned from the DB.`,
+    'error'
+  );
+  drawCache();
+}
+
+function stampede() {
+  showStatus('⚡ Cache stampede incoming...', 'stale');
+  teach('CACHE STAMPEDE',
+    `Simulating a cache stampede: a hot key expires, and 100 requests simultaneously see a MISS. All 100 hit the database at once, overwhelming it. Classic fixes: request coalescing (single flight), mutex-per-key, or probabilistic early expiration.`,
+    'error'
+  );
+
+  // Simulate many requests hitting the same key
+  for (let i = 0; i < 100; i++) {
+    STATE.misses++;
+    STATE.dbLoad++;
+    if (i % 10 === 0) spawnParticle('cache-db', 'user:1');
+  }
+  STATE.totalOps += 100;
+  STATE.latencySum += 100 * 80; // heavy DB load
+  updateMetrics();
+}
+
+function cacheFlush() {
+  STATE.cache = {};
+  showStatus('💥 Cache flushed — all reads will miss', 'stale');
+  teach('CACHE FLUSH',
+    `Flushed the entire cache. Now every read will MISS and hit the database until the cache refills. In real systems this is a "cold cache" scenario — deploys, cache node restarts, or manual flushes can cause this. Steady-state behavior should be designed to survive a cold start without melting the DB.`,
+    'error'
+  );
+  drawCache();
+}
+
+/* ============================================================
+   CANVAS DRAWING
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.cacheCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function spawnParticle(type, key) {
+  const canvas = DOM.cacheCanvas;
+  if (!canvas._w) return;
+  STATE.particles.push({
+    type, key,
+    progress: 0,
+    speed: 0.04
+  });
+}
+
+function drawCache() {
+  const canvas = DOM.cacheCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Three zones: Client (left), Cache (center-top), DB (center-bottom)
+  const clientX = 60;
+  const clientY = H / 2;
+  const cacheX = W * 0.5;
+  const cacheY = H * 0.3;
+  const dbX = W * 0.5;
+  const dbY = H * 0.75;
+
+  const now = performance.now();
+
+  // Draw Client
+  ctx.beginPath();
+  ctx.arc(clientX, clientY, 32, 0, Math.PI * 2);
+  ctx.fillStyle = '#0f172a';
+  ctx.strokeStyle = '#06b6d4';
+  ctx.lineWidth = 3;
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = '20px monospace';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('👤', clientX, clientY);
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = '#67e8f9';
+  ctx.textBaseline = 'top';
+  ctx.fillText('CLIENT', clientX, clientY + 40);
+
+  // Draw Cache box (key-value grid)
+  const cacheW = 260;
+  const cacheH = 100;
+  const cacheBoxX = cacheX - cacheW / 2;
+  const cacheBoxY = cacheY - cacheH / 2;
+
+  ctx.beginPath();
+  ctx.roundRect(cacheBoxX, cacheBoxY, cacheW, cacheH, 10);
+  ctx.fillStyle = 'rgba(15,23,42,0.8)';
+  ctx.fill();
+  ctx.strokeStyle = '#14b8a6';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  // Cache label
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = '#5eead4';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('🗄️ CACHE', cacheX, cacheBoxY - 16);
+
+  // Draw cache entries
+  const keys = Object.keys(STATE.cache);
+  const slotW = cacheW / Math.max(STATE.cacheSize, keys.length);
+  keys.forEach((key, i) => {
+    const slotX = cacheBoxX + i * slotW + 4;
+    const slotY = cacheBoxY + 8;
+    const slotWidth = slotW - 8;
+    const slotHeight = cacheH - 16;
+
+    const entry = STATE.cache[key];
+    const isExpired = entry.expiresAt < now;
+    const ttlRemaining = Math.max(0, (entry.expiresAt - now) / 1000);
+
+    // Stale check
+    const dbVal = STATE.database[key]?.value;
+    const isStale = dbVal && dbVal !== entry.value;
+
+    ctx.beginPath();
+    ctx.roundRect(slotX, slotY, slotWidth, slotHeight, 6);
+    ctx.fillStyle = isStale ? 'rgba(239,68,68,0.15)' : isExpired ? 'rgba(100,116,139,0.2)' : 'rgba(16,185,129,0.15)';
+    ctx.fill();
+    ctx.strokeStyle = isStale ? '#ef4444' : isExpired ? '#64748b' : '#10b981';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = isStale ? '#fca5a5' : '#6ee7b7';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(key, slotX + slotWidth / 2, slotY + 6);
+
+    ctx.font = '8px monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText(`"${entry.value}"`.substring(0, 12), slotX + slotWidth / 2, slotY + 22);
+
+    ctx.font = '7px monospace';
+    ctx.fillStyle = isExpired ? '#94a3b8' : '#fcd34d';
+    ctx.fillText(`${ttlRemaining.toFixed(1)}s`, slotX + slotWidth / 2, slotY + 40);
+
+    if (isStale) {
+      ctx.fillStyle = '#fca5a5';
+      ctx.fillText('STALE', slotX + slotWidth / 2, slotY + 54);
+    }
+  });
+
+  // Draw DB box
+  const dbW = 220;
+  const dbH = 90;
+  const dbBoxX = dbX - dbW / 2;
+  const dbBoxY = dbY - dbH / 2;
+
+  ctx.beginPath();
+  ctx.roundRect(dbBoxX, dbBoxY, dbW, dbH, 10);
+  ctx.fillStyle = 'rgba(15,23,42,0.8)';
+  ctx.fill();
+  ctx.strokeStyle = '#f59e0b';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = '#fcd34d';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('💾 DATABASE', dbX, dbBoxY - 16);
+
+  // DB entries
+  const dbKeys = Object.keys(STATE.database);
+  dbKeys.forEach((key, i) => {
+    const rowY = dbBoxY + 12 + i * 22;
+    ctx.font = '9px monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`${key}`, dbBoxX + 12, rowY);
+    ctx.fillStyle = '#86efac';
+    ctx.fillText(`"${STATE.database[key].value}"`, dbBoxX + 80, rowY);
+  });
+
+  // Draw edges
+  ctx.strokeStyle = 'rgba(71,85,105,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+
+  // Client → Cache
+  ctx.beginPath();
+  ctx.moveTo(clientX + 32, clientY - 10);
+  ctx.lineTo(cacheBoxX - 4, cacheY);
+  ctx.stroke();
+
+  // Client → DB
+  ctx.beginPath();
+  ctx.moveTo(clientX + 32, clientY + 10);
+  ctx.lineTo(dbBoxX - 4, dbY);
+  ctx.stroke();
+
+  // Cache → DB
+  ctx.beginPath();
+  ctx.moveTo(cacheX, cacheBoxY + cacheH + 4);
+  ctx.lineTo(dbX, dbBoxY - 4);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw particles
+  for (let i = STATE.particles.length - 1; i >= 0; i--) {
+    const p = STATE.particles[i];
+    p.progress += p.speed;
+    if (p.progress >= 1) {
+      STATE.particles.splice(i, 1);
+      continue;
+    }
+
+    let fromX, fromY, toX, toY, color;
+    if (p.type === 'client-cache') {
+      fromX = clientX; fromY = clientY;
+      toX = cacheBoxX; toY = cacheY;
+      color = '#14b8a6';
+    } else if (p.type === 'client-db') {
+      fromX = clientX; fromY = clientY;
+      toX = dbBoxX; toY = dbY;
+      color = '#f59e0b';
+    } else if (p.type === 'cache-db') {
+      fromX = cacheX; fromY = cacheBoxY + cacheH;
+      toX = dbX; toY = dbBoxY;
+      color = '#ef4444';
+    } else if (p.type === 'db-cache') {
+      fromX = dbX; fromY = dbBoxY;
+      toX = cacheX; toY = cacheBoxY + cacheH;
+      color = '#10b981';
+    }
+
+    const t = p.progress;
+    const x = fromX + (toX - fromX) * t;
+    const y = fromY + (toY - fromY) * t;
+
+    ctx.beginPath();
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12;
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Hint
+  DOM.cacheHint.textContent = keys.length === 0 ? '— cache empty —' : `— ${keys.length} keys cached —`;
+}
+
+function animate() {
+  drawCache();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  const total = STATE.hits + STATE.misses;
+  const rate = total > 0 ? Math.round((STATE.hits / total) * 100) : 0;
+  DOM.statHits.textContent = STATE.hits;
+  DOM.statMisses.textContent = STATE.misses;
+  DOM.statRate.textContent = rate + '%';
+  DOM.statRate.className = 'val ' + (rate > 80 ? 'good' : rate > 50 ? '' : 'bad');
+
+  DOM.mHitRate.textContent = rate + '%';
+  DOM.mHitRate.className = 'metric-value ' + (rate > 80 ? 'good' : rate > 50 ? 'warn' : 'bad');
+
+  const avg = STATE.totalOps > 0 ? STATE.latencySum / STATE.totalOps : 0;
+  DOM.mLatency.textContent = avg.toFixed(0) + ' ms';
+  DOM.mLatency.className = 'metric-value ' + (avg > 60 ? 'bad' : avg > 20 ? 'warn' : '');
+
+  DOM.mStale.textContent = STATE.staleReads;
+  DOM.mStale.className = 'metric-value ' + (STATE.staleReads === 0 ? 'good' : STATE.staleReads < 3 ? 'warn' : 'bad');
+
+  DOM.mDbLoad.textContent = STATE.dbLoad;
+  DOM.mDbLoad.className = 'metric-value ' + (STATE.dbLoad > 10 ? 'bad' : STATE.dbLoad > 5 ? 'warn' : 'warn');
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.cache = {};
+  STATE.hits = 0;
+  STATE.misses = 0;
+  STATE.staleReads = 0;
+  STATE.totalOps = 0;
+  STATE.latencySum = 0;
+  STATE.dbLoad = 0;
+  STATE.particles = [];
+  STATE.database = {
+    'user:1': { value: 'Alice', version: 1 },
+    'user:2': { value: 'Bob', version: 1 },
+    'user:3': { value: 'Carol', version: 1 }
+  };
+  STATE.nextVersion = 1;
+  updateMetrics();
+  drawCache();
+  showToast('⟲ Reset complete');
+  teach('RESET', 'Cache cleared, DB reset to defaults, metrics zeroed.', 'info', false);
+}
+
+/* ============================================================
+   STRATEGY SELECTION
+   ============================================================ */
+document.querySelectorAll('input[name="strat"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.strategy = e.target.value;
+    const descs = {
+      ttl: 'TTL expiration: cache entries expire after a fixed time. Simple, but there\'s a window of staleness. After the TTL, the next read misses and repopulates.',
+      write: 'Write-through: cache is updated in the same operation as the DB. No staleness, but every write pays cache update cost and requires coordination.',
+      invalid: 'Invalidate-on-write: delete the cache entry when the DB is updated. Next read misses, fetches fresh, and repopulates. The most common pattern.',
+      none: 'No invalidation: cache is never updated or deleted. Guarantees stale reads until TTL. This is the "bug" mode — it exists to show what happens when you forget invalidation.'
+    };
+    teach('STRATEGY: ' + e.target.value.toUpperCase(), descs[e.target.value], e.target.value === 'none' ? 'error' : 'purple');
+  });
+});
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRead.addEventListener('click', () => clientRead('user:1'));
+DOM.btnWrite.addEventListener('click', () => clientWrite('user:1'));
+DOM.btnWriteThrough.addEventListener('click', writeThrough);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnStale.addEventListener('click', serveStale);
+DOM.btnStampede.addEventListener('click', stampede);
+DOM.btnFlush.addEventListener('click', cacheFlush);
+
+DOM.ttlRange.addEventListener('input', e => {
+  STATE.ttl = parseInt(e.target.value);
+  DOM.ttlVal.textContent = STATE.ttl;
+});
+DOM.sizeRange.addEventListener('input', e => {
+  STATE.cacheSize = parseInt(e.target.value);
+  DOM.sizeVal.textContent = STATE.cacheSize;
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+/* ============================================================
+   POLYFILL
+   ============================================================ */
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+    return this;
+  };
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+updateMetrics();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Cache Invalidation. As the saying goes: "There are only two hard things in computer science: cache invalidation, naming things, and off-by-one errors." Caching makes reads fast, but keeping the cache in sync with the source of truth is genuinely hard. This simulator shows why.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('CACHE-ASIDE',
+      `Cache-aside (also called lazy loading) is the default pattern. On read: check cache → on HIT, return fast → on MISS, fetch from DB, populate cache, return. Simple and effective, but every miss costs a DB query.`,
+      'ok'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE INVALIDATION PROBLEM',
+      `When you WRITE to the database, what happens to the cache? Four strategies: TTL (wait for expiry — stale window), write-through (update both — expensive but fresh), invalidate (delete cache — next read misses), or none (stale forever — the bug mode). Try each one and watch the stale reads counter.`,
+      'purple'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('CACHE STAMPEDE',
+      `The nasty failure mode: a hot key expires. 1000 requests simultaneously see a MISS, all hit the DB, and the DB melts. Fixes: request coalescing (single-flight), per-key mutex, or probabilistic early refresh. Click STAMPEDE to see it.`,
+      'error'
+    );
+  }, 13500);
+
+  showToast('👋 Read, then Write, then check for staleness', 4500);
+}, 500);
+</script>
+</body>
+</html>

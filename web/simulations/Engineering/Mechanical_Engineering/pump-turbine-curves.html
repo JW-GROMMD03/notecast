@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pump & Turbine Performance Curves — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>PUMP &amp; TURBINE CURVES</h1>
+    <span class="sub">HEAD · FLOW · EFFICIENCY · NPSH · CAVITATION · SIMILARITY</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Machine</div>
+    <div class="control-group">
+      <label>Machine Type</label>
+      <select id="machineSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="centrifugal">Centrifugal Pump</option>
+        <option value="axial">Axial Pump</option>
+        <option value="turbine">Francis Turbine</option>
+        <option value="pelton">Pelton Wheel</option>
+      </select>
+    </div>
+
+    <div class="section-title">Operating Conditions</div>
+    <div class="control-group">
+      <label>Rotational Speed N <span class="val" id="nVal">1450 rpm</span></label>
+      <input type="range" id="nSlider" min="200" max="3600" value="1450" step="50">
+    </div>
+    <div class="control-group">
+      <label>Impeller Diameter D <span class="val" id="dVal">250 mm</span></label>
+      <input type="range" id="dSlider" min="50" max="800" value="250" step="10">
+    </div>
+    <div class="control-group">
+      <label>System Resistance K <span class="val" id="kVal">100</span></label>
+      <input type="range" id="kSlider" min="10" max="500" value="100" step="10">
+    </div>
+    <div class="control-group">
+      <label>Static Head H_st <span class="val" id="hstVal">10 m</span></label>
+      <input type="range" id="hstSlider" min="0" max="80" value="10" step="2">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ START PUMP</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="cavitationBtn">⚠ CAVITATION (NPSH)</button>
+    <button class="btn warn" id="wearBtn">⚙ WEAR RING LEAKAGE</button>
+    <button class="btn warn" id="dryBtn">🌵 DRY RUN</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="water">Water Pump</button>
+    <button class="btn" data-preset="hvac">HVAC Circulation</button>
+    <button class="btn" data-preset="hydro">Hydro Turbine</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      H = a·N² − b·Q² &nbsp;|&nbsp; P = ρgQH/η &nbsp;|&nbsp; <span class="hl">NPSH_a = P_atm/ρg + P_s/ρg − P_vap/ρg</span> &nbsp;|&nbsp; Similarity: Q₁/Q₂ = N₁D₁³/(N₂D₂³)
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mQ">
+          <div class="mlabel">FLOW RATE Q</div>
+          <div class="mvalue">0<span class="munit">L/s</span></div>
+        </div>
+        <div class="metric" id="mH">
+          <div class="mlabel">HEAD H</div>
+          <div class="mvalue">0<span class="munit">m</span></div>
+        </div>
+        <div class="metric" id="mEff">
+          <div class="mlabel">EFFICIENCY η</div>
+          <div class="mvalue">0<span class="munit">%</span></div>
+        </div>
+        <div class="metric" id="mP">
+          <div class="mlabel">POWER P</div>
+          <div class="mvalue">0<span class="munit">kW</span></div>
+        </div>
+        <div class="metric" id="mNPSH">
+          <div class="mlabel">NPSH_a</div>
+          <div class="mvalue">0<span class="munit">m</span></div>
+        </div>
+        <div class="metric" id="mNs">
+          <div class="mlabel">SPECIFIC SPEED N_s</div>
+          <div class="mvalue">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">H = a·N² − b·Q² (pump curve)</div>
+      <div class="eq">H_system = H_st + K·Q² (system curve)</div>
+      <div class="eq">P = ρ·g·Q·H / η (shaft power)</div>
+      <div class="def">
+        The pump curve and system curve intersect at the operating point. 
+        Change speed (affinity laws: Q∝N, H∝N², P∝N³) or system resistance 
+        to shift this point. Efficiency peaks near BEP (best efficiency point). 
+        NPSH available must exceed NPSH required to avoid cavitation.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const S = {
+  machine: 'centrifugal',
+  N: 1450,
+  D: 250,
+  K: 100,
+  Hst: 10,
+  running: false,
+  time: 0,
+  operating: { Q: 0, H: 0 },
+  cavitation: false,
+  wear: false,
+  dryRun: false,
+  rpm_history: [],
+  manualQ: null
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const machineSel = document.getElementById('machineSelect');
+const nSlider = document.getElementById('nSlider');
+const dSlider = document.getElementById('dSlider');
+const kSlider = document.getElementById('kSlider');
+const hstSlider = document.getElementById('hstSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── PUMP/TURBINE CURVES ───────────────────────────────────
+function getPumpParams(){
+  const Nrel = S.N / 1450;
+  const Drel = S.D / 250;
+  const H_shutoff = 40 * Nrel * Nrel * Drel * Drel;
+  const Q_rated = 50 * Nrel * Drel * Drel * Drel;
+  const H_rated = 25 * Nrel * Nrel * Drel * Drel;
+  const b = (H_shutoff - H_rated) / (Q_rated * Q_rated);
+
+  let machineK = 1;
+  if(S.machine === 'axial'){
+    machineK = 0.3;
+  } else if(S.machine === 'turbine'){
+    machineK = 1.2;
+  } else if(S.machine === 'pelton'){
+    machineK = 0.8;
+  }
+
+  return {
+    H_shutoff: H_shutoff * machineK,
+    b: b / machineK,
+    Q_rated,
+    H_rated: H_rated * machineK,
+    Nrel, Drel
+  };
+}
+
+function pumpHead(Q){
+  const p = getPumpParams();
+  return p.H_shutoff - p.b * Q * Q;
+}
+
+function systemHead(Q){
+  return S.Hst + S.K * Q * Q / 1000;
+}
+
+function findOperatingPoint(){
+  const p = getPumpParams();
+  const b_total = p.b + S.K / 1000;
+  if(p.H_shutoff - S.Hst <= 0){
+    return { Q: 0, H: S.Hst };
+  }
+  const Q = Math.sqrt((p.H_shutoff - S.Hst) / b_total);
+  return { Q, H: systemHead(Q) };
+}
+
+function efficiency(Q){
+  const p = getPumpParams();
+  const Q_BEP = p.Q_rated;
+  const etaMax = S.machine === 'axial' ? 0.85 : S.machine === 'pelton' ? 0.90 : 0.78;
+  const relQ = Q / Q_BEP;
+  const eta = etaMax * Math.max(0, 1 - 0.8 * Math.pow(relQ - 1, 2));
+  if(S.wear) return eta * 0.85;
+  if(S.dryRun) return eta * 0.3;
+  return eta;
+}
+
+function computePower(Q, H, eta){
+  if(eta < 0.01) return 0;
+  const rho = 1000;
+  const g = 9.81;
+  return rho * g * Q / 1000 * H / eta / 1000;
+}
+
+function computeNPSH(){
+  const Patm = 101325;
+  const Pvap = 2340;
+  const rho = 1000;
+  const g = 9.81;
+  const Hs = -2;
+  let NPSHa = (Patm - Pvap) / (rho * g) + Hs;
+  if(S.dryRun) NPSHa = 0;
+  return NPSHa;
+}
+
+function computeNs(){
+  const op = findOperatingPoint();
+  const Q_m3s = op.Q / 1000;
+  if(op.H <= 0 || Q_m3s <= 0) return 0;
+  return S.N * Math.sqrt(Q_m3s) / Math.pow(op.H, 0.75);
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawPumpChart(W, H);
+  drawSystemDiagram(W, H);
+  drawEfficiencyCurve(W, H);
+}
+
+function drawPumpChart(W, H){
+  const ox = 60;
+  const oy = 60;
+  const w = W * 0.5;
+  const h = H * 0.5;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('PUMP & SYSTEM CURVES', ox, oy - 10);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(ox, oy, w, h);
+
+  const pad = { l:50, r:20, t:20, b:40 };
+  const gw = w - pad.l - pad.r;
+  const gh = h - pad.t - pad.b;
+
+  const Qmax = 150;
+  const Hmax = 60;
+  const xOf = Q => ox + pad.l + (Q / Qmax) * gw;
+  const yOf = Hh => oy + h - pad.b - (Hh / Hmax) * gh;
+
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  for(let i=0;i<=6;i++){
+    const y = oy + pad.t + gh * i / 6;
+    ctx.beginPath(); ctx.moveTo(ox + pad.l, y); ctx.lineTo(ox + pad.l + gw, y); ctx.stroke();
+  }
+  for(let i=0;i<=10;i++){
+    const x = ox + pad.l + gw * i / 10;
+    ctx.beginPath(); ctx.moveTo(x, oy + pad.t); ctx.lineTo(x, oy + pad.t + gh); ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  for(let i=0;i<=5;i++){
+    ctx.fillText((i*Qmax/5).toFixed(0), ox + pad.l + gw*i/5, oy + h - 20);
+  }
+  ctx.fillText('Flow Q (L/s)', ox + w/2, oy + h - 4);
+  ctx.textAlign = 'right';
+  for(let i=0;i<=6;i++){
+    ctx.fillText((i*Hmax/6).toFixed(0), ox + pad.l - 6, oy + h - pad.b - gh*i/6 + 3);
+  }
+  ctx.textAlign = 'left';
+  ctx.save();
+  ctx.translate(ox + 15, oy + h/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign = 'center';
+  ctx.fillText('Head H (m)', 0, 0);
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(100,116,139,0.3)';
+  ctx.setLineDash([4,3]);
+  ctx.lineWidth = 1;
+  const speedRatios = [0.6, 0.8, 1.0, 1.2];
+  speedRatios.forEach(sr => {
+    if(sr === 1.0) return;
+    ctx.beginPath();
+    const N_orig = S.N;
+    S.N = 1450 * sr;
+    for(let i=0;i<=60;i++){
+      const Q = i / 60 * Qmax;
+      const Hh = Math.max(0, pumpHead(Q));
+      const x = xOf(Q), y = yOf(Math.min(Hh, Hmax));
+      if(i===0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    S.N = N_orig;
+  });
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#22d3ee';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  for(let i=0;i<=60;i++){
+    const Q = i / 60 * Qmax;
+    const Hh = Math.max(0, pumpHead(Q));
+    const x = xOf(Q), y = yOf(Math.min(Hh, Hmax));
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#fbbf24';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  for(let i=0;i<=60;i++){
+    const Q = i / 60 * Qmax;
+    const Hh = systemHead(Q);
+    const x = xOf(Q), y = yOf(Math.min(Hh, Hmax));
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  const op = findOperatingPoint();
+  const opx = xOf(Math.min(op.Q, Qmax));
+  const opy = yOf(Math.min(op.H, Hmax));
+  ctx.beginPath();
+  ctx.arc(opx, opy, 8, 0, Math.PI * 2);
+  ctx.fillStyle = '#4ade80';
+  ctx.shadowColor = '#4ade80';
+  ctx.shadowBlur = 15;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('Operating Point', opx + 12, opy - 8);
+  ctx.fillText('Q = ' + op.Q.toFixed(1) + ' L/s', opx + 12, opy + 6);
+  ctx.fillText('H = ' + op.H.toFixed(1) + ' m', opx + 12, opy + 20);
+
+  const p = getPumpParams();
+  const bepx = xOf(p.Q_rated);
+  const bepy = yOf(p.H_rated);
+  ctx.strokeStyle = 'rgba(74,222,128,0.4)';
+  ctx.setLineDash([2,3]);
+  ctx.beginPath();
+  ctx.arc(bepx, bepy, 20, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('BEP', bepx - 8, bepy - 22);
+
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('— Pump curve', ox + w - 120, oy + 20);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('— System curve', ox + w - 120, oy + 34);
+  ctx.fillStyle = '#64748b';
+  ctx.fillText('--- Other speeds', ox + w - 120, oy + 48);
+}
+
+function drawSystemDiagram(W, H){
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 200;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('SYSTEM SCHEMATIC', ox, oy - 6);
+
+  const pumpX = ox + 60;
+  const pumpY = oy + 80;
+  ctx.beginPath();
+  ctx.arc(pumpX + 30, pumpY + 30, 30, 0, Math.PI * 2);
+  ctx.fillStyle = '#0c4a6e';
+  ctx.fill();
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = '#67e8f9';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.fillText('PUMP', pumpX + 12, pumpY + 34);
+
+  ctx.save();
+  ctx.translate(pumpX + 30, pumpY + 30);
+  ctx.rotate(S.time * 5);
+  for(let i=0;i<4;i++){
+    ctx.rotate(Math.PI / 2);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(15, -5);
+    ctx.lineTo(15, 5);
+    ctx.closePath();
+    ctx.fillStyle = '#22d3ee';
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(ox + 20, pumpY + 30);
+  ctx.lineTo(pumpX, pumpY + 30);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(pumpX + 60, pumpY + 30);
+  ctx.lineTo(ox + w - 40, pumpY + 30);
+  ctx.lineTo(ox + w - 40, oy + 30);
+  ctx.stroke();
+
+  ctx.fillStyle = '#0c4a6e';
+  ctx.fillRect(ox + 5, pumpY + 40, 60, 40);
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(ox + 5, pumpY + 40, 60, 40);
+  ctx.fillStyle = '#67e8f9';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('Source', ox + 20, pumpY + 65);
+
+  ctx.fillStyle = '#0c4a6e';
+  ctx.fillRect(ox + w - 90, oy + 20, 60, 30);
+  ctx.strokeRect(ox + w - 90, oy + 20, 60, 30);
+  ctx.fillStyle = '#67e8f9';
+  ctx.fillText('Discharge', ox + w - 85, oy + 40);
+
+  ctx.strokeStyle = '#a78bfa';
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  ctx.moveTo(ox + w - 30, pumpY + 30);
+  ctx.lineTo(ox + w - 30, oy + 35);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.fillText('H_st=' + S.Hst + 'm', ox + w - 90, oy + 65);
+
+  if(S.running){
+    for(let i=0;i<3;i++){
+      const phase = (S.time * 2 + i / 3) % 1;
+      const x = ox + 20 + phase * (pumpX - ox - 20);
+      ctx.beginPath();
+      ctx.arc(x, pumpY + 30, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#22d3ee';
+      ctx.fill();
+    }
+  }
+}
+
+function drawEfficiencyCurve(W, H){
+  const ox = W - 280;
+  const oy = H - 220;
+  const w = 260;
+  const h = 180;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('EFFICIENCY vs FLOW', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const pad = { l:40, r:15, t:20, b:30 };
+  const gw = w - pad.l - pad.r;
+  const gh = h - pad.t - pad.b;
+
+  const Qmax = 150;
+  const xOf = Q => ox + pad.l + (Q / Qmax) * gw;
+  const yOf = e => oy + h - pad.b - (e / 100) * gh;
+
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  for(let i=0;i<=5;i++){
+    const y = oy + pad.t + gh * i / 5;
+    ctx.beginPath(); ctx.moveTo(ox + pad.l, y); ctx.lineTo(ox + pad.l + gw, y); ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'right';
+  for(let i=0;i<=5;i++){
+    ctx.fillText((i*20) + '%', ox + pad.l - 4, oy + h - pad.b - gh*i/5 + 3);
+  }
+  ctx.textAlign = 'center';
+  for(let i=0;i<=5;i++){
+    ctx.fillText((i*Qmax/5).toFixed(0), ox + pad.l + gw*i/5, oy + h - 12);
+  }
+  ctx.fillText('Q (L/s)', ox + w/2, oy + h - 2);
+  ctx.textAlign = 'left';
+
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#4ade80';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  for(let i=0;i<=60;i++){
+    const Q = i / 60 * Qmax;
+    const e = efficiency(Q) * 100;
+    const x = xOf(Q), y = yOf(e);
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  const op = findOperatingPoint();
+  const etaOp = efficiency(op.Q);
+  const opx = xOf(op.Q), opy = yOf(etaOp * 100);
+  ctx.beginPath();
+  ctx.arc(opx, opy, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#4ade80';
+  ctx.shadowColor = '#4ade80';
+  ctx.shadowBlur = 12;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  const p = getPumpParams();
+  const bepx = xOf(p.Q_rated);
+  ctx.strokeStyle = 'rgba(74,222,128,0.4)';
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  ctx.moveTo(bepx, oy + pad.t);
+  ctx.lineTo(bepx, oy + h - pad.b);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('BEP', bepx - 8, oy + pad.t + 10);
+
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('η = ' + (etaOp*100).toFixed(1) + '%', ox + 8, oy + 14);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const op = findOperatingPoint();
+  const eta = efficiency(op.Q);
+  const power = computePower(op.Q, op.H, eta);
+  const NPSHa = computeNPSH();
+  const Ns = computeNs();
+
+  document.querySelector('#mQ .mvalue').innerHTML = op.Q.toFixed(1) + '<span class="munit">L/s</span>';
+  document.querySelector('#mH .mvalue').innerHTML = op.H.toFixed(1) + '<span class="munit">m</span>';
+  document.querySelector('#mEff .mvalue').innerHTML = (eta*100).toFixed(1) + '<span class="munit">%</span>';
+  document.querySelector('#mP .mvalue').innerHTML = power.toFixed(2) + '<span class="munit">kW</span>';
+  document.querySelector('#mNPSH .mvalue').innerHTML = NPSHa.toFixed(1) + '<span class="munit">m</span>';
+  document.querySelector('#mNs .mvalue').textContent = Ns.toFixed(0);
+
+  const NPSHr = 3.0;
+  if(NPSHa < NPSHr || S.cavitation){
+    if(!S.cavitation){
+      S.cavitation = true;
+      teach('CAVITATION', 'NPSH_a = ' + NPSHa.toFixed(1) + ' m < NPSH_r = 3.0 m. Cavitation! Vapor bubbles form at the impeller eye and collapse violently. This causes noise, vibration, erosion, and eventual pump failure.', 'error');
+      toast('⚠ Cavitation!');
+    }
+    document.getElementById('mNPSH').className = 'metric bad';
+  } else {
+    S.cavitation = false;
+    document.getElementById('mNPSH').className = 'metric' + (NPSHa < 5 ? ' warn' : ' ok');
+  }
+
+  document.getElementById('mEff').className = 'metric' + (eta > 0.7 ? ' ok' : eta > 0.5 ? '' : ' warn');
+  document.getElementById('mQ').className = 'metric' + (op.Q < 5 ? ' warn' : '');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  S.time += 1/60;
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+machineSel.addEventListener('change', e => {
+  S.machine = e.target.value;
+  const op = findOperatingPoint();
+  teach('MACHINE', 'Machine type: ' + S.machine + '. Operating point: Q = ' + op.Q.toFixed(1) + ' L/s, H = ' + op.H.toFixed(1) + ' m. Different machines have different shapes of pump curve.', 'concept');
+});
+
+nSlider.addEventListener('input', e => {
+  S.N = parseFloat(e.target.value);
+  document.getElementById('nVal').textContent = S.N + ' rpm';
+});
+
+dSlider.addEventListener('input', e => {
+  S.D = parseFloat(e.target.value);
+  document.getElementById('dVal').textContent = S.D + ' mm';
+});
+
+kSlider.addEventListener('input', e => {
+  S.K = parseFloat(e.target.value);
+  document.getElementById('kVal').textContent = S.K;
+});
+
+hstSlider.addEventListener('input', e => {
+  S.Hst = parseFloat(e.target.value);
+  document.getElementById('hstVal').textContent = S.Hst + ' m';
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ START PUMP';
+  if(S.running){
+    const op = findOperatingPoint();
+    teach('RUN', 'Pump started at N = ' + S.N + ' rpm. Operating point at intersection: Q = ' + op.Q.toFixed(1) + ' L/s, H = ' + op.H.toFixed(1) + ' m.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  const op = findOperatingPoint();
+  const eta = efficiency(op.Q);
+  const power = computePower(op.Q, op.H, eta);
+  teach('STEP', 'Q = ' + op.Q.toFixed(1) + ' L/s, H = ' + op.H.toFixed(1) + ' m, η = ' + (eta*100).toFixed(1) + '%, P = ' + power.toFixed(2) + ' kW.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.machine = 'centrifugal'; S.N = 1450; S.D = 250; S.K = 100; S.Hst = 10;
+  S.running = false; S.cavitation = false; S.wear = false; S.dryRun = false;
+  machineSel.value = 'centrifugal';
+  nSlider.value = 1450; dSlider.value = 250; kSlider.value = 100; hstSlider.value = 10;
+  document.getElementById('nVal').textContent = '1450 rpm';
+  document.getElementById('dVal').textContent = '250 mm';
+  document.getElementById('kVal').textContent = '100';
+  document.getElementById('hstVal').textContent = '10 m';
+  playBtn.textContent = '▶ START PUMP';
+  teach('RESET', 'Pump system reset to defaults.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('cavitationBtn').addEventListener('click', () => {
+  S.dryRun = true;
+  teach('NPSH TEST', 'Dry-run condition simulated: no water at suction. NPSH_a dropped to zero. Cavitation is guaranteed. Real pumps must be primed before starting — running dry destroys the mechanical seal in minutes.', 'error');
+  toast('⚠ Dry run');
+});
+
+document.getElementById('wearBtn').addEventListener('click', () => {
+  S.wear = !S.wear;
+  if(S.wear){
+    teach('WEAR', 'Wear ring leakage: internal clearances opened up by erosion. Efficiency drops 15% and flow is reduced. This is a common maintenance issue after thousands of hours of operation.', 'warn');
+  } else {
+    teach('NEW', 'Wear rings restored — new pump efficiency.', 'ok');
+  }
+});
+
+document.getElementById('dryBtn').addEventListener('click', () => {
+  S.dryRun = !S.dryRun;
+  if(S.dryRun){
+    teach('DRY RUN', 'Dry run: impeller spinning without fluid. No cooling, no lubrication. Seals overheat and fail. Never run a centrifugal pump dry.', 'error');
+  } else {
+    teach('PRIMED', 'Pump primed, ready to operate.', 'ok');
+  }
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'water'){
+      S.machine = 'centrifugal'; S.N = 1450; S.D = 250; S.K = 100; S.Hst = 10;
+      machineSel.value = 'centrifugal';
+      nSlider.value = 1450; dSlider.value = 250; kSlider.value = 100; hstSlider.value = 10;
+      document.getElementById('nVal').textContent = '1450 rpm';
+      document.getElementById('dVal').textContent = '250 mm';
+      document.getElementById('kVal').textContent = '100';
+      document.getElementById('hstVal').textContent = '10 m';
+      teach('WATER PUMP', 'Typical water supply pump: 1450 rpm, 250 mm impeller. Direct drive from 4-pole induction motor. Operating point ~50 L/s at 25 m head.', 'concept');
+    } else if(p === 'hvac'){
+      S.machine = 'centrifugal'; S.N = 2900; S.D = 150; S.K = 200; S.Hst = 5;
+      machineSel.value = 'centrifugal';
+      nSlider.value = 2900; dSlider.value = 150; kSlider.value = 200; hstSlider.value = 5;
+      document.getElementById('nVal').textContent = '2900 rpm';
+      document.getElementById('dVal').textContent = '150 mm';
+      document.getElementById('kVal').textContent = '200';
+      document.getElementById('hstVal').textContent = '5 m';
+      teach('HVAC', 'HVAC circulation pump: 2900 rpm (2-pole), 150 mm impeller, low static head (building height). High resistance system because of many small pipes and fittings.', 'concept');
+    } else {
+      S.machine = 'turbine'; S.N = 300; S.D = 800; S.K = 50; S.Hst = 60;
+      machineSel.value = 'turbine';
+      nSlider.value = 300; dSlider.value = 800; kSlider.value = 50; hstSlider.value = 60;
+      document.getElementById('nVal').textContent = '300 rpm';
+      document.getElementById('dVal').textContent = '800 mm';
+      document.getElementById('kVal').textContent = '50';
+      document.getElementById('hstVal').textContent = '60 m';
+      teach('HYDRO', 'Francis hydro turbine: 300 rpm, 800 mm runner, 60 m head. Large machines like this generate 100+ MW. Water flows the opposite way compared to a pump.', 'concept');
+    }
+    S.wear = false; S.dryRun = false;
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Pump & Turbine Performance Curves. Pumps convert mechanical energy to fluid energy — turbines do the opposite.', 'concept');
+  teach('OPERATING POINT', 'The pump produces a curve of head vs flow. The system also has a curve. Where they intersect is the operating point — that is where your system actually runs.', 'concept');
+  teach('HOWTO', 'Adjust speed, diameter, and system resistance. Watch the operating point move along the pump curve. Try the fault buttons to see cavitation and wear.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Combined Loading & Principal Stresses — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>COMBINED LOADING</h1>
+    <span class="sub">PRINCIPAL STRESSES · VON MISES · SUPERPOSITION</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Applied Loads</div>
+    <div class="control-group">
+      <label>Axial Force F <span class="val" id="fVal">20 kN</span></label>
+      <input type="range" id="fSlider" min="-100" max="100" value="20" step="1">
+    </div>
+    <div class="control-group">
+      <label>Bending Moment M <span class="val" id="mVal">800 N·m</span></label>
+      <input type="range" id="mSlider" min="-3000" max="3000" value="800" step="50">
+    </div>
+    <div class="control-group">
+      <label>Torque T <span class="val" id="tVal">200 N·m</span></label>
+      <input type="range" id="tSlider" min="-1500" max="1500" value="200" step="20">
+    </div>
+    <div class="control-group">
+      <label>Shear Force V <span class="val" id="vVal">5 kN</span></label>
+      <input type="range" id="vSlider" min="-30" max="30" value="5" step="0.5">
+    </div>
+
+    <div class="section-title">Component Geometry</div>
+    <div class="control-group">
+      <label>Diameter D <span class="val" id="dVal">40 mm</span></label>
+      <input type="range" id="dSlider" min="10" max="100" value="40" step="1">
+    </div>
+    <div class="control-group">
+      <label>Material</label>
+      <select id="matSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="steel">Steel (σ_y = 250 MPa)</option>
+        <option value="aluminum">Aluminum (σ_y = 276 MPa)</option>
+        <option value="titanium">Titanium (σ_y = 830 MPa)</option>
+        <option value="castiron">Cast Iron (σ_y = 130 MPa, brittle)</option>
+      </select>
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ ANIMATE</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="yieldBtn">⚠ VON MISES YIELD</button>
+    <button class="btn warn" id="trescaBtn">⚠ TRESCA YIELD</button>
+    <button class="btn warn" id="brittleBtn">⚠ BRITTLE FRACTURE</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="tension">Pure Tension</button>
+    <button class="btn" data-preset="bendtors">Bending + Torsion</button>
+    <button class="btn" data-preset="shaft">Rotating Shaft</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      σ_vm = √[σ² + 3τ²] &nbsp;|&nbsp; σ₁,₂ = σ/2 ± √[(σ/2)² + τ²] &nbsp;|&nbsp; <span class="hl">Tresca: τ_max ≤ σ_y/2</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mSx">
+          <div class="mlabel">σ_x TOTAL</div>
+          <div class="mvalue">0<span class="munit">MPa</span></div>
+        </div>
+        <div class="metric" id="mTxy">
+          <div class="mlabel">τ_xy TOTAL</div>
+          <div class="mvalue">0<span class="munit">MPa</span></div>
+        </div>
+        <div class="metric" id="mS1">
+          <div class="mlabel">σ₁ (PRIN)</div>
+          <div class="mvalue">0<span class="munit">MPa</span></div>
+        </div>
+        <div class="metric" id="mS2">
+          <div class="mlabel">σ₂ (PRIN)</div>
+          <div class="mvalue">0<span class="munit">MPa</span></div>
+        </div>
+        <div class="metric" id="mVm">
+          <div class="mlabel">σ_VON MISES</div>
+          <div class="mvalue">0<span class="munit">MPa</span></div>
+        </div>
+        <div class="metric" id="mSF">
+          <div class="mlabel">SAFETY FACTOR</div>
+          <div class="mvalue">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">σ_vm = √(σ² + 3τ²)</div>
+      <div class="eq">σ₁,₂ = σ/2 ± √[(σ/2)² + τ²]</div>
+      <div class="def">
+        When multiple loads act together, you cannot just add stresses — 
+        they combine at different orientations. Von Mises reduces the 
+        combined state to a single equivalent stress for ductile yield 
+        prediction. Tresca uses max shear instead.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const MATERIALS = {
+  steel:    { name:'Steel',     sy:250e6, brittle:false },
+  aluminum: { name:'Aluminum',  sy:276e6, brittle:false },
+  titanium: { name:'Titanium',  sy:830e6, brittle:false },
+  castiron: { name:'Cast Iron', sy:130e6, brittle:true  }
+};
+
+const S = {
+  F: 20,      // kN axial
+  M: 800,     // N·m bending
+  T: 200,     // N·m torque
+  V: 5,       // kN shear
+  D: 40,      // mm
+  material: 'steel',
+  animating: false,
+  time: 0,
+  particles: [],
+  lastStressPct: 0
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const fSlider = document.getElementById('fSlider');
+const mSlider = document.getElementById('mSlider');
+const tSlider = document.getElementById('tSlider');
+const vSlider = document.getElementById('vSlider');
+const dSlider = document.getElementById('dSlider');
+const matSelect = document.getElementById('matSelect');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── COMBINED STRESS MATH ──────────────────────────────────
+function computeStress(){
+  const mat = MATERIALS[S.material];
+  const D = S.D / 1000; // m
+  const A = Math.PI * D * D / 4;
+  const c = D / 2;
+  // Moment of inertia
+  const I = Math.PI * Math.pow(D,4) / 64;
+  const J = Math.PI * Math.pow(D,4) / 32;
+
+  const F = S.F * 1000;  // N
+  const M = S.M;         // N·m
+  const T = S.T;         // N·m
+  const V = S.V * 1000;  // N
+
+  // Stresses at the critical outer fiber (top surface, where bending tension and axial tension align)
+  const sigmaAxial = F / A;                    // Pa
+  const sigmaBend  = M * c / I;                // Pa (tension at bottom for positive M)
+  const tauTorsion = T * c / J;                // Pa
+  // Max transverse shear (approx 4V/(3A) for circle)
+  const tauShear   = 4 * V / (3 * A);
+
+  // Critical point: outer surface
+  // Take bending + axial as σ_x (superposed); torsion as τ_xy (max at surface)
+  const sigmaX = sigmaAxial + sigmaBend;
+  const tauXY = tauTorsion;
+
+  // Principal stresses (2D plane stress at surface)
+  const avg = sigmaX / 2;
+  const R = Math.sqrt(avg*avg + tauXY*tauXY);
+  const s1 = avg + R;
+  const s2 = avg - R;
+
+  // Von Mises (2D plane stress: σ_vm = √(σx² + 3τxy²))
+  const sigmaVM = Math.sqrt(sigmaX*sigmaX + 3 * tauXY*tauXY);
+
+  // Tresca = 2 * τ_max
+  const tauMax = R;
+  const sigmaTresca = 2 * tauMax;
+
+  const sf = mat.sy / Math.max(sigmaVM, 1);
+
+  return {
+    sigmaAxial, sigmaBend, tauTorsion, tauShear,
+    sigmaX, tauXY, s1, s2, sigmaVM, sigmaTresca,
+    tauMax, sf, mat,
+    A, I, J, c,
+    D
+  };
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  const p = computeStress();
+  drawMember(W, H, p);
+  drawStressElement(W, H, p);
+  drawPrincipalElement(W, H, p);
+  drawYieldEnvelope(W, H, p);
+  drawStressBar(W, H, p);
+}
+
+function drawMember(W, H, p){
+  // central horizontal member (shaft/bar)
+  const cx = W * 0.35;
+  const cy = H * 0.35;
+  const len = W * 0.5;
+  const thick = Math.max(20, Math.min(50, S.D * 0.7));
+  const x0 = cx - len/2, x1 = cx + len/2;
+
+  // member background
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(x0, cy - thick/2, len, thick);
+
+  // stress gradient from combined loads
+  const stressRatio = p.sigmaVM / p.mat.sy;
+  const grad = ctx.createLinearGradient(0, cy - thick/2, 0, cy + thick/2);
+  const colTop = S.M >= 0 ? 'rgba(239,68,68,'+(0.1+0.4*Math.min(1,stressRatio))+')' : 'rgba(34,211,238,0.15)';
+  const colBot = S.M >= 0 ? 'rgba(34,211,238,0.15)' : 'rgba(239,68,68,'+(0.1+0.4*Math.min(1,stressRatio))+')';
+  grad.addColorStop(0, colTop);
+  grad.addColorStop(0.5, 'rgba(30,41,59,0.4)');
+  grad.addColorStop(1, colBot);
+  ctx.fillStyle = grad;
+  ctx.fillRect(x0, cy - thick/2, len, thick);
+
+  // outline
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x0, cy - thick/2, len, thick);
+
+  // neutral axis (for bending)
+  ctx.strokeStyle = '#fbbf24';
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  ctx.moveTo(x0, cy);
+  ctx.lineTo(x1, cy);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Load arrows
+  // Axial F
+  if(Math.abs(S.F) > 0.5){
+    const arrowDir = Math.sign(S.F);
+    const arrowLen = 30 + Math.min(50, Math.abs(S.F)) * 0.6;
+    ctx.strokeStyle = '#22d3ee';
+    ctx.fillStyle = '#22d3ee';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    if(arrowDir > 0){
+      ctx.moveTo(x1 + 50, cy);
+      ctx.lineTo(x1 + 50 - arrowLen, cy);
+    } else {
+      ctx.moveTo(x0 - 50, cy);
+      ctx.lineTo(x0 - 50 + arrowLen, cy);
+    }
+    ctx.stroke();
+    // arrow head
+    const hx = arrowDir > 0 ? x1 + 50 - arrowLen : x0 - 50 + arrowLen;
+    const dir = arrowDir > 0 ? 1 : -1;
+    ctx.beginPath();
+    ctx.moveTo(hx, cy);
+    ctx.lineTo(hx + 10*dir, cy - 8);
+    ctx.lineTo(hx + 10*dir, cy + 8);
+    ctx.closePath();
+    ctx.fill();
+    // label
+    ctx.font = 'bold 12px Consolas, monospace';
+    ctx.fillText('F = ' + S.F + ' kN', hx - 30, cy - 22);
+  }
+
+  // Bending M at right end
+  ctx.strokeStyle = '#fbbf24';
+  ctx.fillStyle = '#fbbf24';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x1 + 20, cy, 16, 0.3, Math.PI*1.7);
+  ctx.stroke();
+  // arrow head for moment
+  ctx.beginPath();
+  ctx.moveTo(x1 + 20 + Math.cos(0.3)*16, cy + Math.sin(0.3)*16);
+  ctx.lineTo(x1 + 20 + Math.cos(0.3)*16 - 8, cy + Math.sin(0.3)*16 - 6);
+  ctx.lineTo(x1 + 20 + Math.cos(0.3)*16 - 2, cy + Math.sin(0.3)*16 + 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('M=' + S.M + ' N·m', x1 + 42, cy - 22);
+
+  // Torque T
+  if(Math.abs(S.T) > 5){
+    ctx.strokeStyle = '#a78bfa';
+    ctx.fillStyle = '#a78bfa';
+    const sign = Math.sign(S.T);
+    // spiral arrow around the shaft
+    const arrX = x1 + 20;
+    const r = thick / 2 + 8;
+    ctx.beginPath();
+    ctx.ellipse(arrX, cy, r*0.4, r, 0, 0.2, Math.PI * 1.8);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(arrX + r*0.4*Math.cos(Math.PI*1.8), cy + r*Math.sin(Math.PI*1.8));
+    ctx.lineTo(arrX + r*0.4*Math.cos(Math.PI*1.8) - 8*sign, cy + r*Math.sin(Math.PI*1.8) - 4);
+    ctx.lineTo(arrX + r*0.4*Math.cos(Math.PI*1.8) - 4, cy + r*Math.sin(Math.PI*1.8) + 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = 'bold 11px Consolas, monospace';
+    ctx.fillText('T=' + S.T + ' N·m', arrX + 20, cy + thick/2 + 34);
+  }
+
+  // Shear V
+  if(Math.abs(S.V) > 0.3){
+    ctx.strokeStyle = '#4ade80';
+    ctx.fillStyle = '#4ade80';
+    const dir = Math.sign(S.V);
+    ctx.beginPath();
+    ctx.moveTo(x1 - 50, cy - thick/2 - 20);
+    ctx.lineTo(x1 - 50, cy - thick/2 - 20 + 20*dir);
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x1 - 50, cy - thick/2 - 20 + 20*dir);
+    ctx.lineTo(x1 - 58, cy - thick/2 - 20 + 20*dir - 8*dir);
+    ctx.lineTo(x1 - 42, cy - thick/2 - 20 + 20*dir - 8*dir);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = 'bold 11px Consolas, monospace';
+    ctx.fillText('V=' + S.V + ' kN', x1 - 80, cy - thick/2 - 26);
+  }
+
+  // stress labels
+  ctx.fillStyle = '#64748b';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('Neutral Axis', x0 - 8, cy - 6);
+}
+
+function drawStressElement(W, H, p){
+  // stress element at top right
+  const ox = W * 0.75, oy = H * 0.32;
+  const sz = 68;
+
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('STRESS ELEMENT', -sz/2 - 20, -sz/2 - 24);
+
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(-sz/2, -sz/2, sz, sz);
+
+  // normal stress on X faces
+  const nx = p.sigmaX / 1e6;
+  const colX = nx > 0 ? '#ef4444' : '#22d3ee';
+  ctx.strokeStyle = colX;
+  ctx.fillStyle = colX;
+  ctx.lineWidth = 2.5;
+
+  const drawArrow = (x1, y1, x2, y2) => {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    const ang = Math.atan2(y2-y1, x2-x1);
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - 8*Math.cos(ang-0.4), y2 - 8*Math.sin(ang-0.4));
+    ctx.lineTo(x2 - 8*Math.cos(ang+0.4), y2 - 8*Math.sin(ang+0.4));
+    ctx.closePath();
+    ctx.fill();
+  };
+
+  const arrowLen = Math.min(28, Math.abs(nx) * 0.3 + 6);
+
+  // σx arrows (right face pushing out for positive σ)
+  if(Math.abs(nx) > 0.5){
+    if(nx > 0){
+      drawArrow(sz/2, 0, sz/2 + arrowLen, 0);
+      drawArrow(-sz/2, 0, -sz/2 - arrowLen, 0);
+    } else {
+      drawArrow(sz/2, 0, sz/2 - arrowLen, 0);
+      drawArrow(-sz/2, 0, -sz/2 + arrowLen, 0);
+    }
+  }
+
+  // shear arrows on all four edges
+  const txy = p.tauXY / 1e6;
+  const shearColor = '#a78bfa';
+  ctx.strokeStyle = shearColor;
+  ctx.fillStyle = shearColor;
+  const shearLen = Math.min(28, Math.abs(txy) * 0.3 + 6);
+  if(Math.abs(txy) > 0.3){
+    const sgn = Math.sign(txy);
+    drawArrow(sz/2, -sz/2, sz/2, -sz/2 + shearLen*sgn);
+    drawArrow(-sz/2, sz/2, -sz/2, sz/2 - shearLen*sgn);
+    drawArrow(-sz/2, -sz/2, -sz/2 + shearLen*sgn, -sz/2);
+    drawArrow(sz/2, sz/2, sz/2 - shearLen*sgn, sz/2);
+  }
+
+  // labels
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillStyle = colX;
+  ctx.fillText('σx = ' + nx.toFixed(1) + ' MPa', -sz/2, sz/2 + 22);
+  ctx.fillStyle = shearColor;
+  ctx.fillText('τxy = ' + txy.toFixed(1) + ' MPa', -sz/2, sz/2 + 36);
+
+  ctx.restore();
+}
+
+function drawPrincipalElement(W, H, p){
+  // rotated element showing principal stresses
+  const ox = W * 0.75, oy = H * 0.62;
+  const sz = 68;
+  const tp = 0.5 * Math.atan2(2*p.tauXY, p.sigmaX);
+  const angleDeg = tp * 180 / Math.PI;
+
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('PRINCIPAL ELEMENT', -sz/2 - 25, -sz/2 - 24);
+
+  // unrotated ghost
+  ctx.strokeStyle = '#1e293b';
+  ctx.setLineDash([3,3]);
+  ctx.strokeRect(-sz/2, -sz/2, sz, sz);
+  ctx.setLineDash([]);
+
+  ctx.rotate(tp);
+
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(-sz/2, -sz/2, sz, sz);
+
+  // principal stress arrows (no shear)
+  const s1 = p.s1 / 1e6;
+  const s2 = p.s2 / 1e6;
+  const drawArrow = (x1, y1, x2, y2, color) => {
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    const ang = Math.atan2(y2-y1, x2-x1);
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - 8*Math.cos(ang-0.4), y2 - 8*Math.sin(ang-0.4));
+    ctx.lineTo(x2 - 8*Math.cos(ang+0.4), y2 - 8*Math.sin(ang+0.4));
+    ctx.closePath();
+    ctx.fill();
+  };
+
+  const l1 = Math.min(30, Math.abs(s1) * 0.3 + 6);
+  const l2 = Math.min(30, Math.abs(s2) * 0.3 + 6);
+
+  // σ1 along x
+  drawArrow(sz/2, 0, sz/2 + l1*Math.sign(s1), 0, '#ef4444');
+  drawArrow(-sz/2, 0, -sz/2 - l1*Math.sign(s1), 0, '#ef4444');
+  // σ2 along y
+  drawArrow(0, -sz/2, 0, -sz/2 - l2*Math.sign(s2), '#22d3ee');
+  drawArrow(0, sz/2, 0, sz/2 + l2*Math.sign(s2), '#22d3ee');
+
+  ctx.rotate(-tp);
+
+  // labels
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillStyle = '#ef4444';
+  ctx.fillText('σ₁ = ' + s1.toFixed(1) + ' MPa', -sz/2 - 20, sz/2 + 22);
+  ctx.fillStyle = '#22d3ee';
+  ctx.fillText('σ₂ = ' + s2.toFixed(1) + ' MPa', -sz/2 - 20, sz/2 + 36);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('θp = ' + angleDeg.toFixed(1) + '°', -sz/2 - 20, sz/2 + 50);
+
+  ctx.restore();
+}
+
+function drawYieldEnvelope(W, H, p){
+  // von Mises ellipse in σ-τ space
+  const ox = W - 200;
+  const oy = H - 200;
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('YIELD ENVELOPE', 0, -10);
+
+  const w = 160, h = 160;
+  const sy = p.mat.sy / 1e6;
+
+  // axes
+  ctx.strokeStyle = '#1e293b';
+  ctx.beginPath();
+  ctx.moveTo(0, h/2); ctx.lineTo(w, h/2);
+  ctx.moveTo(w/2, 0); ctx.lineTo(w/2, h);
+  ctx.stroke();
+
+  // scale: σy maps to w/2 * 0.85
+  const scale = (w/2 * 0.85) / sy;
+
+  // von Mises ellipse: σ² + 3τ² = σy²  →  (σ/σy)² + (τ/(σy/√3))² = 1
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  const aRad = sy * scale;
+  const bRad = (sy / Math.sqrt(3)) * scale;
+  ctx.ellipse(w/2, h/2, aRad, bRad, 0, 0, Math.PI*2);
+  ctx.stroke();
+
+  // Tresca hexagon: τ_max = σy/2 → in σ-τ plane: max(|σ|, √(σ²+4τ²)-|σ|) ... simplified
+  ctx.strokeStyle = '#fbbf24';
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  const aHex = sy * scale;
+  const bHex = (sy / 2) * scale;
+  ctx.moveTo(w/2 - aHex, h/2);
+  ctx.lineTo(w/2, h/2 - bHex);
+  ctx.lineTo(w/2 + aHex, h/2);
+  ctx.lineTo(w/2, h/2 + bHex);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // current point
+  const px = w/2 + (p.sigmaX/1e6) * scale;
+  const py = h/2 - (p.tauXY/1e6) * scale;
+  const ratio = p.sigmaVM / p.mat.sy;
+  ctx.beginPath();
+  ctx.arc(px, py, 5, 0, Math.PI*2);
+  ctx.fillStyle = ratio > 1 ? '#ef4444' : ratio > 0.7 ? '#fbbf24' : '#22d3ee';
+  ctx.shadowColor = ctx.fillStyle;
+  ctx.shadowBlur = 10;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // legend
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillStyle = '#4ade80';
+  ctx.fillText('Von Mises', 4, 12);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('Tresca', 4, 24);
+
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('σ (MPa)', w - 40, h/2 - 4);
+  ctx.save();
+  ctx.translate(w/2 + 6, 12);
+  ctx.fillText('τ (MPa)', 0, 0);
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function drawStressBar(W, H, p){
+  // horizontal bar comparing stress magnitudes
+  const ox = 30, oy = H - 80;
+  ctx.save();
+  ctx.translate(ox, oy);
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('STRESS COMPARISON', 0, 0);
+
+  const barW = 280, barH = 14;
+  const sy = p.mat.sy / 1e6;
+
+  const drawBar = (y, label, value, col) => {
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '10px Consolas, monospace';
+    ctx.fillText(label, 0, y - 2);
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(90, y - 12, barW, barH);
+    const ratio = Math.min(1, Math.abs(value) / sy);
+    ctx.fillStyle = col;
+    ctx.fillRect(90, y - 12, barW * ratio, barH);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText(value.toFixed(1) + ' MPa', 90 + barW + 8, y - 1);
+  };
+
+  drawBar(24, 'σ_vm', p.sigmaVM/1e6, p.sigmaVM/1e6 > sy ? '#ef4444' : p.sigmaVM/1e6 > sy*0.7 ? '#fbbf24' : '#4ade80');
+  drawBar(48, 'σ₁', Math.abs(p.s1)/1e6, '#ef4444');
+  drawBar(72, 'σ₂', Math.abs(p.s2)/1e6, '#22d3ee');
+  drawBar(96, 'τ_max', p.tauMax/1e6, '#a78bfa');
+
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('Yield limit: ' + sy + ' MPa', 90, 116);
+
+  ctx.restore();
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const p = computeStress();
+  document.querySelector('#mSx .mvalue').innerHTML = (p.sigmaX/1e6).toFixed(1) + '<span class="munit">MPa</span>';
+  document.querySelector('#mTxy .mvalue').innerHTML = (p.tauXY/1e6).toFixed(1) + '<span class="munit">MPa</span>';
+  document.querySelector('#mS1 .mvalue').innerHTML = (p.s1/1e6).toFixed(1) + '<span class="munit">MPa</span>';
+  document.querySelector('#mS2 .mvalue').innerHTML = (p.s2/1e6).toFixed(1) + '<span class="munit">MPa</span>';
+  document.querySelector('#mVm .mvalue').innerHTML = (p.sigmaVM/1e6).toFixed(1) + '<span class="munit">MPa</span>';
+  document.querySelector('#mSF .mvalue').textContent = p.sf > 99 ? '∞' : p.sf.toFixed(2);
+
+  document.getElementById('mSx').className = 'metric' + (Math.abs(p.sigmaX/1e6) > p.mat.sy/1e6 ? ' bad' : Math.abs(p.sigmaX/1e6) > p.mat.sy/1e6*0.7 ? ' warn' : ' ok');
+  document.getElementById('mTxy').className = 'metric' + (Math.abs(p.tauXY/1e6) > p.mat.sy/1e6/Math.sqrt(3) ? ' bad' : ' ok');
+  document.getElementById('mVm').className = 'metric' + (p.sigmaVM/1e6 > p.mat.sy/1e6 ? ' bad' : p.sigmaVM/1e6 > p.mat.sy/1e6*0.7 ? ' warn' : ' ok');
+  document.getElementById('mSF').className = 'metric' + (p.sf < 1 ? ' bad' : p.sf < 1.5 ? ' warn' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  S.time += 1/60;
+
+  // Auto-teaching on threshold crossings
+  const p = computeStress();
+  const stressPct = Math.floor(p.sigmaVM / p.mat.sy * 100);
+  if(stressPct >= 100 && S.lastStressPct < 100){
+    teach('VON MISES', 'Von Mises stress (' + (p.sigmaVM/1e6).toFixed(0) + ' MPa) exceeds yield strength. Ductile material will start to yield. Real components are designed with safety factors of 1.5-3 to avoid this.', 'error');
+    toast('⚠ Yield initiated');
+  } else if(stressPct >= 80 && S.lastStressPct < 80){
+    teach('WARNING', 'Von Mises stress at ' + stressPct + '% of yield. Component is nearing design limit. Engineers would increase the diameter or change the material.', 'warn');
+  }
+  S.lastStressPct = stressPct;
+
+  render();
+  if(ts - lastMetrics > 80){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+fSlider.addEventListener('input', e => {
+  S.F = parseFloat(e.target.value);
+  document.getElementById('fVal').textContent = S.F + ' kN';
+});
+mSlider.addEventListener('input', e => {
+  S.M = parseFloat(e.target.value);
+  document.getElementById('mVal').textContent = S.M + ' N·m';
+});
+tSlider.addEventListener('input', e => {
+  S.T = parseFloat(e.target.value);
+  document.getElementById('tVal').textContent = S.T + ' N·m';
+});
+vSlider.addEventListener('input', e => {
+  S.V = parseFloat(e.target.value);
+  document.getElementById('vVal').textContent = S.V + ' kN';
+});
+dSlider.addEventListener('input', e => {
+  S.D = parseFloat(e.target.value);
+  document.getElementById('dVal').textContent = S.D + ' mm';
+});
+matSelect.addEventListener('change', e => {
+  S.material = e.target.value;
+  const mat = MATERIALS[S.material];
+  teach('MATERIAL', 'Material: ' + mat.name + ' (σ_y = ' + (mat.sy/1e6).toFixed(0) + ' MPa' + (mat.brittle ? ', brittle' : ', ductile') + '). Ductile materials yield under von Mises; brittle materials fail by max tensile stress (Rankine).', 'concept');
+});
+
+playBtn.addEventListener('click', () => {
+  S.animating = !S.animating;
+  playBtn.textContent = S.animating ? '⏸ PAUSE' : '▶ ANIMATE';
+  if(S.animating){
+    const p = computeStress();
+    teach('COMBINED', 'Combined loading active. σ_x = ' + (p.sigmaX/1e6).toFixed(1) + ' MPa, τ_xy = ' + (p.tauXY/1e6).toFixed(1) + ' MPa. Von Mises equivalent = ' + (p.sigmaVM/1e6).toFixed(1) + ' MPa. Superposition lets us add effects from each load.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  const p = computeStress();
+  teach('STEP', 'Current state: σ₁ = ' + (p.s1/1e6).toFixed(1) + ' MPa, σ₂ = ' + (p.s2/1e6).toFixed(1) + ' MPa. Principal stresses define the worst-case normal stress — the element can be rotated to see them with zero shear.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.F = 20; S.M = 800; S.T = 200; S.V = 5; S.D = 40; S.material = 'steel';
+  fSlider.value = 20; mSlider.value = 800; tSlider.value = 200; vSlider.value = 5; dSlider.value = 40;
+  matSelect.value = 'steel';
+  document.getElementById('fVal').textContent = '20 kN';
+  document.getElementById('mVal').textContent = '800 N·m';
+  document.getElementById('tVal').textContent = '200 N·m';
+  document.getElementById('vVal').textContent = '5 kN';
+  document.getElementById('dVal').textContent = '40 mm';
+  S.lastStressPct = 0;
+  teach('RESET', 'Reset to default combined state: 20 kN axial, 800 N·m bending, 200 N·m torsion, 5 kN shear on 40 mm steel shaft.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('yieldBtn').addEventListener('click', () => {
+  const mat = MATERIALS[S.material];
+  // Reverse-engineer loads to hit von Mises = 1.2σy
+  const D = S.D / 1000;
+  const A = Math.PI * D * D / 4;
+  const I = Math.PI * Math.pow(D,4) / 64;
+  const c = D / 2;
+  const targetSigma = mat.sy * 1.2 / 1e6; // MPa
+  // Assume bending dominates, no torsion change
+  S.M = Math.round((targetSigma * 1e6 - S.F*1000/A) * I / c);
+  mSlider.value = S.M;
+  document.getElementById('mVal').textContent = S.M + ' N·m';
+  const p = computeStress();
+  teach('YIELD', 'Adjusted bending moment to induce von Mises = ' + (p.sigmaVM/1e6).toFixed(0) + ' MPa, exceeding yield (' + (mat.sy/1e6).toFixed(0) + ' MPa). Ductile metal would yield; a brittle one (cast iron) would fracture suddenly.', 'error');
+  toast('⚠ Yield exceeded');
+});
+
+document.getElementById('trescaBtn').addEventListener('click', () => {
+  const mat = MATERIALS[S.material];
+  const D = S.D / 1000;
+  const J = Math.PI * Math.pow(D,4) / 32;
+  const c = D / 2;
+  // Set τ_max = σy/2 via torsion
+  const targetTau = mat.sy / 2;
+  S.T = Math.round(targetTau * J / c);
+  tSlider.value = S.T;
+  document.getElementById('tVal').textContent = S.T + ' N·m';
+  const p = computeStress();
+  teach('TRESCA', 'Torque set so τ_max reaches σ_y/2 = ' + (mat.sy/2/1e6).toFixed(0) + ' MPa. Tresca criterion predicts yield here. Tresca is conservative — real ductile yield usually follows von Mises.', 'warn');
+});
+
+document.getElementById('brittleBtn').addEventListener('click', () => {
+  S.material = 'castiron';
+  matSelect.value = 'castiron';
+  S.M = 2500;
+  mSlider.value = 2500;
+  document.getElementById('mVal').textContent = '2500 N·m';
+  const p = computeStress();
+  teach('BRITTLE', 'Switched to cast iron (brittle) with high bending moment. Brittle materials fail by max tensile stress, not von Mises. They fracture suddenly without yielding — that is why cast iron is used in compression members (columns) not tension.', 'error');
+  toast('⚠ Brittle material');
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'tension'){
+      S.F = 60; S.M = 0; S.T = 0; S.V = 0;
+      fSlider.value = 60; mSlider.value = 0; tSlider.value = 0; vSlider.value = 0;
+      document.getElementById('fVal').textContent = '60 kN';
+      document.getElementById('mVal').textContent = '0 N·m';
+      document.getElementById('tVal').textContent = '0 N·m';
+      document.getElementById('vVal').textContent = '0 kN';
+      teach('PURE TENSION', 'Only axial tension. σ_x = F/A, τ = 0. Simple 1D stress state. This is what a tensile test specimen sees.', 'concept');
+    } else if(p === 'bendtors'){
+      S.F = 0; S.M = 1200; S.T = 500; S.V = 0;
+      fSlider.value = 0; mSlider.value = 1200; tSlider.value = 500; vSlider.value = 0;
+      document.getElementById('fVal').textContent = '0 kN';
+      document.getElementById('mVal').textContent = '1200 N·m';
+      document.getElementById('tVal').textContent = '500 N·m';
+      document.getElementById('vVal').textContent = '0 kN';
+      teach('BEND+TORS', 'Bending + torsion — the classic shaft loading. Both create stress at the outer surface, so they combine at the same point. This is what a power-transmission shaft sees from belts and gears.', 'concept');
+    } else if(p === 'shaft'){
+      S.F = 10; S.M = 900; S.T = 400; S.V = 3;
+      fSlider.value = 10; mSlider.value = 900; tSlider.value = 400; vSlider.value = 3;
+      document.getElementById('fVal').textContent = '10 kN';
+      document.getElementById('mVal').textContent = '900 N·m';
+      document.getElementById('tVal').textContent = '400 N·m';
+      document.getElementById('vVal').textContent = '3 kN';
+      teach('ROTATING SHAFT', 'Realistic rotating machine shaft: axial pre-load + bending + torsion + shear. Every load adds at the same critical fiber. Von Mises combines them into one design number.', 'concept');
+    }
+    S.lastStressPct = 0;
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Combined Loading. Real machine parts experience several loads at once — a shaft can be pulled, bent, and twisted simultaneously. Superposition lets us add the effects.', 'concept');
+  teach('PRINCIPAL', 'Principal stresses are the normal stresses on planes where shear is zero. They define the maximum normal stress at a point. Von Mises combines σ₁ and σ₂ into one equivalent stress for design.', 'concept');
+  teach('HOWTO', 'Adjust the four loads to see how each contributes. The stress element shows the combined state; the principal element shows the rotated version. Try fault buttons to trigger yield per different criteria.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

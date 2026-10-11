@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Distributed Deadlock Detection — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #ef4444, #f59e0b, #a855f7);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(239,68,68,0.15); color: #fca5a5; border-color: #ef4444; }
+  .teaching-toggle:hover { background: rgba(239,68,68,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #fca5a5;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #ef4444; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #ef4444; color: #fff; border-color: #ef4444; }
+  .btn.primary:hover { background: #dc2626; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #ef4444; color: #fff; border-color: #ef4444; }
+  .algo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .algo-btn {
+    padding: 8px 6px; background: #02040a; border: 1.5px solid #334155;
+    border-radius: 6px; font-family: monospace; font-size: 0.55rem;
+    font-weight: 800; color: #94a3b8; cursor: pointer;
+    letter-spacing: 0.3px; transition: all 0.2s;
+  }
+  .algo-btn:hover { border-color: #ef4444; color: #fca5a5; }
+  .algo-btn.active {
+    background: rgba(239,68,68,0.2); border-color: #ef4444;
+    color: #fca5a5; box-shadow: 0 0 10px rgba(239,68,68,0.4);
+  }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(239,68,68,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .graph-wrap {
+    flex: 1; background: #070a14; border: 2px solid #ef4444; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(239,68,68,0.15); min-height: 0;
+  }
+  .graph-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #fca5a5; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #graphCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .log-wrap {
+    background: #070a14; border: 2px solid #8b5cf6; border-radius: 12px;
+    padding: 10px 12px; height: 140px; display: flex; flex-direction: column;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15); flex-shrink: 0;
+  }
+  .log-title {
+    font-size: 0.58rem; letter-spacing: 2px; color: #c4b5fd; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .log-body {
+    flex: 1; overflow-y: auto; background: #02040a; border-radius: 6px;
+    border: 1px solid #1e293b; padding: 6px 8px; font-family: 'Courier New', monospace;
+    font-size: 0.58rem; line-height: 1.5; display: flex; flex-direction: column; gap: 1px;
+  }
+  .log-entry { padding: 2px 4px; border-radius: 3px; border-left: 2px solid transparent; }
+  .log-entry.info { border-left-color: #3b82f6; color: #cbd5e1; }
+  .log-entry.probe { border-left-color: #fcd34d; color: #fde047; }
+  .log-entry.cycle { border-left-color: #ef4444; color: #fca5a5; font-weight: 700; }
+  .log-entry.ok { border-left-color: #10b981; color: #86efac; }
+  .log-entry.system { border-left-color: #a855f7; color: #c4b5fd; }
+  .log-entry .ts { color: #475569; margin-right: 6px; font-size: 0.5rem; }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #fca5a5; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #ef4444;
+    background: rgba(239,68,68,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(239,68,68,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(239,68,68,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #fca5a5;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #ef4444; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(239,68,68,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #ef4444; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #fca5a5; z-index: 12;
+    box-shadow: 0 0 20px rgba(239,68,68,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.warn { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+  .status-banner.ok { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>DISTRIBUTED DEADLOCK</h1>
+    <span class="sub">WAIT-FOR GRAPH · EDGE CHASING · GLOBAL CYCLE DETECTION</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Algorithm</h3>
+      <div class="algo-grid" id="algoGrid">
+        <button class="algo-btn active" data-algo="chandy">CHANDY-MISRA</button>
+        <button class="algo-btn" data-algo="path">PATH PUSHING</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Detection</h3>
+      <button class="btn primary" id="btnDetect">🔍 Initiate Detection</button>
+      <button class="btn success" id="btnBreak">🔨 Break Deadlock</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Scenarios</h3>
+      <button class="btn" id="btnClean">✅ No Deadlock</button>
+      <button class="btn danger" id="btnDistributed">💥 Distributed Deadlock</button>
+      <button class="btn warn" id="btnLocal">🔶 Local Deadlock</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#06b6d4;border-radius:50%;margin-right:6px;"></span>Site A</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:50%;margin-right:6px;"></span>Site B</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#a855f7;border-radius:50%;margin-right:6px;"></span>Site C</div>
+        <div style="margin-top:4px;">Edge A→B = process at A waits for process at B</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">DEADLOCK SPANS SITES · NO SINGLE NODE SEES THE WHOLE CYCLE</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="graph-wrap">
+          <div class="graph-title">
+            <span>🌐 DISTRIBUTED WAIT-FOR GRAPH</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="graphHint">— click DETECT to begin —</span>
+          </div>
+          <canvas id="graphCanvas"></canvas>
+        </div>
+
+        <div class="log-wrap">
+          <div class="log-title">
+            <span>📡 DETECTION LOG</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="logHint">— 0 messages —</span>
+          </div>
+          <div class="log-body" id="logBody"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Processes</div>
+        <div class="metric-value" id="mProcesses">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Sites</div>
+        <div class="metric-value" id="mSites">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Cycle</div>
+        <div class="metric-value bad" id="mCycle">—</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Probes</div>
+        <div class="metric-value warn" id="mProbes">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Distributed Deadlock</div>
+      <div class="info-row"><span class="lbl">Wait-for graph</span><span class="val">Process → Process</span></div>
+      <div class="info-row"><span class="lbl">Distributed cycle</span><span class="val bad">Spans multiple sites</span></div>
+      <div class="info-row"><span class="lbl">Chandy-Misra</span><span class="val">Edge chasing probes</span></div>
+      <div class="info-row"><span class="lbl">Probe message</span><span class="val">(i, j, k) triple</span></div>
+      <div class="info-row"><span class="lbl">Cycle detected</span><span class="val">Probe returns to origin</span></div>
+      <div class="info-row"><span class="lbl">False positives</span><span class="val warn">Phantom deadlocks</span></div>
+      <div class="info-row"><span class="lbl">Resolution</span><span class="val">Abort victim</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  algorithm: 'chandy',
+  sites: [],       // { id, name, x, y, color }
+  processes: [],   // { id, name, siteId, waitsFor: [processId] }
+  edges: [],       // { from, to }
+  detecting: false,
+  currentProbe: null,
+  probePath: [],
+  cycleDetected: false,
+  probeCount: 0,
+  running: false,
+  timer: null,
+  teaching: true,
+  voiceEnabled: false
+};
+
+const SITE_COLORS = ['#06b6d4', '#f59e0b', '#a855f7'];
+
+const DOM = {
+  graphCanvas: document.getElementById('graphCanvas'),
+  graphHint: document.getElementById('graphHint'),
+  logBody: document.getElementById('logBody'),
+  logHint: document.getElementById('logHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnDetect: document.getElementById('btnDetect'),
+  btnBreak: document.getElementById('btnBreak'),
+  btnReset: document.getElementById('btnReset'),
+  btnClean: document.getElementById('btnClean'),
+  btnDistributed: document.getElementById('btnDistributed'),
+  btnLocal: document.getElementById('btnLocal'),
+  algoGrid: document.getElementById('algoGrid'),
+  mProcesses: document.getElementById('mProcesses'),
+  mSites: document.getElementById('mSites'),
+  mCycle: document.getElementById('mCycle'),
+  mProbes: document.getElementById('mProbes'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+let LOG_TS = 0;
+function logEntry(cls, msg) {
+  LOG_TS++;
+  const el = document.createElement('div');
+  el.className = `log-entry ${cls}`;
+  el.innerHTML = `<span class="ts">[${String(LOG_TS).padStart(2, '0')}]</span>${msg}`;
+  DOM.logBody.appendChild(el);
+  DOM.logBody.scrollTop = DOM.logBody.scrollHeight;
+  DOM.logHint.textContent = `${LOG_TS} events`;
+}
+
+function clearLog() {
+  LOG_TS = 0;
+  DOM.logBody.innerHTML = '';
+  DOM.logHint.textContent = '0 events';
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining distributed deadlock detection.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   SCENARIOS
+   ============================================================ */
+function buildScenario(type) {
+  // Reset
+  STATE.sites = [];
+  STATE.processes = [];
+  STATE.edges = [];
+  STATE.probeCount = 0;
+  STATE.cycleDetected = false;
+  STATE.probePath = [];
+  STATE.currentProbe = null;
+  clearLog();
+
+  // Three sites
+  STATE.sites = [
+    { id: 0, name: 'Site A', x: 0.2, y: 0.25, color: SITE_COLORS[0] },
+    { id: 1, name: 'Site B', x: 0.5, y: 0.75, color: SITE_COLORS[1] },
+    { id: 2, name: 'Site C', x: 0.8, y: 0.25, color: SITE_COLORS[2] }
+  ];
+
+  if (type === 'clean') {
+    // No cycle, no deadlock
+    STATE.processes = [
+      { id: 0, name: 'P1', siteId: 0, waitsFor: [] },
+      { id: 1, name: 'P2', siteId: 1, waitsFor: [] },
+      { id: 2, name: 'P3', siteId: 2, waitsFor: [] }
+    ];
+    teach('CLEAN STATE',
+      `No process is waiting for another. The wait-for graph has no edges. Detection would return quickly — no cycles to find.`,
+      'ok'
+    );
+  } else if (type === 'local') {
+    // Local deadlock: P1 <-> P2 within same site A
+    STATE.processes = [
+      { id: 0, name: 'P1', siteId: 0, waitsFor: [1] },
+      { id: 1, name: 'P2', siteId: 0, waitsFor: [0] },
+      { id: 2, name: 'P3', siteId: 2, waitsFor: [] }
+    ];
+    teach('LOCAL DEADLOCK',
+      `P1 and P2 are both at Site A and wait for each other — a LOCAL cycle. Any single node with the site's wait-for graph would detect this immediately. Local deadlocks are easy; the hard case is when the cycle spans sites.`,
+      'warn'
+    );
+  } else {
+    // Distributed: P1(A) → P2(B) → P3(C) → P1(A)
+    STATE.processes = [
+      { id: 0, name: 'P1', siteId: 0, waitsFor: [1] },
+      { id: 1, name: 'P2', siteId: 1, waitsFor: [2] },
+      { id: 2, name: 'P3', siteId: 2, waitsFor: [0] }
+    ];
+    teach('DISTRIBUTED DEADLOCK',
+      `P1 (Site A) waits for P2 (Site B), P2 waits for P3 (Site C), and P3 waits for P1 back at Site A. No single site sees the whole cycle. This is the hard case: detection requires coordinating across sites. Chandy-Misra sends probe messages along the wait-for edges.`,
+      'error'
+    );
+  }
+
+  // Build edges
+  for (const p of STATE.processes) {
+    for (const target of p.waitsFor) {
+      STATE.edges.push({ from: p.id, to: target });
+    }
+  }
+
+  renderGraph();
+  updateMetrics();
+  draw();
+
+  logEntry('system', `Scenario "${type}" loaded: ${STATE.processes.length} processes at ${STATE.sites.length} sites`);
+  showToast(`📋 Scenario: ${type}`);
+}
+
+/* ============================================================
+   CHANDY-MISRA DETECTION
+   ============================================================ */
+async function detectDeadlock() {
+  if (STATE.detecting) return;
+  STATE.detecting = true;
+  STATE.cycleDetected = false;
+  STATE.probePath = [];
+  STATE.probeCount = 0;
+
+  logEntry('system', `Initiating Chandy-Misra-Bhatt detection`);
+  showStatus('🔍 Running edge-chasing probe');
+  teach('DETECTION START',
+    `Every process sends a PROBE message (i, j, k) along all its outgoing wait-for edges. The probe ID is (initiator, sender, receiver). If a probe returns to its ORIGIN (initiator = receiver), a cycle has been found — that's a distributed deadlock.`,
+    'cyan'
+  );
+
+  // Probe from each process
+  for (const p of STATE.processes) {
+    if (!STATE.detecting) break;
+    await probeFrom(p.id, p.id, []);
+  }
+
+  // Final check
+  if (STATE.cycleDetected) {
+    logEntry('cycle', `❌ DISTRIBUTED DEADLOCK DETECTED — cycle: ${STATE.probePath.join(' → ')}`);
+    showStatus('❌ Distributed deadlock detected!', 'warn');
+    teach('DEADLOCK DETECTED',
+      `Cycle found: ${STATE.probePath.join(' → ')}. The wait-for graph contains a cycle that spans multiple sites. To resolve, the system must abort one of the processes in the cycle — releasing its resources and breaking the deadlock. Picking the victim is a policy decision (youngest, least work done, lowest priority).`,
+      'error'
+    );
+    STATE.cycleDetected = true;
+  } else {
+    logEntry('ok', `✅ No cycle found — no distributed deadlock`);
+    showStatus('✅ No deadlock found', 'ok');
+    teach('NO DEADLOCK',
+      `All probes terminated without returning to their origins. The wait-for graph is acyclic — no process is stuck waiting in a cycle. The system is progressing normally.`,
+      'ok'
+    );
+  }
+
+  STATE.detecting = false;
+  updateMetrics();
+  draw();
+}
+
+async function probeFrom(originId, senderId, visited) {
+  if (!STATE.detecting) return;
+  const sender = STATE.processes[senderId];
+  if (!sender) return;
+
+  // Send probe to each target
+  for (const targetId of sender.waitsFor) {
+    if (!STATE.detecting) return;
+
+    STATE.probeCount++;
+    logEntry('probe', `PROBE (${originId}, ${senderId}, ${targetId}) — Site A → cross-site`);
+    showStatus(`🔍 Probe ${originId}→${targetId}`);
+
+    STATE.currentProbe = { origin: originId, sender: senderId, target: targetId };
+    STATE.probePath.push(sender.name, STATE.processes[targetId].name);
+    draw();
+    updateMetrics();
+
+    await sleep(500);
+
+    if (targetId === originId) {
+      // Cycle detected
+      STATE.cycleDetected = true;
+      STATE.probePath = [...visited, sender.name, STATE.processes[targetId].name];
+      logEntry('cycle', `⚠️ Probe returned to origin — CYCLE DETECTED`);
+      return;
+    }
+
+    // Avoid infinite loops
+    if (visited.includes(sender.name)) continue;
+    visited.push(sender.name);
+
+    // Recurse
+    await probeFrom(originId, targetId, visited);
+    if (STATE.cycleDetected) return;
+
+    STATE.probePath.pop();
+    STATE.probePath.pop();
+  }
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+function breakDeadlock() {
+  if (!STATE.cycleDetected && !hasCycle()) {
+    showToast('⚠ No deadlock to break');
+    return;
+  }
+
+  // Pick a victim from the cycle
+  const victim = STATE.processes.find(p => p.waitsFor.length > 0);
+  if (!victim) return;
+
+  logEntry('system', `🔨 Aborting victim: ${victim.name}`);
+  victim.waitsFor = [];
+
+  // Remove edges from this process
+  STATE.edges = STATE.edges.filter(e => e.from !== victim.id);
+
+  STATE.cycleDetected = false;
+  STATE.probePath = [];
+  renderGraph();
+  updateMetrics();
+  draw();
+
+  showStatus(`🔨 Aborted ${victim.name} — deadlock broken`, 'ok');
+  teach('VICTIM ABORTED',
+    `Aborted ${victim.name}. Its resources are released, which allows the processes it was blocking to proceed. The wait-for graph no longer contains a cycle. Trade-offs: aborting loses work, so pick the victim with the least progress. Some systems use timeouts instead — if a transaction waits too long, abort it.`,
+    'ok'
+  );
+}
+
+function hasCycle() {
+  // Simple cycle detection
+  const visited = new Set();
+  const stack = new Set();
+  function visit(nodeId) {
+    if (stack.has(nodeId)) return true;
+    if (visited.has(nodeId)) return false;
+    visited.add(nodeId);
+    stack.add(nodeId);
+    const p = STATE.processes.find(x => x.id === nodeId);
+    if (p) {
+      for (const t of p.waitsFor) {
+        if (visit(t)) return true;
+      }
+    }
+    stack.delete(nodeId);
+    return false;
+  }
+  for (const p of STATE.processes) {
+    if (visit(p.id)) return true;
+  }
+  return false;
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.graphCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function renderGraph() {
+  // Rebuild process positions based on site assignments
+  for (const p of STATE.processes) {
+    const site = STATE.sites[p.siteId];
+    if (!site) continue;
+    // Group processes by site, spread them
+    const procsAtSite = STATE.processes.filter(x => x.siteId === p.siteId);
+    const idx = procsAtSite.indexOf(p);
+    const count = procsAtSite.length;
+    p.x = site.x;
+    p.y = site.y + (idx - (count - 1) / 2) * 0.1;
+  }
+  draw();
+}
+
+function draw() {
+  const canvas = DOM.graphCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw site boundaries
+  for (const site of STATE.sites) {
+    const sx = site.x * W;
+    const sy = site.y * H;
+    const r = 70;
+
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.fillStyle = site.color + '10';
+    ctx.fill();
+    ctx.strokeStyle = site.color + '60';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = site.color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(site.name, sx, sy + r + 5);
+  }
+
+  // Draw edges (wait-for)
+  for (const e of STATE.edges) {
+    const from = STATE.processes.find(p => p.id === e.from);
+    const to = STATE.processes.find(p => p.id === e.to);
+    if (!from || !to) continue;
+
+    const fx = from.x * W;
+    const fy = from.y * H;
+    const tx = to.x * W;
+    const ty = to.y * H;
+
+    // Check if this edge is part of the probe path
+    const onPath = STATE.probePath.includes(from.name) && STATE.probePath.includes(to.name);
+
+    // Check if edge is in a cycle
+    const inCycle = hasCycle();
+
+    ctx.strokeStyle = inCycle ? '#ef4444' : (onPath ? '#fcd34d' : '#64748b');
+    ctx.lineWidth = inCycle ? 3 : (onPath ? 3 : 2);
+    if (inCycle || onPath) {
+      ctx.shadowColor = ctx.strokeStyle;
+      ctx.shadowBlur = 10;
+    }
+
+    // Curve for edges between the same two nodes
+    const dx = tx - fx;
+    const dy = ty - fy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const ux = dx / dist;
+    const uy = dy / dist;
+    const x1 = fx + ux * 25;
+    const y1 = fy + uy * 25;
+    const x2 = tx - ux * 25;
+    const y2 = ty - uy * 25;
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Arrow head
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - 10 * Math.cos(angle - 0.4), y2 - 10 * Math.sin(angle - 0.4));
+    ctx.lineTo(x2 - 10 * Math.cos(angle + 0.4), y2 - 10 * Math.sin(angle + 0.4));
+    ctx.closePath();
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.fill();
+  }
+
+  // Draw processes
+  for (const p of STATE.processes) {
+    const site = STATE.sites[p.siteId];
+    if (!site) continue;
+    const x = p.x * W;
+    const y = p.y * H;
+    const r = 20;
+
+    // Highlight probe path
+    const inPath = STATE.probePath.includes(p.name);
+
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = site.color + '30';
+    ctx.fill();
+    ctx.strokeStyle = inPath ? '#fcd34d' : site.color;
+    ctx.lineWidth = inPath ? 3.5 : 2.5;
+    if (inPath) {
+      ctx.shadowColor = '#fcd34d';
+      ctx.shadowBlur = 15;
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = site.color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.name, x, y);
+  }
+
+  DOM.graphHint.textContent = `— ${STATE.processes.length} processes · ${STATE.edges.length} edges —`;
+}
+
+function animate() {
+  draw();
+  requestAnimationFrame(animate);
+}
+
+function updateMetrics() {
+  DOM.mProcesses.textContent = STATE.processes.length;
+  DOM.mSites.textContent = STATE.sites.length;
+  DOM.mCycle.textContent = STATE.cycleDetected ? 'FOUND' : '—';
+  DOM.mCycle.className = 'metric-value ' + (STATE.cycleDetected ? 'bad' : '');
+  DOM.mProbes.textContent = STATE.probeCount;
+}
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+document.querySelectorAll('.algo-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    STATE.algorithm = btn.dataset.algo;
+    document.querySelectorAll('.algo-btn').forEach(b => b.classList.toggle('active', b === btn));
+    const descs = {
+      chandy: 'CHANDY-MISRA-BHATT: Edge-chasing algorithm. Every process sends PROBE(i, i, j) along its outgoing edges. When a process receives a probe it didn\'t initiate, it forwards the probe to all its wait-for targets. If a probe returns to its origin, a cycle exists. Distributed — no central coordinator needed.',
+      path: 'PATH PUSHING: Similar to Chandy-Misra but simplifies the probe message. Instead of (initiator, sender, receiver) triples, path-pushing just sends the path itself. Detects cycles when a process appears twice in the path. Fewer bytes per message but similar complexity.'
+    };
+    teach('ALGORITHM: ' + btn.dataset.algo.toUpperCase(), descs[btn.dataset.algo], 'purple');
+  });
+});
+
+DOM.btnDetect.addEventListener('click', detectDeadlock);
+DOM.btnBreak.addEventListener('click', breakDeadlock);
+DOM.btnReset.addEventListener('click', () => { buildScenario('clean'); });
+DOM.btnClean.addEventListener('click', () => buildScenario('clean'));
+DOM.btnDistributed.addEventListener('click', () => buildScenario('distributed'));
+DOM.btnLocal.addEventListener('click', () => buildScenario('local'));
+
+window.addEventListener('resize', () => {
+  resizeCanvas();
+  renderGraph();
+});
+
+resizeCanvas();
+animate();
+buildScenario('distributed');
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Distributed Deadlock Detection. A deadlock is a cycle in the wait-for graph — P1 waits for P2, P2 waits for P3, and P3 waits for P1. In a single system, this is easy to detect. But when processes live on different machines, no single node sees the whole cycle.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE PROBLEM',
+      `Consider: P1 at Site A waits for P2 at Site B. P2 waits for P3 at Site C. P3 waits for P1 back at Site A. Each site sees only a fragment. Site A sees "P1 waits for something at B." Site B sees "P2 waits for something at C." Only by combining all three do we see the cycle.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('CHANDY-MISRA',
+      `The classic solution: edge-chasing probes. Each process sends a PROBE (i, j, k) along all its outgoing wait-for edges. When a process receives a probe from another process, it forwards it along its own outgoing edges. If a probe returns to its ORIGIN, a cycle is confirmed. This is a decentralized algorithm — no site needs to know the global graph.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('FALSE POSITIVES',
+      `The catch: probes can report FALSE DEADLOCKS. A process might be waiting for a lock that has just been released — but the probe still sees the wait-for edge. The process continues. Chandy-Misra handles this with "probe cleanup" — if a process becomes unblocked, it discards probes. Still, false positives are rare and lead to unnecessary aborts, not incorrect behavior.`,
+      'warn'
+    );
+  }, 13500);
+  showToast('👋 Load a scenario, then click DETECT', 4500);
+}, 500);
+</script>
+</body>
+</html>

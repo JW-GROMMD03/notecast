@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vapor Compression Refrigeration — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>VAPOR COMPRESSION REFRIGERATION</h1>
+    <span class="sub">COP · EVAPORATOR · CONDENSER · COMPRESSOR · EXPANSION VALVE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Refrigerant</div>
+    <div class="control-group">
+      <label>Refrigerant</label>
+      <select id="refSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="r134a">R-134a (Auto AC)</option>
+        <option value="r410a">R-410A (Home AC)</option>
+        <option value="r717">Ammonia R-717 (Industrial)</option>
+        <option value="r744">CO₂ R-744 (CO2 systems)</option>
+      </select>
+    </div>
+
+    <div class="section-title">Operating Conditions</div>
+    <div class="control-group">
+      <label>Evaporator Temp T_evap <span class="val" id="tevapVal">5 °C</span></label>
+      <input type="range" id="tevapSlider" min="-40" max="15" value="5" step="1">
+    </div>
+    <div class="control-group">
+      <label>Condenser Temp T_cond <span class="val" id="tcondVal">40 °C</span></label>
+      <input type="range" id="tcondSlider" min="20" max="70" value="40" step="1">
+    </div>
+    <div class="control-group">
+      <label>Compressor Efficiency <span class="val" id="effVal">80%</span></label>
+      <input type="range" id="effSlider" min="50" max="95" value="80" step="1">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ RUN CYCLE</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="flashBtn">⚠ FLASH GAS</button>
+    <button class="btn warn" id="underchargeBtn">⚠ UNDERCHARGE</button>
+    <button class="btn warn" id="foulCondBtn">⚠ FOULED CONDENSER</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="fridge">Home Refrigerator</button>
+    <button class="btn" data-preset="ac">Auto Air Conditioner</button>
+    <button class="btn" data-preset="heatpump">Heat Pump (Heating)</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      COP_cool = Q_L / W_net &nbsp;|&nbsp; COP_heat = Q_H / W_net &nbsp;|&nbsp; <span class="hl">COP_Carnot = T_L / (T_H − T_L)</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mCOP">
+          <div class="mlabel">COP</div>
+          <div class="mvalue">0.00</div>
+        </div>
+        <div class="metric" id="mCOPc">
+          <div class="mlabel">CARNOT COP</div>
+          <div class="mvalue">0.00</div>
+        </div>
+        <div class="metric" id="mQL">
+          <div class="mlabel">Q_L (COOLING)</div>
+          <div class="mvalue">0<span class="munit">kJ/kg</span></div>
+        </div>
+        <div class="metric" id="mW">
+          <div class="mlabel">WORK W</div>
+          <div class="mvalue">0<span class="munit">kJ/kg</span></div>
+        </div>
+        <div class="metric" id="mQH">
+          <div class="mlabel">Q_H (REJECT)</div>
+          <div class="mvalue">0<span class="munit">kJ/kg</span></div>
+        </div>
+        <div class="metric" id="mPhase">
+          <div class="mlabel">STATE</div>
+          <div class="mvalue" style="font-size:11px;">1→2</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">COP = Q_L / W_comp = (h₁−h₄)/(h₂−h₁)</div>
+      <div class="eq">Carnot COP = T_L / (T_H − T_L)</div>
+      <div class="def">
+        Refrigeration moves heat from cold to hot — the opposite of 
+        spontaneous flow. It costs work. Real COP is typically 50–70% 
+        of the Carnot limit. Every air conditioner, refrigerator, and 
+        heat pump uses this cycle.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+// Refrigerant property approximations
+// h_f, h_g at saturation temperature - linear fit around typical range
+const REFRIGERANTS = {
+  r134a: {
+    name:'R-134a',
+    // h_f (kJ/kg) ≈ 200 + 1.35*T (°C), h_g ≈ 400 - 0.5*T
+    hf: T => 200 + 1.35 * T,
+    hg: T => 400 - 0.5 * T,
+    // For gas phase: cp ≈ 1.0
+    cpGas: 1.0,
+    vaporPressure: T => 0.1 * Math.pow(1.08, T),
+    color:'#22d3ee'
+  },
+  r410a: {
+    name:'R-410A',
+    hf: T => 220 + 1.5 * T,
+    hg: T => 430 - 0.55 * T,
+    cpGas: 1.1,
+    vaporPressure: T => 0.15 * Math.pow(1.09, T),
+    color:'#a3e635'
+  },
+  r717: {
+    name:'Ammonia R-717',
+    hf: T => 200 + 4.8 * T,
+    hg: T => 1450 - 2.2 * T,
+    cpGas: 2.2,
+    vaporPressure: T => 0.08 * Math.pow(1.13, T),
+    color:'#c4b5fd'
+  },
+  r744: {
+    name:'CO₂ R-744',
+    hf: T => 200 + 3.0 * T,
+    hg: T => 400 - 0.8 * T,
+    cpGas: 1.3,
+    vaporPressure: T => 3.5 * Math.pow(1.14, T),
+    color:'#fb923c'
+  }
+};
+
+const S = {
+  refrigerant: 'r134a',
+  Tevap: 5,
+  Tcond: 40,
+  eff: 80,
+  running: false,
+  phase: 0,          // 0=compressor, 1=condenser, 2=exp valve, 3=evaporator
+  phaseProgress: 0,
+  time: 0,
+  flashGas: false,
+  undercharge: false,
+  foulCond: false,
+  cycles: 0
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const refSel = document.getElementById('refSelect');
+const tevapSlider = document.getElementById('tevapSlider');
+const tcondSlider = document.getElementById('tcondSlider');
+const effSlider = document.getElementById('effSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── VAPOR COMPRESSION CYCLE ───────────────────────────────
+function getRef(){ return REFRIGERANTS[S.refrigerant]; }
+
+function computeCycle(){
+  const ref = getRef();
+  const Tev = S.Tevap;
+  const Tcd = S.Tcond;
+  const eta_c = S.undercharge ? 0.6 : S.eff / 100;
+
+  // State 1: saturated vapor at evaporator exit (compressor inlet)
+  let h1 = ref.hg(Tev);
+
+  // State 2: compressor exit (superheated vapor at condenser pressure)
+  // Isentropic work: w_s = h2s - h1. With efficiency: w_a = w_s / eta_c
+  // Approximate isentropic work using cp * (Tcond - Tev) + latent effects
+  const T2s = Tcd + (Tcd - Tev) * 0.3 + 20; // roughly superheated
+  const h2s = ref.hg(Tcd) + ref.cpGas * (T2s - Tcd);
+  const w_isentropic = h2s - h1;
+  const w_actual = w_isentropic / eta_c;
+  const h2 = h1 + w_actual;
+  const T2_actual = Tcd + (h2 - ref.hg(Tcd)) / ref.cpGas;
+
+  // State 3: condenser exit (saturated liquid)
+  let h3 = ref.hf(Tcd);
+
+  // State 4: expansion valve exit (isenthalpic)
+  let h4 = h3;
+
+  // Flash gas reduces effective cooling
+  if(S.flashGas){
+    h4 = h3 + 15; // higher enthalpy after flash
+  }
+
+  // Cooling effect
+  const qL = h1 - h4;
+  const qH = h2 - h3;
+  const wNet = h2 - h1;
+  const COP = qL / wNet;
+
+  // Carnot COP
+  const TL = Tev + 273.15;
+  const TH = Tcd + 273.15;
+  const COPCarnot = TL / (TH - TL);
+
+  return {
+    h1, h2, h3, h4, qL, qH, wNet, COP, COPCarnot,
+    Tev, Tcd, T2: T2_actual, ref
+  };
+}
+
+function stateAtPhase(phase, u){
+  const c = computeCycle();
+  if(phase === 0){
+    // Compressor: 1→2
+    const h = c.h1 + (c.h2 - c.h1) * u;
+    const P = c.ref.vaporPressure(S.Tevap) + (c.ref.vaporPressure(S.Tcond) - c.ref.vaporPressure(S.Tevap)) * u;
+    return { h, P, T: S.Tevap + (c.T2 - S.Tevap) * u, label:'COMPRESSOR', color:'#fbbf24' };
+  } else if(phase === 1){
+    // Condenser: 2→3
+    const h = c.h2 + (c.h3 - c.h2) * u;
+    const P = c.ref.vaporPressure(S.Tcond);
+    return { h, P, T: c.T2 + (S.Tcond - c.T2) * u, label:'CONDENSER', color:'#ef4444' };
+  } else if(phase === 2){
+    // Expansion valve: 3→4 (isenthalpic)
+    const h = c.h3 + (c.h4 - c.h3) * u;
+    const P = c.ref.vaporPressure(S.Tcond) + (c.ref.vaporPressure(S.Tevap) - c.ref.vaporPressure(S.Tcond)) * u;
+    return { h, P, T: S.Tcond + (S.Tevap - S.Tcond) * u, label:'EXP VALVE', color:'#a78bfa' };
+  } else {
+    // Evaporator: 4→1
+    const h = c.h4 + (c.h1 - c.h4) * u;
+    const P = c.ref.vaporPressure(S.Tevap);
+    return { h, P, T: S.Tevap, label:'EVAPORATOR', color:'#22d3ee' };
+  }
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawPHDiagram(W, H);
+  drawSchematic(W, H);
+  drawTempBars(W, H);
+}
+
+function drawPHDiagram(W, H){
+  const pad = { l:70, r:40, t:50, b:60 };
+  const gw = W * 0.55 - pad.l - pad.r;
+  const gh = H - pad.t - pad.b - 40;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('P-h DIAGRAM (Pressure vs Enthalpy)', pad.l, pad.t - 12);
+
+  // axes
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t+gh);
+  ctx.lineTo(pad.l+gw, pad.t+gh);
+  ctx.stroke();
+
+  const c = computeCycle();
+  const hMin = 150, hMax = 500;
+  const pMin = 0.05, pMax = 5.0;
+  // log P scale
+  const xOf = h => pad.l + gw * (h - hMin) / (hMax - hMin);
+  const yOf = P => pad.t + gh - gh * (Math.log10(P) - Math.log10(pMin)) / (Math.log10(pMax) - Math.log10(pMin));
+
+  // grid
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  for(let i=0;i<=5;i++){
+    const logP = Math.log10(pMin) + i * (Math.log10(pMax) - Math.log10(pMin)) / 5;
+    const y = pad.t + gh - gh * i/5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+gw, y); ctx.stroke();
+  }
+  for(let i=0;i<=6;i++){
+    const x = pad.l + gw*i/6;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t+gh); ctx.stroke();
+  }
+  ctx.restore();
+
+  // axis labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  for(let i=0;i<=6;i++){
+    ctx.fillText((hMin + i*(hMax-hMin)/6).toFixed(0), pad.l + gw*i/6, pad.t+gh+14);
+  }
+  ctx.fillText('Enthalpy h (kJ/kg)', pad.l + gw/2, pad.t+gh+34);
+  ctx.textAlign = 'right';
+  for(let i=0;i<=5;i++){
+    const logP = Math.log10(pMin) + i * (Math.log10(pMax) - Math.log10(pMin)) / 5;
+    ctx.fillText(Math.pow(10, logP).toFixed(2), pad.l-6, pad.t+gh-gh*i/5+3);
+  }
+  ctx.textAlign = 'left';
+  ctx.save();
+  ctx.translate(18, pad.t + gh/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign = 'center';
+  ctx.fillText('Pressure P (MPa)', 0, 0);
+  ctx.restore();
+
+  // Saturation dome (approximate)
+  const satTemps = [-30, -20, -10, 0, 10, 20, 30, 40, 50, 60];
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = 2;
+  // Left (liquid)
+  ctx.beginPath();
+  for(let i=0;i<satTemps.length;i++){
+    const T = satTemps[i];
+    const h = c.ref.hf(T);
+    const P = c.ref.vaporPressure(T);
+    if(P > pMax) continue;
+    const x = xOf(h);
+    const y = yOf(P);
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // Right (vapor)
+  ctx.beginPath();
+  for(let i=satTemps.length-1;i>=0;i--){
+    const T = satTemps[i];
+    const h = c.ref.hg(T);
+    const P = c.ref.vaporPressure(T);
+    if(P > pMax) continue;
+    const x = xOf(h);
+    const y = yOf(P);
+    if(i===satTemps.length-1) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Cycle path
+  const P_evap = c.ref.vaporPressure(S.Tevap);
+  const P_cond = c.ref.vaporPressure(S.Tcond);
+
+  // Draw 4 process paths
+  // 1→2 Compressor (isentropic-ish, slightly right-shifted)
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(xOf(c.h1), yOf(P_evap));
+  ctx.lineTo(xOf(c.h2), yOf(P_cond));
+  ctx.stroke();
+
+  // 2→3 Condenser
+  ctx.strokeStyle = '#ef4444';
+  ctx.beginPath();
+  ctx.moveTo(xOf(c.h2), yOf(P_cond));
+  ctx.lineTo(xOf(c.h3), yOf(P_cond));
+  ctx.stroke();
+
+  // 3→4 Expansion (isenthalpic = vertical)
+  ctx.strokeStyle = '#a78bfa';
+  ctx.beginPath();
+  ctx.moveTo(xOf(c.h3), yOf(P_cond));
+  ctx.lineTo(xOf(c.h4), yOf(P_evap));
+  ctx.stroke();
+
+  // 4→1 Evaporator
+  ctx.strokeStyle = '#22d3ee';
+  ctx.beginPath();
+  ctx.moveTo(xOf(c.h4), yOf(P_evap));
+  ctx.lineTo(xOf(c.h1), yOf(P_evap));
+  ctx.stroke();
+
+  // State points
+  const pts = [
+    { h: c.h1, P: P_evap, label:'1' },
+    { h: c.h2, P: P_cond, label:'2' },
+    { h: c.h3, P: P_cond, label:'3' },
+    { h: c.h4, P: P_evap, label:'4' }
+  ];
+  for(const p of pts){
+    ctx.beginPath();
+    ctx.arc(xOf(p.h), yOf(p.P), 5, 0, Math.PI*2);
+    ctx.fillStyle = '#fbbf24';
+    ctx.strokeStyle = '#0a0e1a';
+    ctx.lineWidth = 1.5;
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 11px Consolas, monospace';
+    ctx.fillText(p.label, xOf(p.h)+8, yOf(p.P)-8);
+  }
+
+  // Current position
+  const cur = stateAtPhase(S.phase, S.phaseProgress);
+  ctx.beginPath();
+  ctx.arc(xOf(cur.h), yOf(Math.max(pMin, Math.min(pMax, cur.P))), 7, 0, Math.PI*2);
+  ctx.fillStyle = cur.color;
+  ctx.shadowColor = cur.color;
+  ctx.shadowBlur = 15;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Process labels
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('SATURATION', xOf(380), yOf(0.7));
+  ctx.fillText('DOME', xOf(390), yOf(0.5));
+}
+
+function drawSchematic(W, H){
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 240;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('SYSTEM SCHEMATIC', ox, oy - 6);
+
+  // Evaporator (bottom)
+  const evX = ox + 60;
+  const evY = oy + 170;
+  ctx.fillStyle = '#082f49';
+  ctx.fillRect(evX, evY, 140, 40);
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(evX, evY, 140, 40);
+  ctx.fillStyle = '#67e8f9';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.fillText('EVAPORATOR (cold)', evX + 8, evY + 24);
+
+  // Condenser (top)
+  const cdX = ox + 60;
+  const cdY = oy + 20;
+  ctx.fillStyle = '#7f1d1d';
+  ctx.fillRect(cdX, cdY, 140, 40);
+  ctx.strokeStyle = '#ef4444';
+  ctx.strokeRect(cdX, cdY, 140, 40);
+  ctx.fillStyle = '#fca5a5';
+  ctx.fillText('CONDENSER (hot)', cdX + 15, cdY + 24);
+
+  // Compressor (right)
+  const cpX = ox + 215;
+  const cpY = oy + 90;
+  ctx.fillStyle = '#78350f';
+  ctx.fillRect(cpX, cpY, 40, 60);
+  ctx.strokeStyle = '#fbbf24';
+  ctx.strokeRect(cpX, cpY, 40, 60);
+  ctx.fillStyle = '#fcd34d';
+  ctx.font = 'bold 9px Consolas, monospace';
+  ctx.fillText('COMP', cpX + 6, cpY + 34);
+
+  // Expansion valve (left)
+  const exX = ox + 5;
+  const exY = oy + 90;
+  ctx.fillStyle = '#4c1d95';
+  ctx.fillRect(exX, exY, 40, 60);
+  ctx.strokeStyle = '#a78bfa';
+  ctx.strokeRect(exX, exY, 40, 60);
+  ctx.fillStyle = '#c4b5fd';
+  ctx.fillText('EXP', exX + 10, exY + 26);
+  ctx.fillText('VALVE', exX + 4, exY + 40);
+
+  // Connecting pipes
+  ctx.lineWidth = 2.5;
+  // 1→2: evaporator → compressor
+  ctx.strokeStyle = '#22d3ee';
+  ctx.beginPath();
+  ctx.moveTo(evX + 140, evY + 20);
+  ctx.lineTo(cpX, cpY + 40);
+  ctx.stroke();
+  // 2→3: compressor → condenser
+  ctx.strokeStyle = '#fbbf24';
+  ctx.beginPath();
+  ctx.moveTo(cpX + 20, cpY);
+  ctx.lineTo(cdX + 140, cdY + 20);
+  ctx.stroke();
+  // 3→4: condenser → exp valve
+  ctx.strokeStyle = '#ef4444';
+  ctx.beginPath();
+  ctx.moveTo(cdX, cdY + 20);
+  ctx.lineTo(exX + 20, exY);
+  ctx.stroke();
+  // 4→1: exp valve → evaporator
+  ctx.strokeStyle = '#a78bfa';
+  ctx.beginPath();
+  ctx.moveTo(exX + 20, exY + 60);
+  ctx.lineTo(evX, evY + 20);
+  ctx.stroke();
+
+  // State labels
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('1', evX + 150, evY + 26);
+  ctx.fillText('2', cpX + 25, cpY - 4);
+  ctx.fillText('3', cdX - 8, cdY + 26);
+  ctx.fillText('4', exX - 8, exY + 30);
+
+  // Hot/cold side labels
+  ctx.fillStyle = '#f87171';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('REJECTS HEAT', ox + 60, oy + 74);
+  ctx.fillStyle = '#22d3ee';
+  ctx.fillText('ABSORBS HEAT', ox + 60, oy + 224);
+}
+
+function drawTempBars(W, H){
+  const ox = W - 280;
+  const oy = H - 220;
+  const w = 260;
+  const h = 180;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('TEMPERATURE LADDER', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  // Bar chart with temperature
+  const amb = 25;
+  const c = computeCycle();
+
+  const temps = [
+    { label:'Evaporator', T: S.Tevap, color:'#22d3ee' },
+    { label:'Ambient', T: amb, color:'#94a3b8' },
+    { label:'Condenser', T: S.Tcond, color:'#ef4444' },
+    { label:'Comp. exit', T: c.T2, color:'#fbbf24' }
+  ];
+
+  const Tmin = -50, Tmax = 100;
+  const xOf = T => ox + 120 + (T - Tmin) / (Tmax - Tmin) * (w - 140);
+
+  for(let i=0;i<temps.length;i++){
+    const y = oy + 30 + i * 32;
+    const t = temps[i];
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '10px Consolas, monospace';
+    ctx.fillText(t.label, ox + 8, y + 5);
+    // bar from 0 to T
+    const x0 = xOf(0);
+    const x1 = xOf(t.T);
+    ctx.fillStyle = t.color;
+    if(t.T >= 0){
+      ctx.fillRect(x0, y - 6, x1 - x0, 12);
+    } else {
+      ctx.fillRect(x1, y - 6, x0 - x1, 12);
+    }
+    ctx.fillStyle = t.color;
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.fillText(t.T.toFixed(0) + '°C', Math.max(x1, x0) + 4, y + 4);
+  }
+
+  // Zero line
+  ctx.strokeStyle = '#334155';
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  ctx.moveTo(xOf(0), oy + 20);
+  ctx.lineTo(xOf(0), oy + h - 10);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('0°C', xOf(0) - 10, oy + h - 4);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const c = computeCycle();
+  document.querySelector('#mCOP .mvalue').textContent = c.COP.toFixed(2);
+  document.querySelector('#mCOPc .mvalue').textContent = c.COPCarnot.toFixed(2);
+  document.querySelector('#mQL .mvalue').innerHTML = c.qL.toFixed(0) + '<span class="munit">kJ/kg</span>';
+  document.querySelector('#mW .mvalue').innerHTML = c.wNet.toFixed(0) + '<span class="munit">kJ/kg</span>';
+  document.querySelector('#mQH .mvalue').innerHTML = c.qH.toFixed(0) + '<span class="munit">kJ/kg</span>';
+
+  const phaseNames = ['1→2 COMP', '2→3 COND', '3→4 EXP', '4→1 EVAP'];
+  document.querySelector('#mPhase .mvalue').textContent = phaseNames[S.phase];
+
+  const ratio = c.COP / c.COPCarnot;
+  document.getElementById('mCOP').className = 'metric' + (c.COP > 3 ? ' ok' : c.COP > 1.5 ? '' : ' warn');
+  document.getElementById('mCOPc').className = 'metric ok';
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  if(S.running){
+    S.phaseProgress += 0.008;
+    S.time += 1/60;
+
+    if(S.phaseProgress >= 1){
+      S.phaseProgress = 0;
+      S.phase++;
+      if(S.phase > 3){
+        S.phase = 0;
+        S.cycles++;
+        const c = computeCycle();
+        teach('CYCLE', 'Refrigeration cycle complete. COP = ' + c.COP.toFixed(2) + ' (Carnot limit ' + c.COPCarnot.toFixed(2) + '). Real systems achieve 50-70% of Carnot.', 'concept');
+      } else {
+        const names = ['COMPRESSOR', 'CONDENSER', 'EXPANSION VALVE', 'EVAPORATOR'];
+        const descs = [
+          'Compressor raises refrigerant from evaporator pressure to condenser pressure. Work input, hot discharge gas. This is the only energy input to the cycle.',
+          'Condenser rejects heat to the environment at ' + S.Tcond + '°C. Refrigerant condenses from vapor to liquid at constant pressure.',
+          'Expansion valve drops pressure isenthalpically (constant h). Refrigerant partially flashes to vapor — cools to ' + S.Tevap + '°C.',
+          'Evaporator absorbs heat from the cold space. Refrigerant boils at ' + S.Tevap + '°C, absorbing Q_L. This is the useful cooling effect.'
+        ];
+        teach('PHASE', names[S.phase-1] + ': ' + descs[S.phase-1], 'info');
+      }
+    }
+  }
+
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+refSel.addEventListener('change', e => {
+  S.refrigerant = e.target.value;
+  const ref = getRef();
+  teach('REFRIGERANT', ref.name + ' selected. Each refrigerant has different boiling points and pressures. R-134a is common for auto AC; ammonia is efficient but toxic (used in industrial refrigeration).', 'concept');
+});
+
+tevapSlider.addEventListener('input', e => {
+  S.Tevap = parseFloat(e.target.value);
+  document.getElementById('tevapVal').textContent = S.Tevap + ' °C';
+  if(S.Tevap >= S.Tcond - 5){
+    teach('WARN', 'Evaporator temperature is very close to condenser temperature. COP collapses — need bigger ΔT to pump heat efficiently.', 'warn');
+  }
+});
+
+tcondSlider.addEventListener('input', e => {
+  S.Tcond = parseFloat(e.target.value);
+  document.getElementById('tcondVal').textContent = S.Tcond + ' °C';
+});
+
+effSlider.addEventListener('input', e => {
+  S.eff = parseFloat(e.target.value);
+  document.getElementById('effVal').textContent = S.eff + '%';
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ RUN CYCLE';
+  if(S.running){
+    const c = computeCycle();
+    teach('RUN', 'Refrigeration cycle running. T_evap = ' + S.Tevap + '°C, T_cond = ' + S.Tcond + '°C. COP = ' + c.COP.toFixed(2) + '.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  S.phaseProgress += 0.25;
+  if(S.phaseProgress >= 1){
+    S.phaseProgress = 0;
+    S.phase = (S.phase + 1) % 4;
+  }
+  const names = ['COMPRESSOR', 'CONDENSER', 'EXP VALVE', 'EVAPORATOR'];
+  teach('STEP', 'Advanced to ' + names[S.phase] + ' at ' + (S.phaseProgress*100).toFixed(0) + '%.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.Tevap = 5; S.Tcond = 40; S.eff = 80; S.refrigerant = 'r134a';
+  S.flashGas = false; S.undercharge = false; S.foulCond = false;
+  S.phase = 0; S.phaseProgress = 0; S.running = false; S.cycles = 0;
+  tevapSlider.value = 5; tcondSlider.value = 40; effSlider.value = 80;
+  refSel.value = 'r134a';
+  document.getElementById('tevapVal').textContent = '5 °C';
+  document.getElementById('tcondVal').textContent = '40 °C';
+  document.getElementById('effVal').textContent = '80%';
+  playBtn.textContent = '▶ RUN CYCLE';
+  teach('RESET', 'Cycle reset to default conditions.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('flashBtn').addEventListener('click', () => {
+  S.flashGas = !S.flashGas;
+  if(S.flashGas){
+    teach('FLASH GAS', 'Flash gas fault: some liquid refrigerant is flashing before the expansion valve. This reduces the effective cooling because the refrigerant partially cools the suction line instead of the room.', 'warn');
+    toast('⚠ Flash gas');
+  } else {
+    teach('FIXED', 'Flash gas corrected.', 'ok');
+  }
+});
+
+document.getElementById('underchargeBtn').addEventListener('click', () => {
+  S.undercharge = true;
+  teach('UNDERCHARGE', 'Low refrigerant charge: compressor efficiency drops to 60%, COP drops significantly. This is the most common AC service issue — leaks slowly reduce performance.', 'warn');
+  toast('⚠ Undercharged');
+});
+
+document.getElementById('foulCondBtn').addEventListener('click', () => {
+  S.foulCond = true;
+  S.Tcond = 55;
+  tcondSlider.value = 55;
+  document.getElementById('tcondVal').textContent = '55 °C';
+  const c = computeCycle();
+  teach('FOUL COND', 'Condenser fouling raises effective condensing temperature to 55°C. COP drops from 3.5 to ' + c.COP.toFixed(2) + '. Real cause: dust on AC coils. Efficiency drop up to 30%.', 'warn');
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'fridge'){
+      S.Tevap = -18; S.Tcond = 40;
+      tevapSlider.value = -18; tcondSlider.value = 40;
+      document.getElementById('tevapVal').textContent = '-18 °C';
+      document.getElementById('tcondVal').textContent = '40 °C';
+      teach('FRIDGE', 'Home refrigerator: freezer at -18°C, kitchen at 40°C (condenser). COP of ~2 is typical. Every kWh of electricity removes 2 kWh of heat from the food compartment.', 'concept');
+    } else if(p === 'ac'){
+      S.Tevap = 7; S.Tcond = 45;
+      tevapSlider.value = 7; tcondSlider.value = 45;
+      document.getElementById('tevapVal').textContent = '7 °C';
+      document.getElementById('tcondVal').textContent = '45 °C';
+      teach('AC', 'Auto air conditioner: evaporator at 7°C (cool vent air), condenser at 45°C (under hood). COP around 3. Every kW of compressor consumes ~3 kW of heat from cabin.', 'concept');
+    } else {
+      S.Tevap = -5; S.Tcond = 55;
+      tevapSlider.value = -5; tcondSlider.value = 55;
+      document.getElementById('tevapVal').textContent = '-5 °C';
+      document.getElementById('tcondVal').textContent = '55 °C';
+      teach('HEAT PUMP', 'Heat pump (heating mode): extracts heat from outdoor air at -5°C, delivers to house at 55°C. COP_heat = COP_cool + 1. Heat pumps deliver more heat than electric resistance for the same power.', 'concept');
+    }
+    S.flashGas = false; S.undercharge = false; S.foulCond = false;
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Vapor Compression Refrigeration — the cycle that powers air conditioners, refrigerators, and heat pumps worldwide.', 'concept');
+  teach('REVERSE FLOW', 'Refrigeration moves heat from cold to hot — the opposite of natural flow. It requires work. The COP measures how much heat is moved per unit of work.', 'concept');
+  teach('HOWTO', 'Choose refrigerant, set evaporator and condenser temperatures. Press RUN CYCLE to see the P-h diagram and system schematic animate. Try the fault buttons.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

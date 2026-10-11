@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Huffman Coding Tree Construction — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #f97316, #eab308, #22c55e);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(249,115,22,0.15); color: #fdba74; border-color: #f97316; }
+  .teaching-toggle:hover { background: rgba(249,115,22,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #fdba74;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f97316; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f97316; color: #fff; border-color: #f97316; }
+  .btn.primary:hover { background: #ea580c; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(249,115,22,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .tree-wrap {
+    flex: 1; background: #070a14; border: 2px solid #f97316; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(249,115,22,0.15); min-height: 0;
+  }
+  .tree-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #fdba74; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #treeCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .freq-strip {
+    background: #070a14; border: 2px solid #8b5cf6; border-radius: 12px;
+    padding: 10px 14px; display: flex; gap: 8px; align-items: center;
+    flex-shrink: 0; overflow-x: auto; min-height: 80px;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15);
+  }
+  .freq-chip {
+    padding: 6px 12px; border-radius: 6px; font-family: monospace;
+    font-size: 0.75rem; font-weight: 900; background: #1e293b; color: #cbd5e1;
+    border: 2px solid #334155; flex-shrink: 0; text-align: center;
+    transition: all 0.3s; position: relative;
+  }
+  .freq-chip.merged { opacity: 0.25; text-decoration: line-through; }
+  .freq-chip .freq {
+    display: block; font-size: 0.5rem; color: #64748b; margin-top: 2px;
+  }
+  .freq-chip.picked {
+    border-color: #fcd34d;
+    background: rgba(245,158,11,0.2);
+    color: #fcd34d;
+    box-shadow: 0 0 12px rgba(245,158,11,0.5);
+    transform: scale(1.05);
+  }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(249,115,22,0.06); border: 1px solid rgba(249,115,22,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #fdba74; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #f97316;
+    background: rgba(249,115,22,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(249,115,22,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(249,115,22,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #fdba74;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #f97316; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(249,115,22,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #f97316; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #fdba74; z-index: 12;
+    box-shadow: 0 0 20px rgba(249,115,22,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.ok { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>HUFFMAN CODING</h1>
+    <span class="sub">GREEDY · PRIORITY QUEUE · PREFIX CODE · COMPRESSION</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Control</h3>
+      <button class="btn primary" id="btnRun">▶ Run to Completion</button>
+      <button class="btn" id="btnStep">⏭ Merge Next Pair</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Input</h3>
+      <input type="text" id="textInput" value="ABBCCCDDDDEEEEE" style="width:100%; padding:8px 10px; background:#02040a; color:#cbd5e1; border:1px solid #334155; border-radius:6px; font-family:monospace; font-size:0.7rem; margin-bottom:6px;" maxlength="30">
+      <button class="btn" id="btnApply">📝 Build from Text</button>
+      <button class="btn" id="btnRandom">🎲 Random Text</button>
+      <button class="btn" id="btnSample">📚 Sample Frequencies</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:6px;"></span>Leaf node (character)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f97316;border-radius:2px;margin-right:6px;"></span>Internal node (merged)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#fcd34d;border-radius:2px;margin-right:6px;"></span>Just created</div>
+        <div style="margin-top:4px;">Left edge = 0 · Right edge = 1</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">REPEATEDLY MERGE THE TWO LOWEST-FREQUENCY NODES</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="tree-wrap">
+          <div class="tree-title">
+            <span>🌳 HUFFMAN TREE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="treeHint">— build to see tree —</span>
+          </div>
+          <canvas id="treeCanvas"></canvas>
+        </div>
+        <div class="freq-strip" id="freqStrip">
+          <span style="font-family:monospace; font-size:0.55rem; color:#64748b; font-weight:800; letter-spacing:1.5px; padding-right:10px; border-right:1px solid #1e293b;">FREQ QUEUE</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Iterations</div>
+        <div class="metric-value warn" id="mIters">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Root Freq</div>
+        <div class="metric-value" id="mRoot">—</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Avg Bits</div>
+        <div class="metric-value" id="mAvgBits">—</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Compression</div>
+        <div class="metric-value good" id="mComp">—</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Huffman Coding</div>
+      <div class="info-row"><span class="lbl">Type</span><span class="val good">Greedy</span></div>
+      <div class="info-row"><span class="lbl">Structure</span><span class="val">Min-heap / PQ</span></div>
+      <div class="info-row"><span class="lbl">Time</span><span class="val good">O(n log n)</span></div>
+      <div class="info-row"><span class="lbl">Prefix-free</span><span class="val good">No code is a prefix</span></div>
+      <div class="info-row"><span class="lbl">Optimal</span><span class="val good">Proven (1952)</span></div>
+      <div class="info-row"><span class="lbl">Invented</span><span class="val">David Huffman, MIT</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">DEFLATE, JPEG, MP3, ZIP</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  inputText: 'ABBCCCDDDDEEEEE',
+  frequencies: [],    // [{ char, freq }]
+  heap: [],           // current working nodes { char, freq, left, right, id, isLeaf }
+  allNodes: [],       // for rendering
+  root: null,
+  iterations: 0,
+  nextId: 1,
+  lastCreated: null,
+  justMerged: [],
+  codes: {},          // char -> bit string
+  running: false,
+  timer: null,
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  treeCanvas: document.getElementById('treeCanvas'),
+  treeHint: document.getElementById('treeHint'),
+  freqStrip: document.getElementById('freqStrip'),
+  statusBanner: document.getElementById('statusBanner'),
+  textInput: document.getElementById('textInput'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnApply: document.getElementById('btnApply'),
+  btnRandom: document.getElementById('btnRandom'),
+  btnSample: document.getElementById('btnSample'),
+  mIters: document.getElementById('mIters'),
+  mRoot: document.getElementById('mRoot'),
+  mAvgBits: document.getElementById('mAvgBits'),
+  mComp: document.getElementById('mComp'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2000);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining Huffman coding.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   FREQUENCY ANALYSIS
+   ============================================================ */
+function computeFrequencies(text) {
+  const freqs = {};
+  for (const ch of text) {
+    freqs[ch] = (freqs[ch] || 0) + 1;
+  }
+  STATE.inputText = text;
+  STATE.frequencies = Object.entries(freqs).map(([char, freq]) => ({ char, freq }));
+  STATE.frequencies.sort((a, b) => a.char.localeCompare(b.char));
+}
+
+function buildInitialHeap() {
+  STATE.heap = STATE.frequencies.map(f => ({
+    id: STATE.nextId++,
+    char: f.char,
+    freq: f.freq,
+    left: null,
+    right: null,
+    isLeaf: true,
+    isRoot: STATE.frequencies.length === 1
+  }));
+  STATE.allNodes = [...STATE.heap];
+  STATE.root = STATE.heap.length === 1 ? STATE.heap[0] : null;
+  STATE.iterations = 0;
+  STATE.lastCreated = null;
+  STATE.justMerged = [];
+  STATE.codes = {};
+}
+
+function resetAll() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Run to Completion';
+  computeFrequencies(DOM.textInput.value || 'ABBCCCDDDDEEEEE');
+  buildInitialHeap();
+  renderFreqStrip();
+  drawTree();
+  updateMetrics();
+
+  teach('READY',
+    `Ready to build a Huffman tree for text "${STATE.inputText}". Frequencies: ${STATE.frequencies.map(f => `'${f.char}'=${f.freq}`).join(', ')}. Each iteration merges the two lowest-frequency nodes.`,
+    'info', false
+  );
+}
+
+/* ============================================================
+   HUFFMAN MERGE STEP
+   ============================================================ */
+function mergeStep() {
+  if (STATE.heap.length <= 1) {
+    if (STATE.root === null && STATE.heap.length === 1) {
+      STATE.root = STATE.heap[0];
+    }
+    showStatus('✅ Huffman tree complete', 'ok');
+    teach('COMPLETE',
+      `Tree complete! Root has total frequency ${STATE.root ? STATE.root.freq : 0}. Extract codes: ${Object.entries(STATE.codes).map(([c, code]) => `'${c}'=${code}`).join(', ')}.`,
+      'ok'
+    );
+    return false;
+  }
+
+  // Sort by frequency, then by char for stability
+  STATE.heap.sort((a, b) => {
+    if (a.freq !== b.freq) return a.freq - b.freq;
+    return (a.char || '').localeCompare(b.char || '');
+  });
+
+  const left = STATE.heap.shift();
+  const right = STATE.heap.shift();
+
+  const merged = {
+    id: STATE.nextId++,
+    char: (left.char && right.char) ? (left.char + right.char) : (left.char || right.char || '?'),
+    freq: left.freq + right.freq,
+    left,
+    right,
+    isLeaf: false
+  };
+
+  STATE.heap.push(merged);
+  STATE.allNodes.push(merged);
+  STATE.lastCreated = merged.id;
+  STATE.justMerged = [left.id, right.id];
+  STATE.iterations++;
+
+  // If this is the last node, it's the root
+  if (STATE.heap.length === 1) {
+    STATE.root = merged;
+    computeCodes(STATE.root, '');
+    renderFreqStrip();
+    drawTree();
+    updateMetrics();
+    showStatus(`🎉 Root created with total frequency ${merged.freq}`, 'ok');
+    teach('ROOT',
+      `Final merge: '${left.char || left.freq}' (${left.freq}) + '${right.char || right.freq}' (${right.freq}) = ${merged.freq}. This is the root of the Huffman tree. Total bits needed: weighted sum of each character's frequency × code length.`,
+      'ok'
+    );
+    return false;
+  }
+
+  renderFreqStrip();
+  drawTree();
+  updateMetrics();
+
+  showStatus(`Merged '${left.char || '?'}'+ '${right.char || '?'}' → ${merged.freq}`);
+  teach('MERGE ' + STATE.iterations,
+    `Merged the two lowest-frequency nodes: '${left.char || left.freq}' (${left.freq}) and '${right.char || right.freq}' (${right.freq}) into a new internal node with frequency ${merged.freq}. This node goes back into the priority queue.`,
+    'cyan'
+  );
+
+  return true;
+}
+
+function runToCompletion() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+
+  STATE.timer = setInterval(() => {
+    if (!mergeStep()) {
+      STATE.running = false;
+      clearInterval(STATE.timer);
+      STATE.timer = null;
+      DOM.btnRun.textContent = '▶ Run to Completion';
+    }
+  }, 700);
+}
+
+/* ============================================================
+   CODE ASSIGNMENT
+   ============================================================ */
+function computeCodes(node, prefix) {
+  if (!node) return;
+  if (node.isLeaf) {
+    STATE.codes[node.char] = prefix || '0';
+    return;
+  }
+  computeCodes(node.left, prefix + '0');
+  computeCodes(node.right, prefix + '1');
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderFreqStrip() {
+  DOM.freqStrip.innerHTML = '<span style="font-family:monospace; font-size:0.55rem; color:#64748b; font-weight:800; letter-spacing:1.5px; padding-right:10px; border-right:1px solid #1e293b;">FREQ QUEUE</span>';
+
+  // Show current heap sorted
+  const sorted = [...STATE.heap].sort((a, b) => a.freq - b.freq);
+  for (const n of sorted) {
+    const el = document.createElement('div');
+    el.className = 'freq-chip';
+    if (STATE.justMerged.includes(n.id) || STATE.lastCreated === n.id) el.classList.add('picked');
+    el.innerHTML = `${n.char || '·'}<span class="freq">${n.freq}</span>`;
+    DOM.freqStrip.appendChild(el);
+  }
+
+  if (sorted.length <= 1 && STATE.heap.length > 0) {
+    const done = document.createElement('span');
+    done.style.cssText = 'color:#64748b; font-size:0.55rem; font-family:monospace; padding-left:10px; margin-left:auto; border-left:1px solid #1e293b;';
+    done.textContent = 'tree built';
+    DOM.freqStrip.appendChild(done);
+  }
+}
+
+function resizeCanvas() {
+  const canvas = DOM.treeCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawTree() {
+  const canvas = DOM.treeCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (STATE.allNodes.length === 0) {
+    ctx.font = '12px monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Build a Huffman tree to see it here', W / 2, H / 2);
+    return;
+  }
+
+  // Compute tree structure (current root or all roots in forest)
+  const roots = STATE.heap.slice().sort((a, b) => a.freq - b.freq);
+
+  // Layout each root subtree
+  const padX = 40;
+  const padY = 40;
+  const availW = W - padX * 2;
+
+  // Compute subtree widths (number of leaves)
+  function countLeaves(node) {
+    if (!node) return 0;
+    if (node.isLeaf) return 1;
+    return countLeaves(node.left) + countLeaves(node.right);
+  }
+
+  function getHeight(node) {
+    if (!node) return 0;
+    if (node.isLeaf) return 1;
+    return 1 + Math.max(getHeight(node.left), getHeight(node.right));
+  }
+
+  const totalLeaves = roots.reduce((s, r) => s + countLeaves(r), 0) || 1;
+  const maxHeight = Math.max(...roots.map(getHeight), 1);
+  const levelH = Math.min(70, (H - padY * 2) / (maxHeight + 1));
+
+  // Layout nodes
+  const positions = {};
+
+  function layout(node, x0, x1, depth) {
+    if (!node) return;
+    const x = (x0 + x1) / 2;
+    const y = padY + depth * levelH;
+    positions[node.id] = { x, y };
+    if (!node.isLeaf) {
+      const mid = (x0 + x1) / 2;
+      const halfLeaves = countLeaves(node.left);
+      const totalLeavesSubtree = countLeaves(node);
+      const leftWidth = (mid - x0) * (countLeaves(node.left) / Math.max(totalLeavesSubtree, 1)) * 2;
+      const splitX = x0 + (x1 - x0) * (countLeaves(node.left) / Math.max(totalLeavesSubtree, 1));
+      layout(node.left, x0, splitX, depth + 1);
+      layout(node.right, splitX, x1, depth + 1);
+    }
+  }
+
+  let cursor = padX;
+  for (const r of roots) {
+    const leaves = countLeaves(r);
+    const width = availW * (leaves / totalLeaves);
+    layout(r, cursor, cursor + width, 0);
+    cursor += width;
+  }
+
+  // Draw edges
+  for (const root of roots) {
+    drawEdges(root);
+  }
+  function drawEdges(node) {
+    if (!node) return;
+    const p = positions[node.id];
+    if (node.left) {
+      const lp = positions[node.left.id];
+      if (lp) {
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(lp.x, lp.y);
+        ctx.stroke();
+        // 0 label
+        ctx.font = 'bold 11px monospace';
+        ctx.fillStyle = '#67e8f9';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('0', (p.x + lp.x) / 2 - 6, (p.y + lp.y) / 2);
+      }
+      drawEdges(node.left);
+    }
+    if (node.right) {
+      const rp = positions[node.right.id];
+      if (rp) {
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(rp.x, rp.y);
+        ctx.stroke();
+        ctx.font = 'bold 11px monospace';
+        ctx.fillStyle = '#fcd34d';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('1', (p.x + rp.x) / 2 + 6, (p.y + rp.y) / 2);
+      }
+      drawEdges(node.right);
+    }
+  }
+
+  // Draw nodes
+  function drawNode(node) {
+    if (!node) return;
+    const p = positions[node.id];
+    if (!p) return;
+    const r = 22;
+
+    let fill = node.isLeaf ? 'rgba(16,185,129,0.15)' : 'rgba(249,115,22,0.15)';
+    let stroke = node.isLeaf ? '#10b981' : '#f97316';
+    let textColor = node.isLeaf ? '#86efac' : '#fdba74';
+
+    if (node.id === STATE.lastCreated) {
+      fill = 'rgba(245,158,11,0.35)';
+      stroke = '#fcd34d';
+      textColor = '#fff';
+      ctx.shadowColor = '#fcd34d';
+      ctx.shadowBlur = 20;
+    }
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Char label
+    ctx.font = 'bold 13px monospace';
+    ctx.fillStyle = textColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(node.char || '·', p.x, p.y - 3);
+
+    // Freq label
+    ctx.font = '9px monospace';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(node.freq, p.x, p.y + 9);
+
+    // Code label (only for leaves with codes assigned)
+    if (node.isLeaf && STATE.codes[node.char]) {
+      ctx.font = '9px monospace';
+      ctx.fillStyle = '#67e8f9';
+      ctx.textBaseline = 'top';
+      ctx.fillText(STATE.codes[node.char], p.x, p.y + r + 4);
+    }
+
+    if (!node.isLeaf) {
+      drawNode(node.left);
+      drawNode(node.right);
+    }
+  }
+
+  for (const r of roots) drawNode(r);
+
+  // Hint
+  const rootFreq = STATE.root ? STATE.root.freq : STATE.heap.reduce((s, r) => s + r.freq, 0);
+  DOM.treeHint.textContent = `— ${roots.length} subtree${roots.length === 1 ? '' : 's'} · root freq ${rootFreq} —`;
+}
+
+function animate() {
+  drawTree();
+  requestAnimationFrame(animate);
+}
+
+function updateMetrics() {
+  DOM.mIters.textContent = STATE.iterations;
+  DOM.mRoot.textContent = STATE.root ? STATE.root.freq : '—';
+
+  if (STATE.root) {
+    // Compute average bits per character
+    let totalBits = 0;
+    let totalChars = 0;
+    for (const f of STATE.frequencies) {
+      const code = STATE.codes[f.char] || '';
+      totalBits += code.length * f.freq;
+      totalChars += f.freq;
+    }
+    const avgBits = totalChars > 0 ? totalBits / totalChars : 0;
+    DOM.mAvgBits.textContent = avgBits.toFixed(2);
+
+    // Compression ratio vs 8-bit ASCII
+    const ratio = 8 / avgBits;
+    DOM.mComp.textContent = ratio.toFixed(2) + '×';
+    DOM.mComp.className = 'metric-value ' + (ratio > 1.5 ? 'good' : ratio > 1.2 ? 'warn' : 'bad');
+  } else {
+    DOM.mAvgBits.textContent = '—';
+    DOM.mComp.textContent = '—';
+  }
+}
+
+/* ============================================================
+   INPUT PRESETS
+   ============================================================ */
+function randomText() {
+  const chars = 'ABCDEF';
+  let text = '';
+  const len = 12 + Math.floor(Math.random() * 10);
+  for (let i = 0; i < len; i++) {
+    // Skew frequencies to make it interesting
+    const r = Math.random();
+    let c;
+    if (r < 0.4) c = chars[0];
+    else if (r < 0.65) c = chars[1];
+    else if (r < 0.8) c = chars[2];
+    else if (r < 0.9) c = chars[3];
+    else if (r < 0.97) c = chars[4];
+    else c = chars[5];
+    text += c;
+  }
+  DOM.textInput.value = text;
+  resetAll();
+}
+
+function sampleFrequencies() {
+  DOM.textInput.value = 'AAAABBBCCD';
+  resetAll();
+  teach('SAMPLE',
+    `Sample text "AAAABBBCCD": A=4, B=3, C=2, D=1. Huffman will give A the shortest code (probably 1 bit), B a bit longer, C longer still, D the longest. Frequent characters get shorter codes.`,
+    'cyan'
+  );
+}
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRun.addEventListener('click', () => {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.timer);
+    STATE.timer = null;
+    DOM.btnRun.textContent = '▶ Run to Completion';
+    return;
+  }
+  if (STATE.heap.length <= 1 && STATE.root) {
+    resetAll();
+  }
+  runToCompletion();
+});
+
+DOM.btnStep.addEventListener('click', mergeStep);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnApply.addEventListener('click', resetAll);
+DOM.btnRandom.addEventListener('click', randomText);
+DOM.btnSample.addEventListener('click', sampleFrequencies);
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Huffman Coding. Invented by David Huffman in 1952 (as a grad student at MIT, in response to a challenge from his professor Claude Shannon), it's a greedy algorithm that builds an optimal prefix-free binary code for compressing data.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE GREEDY STEP',
+      `At each step, merge the two nodes with the LOWEST frequencies into a new node whose frequency is their sum. Repeat until only one node remains — the root. This builds a binary tree where frequent characters end up near the top (short codes) and rare ones deeper (long codes).`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('PREFIX-FREE CODES',
+      `The resulting codes are PREFIX-FREE: no code is a prefix of another. This means decoding is unambiguous — read bits until you match a character, then start fresh. If 'A'=0 and 'B'=10, reading '010' unambiguously gives 'A' then 'B'. Fixed-length codes (like ASCII) are always prefix-free but longer.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click MERGE NEXT PAIR to build the tree step by step. Each step, the two lowest-frequency nodes get merged and highlighted. When you see only one node in the frequency queue, the tree is complete — codes are assigned automatically based on path (left=0, right=1).`,
+      'warn'
+    );
+  }, 13000);
+  showToast('👋 Click MERGE NEXT PAIR to build the tree', 4500);
+}, 500);
+</script>
+</body>
+</html>

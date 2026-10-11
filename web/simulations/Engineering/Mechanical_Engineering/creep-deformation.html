@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Creep Deformation — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>CREEP DEFORMATION</h1>
+    <span class="sub">TIME-TEMPERATURE · LARSON-MILLER · STAGES OF CREEP</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Material</div>
+    <div class="control-group">
+      <label>Material</label>
+      <select id="matSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="steel">Carbon Steel (T_m=1811K)</option>
+        <option value="aluminum">Aluminum (T_m=933K)</option>
+        <option value="nickel">Nickel Superalloy (T_m=1728K)</option>
+        <option value="tungsten">Tungsten (T_m=3695K)</option>
+      </select>
+    </div>
+
+    <div class="section-title">Loading Conditions</div>
+    <div class="control-group">
+      <label>Temperature T <span class="val" id="tempVal">500 °C</span></label>
+      <input type="range" id="tempSlider" min="20" max="1200" value="500" step="10">
+    </div>
+    <div class="control-group">
+      <label>Applied Stress σ <span class="val" id="stressVal">80 MPa</span></label>
+      <input type="range" id="stressSlider" min="5" max="300" value="80" step="5">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ START CREEP TEST</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ +100 h</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="ruptureBtn">⚠ RUPTURE TEST</button>
+    <button class="btn warn" id="highTBtn">🔥 OVER-TEMPERATURE</button>
+    <button class="btn warn" id="tertiaryBtn">⚡ FORCE TERTIARY</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="boiler">Boiler Tube (500°C)</button>
+    <button class="btn" data-preset="turbine">Turbine Blade (900°C)</button>
+    <button class="btn" data-preset="solder">Solder Joint (100°C)</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      ε̇ = A·σⁿ·exp(−Q/RT) &nbsp;|&nbsp; Larson-Miller: P = T·(log t_r + C) &nbsp;|&nbsp; <span class="hl">Norton: ε̇ = A·σⁿ</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mTime">
+          <div class="mlabel">TIME t</div>
+          <div class="mvalue">0<span class="munit">h</span></div>
+        </div>
+        <div class="metric" id="mStrain">
+          <div class="mlabel">CREEP STRAIN</div>
+          <div class="mvalue">0.00<span class="munit">%</span></div>
+        </div>
+        <div class="metric" id="mRate">
+          <div class="mlabel">MIN CREEP RATE</div>
+          <div class="mvalue">0<span class="munit">%/kh</span></div>
+        </div>
+        <div class="metric" id="mHom">
+          <div class="mlabel">T/T_m</div>
+          <div class="mvalue">0.30</div>
+        </div>
+        <div class="metric" id="mStage">
+          <div class="mlabel">STAGE</div>
+          <div class="mvalue" style="font-size:11px;">—</div>
+        </div>
+        <div class="metric" id="mRupt">
+          <div class="mlabel">RUPTURE LIFE</div>
+          <div class="mvalue">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">ε̇_min = A · σⁿ · exp(−Q/RT)</div>
+      <div class="eq">Larson-Miller: P = T(K) · (log₁₀ t_r + 20)</div>
+      <div class="def">
+        Creep is time-dependent deformation at high temperature (T > 0.4 T_melt). 
+        Three stages: primary (decreasing rate), secondary (steady state), 
+        tertiary (accelerating to rupture). Design limit is usually 
+        the minimum (secondary) creep rate.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+// Material data: A (per hour), n (stress exponent), Q (activation energy J/mol), Tm (K)
+const MATERIALS = {
+  steel:    { name:'Carbon Steel',       A:2.5e-24, n:6.9, Q:280000, Tm:1811, color:'#60a5fa' },
+  aluminum: { name:'Aluminum',           A:1.2e-16, n:4.4, Q:142000, Tm:933,  color:'#a3e635' },
+  nickel:   { name:'Nickel Superalloy',  A:3e-32,   n:5.5, Q:380000, Tm:1728, color:'#c4b5fd' },
+  tungsten: { name:'Tungsten',           A:2e-40,   n:5.0, Q:585000, Tm:3695, color:'#fbbf24' }
+};
+
+const R = 8.314; // J/mol·K
+
+const S = {
+  material: 'steel',
+  temperature: 500,      // °C
+  stress: 80,            // MPa
+  time: 0,               // hours
+  strain: 0,             // % total creep strain
+  minRate: 0,            // %/kh
+  stage: 'PRIMARY',
+  history: [],           // {t, strain}
+  running: false,
+  ruptured: false,
+  forceTertiary: false,
+  simSpeed: 50,          // hours per second when running
+  timeAccum: 0
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const matSel = document.getElementById('matSelect');
+const tempSlider = document.getElementById('tempSlider');
+const stressSlider = document.getElementById('stressSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── CREEP PHYSICS ─────────────────────────────────────────
+function computeCreepRate(){
+  const m = MATERIALS[S.material];
+  const T = S.temperature + 273.15; // K
+  const sigma = S.stress; // MPa
+  // Norton-Arrhenius: ε̇ = A · σⁿ · exp(−Q/RT)
+  // Result in %/hour
+  const exponent = -m.Q / (R * T);
+  const rate = m.A * Math.pow(sigma, m.n) * Math.exp(exponent);
+  return rate * 100; // convert to %/h
+}
+
+function computeRuptureLife(){
+  const m = MATERIALS[S.material];
+  const T = S.temperature + 273.15;
+  const sigma = S.stress;
+  // Simplified rupture: find t_r where strain reaches 20%
+  const rate = computeCreepRate();
+  if(rate <= 0) return Infinity;
+  // Approximate: average rate ≈ 1.5 × min rate (primary + tertiary)
+  const avgRate = rate * 1.8;
+  return 20 / avgRate; // hours to 20% strain
+}
+
+function computeHomologousT(){
+  const m = MATERIALS[S.material];
+  const T = S.temperature + 273.15;
+  return T / m.Tm;
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawCreepCurve(W, H);
+  drawSpecimen(W, H);
+  drawStageIndicator(W, H);
+  drawLarsonMiller(W, H);
+}
+
+function drawCreepCurve(W, H){
+  const pad = { l:70, r:40, t:50, b:60 };
+  const gw = W - pad.l - pad.r - 20;
+  const gh = H - pad.t - pad.b - 60;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('CREEP CURVE — ε vs t', pad.l, pad.t - 12);
+
+  // axes
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t+gh);
+  ctx.lineTo(pad.l+gw, pad.t+gh);
+  ctx.stroke();
+
+  // grid
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  for(let i=0;i<=8;i++){
+    const y = pad.t + gh * i / 8;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+gw, y); ctx.stroke();
+  }
+  for(let i=0;i<=10;i++){
+    const x = pad.l + gw * i / 10;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t+gh); ctx.stroke();
+  }
+  ctx.restore();
+
+  // labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  const tMaxScale = 2000; // hours on x axis
+  for(let i=0;i<=10;i++){
+    ctx.fillText((i*tMaxScale/10).toFixed(0), pad.l + gw*i/10, pad.t+gh+14);
+  }
+  ctx.fillText('Time (h)', pad.l + gw/2, pad.t+gh+34);
+  ctx.textAlign = 'right';
+  for(let i=0;i<=8;i++){
+    const v = (i/8 * 25).toFixed(1); // 0..25% strain
+    ctx.fillText(v, pad.l-6, pad.t + gh - gh*i/8 + 3);
+  }
+  ctx.textAlign = 'left';
+  ctx.save();
+  ctx.translate(20, pad.t + gh/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign = 'center';
+  ctx.fillText('Creep strain ε (%)', 0, 0);
+  ctx.restore();
+
+  // Stage shading (guide bands)
+  const stage1End = tMaxScale * 0.15;
+  const stage2End = tMaxScale * 0.7;
+  ctx.fillStyle = 'rgba(74,222,128,0.06)';
+  ctx.fillRect(pad.l, pad.t, gw * 0.15, gh);
+  ctx.fillStyle = 'rgba(251,191,36,0.06)';
+  ctx.fillRect(pad.l + gw*0.15, pad.t, gw*0.55, gh);
+  ctx.fillStyle = 'rgba(248,113,113,0.06)';
+  ctx.fillRect(pad.l + gw*0.7, pad.t, gw*0.3, gh);
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillStyle = '#4ade80';
+  ctx.fillText('PRIMARY', pad.l + 8, pad.t + 14);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('SECONDARY', pad.l + gw*0.35, pad.t + 14);
+  ctx.fillStyle = '#f87171';
+  ctx.fillText('TERTIARY', pad.l + gw*0.78, pad.t + 14);
+
+  // Draw history trace
+  if(S.history.length > 1){
+    ctx.beginPath();
+    ctx.strokeStyle = MATERIALS[S.material].color;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = MATERIALS[S.material].color;
+    ctx.shadowBlur = 8;
+    for(let i=0;i<S.history.length;i++){
+      const p = S.history[i];
+      const X = pad.l + gw * Math.min(1, p.t / tMaxScale);
+      const Y = pad.t + gh - gh * Math.min(1, p.strain / 25);
+      if(i===0) ctx.moveTo(X, Y);
+      else ctx.lineTo(X, Y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // Current marker
+  if(S.history.length > 0){
+    const last = S.history[S.history.length-1];
+    const X = pad.l + gw * Math.min(1, last.t / tMaxScale);
+    const Y = pad.t + gh - gh * Math.min(1, last.strain / 25);
+    ctx.beginPath();
+    ctx.arc(X, Y, 6, 0, Math.PI*2);
+    ctx.fillStyle = S.ruptured ? '#ef4444' : '#fbbf24';
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Rupture annotation
+  if(S.ruptured){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 14px Consolas, monospace';
+    ctx.fillText('⚠ RUPTURE', pad.l + gw*0.75, pad.t + gh*0.4);
+  }
+}
+
+function drawSpecimen(W, H){
+  // Specimen stretching over time
+  const ox = W - 200;
+  const oy = H - 200;
+  const originalLen = 100;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('SPECIMEN', ox - 60, oy - 10);
+
+  const strainFrac = S.strain / 100;
+  const len = originalLen * (1 + strainFrac * 3); // exaggerated
+  const thick = Math.max(3, 20 - strainFrac * 15);
+
+  // top grip
+  ctx.fillStyle = '#334155';
+  ctx.fillRect(ox - 20, oy - 10, 60, 20);
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(ox, oy, thick, len);
+
+  // strain color feedback
+  const strainRatio = Math.min(1, S.strain / 20);
+  const colR = 60 + strainRatio * 195;
+  const colG = 100 - strainRatio * 80;
+  const colB = 100 - strainRatio * 80;
+  ctx.fillStyle = `rgb(${colR|0},${colG|0},${colB|0})`;
+  ctx.fillRect(ox, oy, thick, len);
+
+  ctx.strokeStyle = '#0a0e1a';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(ox, oy, thick, len);
+
+  // bottom grip
+  ctx.fillStyle = '#334155';
+  ctx.fillRect(ox - 20, oy + len, 60, 20);
+
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('L/L₀ = ' + (1 + strainFrac*3).toFixed(3), ox - 55, oy + len + 45);
+  ctx.fillText('ε = ' + S.strain.toFixed(2) + '%', ox - 55, oy + len + 62);
+}
+
+function drawStageIndicator(W, H){
+  // vertical bar showing which stage we're in
+  const ox = W - 60;
+  const oy = 100;
+  const w = 20;
+  const h = H - 250;
+
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  // fill by damage
+  const ruptureLife = computeRuptureLife();
+  const frac = isFinite(ruptureLife) ? Math.min(1, S.time / ruptureLife) : 0;
+  let col;
+  if(frac < 0.15) col = '#4ade80';
+  else if(frac < 0.7) col = '#fbbf24';
+  else col = '#f87171';
+  ctx.fillStyle = col;
+  ctx.fillRect(ox, oy + h * (1 - frac), w, h * frac);
+
+  ctx.save();
+  ctx.translate(ox + w + 8, oy + h/2);
+  ctx.rotate(Math.PI/2);
+  ctx.fillStyle = '#64748b';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('LIFE FRACTION', 0, 0);
+  ctx.restore();
+}
+
+function drawLarsonMiller(W, H){
+  // mini Larson-Miller parameter chart
+  const ox = 40, oy = H - 180;
+  const w = 240, h = 130;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('LARSON-MILLER (Life vs Stress)', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  // curve: stress vs time to rupture at current temperature
+  const m = MATERIALS[S.material];
+  const T = S.temperature + 273.15;
+  const P = T * (Math.log10(Math.max(1, 100)) + 20); // LM parameter at 100h
+
+  ctx.strokeStyle = m.color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let i=0;i<=30;i++){
+    const t = Math.pow(10, i/30 * 4); // 1 to 10000h
+    const LM = T * (Math.log10(t) + 20);
+    // simplified rupture stress: σ = A_LM / (LM - B) style
+    const sigma_r = Math.max(5, 300 - (LM / 30000) * 280);
+    const x = ox + 30 + (i/30) * (w - 50);
+    const y = oy + h - 20 - (sigma_r / 300) * (h - 40);
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Current stress point
+  const xCur = ox + 30 + Math.min(1, S.time / 10000) * (w - 50);
+  const yCur = oy + h - 20 - (S.stress / 300) * (h - 40);
+  ctx.beginPath();
+  ctx.arc(xCur, yCur, 5, 0, Math.PI*2);
+  ctx.fillStyle = '#fbbf24';
+  ctx.shadowColor = '#fbbf24';
+  ctx.shadowBlur = 10;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('σ (MPa)', ox + 4, oy + 12);
+  ctx.fillText('t_r (h)', ox + w - 40, oy + h - 4);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const m = MATERIALS[S.material];
+  document.querySelector('#mTime .mvalue').innerHTML = S.time.toFixed(0) + '<span class="munit">h</span>';
+  document.querySelector('#mStrain .mvalue').innerHTML = S.strain.toFixed(2) + '<span class="munit">%</span>';
+  const minRate = computeCreepRate();
+  document.querySelector('#mRate .mvalue').innerHTML = (minRate * 1000).toFixed(3) + '<span class="munit">%/kh</span>';
+  document.querySelector('#mHom .mvalue').textContent = computeHomologousT().toFixed(2);
+  document.querySelector('#mStage .mvalue').textContent = S.stage;
+  const tr = computeRuptureLife();
+  document.querySelector('#mRupt .mvalue').textContent = !isFinite(tr) ? '∞' : tr < 1000 ? tr.toFixed(0) + ' h' : (tr/1000).toFixed(1) + ' kh';
+
+  const hT = computeHomologousT();
+  document.getElementById('mHom').className = 'metric' + (hT > 0.5 ? ' bad' : hT > 0.4 ? ' warn' : ' ok');
+  document.getElementById('mStrain').className = 'metric' + (S.strain > 15 ? ' bad' : S.strain > 5 ? ' warn' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+let lastRecorded = 0;
+let lastStage = 'PRIMARY';
+function loop(ts){
+  if(S.running && !S.ruptured){
+    // advance simulation time
+    const dt = 1/60 * S.simSpeed; // hours per frame
+    S.time += dt;
+
+    // Strain rate depends on stage
+    const baseRate = computeCreepRate(); // %/h (min rate)
+    let rateMultiplier = 1;
+    if(S.stage === 'PRIMARY'){
+      // decreasing rate over time
+      rateMultiplier = 1 + 3 * Math.exp(-S.time / 200);
+    } else if(S.stage === 'TERTIARY' || S.forceTertiary){
+      // accelerating rate as damage grows
+      rateMultiplier = 1 + Math.pow(Math.max(0, S.strain - 3) / 2, 2);
+    }
+    const actualRate = baseRate * rateMultiplier;
+    S.strain += actualRate * dt;
+
+    // record history
+    if(S.time - lastRecorded > 5){
+      lastRecorded = S.time;
+      S.history.push({ t: S.time, strain: S.strain });
+      if(S.history.length > 800) S.history.shift();
+    }
+
+    // Determine stage
+    let newStage = 'PRIMARY';
+    if(S.forceTertiary || S.strain > 8){
+      newStage = 'TERTIARY';
+    } else if(S.time > 200){
+      newStage = 'SECONDARY';
+    }
+
+    if(newStage !== lastStage){
+      if(newStage === 'SECONDARY'){
+        teach('SECONDARY', 'Entering secondary (steady-state) creep. Rate is now nearly constant — this is the design-relevant minimum creep rate. Boiler tubes and turbine blades are designed against this.', 'info');
+      } else if(newStage === 'TERTIARY'){
+        teach('TERTIARY', 'Tertiary creep — rate is now accelerating. Internal voids and cracks are forming and linking up. Rupture is imminent.', 'warn');
+      }
+      lastStage = newStage;
+      S.stage = newStage;
+    }
+
+    // Rupture check
+    if(S.strain > 20 && !S.ruptured){
+      S.ruptured = true;
+      S.running = false;
+      playBtn.textContent = '▶ START CREEP TEST';
+      teach('RUPTURE', 'Rupture at t = ' + S.time.toFixed(0) + ' h, strain = ' + S.strain.toFixed(1) + '%. The part has failed by creep. In power plants, this is prevented by keeping T below 0.4 Tm and using creep-resistant alloys.', 'error');
+      toast('⚠ Creep rupture');
+    }
+  }
+
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+matSel.addEventListener('change', e => {
+  S.material = e.target.value;
+  resetBtn.click();
+  const m = MATERIALS[S.material];
+  teach('MATERIAL', 'Material: ' + m.name + '. Melting point Tm = ' + m.Tm + ' K. Creep becomes significant above 0.4 Tm = ' + (m.Tm * 0.4 - 273).toFixed(0) + ' °C.', 'concept');
+});
+
+tempSlider.addEventListener('input', e => {
+  S.temperature = parseFloat(e.target.value);
+  document.getElementById('tempVal').textContent = S.temperature + ' °C';
+  const hT = computeHomologousT();
+  if(hT > 0.4 && S.stage === 'PRIMARY'){
+    // teach on cross threshold occasionally
+  }
+});
+
+stressSlider.addEventListener('input', e => {
+  S.stress = parseFloat(e.target.value);
+  document.getElementById('stressVal').textContent = S.stress + ' MPa';
+});
+
+playBtn.addEventListener('click', () => {
+  if(S.ruptured){ resetBtn.click(); return; }
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ START CREEP TEST';
+  if(S.running){
+    const rate = computeCreepRate();
+    const tr = computeRuptureLife();
+    const hT = computeHomologousT();
+    teach('RUN', 'Creep test started. T = ' + S.temperature + ' °C (T/Tm = ' + hT.toFixed(2) + '), σ = ' + S.stress + ' MPa. Min creep rate = ' + (rate*1000).toFixed(3) + ' %/kh. Predicted rupture life ≈ ' + (isFinite(tr) ? tr.toFixed(0) + ' h' : '∞') + '.', 'info');
+    if(hT < 0.3){
+      teach('LOW-T', 'At T/Tm < 0.3, creep is negligible for most metals. Room-temperature aluminum is not a creep concern, but engine components are.', 'ok');
+    }
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  const dt = 100;
+  const baseRate = computeCreepRate();
+  let mult = 1;
+  if(S.time < 200) mult = 2.5;
+  else if(S.strain > 8) mult = 3;
+  S.strain += baseRate * mult * dt;
+  S.time += dt;
+  S.history.push({ t: S.time, strain: S.strain });
+  teach('STEP', 'Advanced 100 hours. Strain now = ' + S.strain.toFixed(2) + '%, stage = ' + S.stage + '.', 'info');
+  if(S.strain > 20){
+    S.ruptured = true;
+    teach('RUPTURE', 'Specimen ruptured during step at t = ' + S.time.toFixed(0) + ' h.', 'error');
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  S.time = 0; S.strain = 0; S.history = [];
+  S.running = false; S.ruptured = false; S.forceTertiary = false;
+  S.stage = 'PRIMARY';
+  lastStage = 'PRIMARY';
+  playBtn.textContent = '▶ START CREEP TEST';
+  teach('RESET', 'Creep test reset. Ready for a fresh run.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('ruptureBtn').addEventListener('click', () => {
+  S.stress = 200;
+  stressSlider.value = 200;
+  document.getElementById('stressVal').textContent = '200 MPa';
+  const tr = computeRuptureLife();
+  teach('RUPTURE TEST', 'High-stress rupture test: σ = 200 MPa. Rupture expected in ~' + (isFinite(tr) ? tr.toFixed(0) + ' h' : '∞') + '. These tests are run in labs to generate design data (Larson-Miller curves).', 'warn');
+  S.simSpeed = 200;
+  toast('⚠ Rupture mode');
+});
+
+document.getElementById('highTBtn').addEventListener('click', () => {
+  S.temperature = Math.min(1200, S.temperature + 300);
+  tempSlider.value = S.temperature;
+  document.getElementById('tempVal').textContent = S.temperature + ' °C';
+  const hT = computeHomologousT();
+  teach('OVER TEMP', 'Temperature raised to ' + S.temperature + ' °C — T/Tm = ' + hT.toFixed(2) + '. Creep rate increases exponentially with temperature (Arrhenius). This is why jet engines need active cooling and single-crystal blades.', 'warn');
+  toast('🔥 Over-temp');
+});
+
+document.getElementById('tertiaryBtn').addEventListener('click', () => {
+  S.forceTertiary = true;
+  S.stage = 'TERTIARY';
+  lastStage = 'TERTIARY';
+  teach('TERTIARY', 'Tertiary stage forced. In reality, this happens due to grain boundary sliding and void coalescence. Once tertiary begins, rupture is only hours away.', 'warn');
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'boiler'){
+      S.material = 'steel'; S.temperature = 500; S.stress = 80;
+      matSel.value = 'steel';
+      tempSlider.value = 500; stressSlider.value = 80;
+      document.getElementById('tempVal').textContent = '500 °C';
+      document.getElementById('stressVal').textContent = '80 MPa';
+      teach('BOILER', 'Boiler tube: carbon steel at 500 °C, 80 MPa hoop stress. Boiler tubes are the classic creep application — they must last 40+ years at 0.4 Tm. Design uses Larson-Miller to extrapolate from short lab tests.', 'concept');
+    } else if(p === 'turbine'){
+      S.material = 'nickel'; S.temperature = 900; S.stress = 150;
+      matSel.value = 'nickel';
+      tempSlider.value = 900; stressSlider.value = 150;
+      document.getElementById('tempVal').textContent = '900 °C';
+      document.getElementById('stressVal').textContent = '150 MPa';
+      teach('TURBINE', 'Turbine blade: nickel superalloy at 900 °C. This is 0.68 Tm — extreme creep conditions. Blades are single-crystal and internally cooled to survive. Note the low A and high Q of the superalloy.', 'concept');
+    } else {
+      S.material = 'aluminum'; S.temperature = 100; S.stress = 40;
+      matSel.value = 'aluminum';
+      tempSlider.value = 100; stressSlider.value = 40;
+      document.getElementById('tempVal').textContent = '100 °C';
+      document.getElementById('stressVal').textContent = '40 MPa';
+      teach('SOLDER', 'Solder joint: aluminum at 100 °C — but solder (Sn-Pb) melts at 183 °C, so 100 °C is 0.82 Tm! Solder creeps at room temperature. This is why electronics thermal cycling causes solder joint failure.', 'concept');
+    }
+    S.time = 0; S.strain = 0; S.history = [];
+    S.ruptured = false; S.forceTertiary = false;
+    S.stage = 'PRIMARY'; lastStage = 'PRIMARY';
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Creep Deformation. Creep is slow, permanent deformation under constant load at high temperature — think of a sagging lead pipe or a stretched turbine blade.', 'concept');
+  teach('THRESHOLD', 'Creep becomes significant above about 0.4 times the melting point (in Kelvin). Steel (Tm = 1811 K) creeps above ~450 °C; aluminum (Tm = 933 K) creeps above ~100 °C.', 'concept');
+  teach('HOWTO', 'Choose a material, set temperature and stress, then press START CREEP TEST. Watch the strain-time curve develop its three characteristic stages.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

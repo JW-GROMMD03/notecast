@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spring Design &amp; Hooke's Law — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>SPRING DESIGN</h1>
+    <span class="sub">HOOKE'S LAW · HELICAL · LEAF · SPRING RATE · BUCKLING</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Spring Type</div>
+    <div class="control-group">
+      <label>Type</label>
+      <select id="typeSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="helical">Helical Compression</option>
+        <option value="extension">Helical Extension</option>
+        <option value="torsion">Torsion Spring</option>
+        <option value="leaf">Leaf Spring</option>
+        <option value="belleville">Belleville Washer</option>
+      </select>
+    </div>
+
+    <div class="section-title">Material</div>
+    <div class="control-group">
+      <label>Material</label>
+      <select id="matSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="musicwire">Music Wire (G=80 GPa, Sy=1800)</option>
+        <option value="oil-tempered">Oil-Tempered (G=79, Sy=1400)</option>
+        <option value="stainless302">Stainless 302 (G=69, Sy=1100)</option>
+        <option value="chrome-silicon">Chrome-Silicon (G=80, Sy=1900)</option>
+      </select>
+    </div>
+
+    <div class="section-title">Geometry</div>
+    <div class="control-group">
+      <label>Wire Diameter d <span class="val" id="dVal">2.0 mm</span></label>
+      <input type="range" id="dSlider" min="0.5" max="10" value="2" step="0.1">
+    </div>
+    <div class="control-group">
+      <label>Mean Coil Diameter D <span class="val" id="dCoilVal">20 mm</span></label>
+      <input type="range" id="dCoilSlider" min="5" max="100" value="20" step="1">
+    </div>
+    <div class="control-group">
+      <label>Active Coils Na <span class="val" id="naVal">10</span></label>
+      <input type="range" id="naSlider" min="2" max="30" value="10" step="1">
+    </div>
+    <div class="control-group">
+      <label>Free Length Lf <span class="val" id="lfVal">80 mm</span></label>
+      <input type="range" id="lfSlider" min="20" max="200" value="80" step="5">
+    </div>
+
+    <div class="section-title">Loading</div>
+    <div class="control-group">
+      <label>Deflection δ <span class="val" id="deltaVal">20 mm</span></label>
+      <input type="range" id="deltaSlider" min="0" max="80" value="20" step="0.5">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ CYCLE SPRING</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="solidBtn">⚠ SOLID HEIGHT</button>
+    <button class="btn warn" id="buckleBtn">⚠ BUCKLING</button>
+    <button class="btn warn" id="surgeBtn">⚠ SURGE (resonance)</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="suspension">Car Suspension</button>
+    <button class="btn" data-preset="valve">Engine Valve Spring</button>
+    <button class="btn" data-preset="ballpoint">Ballpoint Pen</button>
+    <button class="btn" data-preset="shock">Shock Absorber</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      F = k·δ (Hooke) &nbsp;|&nbsp; k = G·d⁴/(8·D³·Na) &nbsp;|&nbsp; <span class="hl">τ = K_w·8·F·D/(π·d³)</span> &nbsp;|&nbsp; K_w = (4C+2)/(4C−3)
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mK">
+          <div class="mlabel">SPRING RATE k</div>
+          <div class="mvalue">0<span class="munit">N/mm</span></div>
+        </div>
+        <div class="metric" id="mF">
+          <div class="mlabel">FORCE F</div>
+          <div class="mvalue">0<span class="munit">N</span></div>
+        </div>
+        <div class="metric" id="mTau">
+          <div class="mlabel">SHEAR τ</div>
+          <div class="mvalue">0<span class="munit">MPa</span></div>
+        </div>
+        <div class="metric" id="mC">
+          <div class="mlabel">SPRING INDEX C</div>
+          <div class="mvalue">0.00</div>
+        </div>
+        <div class="metric" id="mU">
+          <div class="mlabel">ENERGY U</div>
+          <div class="mvalue">0<span class="munit">J</span></div>
+        </div>
+        <div class="metric" id="mSF">
+          <div class="mlabel">SAFETY FACTOR</div>
+          <div class="mvalue">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">F = k·δ (Hooke's Law)</div>
+      <div class="eq">k = G·d⁴/(8·D³·Na)</div>
+      <div class="eq">τ = K_w · 8·F·D/(π·d³)</div>
+      <div class="def">
+        Springs store energy elastically. Spring rate k is set by wire 
+        diameter d, coil diameter D, and active coils Na. Doubling wire 
+        diameter multiplies rate by 16! Wahl factor K_w accounts for the 
+        stress concentration from coil curvature. Springs must be designed 
+        to avoid solid height, buckling, and surge.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const MATERIALS = {
+  'musicwire':    { name:'Music Wire',     G:80e9,  Sy:1800, color:'#22d3ee' },
+  'oil-tempered': { name:'Oil-Tempered',   G:79e9,  Sy:1400, color:'#4ade80' },
+  'stainless302': { name:'Stainless 302',  G:69e9,  Sy:1100, color:'#c4b5fd' },
+  'chrome-silicon':{ name:'Chrome-Silicon',G:80e9,  Sy:1900, color:'#fbbf24' }
+};
+
+const S = {
+  type: 'helical',
+  material: 'musicwire',
+  d: 2.0,       // wire diameter mm
+  D: 20,        // mean coil diameter mm
+  Na: 10,       // active coils
+  Lf: 80,       // free length mm
+  delta: 20,    // deflection mm
+  running: false,
+  time: 0,
+  cyclePhase: 0,
+  solidFault: false,
+  bucklingFault: false,
+  surgeFault: false
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const typeSel = document.getElementById('typeSelect');
+const matSelect = document.getElementById('matSelect');
+const dSlider = document.getElementById('dSlider');
+const dCoilSlider = document.getElementById('dCoilSlider');
+const naSlider = document.getElementById('naSlider');
+const lfSlider = document.getElementById('lfSlider');
+const deltaSlider = document.getElementById('deltaSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── SPRING MATH ───────────────────────────────────────────
+function getMaterial(){ return MATERIALS[S.material]; }
+
+function computeSpring(){
+  const mat = getMaterial();
+  const d = S.d / 1000;      // m
+  const D = S.D / 1000;      // m
+  const Na = S.Na;
+  const Lf = S.Lf;           // mm
+
+  // Spring rate (helical compression) k = G·d⁴/(8·D³·Na)
+  const k = mat.G * Math.pow(d, 4) / (8 * Math.pow(D, 3) * Na); // N/m
+
+  // Force at current deflection
+  let delta_m = S.delta / 1000;
+  if(S.solidFault){
+    // Deflection limited by solid height
+    const solidH = (Na + 2) * S.d;
+    const maxDefl = Lf - solidH;
+    delta_m = Math.min(delta_m, maxDefl / 1000);
+  }
+  const F = k * delta_m;
+
+  // Shear stress with Wahl factor
+  const C = D / d;
+  let Kw;
+  if(S.type === 'extension'){
+    // Extension has different K factor
+    Kw = (4*C*C - C - 1) / (4*C*(C - 1));
+  } else {
+    Kw = (4*C + 2) / (4*C - 3);
+  }
+  const tau = Kw * 8 * F * D / (Math.PI * Math.pow(d, 3)); // Pa
+
+  // Spring index check
+  const indexOK = C >= 4 && C <= 12;
+
+  // Energy stored U = ½ k δ²
+  const U = 0.5 * k * delta_m * delta_m;
+
+  // Safety factor
+  const SF = mat.Sy * 1e6 / Math.max(tau, 1);
+
+  // Solid height
+  const solidH = (Na + 2) * S.d;
+  const currentLength = Lf - S.delta;
+  const solidReached = currentLength <= solidH;
+
+  // Critical buckling length (approx for compression spring)
+  // Free length should be < 2.6 · D for stability
+  const buckleLimit = 2.6 * S.D;
+  const buckleRisk = S.type === 'helical' && Lf > buckleLimit;
+
+  return { k, F, tau, C, U, SF, solidH, currentLength, solidReached, buckleRisk, buckleLimit, mat, d, D, Na };
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  if(S.type === 'leaf'){
+    drawLeafSpring(W, H);
+  } else if(S.type === 'belleville'){
+    drawBelleville(W, H);
+  } else {
+    drawHelicalSpring(W, H);
+  }
+  drawForceCurve(W, H);
+  drawStressChart(W, H);
+}
+
+function drawHelicalSpring(W, H){
+  const cx = W * 0.35;
+  const cy = H * 0.4;
+
+  const info = computeSpring();
+  const scale = 3.5;
+  const coilPx = S.D * scale;
+  const wirePx = S.d * scale;
+  const activeCoils = S.Na;
+
+  // Free length and current length
+  const freeH = Math.min(H * 0.55, S.Lf * scale);
+  const deflPx = Math.min(freeH - activeCoils * wirePx * 1.5, S.delta * scale);
+  const currentH = freeH - deflPx;
+
+  // Draw spring as a coil
+  const topY = cy - currentH/2;
+  const botY = cy + currentH/2;
+
+  // End coils (flat)
+  ctx.strokeStyle = info.mat.color;
+  ctx.lineWidth = Math.max(2, wirePx);
+  ctx.lineCap = 'round';
+
+  // Draw helix
+  const turns = activeCoils + 2;
+  const pts = [];
+  const segPerTurn = 30;
+  const totalSegs = Math.floor(turns * segPerTurn);
+  for(let i=0;i<=totalSegs;i++){
+    const u = i / totalSegs;
+    const ang = u * turns * Math.PI * 2;
+    const y = topY + u * currentH;
+    // Elliptical projection for pseudo-3D
+    const x = cx + Math.cos(ang) * coilPx * 0.35;
+    const depth = Math.sin(ang); // -1 (front) to 1 (back)
+    pts.push({ x, y, depth, ang });
+  }
+
+  // Sort by depth to draw back first
+  ctx.strokeStyle = info.mat.color;
+  ctx.lineWidth = Math.max(2, wirePx);
+  for(let pass = 0; pass < 2; pass++){
+    ctx.beginPath();
+    for(let i=1;i<pts.length;i++){
+      const p = pts[i];
+      const isBack = p.depth < 0;
+      if((pass === 0 && isBack) || (pass === 1 && !isBack)){
+        if(pass === 0){
+          ctx.globalAlpha = 0.5;
+        } else {
+          ctx.globalAlpha = 1;
+        }
+        ctx.beginPath();
+        ctx.moveTo(pts[i-1].x, pts[i-1].y);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // Top and bottom plates
+  const plateW = coilPx * 1.5;
+  ctx.fillStyle = '#334155';
+  ctx.fillRect(cx - plateW/2, topY - 15, plateW, 12);
+  ctx.strokeStyle = '#94a3b8';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(cx - plateW/2, topY - 15, plateW, 12);
+  ctx.fillRect(cx - plateW/2, botY + 3, plateW, 12);
+  ctx.strokeRect(cx - plateW/2, botY + 3, plateW, 12);
+
+  // Force arrows
+  const arrowLen = Math.min(60, info.F * 0.05 + 20);
+  ctx.strokeStyle = '#f87171';
+  ctx.fillStyle = '#f87171';
+  ctx.lineWidth = 3;
+  // Top force (down)
+  ctx.beginPath();
+  ctx.moveTo(cx, topY - 30);
+  ctx.lineTo(cx, topY - 30 + arrowLen);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx, topY - 25 + arrowLen);
+  ctx.lineTo(cx - 8, topY - 35 + arrowLen);
+  ctx.lineTo(cx + 8, topY - 35 + arrowLen);
+  ctx.closePath();
+  ctx.fill();
+  // Bottom reaction (up)
+  ctx.beginPath();
+  ctx.moveTo(cx, botY + 30);
+  ctx.lineTo(cx, botY + 30 - arrowLen);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx, botY + 25 - arrowLen);
+  ctx.lineTo(cx - 8, botY + 35 - arrowLen);
+  ctx.lineTo(cx + 8, botY + 35 - arrowLen);
+  ctx.closePath();
+  ctx.fill();
+
+  // Force label
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText('F = ' + info.F.toFixed(1) + ' N', cx + 15, topY - 30 + arrowLen/2);
+
+  // Info
+  ctx.fillStyle = info.mat.color;
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText(S.type.toUpperCase() + ' SPRING', 20, 30);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('d = ' + S.d.toFixed(1) + ' mm, D = ' + S.D + ' mm, Na = ' + S.Na, 20, 50);
+  ctx.fillText('Free length = ' + S.Lf + ' mm', 20, 68);
+  ctx.fillText('Deflection δ = ' + S.delta + ' mm', 20, 86);
+
+  // Solid height indicator
+  if(info.solidReached){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 14px Consolas, monospace';
+    ctx.fillText('⚠ SOLID HEIGHT REACHED', cx - 100, botY + 60);
+  }
+
+  // Buckling visualization
+  if(info.buckleRisk){
+    ctx.strokeStyle = '#fbbf24';
+    ctx.setLineDash([4,3]);
+    ctx.beginPath();
+    ctx.moveTo(cx + 40, topY);
+    ctx.quadraticCurveTo(cx + 60, (topY+botY)/2, cx + 40, botY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 12px Consolas, monospace';
+    ctx.fillText('⚠ BUCKLING RISK', cx + 50, cy);
+  }
+}
+
+function drawLeafSpring(W, H){
+  const cx = W * 0.35;
+  const cy = H * 0.4;
+
+  const info = computeSpring();
+  // Simplified leaf spring: arc shape that flattens under load
+  const numLeaves = 4;
+  const lengthPx = 260;
+  const deflPx = Math.min(60, S.delta * 2);
+  const baseCurve = 30 - deflPx * 0.5;
+
+  // Draw leaves stacked
+  for(let i=0;i<numLeaves;i++){
+    const offset = i * 5;
+    const length = lengthPx - i * 30;
+    const curve = baseCurve + i * 5;
+    ctx.beginPath();
+    ctx.moveTo(cx - length/2, cy + offset);
+    ctx.quadraticCurveTo(cx, cy - curve + offset, cx + length/2, cy + offset);
+    ctx.strokeStyle = info.mat.color;
+    ctx.lineWidth = 6 - i * 0.5;
+    ctx.stroke();
+  }
+
+  // Force arrow
+  const arrowLen = Math.min(80, info.F * 0.05 + 20);
+  ctx.strokeStyle = '#f87171';
+  ctx.fillStyle = '#f87171';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - baseCurve - 40);
+  ctx.lineTo(cx, cy - baseCurve - 40 + arrowLen);
+  ctx.stroke();
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText('F = ' + info.F.toFixed(0) + ' N', cx + 15, cy - baseCurve - 30);
+
+  ctx.fillStyle = info.mat.color;
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText('LEAF SPRING', 20, 30);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('4 leaves, ' + S.Lf + ' mm', 20, 50);
+}
+
+function drawBelleville(W, H){
+  const cx = W * 0.35;
+  const cy = H * 0.4;
+  const info = computeSpring();
+
+  // Conical washer
+  const R = 60;
+  const r = 25;
+  const deflPx = Math.min(25, S.delta * 0.5);
+  const h = 8 + deflPx;
+
+  // Cross-section (conical)
+  ctx.beginPath();
+  ctx.moveTo(cx - R, cy + h);
+  ctx.lineTo(cx - r, cy - h);
+  ctx.lineTo(cx + r, cy - h);
+  ctx.lineTo(cx + R, cy + h);
+  ctx.closePath();
+  ctx.fillStyle = info.mat.color + '44';
+  ctx.fill();
+  ctx.strokeStyle = info.mat.color;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.fillStyle = info.mat.color;
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText('BELLEVILLE WASHER', 20, 30);
+}
+
+function drawForceCurve(W, H){
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 180;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('FORCE vs DEFLECTION', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const info = computeSpring();
+  const pad = { l:40, r:15, t:20, b:30 };
+  const gw = w - pad.l - pad.r;
+  const gh = h - pad.t - pad.b;
+
+  const deltaMax = 80;
+  const Fmax = info.k * (deltaMax / 1000) * 1.1;
+  const xOf = d => ox + pad.l + (d / deltaMax) * gw;
+  const yOf = F => oy + h - pad.b - (F / Fmax) * gh;
+
+  // Linear curve F = kδ
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#4ade80';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  for(let i=0;i<=60;i++){
+    const d = (i / 60) * deltaMax;
+    const F = info.k * d / 1000;
+    const x = xOf(d);
+    const y = yOf(F);
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Solid height limit
+  const solidLimit = (S.Lf - info.solidH);
+  if(solidLimit > 0 && solidLimit < deltaMax){
+    ctx.strokeStyle = '#f87171';
+    ctx.setLineDash([3,3]);
+    ctx.beginPath();
+    ctx.moveTo(xOf(solidLimit), oy + pad.t);
+    ctx.lineTo(xOf(solidLimit), oy + h - pad.b);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#f87171';
+    ctx.font = '9px Consolas, monospace';
+    ctx.fillText('Solid', xOf(solidLimit) - 20, oy + pad.t + 10);
+  }
+
+  // Current operating point
+  const px = xOf(S.delta);
+  const py = yOf(info.F);
+  ctx.beginPath();
+  ctx.arc(px, py, 7, 0, Math.PI * 2);
+  ctx.fillStyle = '#fbbf24';
+  ctx.shadowColor = '#fbbf24';
+  ctx.shadowBlur = 12;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#0a0e1a';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Axes
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('δ (mm)', ox + w/2, oy + h - 6);
+  ctx.textAlign = 'left';
+  ctx.fillText('F (N)', ox + 8, oy + 14);
+
+  // Slope annotation
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('k = ' + (info.k/1000).toFixed(2) + ' N/mm', ox + 8, oy + h - 15);
+}
+
+function drawStressChart(W, H){
+  const ox = W - 280;
+  const oy = H - 200;
+  const w = 260;
+  const h = 180;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('SHEAR STRESS DISTRIBUTION', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const info = computeSpring();
+
+  // Wire cross-section with shear distribution (max at inner side)
+  const cx = ox + 130;
+  const cy = oy + 90;
+  const r = 55;
+
+  // Wire circle
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = info.mat.color + '22';
+  ctx.fill();
+  ctx.strokeStyle = info.mat.color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Stress distribution: linear from torsion (uniform on outer) + direct shear
+  // Simplified: inner edge has max stress
+  for(let i=0;i<40;i++){
+    const ang = -Math.PI * 0.5 + i * Math.PI / 20;
+    const rr = r * 0.95;
+    const px = cx + Math.cos(ang) * rr;
+    const py = cy + Math.sin(ang) * rr;
+    const stressRatio = (Math.cos(ang) + 1) / 2;
+    const col = `rgba(248, 113, ${Math.round(113 + stressRatio * 100)}, ${0.3 + stressRatio * 0.7})`;
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.arc(px, py, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Labels
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('Wire cross-section', cx - 50, cy - r - 10);
+
+  // Info
+  ctx.fillStyle = '#ef4444';
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText('τ_max = ' + (info.tau/1e6).toFixed(0) + ' MPa', ox + 8, oy + 20);
+  ctx.fillStyle = info.SF > 1.5 ? '#4ade80' : info.SF > 1 ? '#fbbf24' : '#f87171';
+  ctx.fillText('SF = ' + info.SF.toFixed(2), ox + 8, oy + 38);
+  ctx.fillStyle = info.C >= 4 && info.C <= 12 ? '#4ade80' : '#fbbf24';
+  ctx.fillText('C = D/d = ' + info.C.toFixed(2) + (info.C >= 4 && info.C <= 12 ? ' ✓' : ' ⚠'), ox + 8, oy + 56);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillText('Spring index range 4-12 (typical)', ox + 8, oy + h - 8);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const info = computeSpring();
+  document.querySelector('#mK .mvalue').innerHTML = (info.k/1000).toFixed(3) + '<span class="munit">N/mm</span>';
+  document.querySelector('#mF .mvalue').innerHTML = info.F.toFixed(1) + '<span class="munit">N</span>';
+  document.querySelector('#mTau .mvalue').innerHTML = (info.tau/1e6).toFixed(0) + '<span class="munit">MPa</span>';
+  document.querySelector('#mC .mvalue').textContent = info.C.toFixed(2);
+  document.querySelector('#mU .mvalue').innerHTML = info.U.toFixed(3) + '<span class="munit">J</span>';
+  document.querySelector('#mSF .mvalue').textContent = info.SF > 99 ? '∞' : info.SF.toFixed(2);
+
+  document.getElementById('mTau').className = 'metric' + ((info.tau/1e6) > info.mat.Sy ? ' bad' : (info.tau/1e6) > info.mat.Sy*0.7 ? ' warn' : ' ok');
+  document.getElementById('mSF').className = 'metric' + (info.SF < 1 ? ' bad' : info.SF < 1.5 ? ' warn' : ' ok');
+  document.getElementById('mC').className = 'metric' + (info.C >= 4 && info.C <= 12 ? ' ok' : ' warn');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  S.time += 1/60;
+
+  if(S.running){
+    // Oscillate deflection
+    S.cyclePhase += 0.02;
+    const osc = (Math.sin(S.cyclePhase) + 1) / 2;
+    S.delta = osc * 60;
+    deltaSlider.value = S.delta;
+    document.getElementById('deltaVal').textContent = S.delta.toFixed(1) + ' mm';
+  }
+
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+typeSel.addEventListener('change', e => {
+  S.type = e.target.value;
+  const info = computeSpring();
+  teach('TYPE', 'Spring type: ' + S.type + '. k = ' + (info.k/1000).toFixed(2) + ' N/mm. ' + 
+    (S.type === 'helical' ? 'Compression spring — most common type.' :
+     S.type === 'extension' ? 'Extension spring — resists pulling apart.' :
+     S.type === 'torsion' ? 'Torsion spring — resists rotation.' :
+     S.type === 'leaf' ? 'Leaf spring — for suspension, spreads load over length.' :
+     'Belleville washer — high force in tiny space.'), 'concept');
+});
+
+matSelect.addEventListener('change', e => {
+  S.material = e.target.value;
+  const mat = getMaterial();
+  teach('MATERIAL', mat.name + ': G = ' + (mat.G/1e9).toFixed(0) + ' GPa, Sy = ' + mat.Sy + ' MPa. Higher G gives stiffer spring at same geometry.', 'concept');
+});
+
+dSlider.addEventListener('input', e => {
+  S.d = parseFloat(e.target.value);
+  document.getElementById('dVal').textContent = S.d.toFixed(1) + ' mm';
+});
+
+dCoilSlider.addEventListener('input', e => {
+  S.D = parseFloat(e.target.value);
+  document.getElementById('dCoilVal').textContent = S.D + ' mm';
+});
+
+naSlider.addEventListener('input', e => {
+  S.Na = parseInt(e.target.value);
+  document.getElementById('naVal').textContent = S.Na;
+});
+
+lfSlider.addEventListener('input', e => {
+  S.Lf = parseFloat(e.target.value);
+  document.getElementById('lfVal').textContent = S.Lf + ' mm';
+});
+
+deltaSlider.addEventListener('input', e => {
+  S.delta = parseFloat(e.target.value);
+  document.getElementById('deltaVal').textContent = S.delta.toFixed(1) + ' mm';
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ CYCLE SPRING';
+  if(S.running){
+    const info = computeSpring();
+    teach('RUN', 'Cycling spring. k = ' + (info.k/1000).toFixed(2) + ' N/mm. Watch the F-δ line.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  S.delta = Math.min(80, S.delta + 10);
+  deltaSlider.value = S.delta;
+  document.getElementById('deltaVal').textContent = S.delta.toFixed(1) + ' mm';
+  const info = computeSpring();
+  teach('STEP', 'δ = ' + S.delta + ' mm → F = ' + info.F.toFixed(1) + ' N. τ = ' + (info.tau/1e6).toFixed(0) + ' MPa.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.type = 'helical'; S.material = 'musicwire'; S.d = 2.0; S.D = 20; S.Na = 10; S.Lf = 80; S.delta = 20;
+  S.running = false; S.solidFault = false; S.bucklingFault = false; S.surgeFault = false;
+  typeSel.value = 'helical'; matSelect.value = 'musicwire';
+  dSlider.value = 2; dCoilSlider.value = 20; naSlider.value = 10; lfSlider.value = 80; deltaSlider.value = 20;
+  document.getElementById('dVal').textContent = '2.0 mm';
+  document.getElementById('dCoilVal').textContent = '20 mm';
+  document.getElementById('naVal').textContent = '10';
+  document.getElementById('lfVal').textContent = '80 mm';
+  document.getElementById('deltaVal').textContent = '20.0 mm';
+  playBtn.textContent = '▶ CYCLE SPRING';
+  teach('RESET', 'Spring reset to defaults.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('solidBtn').addEventListener('click', () => {
+  S.delta = 65;
+  deltaSlider.value = 65;
+  document.getElementById('deltaVal').textContent = '65.0 mm';
+  const info = computeSpring();
+  teach('SOLID', 'Solid height reached! Spring compressed to ' + info.solidH.toFixed(1) + ' mm — coils touch. Further compression would yield the wire. Real springs are designed with 15-20% clearance to solid.', 'error');
+  toast('⚠ Solid height');
+});
+
+document.getElementById('buckleBtn').addEventListener('click', () => {
+  S.Lf = 100;
+  lfSlider.value = 100;
+  document.getElementById('lfVal').textContent = '100 mm';
+  const info = computeSpring();
+  teach('BUCKLING', 'Spring buckling risk: free length ' + S.Lf + ' mm exceeds 2.6×D = ' + info.buckleLimit.toFixed(1) + ' mm. Long slender springs bow sideways under compression. Fix: guide rod, or nested springs.', 'warn');
+});
+
+document.getElementById('surgeBtn').addEventListener('click', () => {
+  S.surgeFault = !S.surgeFault;
+  if(S.surgeFault){
+    teach('SURGE', 'Surge: the spring\'s natural frequency matches the driving frequency. Compression waves travel up and down the coils, causing fatigue and noise. Fix: use different pitch, or add damping.', 'warn');
+  } else {
+    teach('CLEAR', 'Surge resolved.', 'ok');
+  }
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'suspension'){
+      S.type = 'helical'; S.material = 'chrome-silicon'; S.d = 12; S.D = 100; S.Na = 8; S.Lf = 300; S.delta = 80;
+      typeSel.value = 'helical'; matSelect.value = 'chrome-silicon';
+      dSlider.value = 10; dCoilSlider.value = 100; naSlider.value = 8; lfSlider.value = 200; deltaSlider.value = 80;
+      document.getElementById('dVal').textContent = '10.0 mm';
+      document.getElementById('dCoilVal').textContent = '100 mm';
+      document.getElementById('naVal').textContent = '8';
+      document.getElementById('lfVal').textContent = '200 mm';
+      document.getElementById('deltaVal').textContent = '80.0 mm';
+      teach('SUSPENSION', 'Car suspension spring: heavy wire (12 mm), large coil (100 mm), chrome-silicon steel. Supports the vehicle weight (~4 kN per corner) with spring rate ~50 N/mm.', 'concept');
+    } else if(p === 'valve'){
+      S.type = 'helical'; S.material = 'musicwire'; S.d = 4; S.D = 25; S.Na = 6; S.Lf = 50; S.delta = 15;
+      typeSel.value = 'helical'; matSelect.value = 'musicwire';
+      dSlider.value = 4; dCoilSlider.value = 25; naSlider.value = 6; lfSlider.value = 50; deltaSlider.value = 15;
+      document.getElementById('dVal').textContent = '4.0 mm';
+      document.getElementById('dCoilVal').textContent = '25 mm';
+      document.getElementById('naVal').textContent = '6';
+      document.getElementById('lfVal').textContent = '50 mm';
+      document.getElementById('deltaVal').textContent = '15.0 mm';
+      teach('VALVE', 'Engine valve spring: closes valve 60 times per second at 3600 rpm. Must not surge at operating speed (crucial!). Small, high-rate spring with high fatigue resistance.', 'concept');
+    } else if(p === 'ballpoint'){
+      S.type = 'helical'; S.material = 'stainless302'; S.d = 0.4; S.D = 2.5; S.Na = 15; S.Lf = 25; S.delta = 8;
+      typeSel.value = 'helical'; matSelect.value = 'stainless302';
+      dSlider.value = 0.5; dCoilSlider.value = 5; naSlider.value = 15; lfSlider.value = 25; deltaSlider.value = 8;
+      document.getElementById('dVal').textContent = '0.5 mm';
+      document.getElementById('dCoilVal').textContent = '5 mm';
+      document.getElementById('naVal').textContent = '15';
+      document.getElementById('lfVal').textContent = '25 mm';
+      document.getElementById('deltaVal').textContent = '8.0 mm';
+      teach('BALLPOINT', 'Ballpoint pen spring: tiny spring (0.4 mm wire), light force (~1 N). Stainless steel to resist ink corrosion. Designed to millions of cycles.', 'concept');
+    } else {
+      S.type = 'belleville'; S.material = 'chrome-silicon'; S.d = 0.5; S.D = 30; S.Na = 1; S.Lf = 5; S.delta = 1;
+      typeSel.value = 'belleville'; matSelect.value = 'chrome-silicon';
+      dSlider.value = 0.5; dCoilSlider.value = 30; naSlider.value = 3; lfSlider.value = 20; deltaSlider.value = 1;
+      document.getElementById('dVal').textContent = '0.5 mm';
+      document.getElementById('dCoilVal').textContent = '30 mm';
+      document.getElementById('naVal').textContent = '3';
+      document.getElementById('lfVal').textContent = '20 mm';
+      document.getElementById('deltaVal').textContent = '1.0 mm';
+      teach('SHOCK', 'Shock absorber: Belleville washer stack. Very high force in a tiny package. Stacks can be arranged in series (more travel) or parallel (more force).', 'concept');
+    }
+    S.solidFault = false; S.bucklingFault = false; S.surgeFault = false;
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Spring Design. Springs store and release energy elastically — the mechanical equivalent of a battery.', 'concept');
+  teach('HOOKE', 'Hooke\'s law: F = k·δ. Spring rate k is set by geometry: k = G·d⁴/(8·D³·Na). Doubling wire diameter increases rate 16-fold!', 'concept');
+  teach('HOWTO', 'Choose spring type and material, adjust geometry. Press CYCLE SPRING to watch it compress. Try the fault buttons to see solid height and buckling.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

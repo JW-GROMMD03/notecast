@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boundary Layer Development — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>BOUNDARY LAYER</h1>
+    <span class="sub">LAMINAR · TURBULENT · SEPARATION · BLASIUS · REYNOLDS</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Flow Conditions</div>
+    <div class="control-group">
+      <label>Fluid</label>
+      <select id="fluidSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="air">Air</option>
+        <option value="water">Water</option>
+        <option value="oil">Oil</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Free-stream Velocity U <span class="val" id="uVal">10 m/s</span></label>
+      <input type="range" id="uSlider" min="1" max="80" value="10" step="0.5">
+    </div>
+    <div class="control-group">
+      <label>Plate Length L <span class="val" id="lVal">1.0 m</span></label>
+      <input type="range" id="lSlider" min="0.2" max="5" value="1.0" step="0.1">
+    </div>
+    <div class="control-group">
+      <label>Surface Roughness <span class="val" id="roughVal">Smooth</span></label>
+      <input type="range" id="roughSlider" min="0" max="2" value="0" step="1">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ RUN FLOW</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="adverseBtn">⚠ ADVERSE PRESSURE</button>
+    <button class="btn warn" id="trippedBtn">⚠ TRIPPED BL</button>
+    <button class="btn warn" id="roughBtn">⚠ ROUGH SURFACE</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="aircraft">Aircraft Wing</button>
+    <button class="btn" data-preset="pipe">Pipe Wall</button>
+    <button class="btn" data-preset="ship">Ship Hull</button>
+    <button class="btn" data-preset="windtunnel">Wind Tunnel</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      δ ≈ 5x/√Re_x (laminar) &nbsp;|&nbsp; δ ≈ 0.37x/Re_x^0.2 (turbulent) &nbsp;|&nbsp; <span class="hl">Re_x,crit ≈ 5×10⁵</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mRe">
+          <div class="mlabel">Re_x END</div>
+          <div class="mvalue">0</div>
+        </div>
+        <div class="metric" id="mDeltaL">
+          <div class="mlabel">δ LAMINAR</div>
+          <div class="mvalue">0<span class="munit">mm</span></div>
+        </div>
+        <div class="metric" id="mDeltaT">
+          <div class="mlabel">δ TURBULENT</div>
+          <div class="mvalue">0<span class="munit">mm</span></div>
+        </div>
+        <div class="metric" id="mDeltaStar">
+          <div class="mlabel">δ* DISPLACEMENT</div>
+          <div class="mvalue">0<span class="munit">mm</span></div>
+        </div>
+        <div class="metric" id="mTheta">
+          <div class="mlabel">θ MOMENTUM</div>
+          <div class="mvalue">0<span class="munit">mm</span></div>
+        </div>
+        <div class="metric" id="mCf">
+          <div class="mlabel">Cf (skin friction)</div>
+          <div class="mvalue">0.0000</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">δ(x) ≈ 5x/√Re_x (laminar)</div>
+      <div class="eq">δ(x) ≈ 0.37x/Re_x^(1/5) (turbulent)</div>
+      <div class="def">
+        The boundary layer is the thin region near a surface where viscous 
+        effects dominate. It starts laminar, transitions to turbulent around 
+        Re_c ≈ 500,000, and grows with distance. Turbulent BL has higher skin 
+        friction but resists separation better. Separation causes drag and stall.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const FLUIDS = {
+  air:   { name:'Air',   rho:1.2,  mu:1.81e-5, color:'#22d3ee' },
+  water: { name:'Water', rho:998,  mu:1.002e-3, color:'#4ade80' },
+  oil:   { name:'Oil',   rho:880,  mu:0.04, color:'#fb923c' }
+};
+
+const S = {
+  fluid: 'air',
+  U: 10,        // m/s free-stream velocity
+  L: 1.0,       // m plate length
+  roughness: 0, // 0=smooth, 1=medium, 2=rough
+  running: false,
+  time: 0,
+  particles: [],
+  adversePressure: false,
+  tripped: false,
+  separationPoint: null
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const fluidSel = document.getElementById('fluidSelect');
+const uSlider = document.getElementById('uSlider');
+const lSlider = document.getElementById('lSlider');
+const roughSlider = document.getElementById('roughSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── BOUNDARY LAYER PHYSICS ────────────────────────────────
+function getFluid(){ return FLUIDS[S.fluid]; }
+
+function computeBL(){
+  const f = getFluid();
+  const Re_x = f.rho * S.U * S.L / f.mu;
+  // Critical Reynolds number for transition (lowered for rough surface, tripped)
+  let Re_crit = 5e5;
+  if(S.roughness === 1) Re_crit = 3e5;
+  if(S.roughness === 2) Re_crit = 1e5;
+  if(S.tripped) Re_crit = 5000;
+
+  // Is the plate fully laminar, transitional, or fully turbulent?
+  let regime;
+  if(Re_x < Re_crit) regime = 'LAMINAR';
+  else if(Re_x < Re_crit * 3) regime = 'TRANSITIONAL';
+  else regime = 'TURBULENT';
+
+  // Boundary layer thickness at end of plate
+  // Laminar: δ = 5x/√Re_x
+  const deltaLaminar = 5 * S.L / Math.sqrt(Re_x);
+
+  // Turbulent: δ = 0.37x/Re_x^0.2
+  const deltaTurb = 0.37 * S.L / Math.pow(Re_x, 0.2);
+
+  // Use appropriate one based on regime
+  let deltaLocal;
+  if(regime === 'LAMINAR') deltaLocal = deltaLaminar;
+  else if(regime === 'TURBULENT') deltaLocal = deltaTurb;
+  else deltaLocal = (deltaLaminar + deltaTurb) / 2;
+
+  // Displacement thickness δ*
+  // Laminar: δ* = 1.72x/√Re_x
+  // Turbulent: δ* = 0.046x/Re_x^0.2
+  let deltaStar;
+  if(regime === 'LAMINAR'){
+    deltaStar = 1.72 * S.L / Math.sqrt(Re_x);
+  } else {
+    deltaStar = 0.046 * S.L / Math.pow(Re_x, 0.2);
+  }
+
+  // Momentum thickness θ
+  // Laminar: θ = 0.664x/√Re_x
+  // Turbulent: θ = 0.036x/Re_x^0.2
+  let theta;
+  if(regime === 'LAMINAR'){
+    theta = 0.664 * S.L / Math.sqrt(Re_x);
+  } else {
+    theta = 0.036 * S.L / Math.pow(Re_x, 0.2);
+  }
+
+  // Skin friction coefficient
+  // Laminar: Cf = 0.664/√Re_x
+  // Turbulent: Cf = 0.0592/Re_x^0.2
+  let Cf;
+  if(regime === 'LAMINAR'){
+    Cf = 0.664 / Math.sqrt(Re_x);
+  } else {
+    Cf = 0.0592 / Math.pow(Re_x, 0.2);
+  }
+  if(S.roughness === 1) Cf *= 1.5;
+  if(S.roughness === 2) Cf *= 2.5;
+
+  // Transition location (where BL transitions)
+  let xTransition = S.L;
+  if(Re_x > Re_crit){
+    xTransition = Re_crit * f.mu / (f.rho * S.U);
+  }
+
+  // Separation point if adverse pressure
+  let sepX = null;
+  if(S.adversePressure){
+    // Separation occurs at about 60% of plate
+    sepX = 0.6 * S.L;
+  }
+
+  return { Re_x, Re_crit, regime, deltaLaminar, deltaTurb, deltaLocal, deltaStar, theta, Cf, xTransition, sepX };
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawFlowField(W, H);
+  drawVelocityProfiles(W, H);
+  drawBLLabels(W, H);
+}
+
+function drawFlowField(W, H){
+  const cx = W * 0.4;
+  const cy = H * 0.35;
+  const plateLen = W * 0.75;
+  const x0 = cx - plateLen/2;
+  const x1 = cx + plateLen/2;
+
+  const bl = computeBL();
+  const f = getFluid();
+
+  // Plate
+  ctx.strokeStyle = '#64748b';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(x0, cy);
+  ctx.lineTo(x1, cy);
+  ctx.stroke();
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('Plate (L = ' + S.L.toFixed(1) + ' m)', x0, cy + 20);
+
+  // Roughness indication
+  if(S.roughness > 0){
+    ctx.strokeStyle = '#f87171';
+    ctx.lineWidth = 1;
+    for(let i=0;i<60;i++){
+      const x = x0 + Math.random() * plateLen;
+      const r = S.roughness === 1 ? 3 : 6;
+      ctx.beginPath();
+      ctx.moveTo(x, cy);
+      ctx.lineTo(x, cy - r);
+      ctx.stroke();
+    }
+  }
+
+  // Boundary layer envelope
+  const N = 100;
+  // Scaled for visualization
+  const scaleY = 250; // px per meter of BL thickness (exaggerated)
+  const points = [];
+  for(let i=0;i<=N;i++){
+    const u = i / N;
+    const x = x0 + u * plateLen;
+    const xPhys = u * S.L;
+    // Local Re
+    const Re_x = f.rho * S.U * xPhys / f.mu;
+    // Local BL thickness (whichever regime is active)
+    let delta;
+    const xTransPhys = bl.xTransition;
+    if(xPhys < xTransPhys || bl.regime === 'LAMINAR'){
+      delta = 5 * xPhys / Math.sqrt(Math.max(Re_x, 1));
+    } else {
+      // Turbulent region
+      delta = 0.37 * xPhys / Math.pow(Math.max(Re_x, 1000), 0.2);
+    }
+    // Separation: BL thickness grows rapidly past separation point
+    if(bl.sepX !== null && xPhys > bl.sepX){
+      const extra = (xPhys - bl.sepX) * 3;
+      delta += extra;
+    }
+    points.push({ x, delta, xPhys, Re_x });
+  }
+
+  // Fill the boundary layer
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, cy);
+  for(const p of points){
+    const y = cy - Math.min(H*0.35, p.delta * scaleY);
+    ctx.lineTo(p.x, y);
+  }
+  ctx.lineTo(points[points.length-1].x, cy);
+  ctx.closePath();
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(x0, cy, x1, cy);
+  if(bl.regime === 'LAMINAR'){
+    grad.addColorStop(0, 'rgba(74,222,128,0.3)');
+    grad.addColorStop(1, 'rgba(74,222,128,0.1)');
+  } else if(bl.regime === 'TRANSITIONAL'){
+    grad.addColorStop(0, 'rgba(74,222,128,0.3)');
+    grad.addColorStop(bl.xTransition/S.L, 'rgba(74,222,128,0.3)');
+    grad.addColorStop(1, 'rgba(251,191,36,0.3)');
+  } else {
+    grad.addColorStop(0, 'rgba(251,191,36,0.3)');
+    grad.addColorStop(1, 'rgba(251,191,36,0.15)');
+  }
+  if(bl.sepX !== null){
+    grad.addColorStop(0.6, 'rgba(248,113,113,0.3)');
+    grad.addColorStop(1, 'rgba(248,113,113,0.4)');
+  }
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Boundary layer edge
+  ctx.strokeStyle = bl.regime === 'LAMINAR' ? '#4ade80' : bl.regime === 'TRANSITIONAL' ? '#fbbf24' : '#fbbf24';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let i=0;i<points.length;i++){
+    const y = cy - Math.min(H*0.35, points[i].delta * scaleY);
+    if(i===0) ctx.moveTo(points[i].x, y);
+    else ctx.lineTo(points[i].x, y);
+  }
+  ctx.stroke();
+
+  // Velocity arrows above BL (uniform free-stream)
+  ctx.strokeStyle = '#22d3ee';
+  ctx.fillStyle = '#22d3ee';
+  ctx.lineWidth = 2;
+  for(let i=0;i<10;i++){
+    const x = x0 + i * plateLen / 9;
+    const yTop = cy - Math.min(H*0.4, H*0.25);
+    ctx.beginPath();
+    ctx.moveTo(x, yTop + 10);
+    ctx.lineTo(x, yTop);
+    ctx.stroke();
+    // Arrow head pointing up
+    ctx.beginPath();
+    ctx.moveTo(x, yTop - 2);
+    ctx.lineTo(x - 4, yTop + 6);
+    ctx.lineTo(x + 4, yTop + 6);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('U∞ = ' + S.U + ' m/s', x0 + 10, cy - Math.min(H*0.4, H*0.25) - 10);
+
+  // Transition marker
+  if(bl.xTransition < S.L){
+    const xT = x0 + (bl.xTransition / S.L) * plateLen;
+    ctx.strokeStyle = '#a78bfa';
+    ctx.setLineDash([4,3]);
+    ctx.beginPath();
+    ctx.moveTo(xT, cy + 20);
+    ctx.lineTo(xT, cy - H * 0.35);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.fillText('Transition', xT - 25, cy - H * 0.35 - 5);
+    ctx.fillText('Re_c = ' + (bl.Re_crit/1000).toFixed(0) + 'k', xT - 25, cy - H * 0.35 + 8);
+  }
+
+  // Separation marker
+  if(bl.sepX !== null){
+    const xS = x0 + (bl.sepX / S.L) * plateLen;
+    ctx.strokeStyle = '#f87171';
+    ctx.setLineDash([4,3]);
+    ctx.beginPath();
+    ctx.moveTo(xS, cy);
+    ctx.lineTo(xS, cy - H * 0.35);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 11px Consolas, monospace';
+    ctx.fillText('SEPARATION', xS - 30, cy - H * 0.35 - 15);
+    // Reverse flow arrows
+    for(let i=0;i<4;i++){
+      const yy = cy - 20 - i * 15;
+      ctx.strokeStyle = '#f87171';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(xS + 15 + i*10, yy);
+      ctx.lineTo(xS - 10, yy);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(xS - 15, yy);
+      ctx.lineTo(xS - 5, yy - 4);
+      ctx.lineTo(xS - 5, yy + 4);
+      ctx.closePath();
+      ctx.fillStyle = '#f87171';
+      ctx.fill();
+    }
+  }
+
+  // Particles (flow visualization)
+  if(S.running){
+    if(S.particles.length < 100 && Math.random() < 0.7){
+      S.particles.push({
+        x: x0,
+        y: cy - Math.random() * H * 0.3,
+        seed: Math.random() * 100
+      });
+    }
+    for(let i=S.particles.length-1;i>=0;i--){
+      const p = S.particles[i];
+      const u = (p.x - x0) / plateLen;
+      const xPhys = u * S.L;
+      const Re_x = f.rho * S.U * xPhys / f.mu;
+      // Local velocity: full U above BL, near wall = 0
+      let vLocal = S.U;
+      // Find BL thickness at this x
+      let delta;
+      if(xPhys < bl.xTransition || bl.regime === 'LAMINAR'){
+        delta = 5 * xPhys / Math.sqrt(Math.max(Re_x, 1));
+      } else {
+        delta = 0.37 * xPhys / Math.pow(Math.max(Re_x, 1000), 0.2);
+      }
+      if(bl.sepX !== null && xPhys > bl.sepX){
+        delta += (xPhys - bl.sepX) * 3;
+      }
+      // Check particle position relative to BL
+      const h = (cy - p.y) / scaleY; // height in "physical" m
+      if(h < delta){
+        // Inside BL - velocity depends on regime
+        const eta = h / delta; // 0 at wall, 1 at edge
+        if(bl.regime === 'LAMINAR' || xPhys < bl.xTransition){
+          // Blasius-like profile
+          vLocal = S.U * Math.sin(eta * Math.PI / 2) * 0.9;
+        } else {
+          // Turbulent profile (flatter)
+          vLocal = S.U * Math.pow(eta, 1/7) * 0.95;
+        }
+        // Separation region - reverse flow
+        if(bl.sepX !== null && xPhys > bl.sepX){
+          vLocal = -S.U * 0.3;
+        }
+      }
+
+      p.x += vLocal * 2;
+      // Vertical wander (turbulence)
+      if(bl.regime === 'TURBULENT' || (xPhys > bl.xTransition && bl.xTransition < S.L)){
+        p.y += Math.sin(S.time * 8 + p.seed) * 0.8;
+      }
+
+      // Remove if out
+      if(p.x > x1 + 10 || p.y < cy - H*0.35 || p.y > cy) S.particles.splice(i, 1);
+    }
+  }
+
+  // Draw particles
+  for(const p of S.particles){
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 1.8, 0, Math.PI*2);
+    ctx.fillStyle = f.color;
+    ctx.globalAlpha = 0.7;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawVelocityProfiles(W, H){
+  // Velocity profiles at 3 stations
+  const ox = 40;
+  const oy = H * 0.65;
+  const w = W * 0.55;
+  const h = H * 0.3;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('VELOCITY PROFILES u(y)', ox, oy - 10);
+
+  const bl = computeBL();
+  const f = getFluid();
+  const numStations = 4;
+
+  for(let s=0;s<numStations;s++){
+    const u = (s + 0.5) / numStations;
+    const x = ox + u * w;
+    const xPhys = u * S.L;
+    const Re_x = f.rho * S.U * xPhys / f.mu;
+    let delta;
+    if(xPhys < bl.xTransition || bl.regime === 'LAMINAR'){
+      delta = 5 * xPhys / Math.sqrt(Math.max(Re_x, 1));
+    } else {
+      delta = 0.37 * xPhys / Math.pow(Math.max(Re_x, 1000), 0.2);
+    }
+    const scaleY = h / (bl.deltaLocal * 1.5 + 0.001);
+    const profH = delta * scaleY;
+
+    // Draw axis
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, oy + h);
+    ctx.lineTo(x, oy + h - profH);
+    ctx.stroke();
+
+    // Velocity profile curve
+    ctx.strokeStyle = (xPhys < bl.xTransition || bl.regime === 'LAMINAR') ? '#4ade80' : '#fbbf24';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const N = 20;
+    for(let i=0;i<=N;i++){
+      const eta = i / N; // 0 at wall, 1 at edge
+      let v;
+      if(xPhys < bl.xTransition || bl.regime === 'LAMINAR'){
+        // Blasius approx
+        v = Math.sin(eta * Math.PI / 2) * 0.95;
+      } else {
+        v = Math.pow(eta, 1/7);
+      }
+      const px = x + v * 40; // profile width
+      const py = oy + h - eta * profH;
+      if(i===0) ctx.moveTo(x, py);
+      ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    // Labels
+    ctx.fillStyle = '#64748b';
+    ctx.font = '9px Consolas, monospace';
+    ctx.fillText('x=' + xPhys.toFixed(2), x - 15, oy + h + 14);
+    ctx.fillText('Re=' + (Re_x/1000).toFixed(0) + 'k', x - 15, oy + h + 26);
+
+    // BL thickness
+    ctx.fillStyle = '#22d3ee';
+    ctx.fillText('δ=' + (delta*1000).toFixed(1) + 'mm', x + 10, oy + h - profH);
+  }
+
+  // Legend
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('— Laminar (parabolic-ish)', ox + w + 10, oy + 20);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('— Turbulent (flat, 1/7 power)', ox + w + 10, oy + 34);
+}
+
+function drawBLLabels(W, H){
+  // Outer edge label
+  const bl = computeBL();
+
+  // Summary box
+  const ox = W - 260;
+  const oy = H - 180;
+  const w = 240;
+  const h = 160;
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(ox, oy, w, h);
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('BOUNDARY LAYER SUMMARY', ox + 8, oy + 16);
+
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillStyle = '#cbd5e1';
+  ctx.fillText('Re_x,end = ' + bl.Re_x.toExponential(2), ox + 8, oy + 36);
+  ctx.fillStyle = bl.regime === 'LAMINAR' ? '#4ade80' : bl.regime === 'TRANSITIONAL' ? '#fbbf24' : '#f87171';
+  ctx.fillText('Regime: ' + bl.regime, ox + 8, oy + 52);
+  ctx.fillStyle = '#22d3ee';
+  ctx.fillText('δ_end = ' + (bl.deltaLocal*1000).toFixed(2) + ' mm', ox + 8, oy + 68);
+  ctx.fillText('δ* = ' + (bl.deltaStar*1000).toFixed(2) + ' mm', ox + 8, oy + 84);
+  ctx.fillText('θ = ' + (bl.theta*1000).toFixed(2) + ' mm', ox + 8, oy + 100);
+  ctx.fillText('Cf = ' + bl.Cf.toFixed(5), ox + 8, oy + 116);
+
+  if(bl.sepX !== null){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 11px Consolas, monospace';
+    ctx.fillText('⚠ SEPARATION at x = ' + bl.sepX.toFixed(2) + ' m', ox + 8, oy + h - 12);
+  }
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const bl = computeBL();
+  document.querySelector('#mRe .mvalue').textContent = bl.Re_x > 1e5 ? bl.Re_x.toExponential(2) : bl.Re_x.toFixed(0);
+  document.querySelector('#mDeltaL .mvalue').innerHTML = (bl.deltaLaminar*1000).toFixed(2) + '<span class="munit">mm</span>';
+  document.querySelector('#mDeltaT .mvalue').innerHTML = (bl.deltaTurb*1000).toFixed(2) + '<span class="munit">mm</span>';
+  document.querySelector('#mDeltaStar .mvalue').innerHTML = (bl.deltaStar*1000).toFixed(2) + '<span class="munit">mm</span>';
+  document.querySelector('#mTheta .mvalue').innerHTML = (bl.theta*1000).toFixed(2) + '<span class="munit">mm</span>';
+  document.querySelector('#mCf .mvalue').textContent = bl.Cf.toFixed(5);
+
+  document.getElementById('mRe').className = 'metric' + (bl.regime === 'LAMINAR' ? ' ok' : bl.regime === 'TRANSITIONAL' ? ' warn' : '');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  S.time += 1/60;
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+fluidSel.addEventListener('change', e => {
+  S.fluid = e.target.value;
+  const f = getFluid();
+  teach('FLUID', f.name + ': ρ = ' + f.rho + ', μ = ' + f.mu.toExponential(2) + '. Low-viscosity fluid (air) has thinner boundary layers than water or oil.', 'concept');
+});
+
+uSlider.addEventListener('input', e => {
+  S.U = parseFloat(e.target.value);
+  document.getElementById('uVal').textContent = S.U.toFixed(1) + ' m/s';
+});
+
+lSlider.addEventListener('input', e => {
+  S.L = parseFloat(e.target.value);
+  document.getElementById('lVal').textContent = S.L.toFixed(1) + ' m';
+});
+
+roughSlider.addEventListener('input', e => {
+  S.roughness = parseInt(e.target.value);
+  const labels = ['Smooth', 'Medium', 'Rough'];
+  document.getElementById('roughVal').textContent = labels[S.roughness];
+  if(S.roughness === 2){
+    teach('ROUGH', 'Rough surface trips the boundary layer to turbulent sooner (Re_c drops to 100,000). This increases skin friction but delays separation — the secret behind golf ball dimples!', 'warn');
+  }
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ RUN FLOW';
+  if(S.running){
+    const bl = computeBL();
+    teach('RUN', 'Flow started at U∞ = ' + S.U + ' m/s over ' + S.L + ' m plate. Re_end = ' + bl.Re_x.toExponential(2) + ' → ' + bl.regime + ' boundary layer.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  // Emit burst of particles
+  const W = canvas.width / devicePixelRatio;
+  for(let i=0;i<15;i++){
+    S.particles.push({
+      x: W * 0.05,
+      y: canvas.height/devicePixelRatio * 0.35 - Math.random() * 100,
+      seed: Math.random() * 100
+    });
+  }
+  const bl = computeBL();
+  teach('STEP', 'Advanced. Re_x = ' + bl.Re_x.toExponential(2) + '. δ = ' + (bl.deltaLocal*1000).toFixed(2) + ' mm. Cf = ' + bl.Cf.toFixed(5) + '.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.fluid = 'air'; S.U = 10; S.L = 1.0; S.roughness = 0;
+  S.running = false; S.particles = [];
+  S.adversePressure = false; S.tripped = false;
+  fluidSel.value = 'air'; uSlider.value = 10; lSlider.value = 1.0; roughSlider.value = 0;
+  document.getElementById('uVal').textContent = '10.0 m/s';
+  document.getElementById('lVal').textContent = '1.0 m';
+  document.getElementById('roughVal').textContent = 'Smooth';
+  playBtn.textContent = '▶ RUN FLOW';
+  teach('RESET', 'Reset to defaults: smooth flat plate in air, 1 m long, 10 m/s.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('adverseBtn').addEventListener('click', () => {
+  S.adversePressure = !S.adversePressure;
+  if(S.adversePressure){
+    teach('ADVERSE', 'Adverse pressure gradient applied. The flow decelerates and the boundary layer thickens rapidly. At ~60% of the plate it SEPARATES — reversed flow near the wall causes a wake and high pressure drag.', 'error');
+    toast('⚠ Separation!');
+  } else {
+    teach('RECOVER', 'Adverse pressure gradient removed. Flow reattached.', 'ok');
+  }
+});
+
+document.getElementById('trippedBtn').addEventListener('click', () => {
+  S.tripped = !S.tripped;
+  if(S.tripped){
+    teach('TRIPPED', 'Boundary layer tripped at Re_c = 5,000 (a wire on the surface). Now turbulent almost immediately. Skin friction increases ~4× but separation is delayed. Racing yachts use "trip strips" for exactly this reason.', 'warn');
+  } else {
+    teach('NATURAL', 'Natural transition restored.', 'ok');
+  }
+});
+
+document.getElementById('roughBtn').addEventListener('click', () => {
+  S.roughness = (S.roughness + 1) % 3;
+  const labels = ['Smooth', 'Medium', 'Rough'];
+  roughSlider.value = S.roughness;
+  document.getElementById('roughVal').textContent = labels[S.roughness];
+  teach('SURFACE', 'Surface roughness set to: ' + labels[S.roughness] + '. Rougher surfaces trip the BL to turbulent sooner, increasing skin friction but delaying separation.', S.roughness > 0 ? 'warn' : 'ok');
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'aircraft'){
+      S.fluid = 'air'; S.U = 100; S.L = 3.0; S.roughness = 0;
+      fluidSel.value = 'air'; uSlider.value = 80; lSlider.value = 3.0; roughSlider.value = 0;
+      document.getElementById('uVal').textContent = '80.0 m/s';
+      document.getElementById('lVal').textContent = '3.0 m';
+      document.getElementById('roughVal').textContent = 'Smooth';
+      teach('AIRCRAFT', 'Aircraft wing: 3 m chord at 80 m/s (cruise). Re ≈ 16 million — fully turbulent. Skin friction is a major drag component (~50% of total drag). Laminar flow wings save fuel.', 'concept');
+    } else if(p === 'pipe'){
+      S.fluid = 'water'; S.U = 2; S.L = 0.1; S.roughness = 1;
+      fluidSel.value = 'water'; uSlider.value = 2; lSlider.value = 0.2; roughSlider.value = 1;
+      document.getElementById('uVal').textContent = '2.0 m/s';
+      document.getElementById('lVal').textContent = '0.2 m';
+      document.getElementById('roughVal').textContent = 'Medium';
+      teach('PIPE WALL', 'Pipe wall: water at 2 m/s along 100 mm section. Re ≈ 200,000 — turbulent. The boundary layer thickness is only ~2 mm but causes significant friction losses.', 'concept');
+    } else if(p === 'ship'){
+      S.fluid = 'water'; S.U = 10; S.L = 100; S.roughness = 1;
+      fluidSel.value = 'water'; uSlider.value = 10; lSlider.value = 5; roughSlider.value = 1;
+      document.getElementById('uVal').textContent = '10.0 m/s';
+      document.getElementById('lVal').textContent = '5.0 m';
+      document.getElementById('roughVal').textContent = 'Medium';
+      teach('SHIP HULL', 'Ship hull (scaled): 100 m hull at 10 m/s. Re = 10⁹ — deeply turbulent. 60-80% of ship drag is skin friction. Antifouling paints reduce roughness.', 'concept');
+    } else {
+      S.fluid = 'air'; S.U = 30; S.L = 2.0; S.roughness = 0;
+      fluidSel.value = 'air'; uSlider.value = 30; lSlider.value = 2.0; roughSlider.value = 0;
+      document.getElementById('uVal').textContent = '30.0 m/s';
+      document.getElementById('lVal').textContent = '2.0 m';
+      document.getElementById('roughVal').textContent = 'Smooth';
+      teach('WIND TUNNEL', 'Wind tunnel test section: 2 m model at 30 m/s. Careful design of flow straighteners keeps turbulence low so measurements are repeatable.', 'concept');
+    }
+    S.adversePressure = false;
+    S.tripped = false;
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Boundary Layer Development. This is the thin region near any surface where viscosity slows the flow — where drag is born.', 'concept');
+  teach('TRANSITION', 'The BL starts laminar but becomes turbulent at Re_c ≈ 500,000. Turbulent BL has 4× more skin friction but resists separation 10× better.', 'concept');
+  teach('HOWTO', 'Adjust velocity, plate length, and surface roughness. Press RUN FLOW to watch particles decelerate through the BL. Try the fault buttons to see separation.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

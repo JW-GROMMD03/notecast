@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Readers-Writers Concurrency — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #3b82f6, #06b6d4, #10b981);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(59,130,246,0.15); color: #93c5fd; border-color: #3b82f6; }
+  .teaching-toggle:hover { background: rgba(59,130,246,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #93c5fd;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #3b82f6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .btn.primary:hover { background: #2563eb; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #93c5fd; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #3b82f6; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(59,130,246,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .shared-wrap {
+    flex: 1; background: #070a14; border: 2px solid #3b82f6; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(59,130,246,0.15); min-height: 0;
+  }
+  .shared-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #93c5fd; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #sharedCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .thread-row {
+    display: flex; gap: 8px; flex-shrink: 0; align-items: center;
+    background: #070a14; border: 2px solid #8b5cf6; border-radius: 12px;
+    padding: 8px 12px; overflow-x: auto; min-height: 80px;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15);
+  }
+  .thread-label {
+    font-family: monospace; font-size: 0.55rem; color: #64748b;
+    font-weight: 800; letter-spacing: 1.5px; padding-right: 10px;
+    border-right: 1px solid #1e293b; text-transform: uppercase;
+  }
+  .rw-chip {
+    padding: 6px 12px; border-radius: 6px; font-family: monospace;
+    font-size: 0.6rem; font-weight: 800; letter-spacing: 0.5px;
+    flex-shrink: 0; border: 2px solid; transition: all 0.3s;
+    text-align: center;
+  }
+  .rw-chip.reader {
+    background: rgba(59,130,246,0.15); border-color: #3b82f6; color: #93c5fd;
+  }
+  .rw-chip.writer {
+    background: rgba(239,68,68,0.15); border-color: #ef4444; color: #fca5a5;
+  }
+  .rw-chip.active {
+    box-shadow: 0 0 15px currentColor;
+    transform: scale(1.05);
+  }
+  .rw-chip.blocked {
+    opacity: 0.4;
+    border-style: dashed;
+  }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #93c5fd; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #3b82f6;
+    background: rgba(59,130,246,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(59,130,246,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(59,130,246,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #93c5fd;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #3b82f6; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(59,130,246,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #3b82f6; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #93c5fd; z-index: 12;
+    box-shadow: 0 0 20px rgba(59,130,246,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.warn { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>READERS-WRITERS</h1>
+    <span class="sub">SHARED READ · EXCLUSIVE WRITE · STARVATION</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Control</h3>
+      <button class="btn primary" id="btnRun">▶ Run</button>
+      <button class="btn" id="btnStep">⏭ Step Tick</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Strategy</h3>
+      <button class="btn" id="btnReaders">👥 Readers-Priority</button>
+      <button class="btn" id="btnWriters">✍️ Writers-Priority</button>
+      <button class="btn" id="btnFair">⚖️ Fair (FIFO)</button>
+    </div>
+
+    <div class="panel">
+      <h3>Spawn Threads</h3>
+      <button class="btn" id="btnAddReader">➕ Add Reader</button>
+      <button class="btn" id="btnAddWriter">➕ Add Writer</button>
+      <button class="btn warn" id="btnWriterFlood">🌊 Writer Flood</button>
+      <button class="btn warn" id="btnReaderFlood">🌊 Reader Flood</button>
+    </div>
+
+    <div class="panel">
+      <h3>Parameters</h3>
+      <div class="slider-row"><span>Read time</span><span class="value" id="rTimeVal">2s</span></div>
+      <input type="range" id="rTimeRange" min="1" max="5" value="2">
+      <div class="slider-row"><span>Write time</span><span class="value" id="wTimeVal">3s</span></div>
+      <input type="range" id="wTimeRange" min="1" max="6" value="3">
+      <div class="slider-row"><span>Speed</span><span class="value" id="speedVal">2×</span></div>
+      <input type="range" id="speedRange" min="1" max="8" value="2">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #3b82f6;border-radius:3px;margin-right:6px;"></span>Reader</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #ef4444;border-radius:3px;margin-right:6px;"></span>Writer</div>
+        <div style="margin-top:4px;">dashed = blocked</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">MANY READERS OK · ONE WRITER AT A TIME</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="shared-wrap">
+          <div class="shared-title">
+            <span>📚 SHARED RESOURCE (DATABASE)</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="sharedHint">— no active access —</span>
+          </div>
+          <canvas id="sharedCanvas"></canvas>
+        </div>
+        <div class="thread-row">
+          <span class="thread-label">THREADS</span>
+          <div id="threadChips" style="display:flex; gap:8px;"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Active Readers</div>
+        <div class="metric-value good" id="mReaders">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Active Writers</div>
+        <div class="metric-value warn" id="mWriters">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Blocked</div>
+        <div class="metric-value bad" id="mBlocked">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Starved</div>
+        <div class="metric-value bad" id="mStarved">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Readers-Writers</div>
+      <div class="info-row"><span class="lbl">Readers</span><span class="val good">Shared access</span></div>
+      <div class="info-row"><span class="lbl">Writers</span><span class="val bad">Exclusive access</span></div>
+      <div class="info-row"><span class="lbl">RW mutex</span><span class="val">Common primitive</span></div>
+      <div class="info-row"><span class="lbl">Reader-priority</span><span class="val bad">Writers starve</span></div>
+      <div class="info-row"><span class="lbl">Writer-priority</span><span class="val bad">Readers starve</span></div>
+      <div class="info-row"><span class="lbl">Fair (FIFO)</span><span class="val good">Prevents starvation</span></div>
+      <div class="info-row"><span class="lbl">Systems</span><span class="val">pthread_rwlock, Postgres MVCC</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  threads: [],
+  nextTid: 1,
+  strategy: 'readers',  // readers | writers | fair
+  running: false,
+  simTime: 0,
+  activeReaders: 0,
+  activeWriter: null,
+  readTime: 2,
+  writeTime: 3,
+  speed: 2,
+  timer: null,
+  starved: 0,
+  blocked: 0,
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  sharedCanvas: document.getElementById('sharedCanvas'),
+  sharedHint: document.getElementById('sharedHint'),
+  threadChips: document.getElementById('threadChips'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnReaders: document.getElementById('btnReaders'),
+  btnWriters: document.getElementById('btnWriters'),
+  btnFair: document.getElementById('btnFair'),
+  btnAddReader: document.getElementById('btnAddReader'),
+  btnAddWriter: document.getElementById('btnAddWriter'),
+  btnWriterFlood: document.getElementById('btnWriterFlood'),
+  btnReaderFlood: document.getElementById('btnReaderFlood'),
+  rTimeRange: document.getElementById('rTimeRange'),
+  rTimeVal: document.getElementById('rTimeVal'),
+  wTimeRange: document.getElementById('wTimeRange'),
+  wTimeVal: document.getElementById('wTimeVal'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  mReaders: document.getElementById('mReaders'),
+  mWriters: document.getElementById('mWriters'),
+  mBlocked: document.getElementById('mBlocked'),
+  mStarved: document.getElementById('mStarved'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining readers writers.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+function addThread(type) {
+  const t = {
+    tid: `${type === 'reader' ? 'R' : 'W'}${STATE.nextTid++}`,
+    type,
+    state: 'waiting',   // waiting | active | blocked | starved
+    timer: 0,
+    waitTime: 0
+  };
+  STATE.threads.push(t);
+  renderThreads();
+  return t;
+}
+
+function addReader() { addThread('reader'); }
+function addWriter() { addThread('writer'); }
+
+function writerFlood() {
+  for (let i = 0; i < 3; i++) setTimeout(() => addThread('writer'), i * 200);
+  showToast('🌊 Writer flood incoming');
+  teach('WRITER FLOOD',
+    `Multiple writers added. Watch how the strategy handles this — with reader-priority, writers will starve as long as readers keep arriving. With writer-priority, readers will starve. Fair (FIFO) keeps them balanced.`,
+    'warn'
+  );
+}
+
+function readerFlood() {
+  for (let i = 0; i < 3; i++) setTimeout(() => addThread('reader'), i * 200);
+  showToast('🌊 Reader flood incoming');
+  teach('READER FLOOD',
+    `Multiple readers added. Since readers can proceed in parallel, they won't block each other. But if writers are waiting and strategy is reader-priority, new readers might "barge" ahead of the queue — potential writer starvation.`,
+    'warn'
+  );
+}
+
+function tick() {
+  STATE.simTime++;
+
+  // Track starvation: waiting > 10 ticks
+  for (const t of STATE.threads) {
+    if (t.state === 'waiting' || t.state === 'blocked') {
+      t.waitTime++;
+      if (t.waitTime > 8 && t.state !== 'starved') {
+        t.state = 'starved';
+        STATE.starved++;
+      }
+    }
+  }
+
+  // Process active threads (count down timers)
+  for (const t of STATE.threads) {
+    if (t.state === 'active') {
+      t.timer--;
+      if (t.timer <= 0) {
+        if (t.type === 'reader') {
+          STATE.activeReaders--;
+        } else {
+          STATE.activeWriter = null;
+        }
+        t.state = 'done';
+        teach('RELEASE',
+          `${t.tid} finished ${t.type === 'reader' ? 'reading' : 'writing'} and released the lock.`,
+          'cyan', false
+        );
+      }
+    }
+  }
+
+  // Grant access to waiting threads
+  grantAccess();
+
+  // Cleanup done threads
+  STATE.threads = STATE.threads.filter(t => t.state !== 'done');
+
+  renderThreads();
+  drawShared();
+  updateMetrics();
+}
+
+function grantAccess() {
+  // If a writer is active, nobody else can go
+  if (STATE.activeWriter) return;
+
+  // Collect waiting threads (not starved for fairness)
+  const waiting = STATE.threads.filter(t => t.state === 'waiting' || t.state === 'blocked' || t.state === 'starved');
+
+  if (STATE.strategy === 'readers') {
+    // Readers priority: let all readers go, regardless of waiting writers
+    const readers = waiting.filter(t => t.type === 'reader');
+    for (const r of readers) {
+      r.state = 'active';
+      r.timer = STATE.readTime;
+      r.waitTime = 0;
+      STATE.activeReaders++;
+    }
+    // Then a writer, if no readers active
+    if (STATE.activeReaders === 0) {
+      const writer = waiting.find(t => t.type === 'writer');
+      if (writer) {
+        writer.state = 'active';
+        writer.timer = STATE.writeTime;
+        writer.waitTime = 0;
+        STATE.activeWriter = writer;
+      }
+    }
+  } else if (STATE.strategy === 'writers') {
+    // Writers priority: if any writer waiting, block readers
+    const writer = waiting.find(t => t.type === 'writer');
+    if (writer) {
+      if (STATE.activeReaders === 0) {
+        writer.state = 'active';
+        writer.timer = STATE.writeTime;
+        writer.waitTime = 0;
+        STATE.activeWriter = writer;
+      }
+    } else {
+      // No writers waiting — let readers in
+      const readers = waiting.filter(t => t.type === 'reader');
+      for (const r of readers) {
+        r.state = 'active';
+        r.timer = STATE.readTime;
+        r.waitTime = 0;
+        STATE.activeReaders++;
+      }
+    }
+  } else if (STATE.strategy === 'fair') {
+    // FIFO: process in order
+    if (STATE.activeReaders > 0) {
+      // Only other readers can join
+      const readers = waiting.filter(t => t.type === 'reader' && t.state !== 'starved');
+      // Only add readers if no writer is currently at the head
+      const firstWriterIdx = waiting.findIndex(t => t.type === 'writer');
+      for (let i = 0; i < waiting.length; i++) {
+        if (firstWriterIdx >= 0 && i >= firstWriterIdx) break;
+        if (waiting[i].type === 'reader') {
+          waiting[i].state = 'active';
+          waiting[i].timer = STATE.readTime;
+          waiting[i].waitTime = 0;
+          STATE.activeReaders++;
+        }
+      }
+    } else {
+      // Nothing active — take head of queue
+      if (waiting.length > 0) {
+        const head = waiting[0];
+        if (head.type === 'reader') {
+          head.state = 'active';
+          head.timer = STATE.readTime;
+          head.waitTime = 0;
+          STATE.activeReaders++;
+          // Add more readers behind until a writer
+          const firstWriter = waiting.findIndex(t => t.type === 'writer');
+          const end = firstWriter >= 0 ? firstWriter : waiting.length;
+          for (let i = 1; i < end; i++) {
+            if (waiting[i].type === 'reader') {
+              waiting[i].state = 'active';
+              waiting[i].timer = STATE.readTime;
+              waiting[i].waitTime = 0;
+              STATE.activeReaders++;
+            }
+          }
+        } else {
+          head.state = 'active';
+          head.timer = STATE.writeTime;
+          head.waitTime = 0;
+          STATE.activeWriter = head;
+        }
+      }
+    }
+  }
+
+  // Update blocked count
+  STATE.blocked = STATE.threads.filter(t => t.state === 'blocked' || t.state === 'starved').length;
+}
+
+function renderThreads() {
+  DOM.threadChips.innerHTML = '';
+  for (const t of STATE.threads) {
+    const chip = document.createElement('div');
+    let cls = `rw-chip ${t.type}`;
+    if (t.state === 'active') cls += ' active';
+    if (t.state === 'blocked' || t.state === 'starved') cls += ' blocked';
+    chip.className = cls;
+    chip.innerHTML = `${t.type === 'reader' ? '👤' : '✍️'} ${t.tid}<br><span style="font-size:0.5rem; color:#94a3b8;">${t.state}${t.state === 'starved' ? ' ⚠️' : ''}</span>`;
+    DOM.threadChips.appendChild(chip);
+  }
+}
+
+function resizeCanvas() {
+  const canvas = DOM.sharedCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawShared() {
+  const canvas = DOM.sharedCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw the "database" in the center
+  const dbW = 200;
+  const dbH = 100;
+  const dbX = W / 2 - dbW / 2;
+  const dbY = H / 2 - dbH / 2;
+
+  let dbColor = '#10b981';
+  if (STATE.activeWriter) dbColor = '#ef4444';
+  else if (STATE.activeReaders > 0) dbColor = '#3b82f6';
+
+  // Glow
+  ctx.shadowColor = dbColor;
+  ctx.shadowBlur = 25;
+
+  ctx.fillStyle = '#0f172a';
+  ctx.strokeStyle = dbColor;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(dbX, dbY, dbW, dbH, 12);
+  ctx.fill();
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  ctx.font = 'bold 12px monospace';
+  ctx.fillStyle = dbColor;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🗄️ SHARED DB', W / 2, dbY + 25);
+
+  // Access status
+  if (STATE.activeWriter) {
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = '#fca5a5';
+    ctx.fillText(`🔒 WRITE LOCK`, W / 2, dbY + 50);
+    ctx.fillStyle = '#fca5a5';
+    ctx.font = '10px monospace';
+    ctx.fillText(`${STATE.activeWriter.tid} writing...`, W / 2, dbY + 70);
+  } else if (STATE.activeReaders > 0) {
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = '#93c5fd';
+    ctx.fillText(`👥 ${STATE.activeReaders} READERS`, W / 2, dbY + 50);
+    ctx.fillStyle = '#93c5fd';
+    ctx.font = '10px monospace';
+    ctx.fillText(`shared read lock`, W / 2, dbY + 70);
+  } else {
+    ctx.font = '11px monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText(`no access`, W / 2, dbY + 55);
+  }
+
+  // Draw blocked queue on the right
+  const blocked = STATE.threads.filter(t => t.state === 'blocked' || t.state === 'starved' || t.state === 'waiting');
+  if (blocked.length > 0) {
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText('BLOCKED QUEUE:', W - 20, 20);
+    blocked.slice(0, 8).forEach((t, i) => {
+      const color = t.type === 'reader' ? '#3b82f6' : '#ef4444';
+      ctx.fillStyle = color;
+      ctx.font = '10px monospace';
+      ctx.fillText(`${t.type === 'reader' ? '👤' : '✍️'} ${t.tid}${t.state === 'starved' ? ' ⚠️' : ''}`, W - 20, 40 + i * 16);
+    });
+  }
+
+  DOM.sharedHint.textContent = STATE.activeWriter ? `— writer ${STATE.activeWriter.tid} —` :
+    STATE.activeReaders > 0 ? `— ${STATE.activeReaders} readers —` : '— idle —';
+}
+
+function animate() {
+  drawShared();
+  requestAnimationFrame(animate);
+}
+
+function updateMetrics() {
+  DOM.mReaders.textContent = STATE.activeReaders;
+  DOM.mWriters.textContent = STATE.activeWriter ? 1 : 0;
+  DOM.mBlocked.textContent = STATE.blocked;
+  DOM.mStarved.textContent = STATE.starved;
+  DOM.mStarved.className = 'metric-value ' + (STATE.starved === 0 ? 'good' : STATE.starved < 3 ? 'warn' : 'bad');
+}
+
+function setStrategy(s) {
+  STATE.strategy = s;
+  DOM.btnReaders.classList.toggle('active', s === 'readers');
+  DOM.btnWriters.classList.toggle('active', s === 'writers');
+  DOM.btnFair.classList.toggle('active', s === 'fair');
+
+  const descs = {
+    readers: 'READERS-PRIORITY: readers never block each other. As long as readers keep arriving, new readers "barge" ahead of waiting writers. Worst case: writers starve forever. Good when reads are frequent and writes are rare.',
+    writers: 'WRITERS-PRIORITY: once a writer is waiting, no new readers can enter. Prevents writer starvation, but can starve readers if writers keep arriving. Good when writes are critical (e.g., financial transactions).',
+    fair: 'FAIR (FIFO): requests served in arrival order. Writers wait only for readers already active; new readers must wait behind a queued writer. No starvation for either side. This is what pthread_rwlock does by default in "write-preferring" mode.'
+  };
+  teach('STRATEGY: ' + s.toUpperCase(), descs[s], 'purple');
+}
+
+function runSimulation() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.timer);
+    STATE.timer = null;
+    DOM.btnRun.textContent = '▶ Run';
+    return;
+  }
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+  showStatus('▶ Running — ' + STATE.strategy + ' strategy');
+  STATE.timer = setInterval(tick, 800 / STATE.speed);
+}
+
+function resetAll() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.timer = null;
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Run';
+  STATE.threads = [];
+  STATE.nextTid = 1;
+  STATE.simTime = 0;
+  STATE.activeReaders = 0;
+  STATE.activeWriter = null;
+  STATE.starved = 0;
+  STATE.blocked = 0;
+  renderThreads();
+  drawShared();
+  updateMetrics();
+  teach('RESET', 'All threads cleared.', 'info', false);
+}
+
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRun.addEventListener('click', runSimulation);
+DOM.btnStep.addEventListener('click', tick);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnReaders.addEventListener('click', () => setStrategy('readers'));
+DOM.btnWriters.addEventListener('click', () => setStrategy('writers'));
+DOM.btnFair.addEventListener('click', () => setStrategy('fair'));
+DOM.btnAddReader.addEventListener('click', addReader);
+DOM.btnAddWriter.addEventListener('click', addWriter);
+DOM.btnWriterFlood.addEventListener('click', writerFlood);
+DOM.btnReaderFlood.addEventListener('click', readerFlood);
+DOM.rTimeRange.addEventListener('input', e => {
+  STATE.readTime = parseInt(e.target.value);
+  DOM.rTimeVal.textContent = STATE.readTime + 's';
+});
+DOM.wTimeRange.addEventListener('input', e => {
+  STATE.writeTime = parseInt(e.target.value);
+  DOM.wTimeVal.textContent = STATE.writeTime + 's';
+});
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseInt(e.target.value);
+  DOM.speedVal.textContent = STATE.speed + '×';
+  if (STATE.running) {
+    clearInterval(STATE.timer);
+    STATE.timer = setInterval(tick, 800 / STATE.speed);
+  }
+});
+window.addEventListener('resize', resizeCanvas);
+
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+    return this;
+  };
+}
+
+resizeCanvas();
+animate();
+renderThreads();
+updateMetrics();
+setStrategy('readers');
+
+// Seed
+setTimeout(() => {
+  addReader();
+  addReader();
+  addWriter();
+  addReader();
+  addWriter();
+}, 500);
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Readers-Writers. A shared resource (like a database row) can be read by many threads simultaneously, but only written by one at a time. This is a fundamentally different locking pattern than a simple mutex: read locks are shared, write locks are exclusive.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE TRADE-OFF',
+      `Three strategies, three trade-offs. Readers-priority: maximizes concurrency but starves writers. Writers-priority: guarantees writers make progress but starves readers. Fair: neither starves, but throughput is lower. Real systems pick based on workload. This is a great example of "no free lunch" in concurrency.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('MVCC: THE MODERN ANSWER',
+      `Many databases (Postgres, Oracle, MySQL InnoDB) sidestep this with MVCC — Multi-Version Concurrency Control. Readers see a snapshot; writers create new versions. Readers never block writers, and writers never block readers. This is why modern databases have much higher concurrency than the classic readers-writers lock.`,
+      'ok'
+    );
+  }, 9000);
+  showToast('👋 Add readers/writers, then try strategies', 4500);
+}, 500);
+</script>
+</body>
+</html>

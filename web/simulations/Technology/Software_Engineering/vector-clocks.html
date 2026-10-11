@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vector Clocks &amp; Lamport Timestamps — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #06b6d4, #6366f1, #a855f7);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(6,182,212,0.15); color: #67e8f9; border-color: #06b6d4; }
+  .teaching-toggle:hover { background: rgba(6,182,212,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #67e8f9;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #06b6d4; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #06b6d4; color: #032028; border-color: #06b6d4; }
+  .btn.primary:hover { background: #0891b2; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .algo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .algo-btn {
+    padding: 8px 6px; background: #02040a; border: 1.5px solid #334155;
+    border-radius: 6px; font-family: monospace; font-size: 0.55rem;
+    font-weight: 800; color: #94a3b8; cursor: pointer;
+    letter-spacing: 0.3px; transition: all 0.2s;
+  }
+  .algo-btn:hover { border-color: #06b6d4; color: #67e8f9; }
+  .algo-btn.active {
+    background: rgba(6,182,212,0.2); border-color: #06b6d4;
+    color: #67e8f9; box-shadow: 0 0 10px rgba(6,182,212,0.4);
+  }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(6,182,212,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .timeline-wrap {
+    flex: 1; background: #070a14; border: 2px solid #06b6d4; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(6,182,212,0.15); min-height: 0;
+  }
+  .timeline-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #67e8f9; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #timelineCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .compare-wrap {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex-shrink: 0; height: 180px;
+  }
+  .compare-panel {
+    background: #070a14; border: 2px solid #8b5cf6; border-radius: 12px;
+    padding: 10px 12px; display: flex; flex-direction: column; min-height: 0;
+  }
+  .compare-panel.lamport { border-color: #6366f1; box-shadow: 0 0 15px rgba(99,102,241,0.15); }
+  .compare-panel.vector { border-color: #a855f7; box-shadow: 0 0 15px rgba(168,85,247,0.15); }
+  .compare-title {
+    font-size: 0.6rem; letter-spacing: 2px; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .compare-panel.lamport .compare-title { color: #a5b4fc; }
+  .compare-panel.vector .compare-title { color: #c4b5fd; }
+  .compare-body {
+    flex: 1; overflow-y: auto; font-family: monospace; font-size: 0.6rem;
+    line-height: 1.6;
+  }
+  .event-row {
+    display: flex; justify-content: space-between; padding: 2px 6px;
+    border-bottom: 1px solid #1e293b; border-radius: 3px;
+  }
+  .event-row .name { color: #cbd5e1; }
+  .event-row .time { color: #67e8f9; font-weight: 900; }
+  .event-row.conc { background: rgba(245,158,11,0.15); }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(6,182,212,0.06); border: 1px solid rgba(6,182,212,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #67e8f9; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #06b6d4;
+    background: rgba(6,182,212,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(6,182,212,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(6,182,212,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #67e8f9;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #06b6d4; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(6,182,212,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #06b6d4; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #67e8f9; z-index: 12;
+    box-shadow: 0 0 20px rgba(6,182,212,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.warn { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>VECTOR CLOCKS</h1>
+    <span class="sub">LAMPORT · CAUSAL ORDER · CONCURRENT EVENTS</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Clock Type</h3>
+      <div class="algo-grid" id="algoGrid">
+        <button class="algo-btn active" data-algo="lamport">LAMPORT</button>
+        <button class="algo-btn" data-algo="vector">VECTOR</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Actions</h3>
+      <button class="btn primary" id="btnLocal">📍 Local Event</button>
+      <button class="btn success" id="btnSend">📤 Send Message</button>
+      <button class="btn" id="btnRandom">🎲 Random Event</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Scenarios</h3>
+      <button class="btn" id="btnConcurrent">🔀 Concurrent Events</button>
+      <button class="btn" id="btnCausal">⛓️ Causal Chain</button>
+      <button class="btn" id="btnRace">⚡ Race Condition</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#06b6d4;border-radius:50%;margin-right:6px;"></span>Process P1</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:50%;margin-right:6px;"></span>Process P2</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#a855f7;border-radius:50%;margin-right:6px;"></span>Process P3</div>
+        <div style="margin-top:4px;">Vector [P1, P2, P3]</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">CAUSALITY: "HAPPENED-BEFORE" RELATIONSHIP BETWEEN EVENTS</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="timeline-wrap">
+          <div class="timeline-title">
+            <span>⏱️ DISTRIBUTED TIMELINE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="timelineHint">— click LOCAL EVENT or SEND —</span>
+          </div>
+          <canvas id="timelineCanvas"></canvas>
+        </div>
+
+        <div class="compare-wrap">
+          <div class="compare-panel lamport">
+            <div class="compare-title">
+              <span>📊 LAMPORT CLOCK</span>
+              <span style="font-size:0.5rem; color:#64748b;">scalar</span>
+            </div>
+            <div class="compare-body" id="lamportBody"></div>
+          </div>
+          <div class="compare-panel vector">
+            <div class="compare-title">
+              <span>🧮 VECTOR CLOCK</span>
+              <span style="font-size:0.5rem; color:#64748b;">vector</span>
+            </div>
+            <div class="compare-body" id="vectorBody"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Events</div>
+        <div class="metric-value" id="mEvents">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Messages</div>
+        <div class="metric-value" id="mMessages">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Concurrent</div>
+        <div class="metric-value warn" id="mConcurrent">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Causal Pairs</div>
+        <div class="metric-value good" id="mCausal">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Clocks in Distributed Systems</div>
+      <div class="info-row"><span class="lbl">Physical time</span><span class="val bad">Not synchronized</span></div>
+      <div class="info-row"><span class="lbl">Lamport clock</span><span class="val">Scalar, total order</span></div>
+      <div class="info-row"><span class="lbl">Vector clock</span><span class="val good">Partial causal order</span></div>
+      <div class="info-row"><span class="lbl">A → B</span><span class="val">A happened-before B</span></div>
+      <div class="info-row"><span class="lbl">A || B</span><span class="val warn">Concurrent events</span></div>
+      <div class="info-row"><span class="lbl">Lamport rule</span><span class="val">C = max(C1, C2) + 1</span></div>
+      <div class="info-row"><span class="lbl">Vector rule</span><span class="val">Component-wise max + 1</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">Cassandra, Riak, Dynamo</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  clockType: 'lamport',
+  processes: [],      // [{ id, name, color, lamport, vector: [], events: [] }]
+  events: [],         // global event log [{ id, processId, lamport, vector, type, message }]
+  messages: [],       // active message lines
+  eventCount: 0,
+  messageCount: 0,
+  nextEventId: 1,
+  teaching: true,
+  voiceEnabled: false
+};
+
+const PROCESS_COLORS = ['#06b6d4', '#f59e0b', '#a855f7'];
+const PROCESS_NAMES = ['P1', 'P2', 'P3'];
+
+const DOM = {
+  timelineCanvas: document.getElementById('timelineCanvas'),
+  timelineHint: document.getElementById('timelineHint'),
+  lamportBody: document.getElementById('lamportBody'),
+  vectorBody: document.getElementById('vectorBody'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnLocal: document.getElementById('btnLocal'),
+  btnSend: document.getElementById('btnSend'),
+  btnRandom: document.getElementById('btnRandom'),
+  btnReset: document.getElementById('btnReset'),
+  btnConcurrent: document.getElementById('btnConcurrent'),
+  btnCausal: document.getElementById('btnCausal'),
+  btnRace: document.getElementById('btnRace'),
+  algoGrid: document.getElementById('algoGrid'),
+  mEvents: document.getElementById('mEvents'),
+  mMessages: document.getElementById('mMessages'),
+  mConcurrent: document.getElementById('mConcurrent'),
+  mCausal: document.getElementById('mCausal'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 1800);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining vector clocks and Lamport timestamps.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+function initProcesses() {
+  STATE.processes = [];
+  STATE.events = [];
+  STATE.messages = [];
+  STATE.eventCount = 0;
+  STATE.messageCount = 0;
+  STATE.nextEventId = 1;
+
+  for (let i = 0; i < 3; i++) {
+    STATE.processes.push({
+      id: i,
+      name: PROCESS_NAMES[i],
+      color: PROCESS_COLORS[i],
+      lamport: 0,
+      vector: [0, 0, 0],
+      eventCount: 0,
+      lastEventTick: 0
+    });
+  }
+  draw();
+  renderClocks();
+  updateMetrics();
+}
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+function localEvent(processIdx = null) {
+  const idx = processIdx !== null ? processIdx : Math.floor(Math.random() * STATE.processes.length);
+  const p = STATE.processes[idx];
+  p.lamport++;
+  p.vector[idx]++;
+  p.eventCount++;
+
+  const event = {
+    id: STATE.nextEventId++,
+    processId: idx,
+    lamport: p.lamport,
+    vector: [...p.vector],
+    type: 'local',
+    tick: p.eventCount
+  };
+  STATE.events.push(event);
+  STATE.eventCount++;
+
+  showStatus(`📍 Local event at ${p.name} (clock ${p.lamport})`);
+  teach('LOCAL EVENT',
+    `${p.name} executes a local event. Its Lamport clock increments to ${p.lamport}. Its vector clock increments the ${p.name} component to [${p.vector.join(', ')}]. Neither clock depends on other processes — that's the rule for a local event: just increment your own tick.`,
+    'cyan'
+  );
+
+  draw();
+  renderClocks();
+  updateMetrics();
+}
+
+function sendMessage(fromIdx = null, toIdx = null) {
+  const from = fromIdx !== null ? fromIdx : Math.floor(Math.random() * STATE.processes.length);
+  let to = toIdx !== null ? toIdx : Math.floor(Math.random() * STATE.processes.length);
+  if (to === from) to = (from + 1) % STATE.processes.length;
+
+  const sender = STATE.processes[from];
+  const receiver = STATE.processes[to];
+
+  // Sender event: increment clock (send event)
+  sender.lamport++;
+  sender.vector[from]++;
+  sender.eventCount++;
+  STATE.eventCount++;
+
+  const sendEvent = {
+    id: STATE.nextEventId++,
+    processId: from,
+    lamport: sender.lamport,
+    vector: [...sender.vector],
+    type: 'send',
+    tick: sender.eventCount
+  };
+  STATE.events.push(sendEvent);
+
+  // Message in flight
+  STATE.messages.push({
+    from, to,
+    sendTick: sender.eventCount,
+    recvTick: receiver.eventCount + 1,
+    sendLamport: sender.lamport,
+    sendVector: [...sender.vector],
+    progress: 0
+  });
+
+  // Deliver: receiver's clock catches up
+  setTimeout(() => {
+    receiver.lamport = Math.max(receiver.lamport, sender.lamport) + 1;
+    for (let i = 0; i < 3; i++) {
+      receiver.vector[i] = Math.max(receiver.vector[i], sender.vector[i]);
+    }
+    receiver.vector[to]++;
+    receiver.eventCount++;
+
+    const recvEvent = {
+      id: STATE.nextEventId++,
+      processId: to,
+      lamport: receiver.lamport,
+      vector: [...receiver.vector],
+      type: 'recv',
+      tick: receiver.eventCount
+    };
+    STATE.events.push(recvEvent);
+    STATE.eventCount++;
+    STATE.messageCount++;
+
+    showStatus(`📨 ${sender.name} → ${receiver.name} (delivered)`);
+    teach('MESSAGE RECEIVED',
+      `${receiver.name} receives a message from ${sender.name}. Its Lamport clock becomes max(${receiver.lamport - 1}, ${sender.lamport}) + 1 = ${receiver.lamport}. Its vector clock takes the component-wise max, then increments its own component: [${receiver.vector.join(', ')}]. This guarantees the receive event happens-after the send event.`,
+      'ok'
+    );
+
+    draw();
+    renderClocks();
+    updateMetrics();
+  }, 800);
+
+  showStatus(`📤 ${sender.name} → ${receiver.name}`);
+  teach('MESSAGE SENT',
+    `${sender.name} sends a message to ${receiver.name}. The sender first increments its clocks (the send is itself an event), then transmits the message along with its current clock values. The receiver will merge its clock with the sender's upon receipt.`,
+    'purple'
+  );
+
+  draw();
+  renderClocks();
+  updateMetrics();
+}
+
+/* ============================================================
+   COMPARE EVENTS
+   ============================================================ */
+function countConcurrent() {
+  // Two events a, b are concurrent if NOT (a.lamport < b.lamport) and NOT (b.lamport < a.lamport)
+  // But with vector clocks we can be precise:
+  // a → b if a.vector[i] <= b.vector[i] for all i, and strict for at least one
+  let concurrent = 0;
+  let causal = 0;
+  for (let i = 0; i < STATE.events.length; i++) {
+    for (let j = i + 1; j < STATE.events.length; j++) {
+      const a = STATE.events[i];
+      const b = STATE.events[j];
+      if (a.processId === b.processId) {
+        // Same process — always causally ordered
+        causal++;
+        continue;
+      }
+      // Check vector comparison
+      let a_le_b = true;
+      let b_le_a = true;
+      for (let k = 0; k < 3; k++) {
+        if (a.vector[k] > b.vector[k]) a_le_b = false;
+        if (b.vector[k] > a.vector[k]) b_le_a = false;
+      }
+      if (a_le_b || b_le_a) causal++;
+      else concurrent++;
+    }
+  }
+  return { concurrent, causal };
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.timelineCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function draw() {
+  const canvas = DOM.timelineCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const padX = 60;
+  const padY = 40;
+  const timelineH = H - padY * 2;
+
+  // Draw process timelines (vertical)
+  for (let i = 0; i < STATE.processes.length; i++) {
+    const p = STATE.processes[i];
+    const x = padX + (i + 0.5) * ((W - padX * 2) / STATE.processes.length);
+
+    // Vertical line
+    ctx.strokeStyle = p.color;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, padY);
+    ctx.lineTo(x, H - padY);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Process name at top
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = p.color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(p.name, x, padY - 8);
+
+    // Current clock values
+    ctx.font = '9px monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`L:${p.lamport}`, x - 30, H - padY + 5);
+    ctx.fillText(`V:[${p.vector.join(',')}]`, x - 40, H - padY + 20);
+
+    // Draw events on this process's timeline
+    const processEvents = STATE.events.filter(e => e.processId === i);
+    const maxTick = Math.max(...STATE.processes.map(p => p.eventCount), 1);
+    for (const e of processEvents) {
+      const y = padY + ((e.tick - 0.5) / Math.max(maxTick, 1)) * timelineH;
+
+      // Event dot
+      ctx.beginPath();
+      ctx.arc(x, y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.fill();
+      ctx.strokeStyle = '#02040a';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Type indicator
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const symbol = e.type === 'send' ? '↑' : e.type === 'recv' ? '↓' : '·';
+      ctx.fillText(symbol, x, y);
+
+      // Clock value
+      ctx.font = '9px monospace';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'right';
+      ctx.fillText(`L${e.lamport}`, x - 12, y);
+
+      // Vector
+      if (STATE.clockType === 'vector') {
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#c4b5fd';
+        ctx.fillText(`[${e.vector.join(',')}]`, x + 12, y);
+      }
+    }
+  }
+
+  // Draw message arrows
+  for (const m of STATE.messages) {
+    const fromX = padX + (m.from + 0.5) * ((W - padX * 2) / STATE.processes.length);
+    const toX = padX + (m.to + 0.5) * ((W - padX * 2) / STATE.processes.length);
+
+    const maxTick = Math.max(...STATE.processes.map(p => p.eventCount), 1);
+    const fromY = padY + ((m.sendTick - 0.5) / Math.max(maxTick, 1)) * timelineH;
+    const toY = padY + ((m.recvTick - 0.5) / Math.max(maxTick, 1)) * timelineH;
+
+    // Arrow
+    ctx.strokeStyle = '#fcd34d';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 3]);
+    ctx.beginPath();
+    ctx.moveTo(fromX, fromY);
+    ctx.lineTo(toX, toY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Arrowhead
+    const angle = Math.atan2(toY - fromY, toX - fromX);
+    ctx.beginPath();
+    ctx.moveTo(toX, toY);
+    ctx.lineTo(toX - 10 * Math.cos(angle - 0.4), toY - 10 * Math.sin(angle - 0.4));
+    ctx.lineTo(toX - 10 * Math.cos(angle + 0.4), toY - 10 * Math.sin(angle + 0.4));
+    ctx.closePath();
+    ctx.fillStyle = '#fcd34d';
+    ctx.fill();
+  }
+
+  // Time axis label
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('time ↓', 10, 10);
+
+  DOM.timelineHint.textContent = `— ${STATE.events.length} events · ${STATE.messageCount} messages —`;
+}
+
+function animate() {
+  draw();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   CLOCK DISPLAY
+   ============================================================ */
+function renderClocks() {
+  const { concurrent, causal } = countConcurrent();
+  DOM.mConcurrent.textContent = concurrent;
+  DOM.mCausal.textContent = causal;
+
+  // Lamport panel
+  DOM.lamportBody.innerHTML = '';
+  for (const e of STATE.events.slice(-15)) {
+    const p = STATE.processes[e.processId];
+    const row = document.createElement('div');
+    row.className = 'event-row';
+    row.innerHTML = `
+      <span class="name" style="color:${p.color}">${p.name} ${e.type === 'send' ? '↑' : e.type === 'recv' ? '↓' : '·'}</span>
+      <span class="time">L = ${e.lamport}</span>
+    `;
+    DOM.lamportBody.appendChild(row);
+  }
+
+  // Vector panel
+  DOM.vectorBody.innerHTML = '';
+  for (const e of STATE.events.slice(-15)) {
+    const p = STATE.processes[e.processId];
+    const row = document.createElement('div');
+    row.className = 'event-row';
+    row.innerHTML = `
+      <span class="name" style="color:${p.color}">${p.name}</span>
+      <span class="time">[${e.vector.join(',')}]</span>
+    `;
+    DOM.vectorBody.appendChild(row);
+  }
+}
+
+function updateMetrics() {
+  DOM.mEvents.textContent = STATE.eventCount;
+  DOM.mMessages.textContent = STATE.messageCount;
+}
+
+/* ============================================================
+   SCENARIOS
+   ============================================================ */
+function scenarioConcurrent() {
+  initProcesses();
+  // P1 and P2 do local events — they're concurrent
+  setTimeout(() => localEvent(0), 100);
+  setTimeout(() => localEvent(1), 300);
+  setTimeout(() => localEvent(0), 500);
+  setTimeout(() => localEvent(1), 700);
+  setTimeout(() => {
+    teach('CONCURRENT EVENTS',
+      `P1 and P2 each executed events without communicating. These events are CONCURRENT — neither happened-before the other. With Lamport clocks you can't tell they're concurrent (some numbers are bigger, but that's just an artifact). With VECTOR clocks, comparing [1,0,0] vs [0,1,0] shows neither dominates — so they're concurrent.`,
+      'purple'
+    );
+  }, 900);
+}
+
+function scenarioCausal() {
+  initProcesses();
+  setTimeout(() => localEvent(0), 100);
+  setTimeout(() => sendMessage(0, 1), 400);
+  setTimeout(() => sendMessage(1, 2), 1200);
+  setTimeout(() => {
+    teach('CAUSAL CHAIN',
+      `A causal chain: P1 → P2 → P3 via messages. Each receive increments its clock to be greater than the sender's. Because all events form a linear chain, the Lamport timestamps tell the correct order. Vector clocks confirm each event causally precedes the next.`,
+      'ok'
+    );
+  }, 2000);
+}
+
+function scenarioRace() {
+  initProcesses();
+  // Two processes write concurrently, then compare
+  setTimeout(() => localEvent(0), 100);
+  setTimeout(() => localEvent(2), 200);
+  setTimeout(() => sendMessage(0, 1), 500);
+  setTimeout(() => sendMessage(2, 1), 800);
+  setTimeout(() => {
+    const { concurrent, causal } = countConcurrent();
+    teach('RACE CONDITION',
+      `P1 and P3 both sent updates to P2 concurrently (before either message was delivered). With vector clocks, P2 sees [1,0,0] from P1 and [0,0,1] from P3 — neither dominates, so these are concurrent writes. P2 must resolve the conflict. Cassandra and Riak use vector clocks for exactly this — detecting concurrent writes that need conflict resolution.`,
+      'warn'
+    );
+  }, 1600);
+}
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+document.querySelectorAll('.algo-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    STATE.clockType = btn.dataset.algo;
+    document.querySelectorAll('.algo-btn').forEach(b => b.classList.toggle('active', b === btn));
+    draw();
+    renderClocks();
+    const descs = {
+      lamport: 'LAMPORT CLOCK: a single integer per process. On local event: C++. On send: attach C. On receive: C = max(C, C_msg) + 1. Gives a TOTAL order consistent with causality. Limitation: if C(a) < C(b), you can\'t tell whether a → b or they are concurrent.',
+      vector: 'VECTOR CLOCK: an array of counters, one per process. On local event: V[i]++. On send: attach V. On receive: V = component-wise-max(V, V_msg); then V[i]++. Gives a PARTIAL order: you can determine a → b, b → a, OR a || b (concurrent). More storage but more information.'
+    };
+    teach('CLOCK: ' + btn.dataset.algo.toUpperCase(), descs[btn.dataset.algo], 'purple');
+  });
+});
+
+DOM.btnLocal.addEventListener('click', () => localEvent());
+DOM.btnSend.addEventListener('click', () => sendMessage());
+DOM.btnRandom.addEventListener('click', () => {
+  if (Math.random() < 0.6) localEvent();
+  else sendMessage();
+});
+DOM.btnReset.addEventListener('click', () => {
+  initProcesses();
+  teach('RESET', 'All clocks reset to zero.', 'info', false);
+});
+DOM.btnConcurrent.addEventListener('click', scenarioConcurrent);
+DOM.btnCausal.addEventListener('click', scenarioCausal);
+DOM.btnRace.addEventListener('click', scenarioRace);
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+initProcesses();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Vector Clocks and Lamport Timestamps. In a distributed system, there's no global clock. Processes on different machines can't agree on "what time is it?" So how do we know whether event A happened before event B? Lamport and vector clocks answer this question.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('LAMPORT CLOCKS',
+      `Leslie Lamport's 1978 paper introduced "happened-before": if a → b (a causes b), then C(a) < C(b). The rule: increment your clock on every event; attach it to messages; on receipt, take max(yours, theirs) + 1. This gives a TOTAL order that respects causality. But if C(a) < C(b), it doesn't mean a → b — they might be concurrent.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('VECTOR CLOCKS',
+      `Vector clocks fix this. Each process keeps a vector of counters, one per peer. Receiving a message merges vectors via component-wise max. Now you can tell: a → b iff a.vector ≤ b.vector (component-wise) with strict inequality somewhere. If neither dominates, a || b — they're CONCURRENT. This is exactly what Cassandra and Riak use for conflict detection.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click LOCAL EVENT to advance a process's clock. Click SEND to pass a message and watch the receiver's clock catch up. Try the CONCURRENT scenario to see two processes diverge without communication. Try CAUSAL to see a chain. Watch the Lamport vs Vector panel to compare.`,
+      'warn'
+    );
+  }, 13000);
+  showToast('👋 Click LOCAL EVENT or SEND to advance clocks', 4500);
+}, 500);
+</script>
+</body>
+</html>

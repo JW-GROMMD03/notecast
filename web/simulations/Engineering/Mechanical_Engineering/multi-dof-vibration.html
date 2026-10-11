@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-DOF Systems &amp; Mode Shapes — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>MULTI-DOF VIBRATION</h1>
+    <span class="sub">MODES · MODE SHAPES · EIGENVALUES · 2-DOF SYSTEM</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">System</div>
+    <div class="control-group">
+      <label>Mass m₁ <span class="val" id="m1Val">2 kg</span></label>
+      <input type="range" id="m1Slider" min="0.5" max="10" value="2" step="0.1">
+    </div>
+    <div class="control-group">
+      <label>Mass m₂ <span class="val" id="m2Val">3 kg</span></label>
+      <input type="range" id="m2Slider" min="0.5" max="10" value="3" step="0.1">
+    </div>
+    <div class="control-group">
+      <label>Stiffness k₁ <span class="val" id="k1Val">2000 N/m</span></label>
+      <input type="range" id="k1Slider" min="500" max="10000" value="2000" step="50">
+    </div>
+    <div class="control-group">
+      <label>Stiffness k₂ <span class="val" id="k2Val">1000 N/m</span></label>
+      <input type="range" id="k2Slider" min="500" max="10000" value="1000" step="50">
+    </div>
+    <div class="control-group">
+      <label>Stiffness k₃ <span class="val" id="k3Val">1000 N/m</span></label>
+      <input type="range" id="k3Slider" min="500" max="10000" value="1000" step="50">
+    </div>
+
+    <div class="section-title">Excitation Mode</div>
+    <div class="control-group">
+      <label>Mode to Excite</label>
+      <select id="modeSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="mode1">Mode 1 (in-phase)</option>
+        <option value="mode2">Mode 2 (out-of-phase)</option>
+        <option value="mixed">Mixed Excitation</option>
+      </select>
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ EXCITE</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="mode2Btn">⚡ EXCITE MODE 2</button>
+    <button class="btn warn" id="beatBtn">⚠ BEAT FREQUENCY</button>
+    <button class="btn warn" id="detuneBtn">⚠ DETUNE MASSES</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="car">Car with Trailer</button>
+    <button class="btn" data-preset="building">2-Story Building</button>
+    <button class="btn" data-preset="machinetool">Machine Tool</button>
+    <button class="btn" data-preset="absorber">Vibration Absorber</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      [M]ẍ + [K]x = 0 &nbsp;|&nbsp; det([K] − ω²[M]) = 0 &nbsp;|&nbsp; <span class="hl">2-DOF: two natural frequencies ω₁, ω₂</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mW1">
+          <div class="mlabel">ω₁ (MODE 1)</div>
+          <div class="mvalue">0<span class="munit">rad/s</span></div>
+        </div>
+        <div class="metric" id="mW2">
+          <div class="mlabel">ω₂ (MODE 2)</div>
+          <div class="mvalue">0<span class="munit">rad/s</span></div>
+        </div>
+        <div class="metric" id="mX1">
+          <div class="mlabel">x₁</div>
+          <div class="mvalue">0<span class="munit">m</span></div>
+        </div>
+        <div class="metric" id="mX2">
+          <div class="mlabel">x₂</div>
+          <div class="mvalue">0<span class="munit">m</span></div>
+        </div>
+        <div class="metric" id="mRatio">
+          <div class="mlabel">x₂/x₁</div>
+          <div class="mvalue">0.00</div>
+        </div>
+        <div class="metric" id="mMode">
+          <div class="mlabel">ACTIVE MODE</div>
+          <div class="mvalue" style="font-size:11px;">MIXED</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">[M]ẍ + [K]x = 0 (matrix form)</div>
+      <div class="eq">ω₁, ω₂: natural frequencies</div>
+      <div class="eq">Mode shape: eigenvector {φ}</div>
+      <div class="def">
+        A 2-DOF system has TWO natural frequencies and TWO mode shapes. 
+        Mode 1: masses move in phase (lower frequency). Mode 2: masses 
+        move out of phase (higher frequency). Any free vibration is a 
+        combination of both modes. This generalizes to N-DOF.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const S = {
+  m1: 2,
+  m2: 3,
+  k1: 2000,
+  k2: 1000,
+  k3: 1000,
+  x1: 0.1,
+  x2: 0,
+  v1: 0,
+  v2: 0,
+  time: 0,
+  running: false,
+  mode: 'mode1',
+  history1: [],
+  history2: []
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const m1Slider = document.getElementById('m1Slider');
+const m2Slider = document.getElementById('m2Slider');
+const k1Slider = document.getElementById('k1Slider');
+const k2Slider = document.getElementById('k2Slider');
+const k3Slider = document.getElementById('k3Slider');
+const modeSel = document.getElementById('modeSelect');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── 2-DOF VIBRATION MATH ──────────────────────────────────
+// Equations:
+// m1·ẍ1 + (k1+k2)·x1 − k2·x2 = 0
+// m2·ẍ2 − k2·x1 + (k2+k3)·x2 = 0
+function computeModes(){
+  const m1 = S.m1, m2 = S.m2;
+  const k1 = S.k1, k2 = S.k2, k3 = S.k3;
+
+  // Solve eigenvalue problem
+  // [K] = [[k1+k2, -k2], [-k2, k2+k3]]
+  // [M] = [[m1, 0], [0, m2]]
+  // det([K] - ω²[M]) = 0
+  const a = m1 * m2;
+  const b = -(m1 * (k2 + k3) + m2 * (k1 + k2));
+  const c = (k1 + k2) * (k2 + k3) - k2 * k2;
+  const disc = b*b - 4*a*c;
+  if(disc < 0) return { w1: 0, w2: 0, phi1: [1, 0], phi2: [1, 0] };
+
+  const w1sq = (-b - Math.sqrt(disc)) / (2*a);
+  const w2sq = (-b + Math.sqrt(disc)) / (2*a);
+  const w1 = Math.sqrt(Math.max(0, w1sq));
+  const w2 = Math.sqrt(Math.max(0, w2sq));
+
+  // Eigenvectors: from first equation: (k1+k2 - m1·ω²)·φ1 - k2·φ2 = 0
+  // Set φ1 = 1: φ2 = (k1+k2 - m1·ω²)/k2
+  const phi1_2 = (k1 + k2 - m1*w1sq) / k2;
+  const phi2_2 = (k1 + k2 - m1*w2sq) / k2;
+  const phi1 = [1, phi1_2];
+  const phi2 = [1, phi2_2];
+
+  return { w1, w2, phi1, phi2 };
+}
+
+function stepODE(dt){
+  const m1 = S.m1, m2 = S.m2;
+  const k1 = S.k1, k2 = S.k2, k3 = S.k3;
+
+  // Matrix: 
+  // m1·ẍ1 = -(k1+k2)·x1 + k2·x2
+  // m2·ẍ2 = +k2·x1 - (k2+k3)·x2
+  const a1 = (-(k1 + k2) * S.x1 + k2 * S.x2) / m1;
+  const a2 = (k2 * S.x1 - (k2 + k3) * S.x2) / m2;
+
+  S.v1 += a1 * dt;
+  S.v2 += a2 * dt;
+  S.x1 += S.v1 * dt;
+  S.x2 += S.v2 * dt;
+  S.time += dt;
+
+  // Record history
+  if(S.history1.length === 0 || S.time - S.history1[S.history1.length-1].t > 0.02){
+    S.history1.push({ t: S.time, x: S.x1 });
+    S.history2.push({ t: S.time, x: S.x2 });
+    if(S.history1.length > 3000){
+      S.history1.shift();
+      S.history2.shift();
+    }
+  }
+}
+
+function exciteMode(mode){
+  const { w1, w2, phi1, phi2 } = computeModes();
+  const amp = 0.1;
+  if(mode === 'mode1'){
+    S.x1 = amp * phi1[0];
+    S.x2 = amp * phi1[1];
+    S.v1 = 0; S.v2 = 0;
+  } else if(mode === 'mode2'){
+    S.x1 = amp * phi2[0];
+    S.x2 = amp * phi2[1];
+    S.v1 = 0; S.v2 = 0;
+  } else {
+    // Mixed: use both
+    S.x1 = amp * (phi1[0] + phi2[0]) / 2;
+    S.x2 = amp * (phi1[1] + phi2[1]) / 2;
+    S.v1 = 0; S.v2 = 0;
+  }
+  S.history1 = []; S.history2 = [];
+  S.time = 0;
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawSystem(W, H);
+  drawTimeTrace(W, H);
+  drawModeShapes(W, H);
+}
+
+function drawSystem(W, H){
+  const cx = W * 0.4;
+  const cy = H * 0.4;
+  const scale = 400; // px per m
+
+  const modes = computeModes();
+
+  // Two masses connected by springs
+  const wallX = cx - 220;
+  const baseY = cy + 40;
+
+  // Mass 1
+  const m1X = wallX + 100 + S.x1 * scale;
+  const m2X = wallX + 300 + S.x2 * scale;
+
+  const massW = 70;
+  const massH = 45;
+
+  // Left wall
+  ctx.fillStyle = '#334155';
+  ctx.fillRect(wallX - 15, baseY - 60, 15, 120);
+
+  // Spring 1 (wall to m1)
+  drawSpringH(wallX, m1X - massW/2, baseY, 12, 25, '#22d3ee');
+
+  // Mass 1
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(m1X - massW/2, baseY - massH/2, massW, massH);
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(m1X - massW/2, baseY - massH/2, massW, massH);
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = 'bold 13px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('m₁=' + S.m1.toFixed(1), m1X, baseY + 5);
+  ctx.textAlign = 'left';
+
+  // Spring 2 (m1 to m2)
+  drawSpringH(m1X + massW/2, m2X - massW/2, baseY, 12, 25, '#a78bfa');
+
+  // Mass 2
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(m2X - massW/2, baseY - massH/2, massW, massH);
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(m2X - massW/2, baseY - massH/2, massW, massH);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 13px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('m₂=' + S.m2.toFixed(1), m2X, baseY + 5);
+  ctx.textAlign = 'left';
+
+  // Spring 3 (m2 to right wall)
+  const rightWall = wallX + 440;
+  drawSpringH(m2X + massW/2, rightWall, baseY, 12, 25, '#22d3ee');
+
+  // Right wall
+  ctx.fillStyle = '#334155';
+  ctx.fillRect(rightWall, baseY - 60, 15, 120);
+
+  // Spring labels
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('k₁=' + S.k1, wallX + 30, baseY - 40);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillText('k₂=' + S.k2, (m1X + m2X)/2 - 30, baseY - 50);
+  ctx.fillStyle = '#22d3ee';
+  ctx.fillText('k₃=' + S.k3, m2X + 30, baseY - 40);
+
+  // Equilibrium positions (dashed)
+  ctx.strokeStyle = '#475569';
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  ctx.moveTo(wallX + 100, baseY - 50);
+  ctx.lineTo(wallX + 100, baseY + 50);
+  ctx.moveTo(wallX + 300, baseY - 50);
+  ctx.lineTo(wallX + 300, baseY + 50);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Info
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText('2-DOF SYSTEM', 20, 30);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('ω₁ = ' + modes.w1.toFixed(2) + ' rad/s', 20, 50);
+  ctx.fillText('ω₂ = ' + modes.w2.toFixed(2) + ' rad/s', 20, 68);
+}
+
+function drawSpringH(x1, x2, y, coils, width, color){
+  const dx = x2 - x1;
+  const coilW = dx / coils;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(x1, y);
+  for(let i=0;i<coils;i++){
+    const phase = i % 2 === 0 ? 1 : -1;
+    const xx = x1 + (i + 0.5) * coilW;
+    ctx.lineTo(xx, y - phase * width);
+  }
+  ctx.lineTo(x2, y);
+  ctx.stroke();
+}
+
+function drawTimeTrace(W, H){
+  const ox = 60;
+  const oy = H * 0.6;
+  const w = W * 0.55;
+  const h = H * 0.35;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('DISPLACEMENT x₁(t) and x₂(t)', ox, oy - 10);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  // Zero line
+  ctx.strokeStyle = '#334155';
+  ctx.beginPath();
+  ctx.moveTo(ox, oy + h/2);
+  ctx.lineTo(ox + w, oy + h/2);
+  ctx.stroke();
+
+  // Determine amplitude range
+  let amp = 0.1;
+  for(const p of S.history1) amp = Math.max(amp, Math.abs(p.x));
+  for(const p of S.history2) amp = Math.max(amp, Math.abs(p.x));
+  amp *= 1.15;
+
+  const tWindow = 5;
+
+  // x1 trace (cyan)
+  if(S.history1.length > 1){
+    ctx.beginPath();
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#22d3ee';
+    ctx.shadowBlur = 5;
+    const tStart = Math.max(0, S.time - tWindow);
+    let first = true;
+    for(const p of S.history1){
+      if(p.t < tStart) continue;
+      const u = (p.t - tStart) / tWindow;
+      const x = ox + u * w;
+      const y = oy + h/2 - (p.x / amp) * (h/2 - 10);
+      if(first){ ctx.moveTo(x, y); first = false; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // x2 trace (purple)
+  if(S.history2.length > 1){
+    ctx.beginPath();
+    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#a78bfa';
+    ctx.shadowBlur = 5;
+    const tStart = Math.max(0, S.time - tWindow);
+    let first = true;
+    for(const p of S.history2){
+      if(p.t < tStart) continue;
+      const u = (p.t - tStart) / tWindow;
+      const x = ox + u * w;
+      const y = oy + h/2 - (p.x / amp) * (h/2 - 10);
+      if(first){ ctx.moveTo(x, y); first = false; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // Legend
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('— x₁', ox + w - 80, oy + 15);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillText('— x₂', ox + w - 80, oy + 30);
+
+  // Axis labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('+' + amp.toFixed(3), ox + 5, oy + 15);
+  ctx.fillText('-' + amp.toFixed(3), ox + 5, oy + h - 5);
+  ctx.textAlign = 'center';
+  ctx.fillText('time (s)', ox + w/2, oy + h + 12);
+  ctx.textAlign = 'left';
+}
+
+function drawModeShapes(W, H){
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 240;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('MODE SHAPES', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const modes = computeModes();
+
+  // Mode 1
+  const m1y = oy + 60;
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('Mode 1  ω₁ = ' + modes.w1.toFixed(2) + ' rad/s', ox + 8, m1y - 20);
+
+  // Draw mode 1 shape
+  const x1_1 = ox + 60;
+  const x1_2 = ox + 170;
+  const norm1 = Math.max(Math.abs(modes.phi1[0]), Math.abs(modes.phi1[1]));
+  const a1_1 = modes.phi1[0] / norm1;
+  const a1_2 = modes.phi1[1] / norm1;
+
+  // Equilibrium positions
+  ctx.strokeStyle = '#475569';
+  ctx.setLineDash([2,2]);
+  ctx.beginPath();
+  ctx.moveTo(x1_1, m1y + 25);
+  ctx.lineTo(x1_1, m1y - 25);
+  ctx.moveTo(x1_2, m1y + 25);
+  ctx.lineTo(x1_2, m1y - 25);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Arrow positions
+  ctx.fillStyle = '#4ade80';
+  ctx.beginPath();
+  ctx.arc(x1_1 + a1_1 * 20, m1y, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x1_2 + a1_2 * 20, m1y, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('φ₁ = [' + modes.phi1[0].toFixed(2) + ', ' + modes.phi1[1].toFixed(2) + ']', ox + 8, m1y + 45);
+
+  // Mode 2
+  const m2y = oy + 160;
+  ctx.fillStyle = '#f87171';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('Mode 2  ω₂ = ' + modes.w2.toFixed(2) + ' rad/s', ox + 8, m2y - 20);
+
+  const x2_1 = ox + 60;
+  const x2_2 = ox + 170;
+  const norm2 = Math.max(Math.abs(modes.phi2[0]), Math.abs(modes.phi2[1]));
+  const a2_1 = modes.phi2[0] / norm2;
+  const a2_2 = modes.phi2[1] / norm2;
+
+  ctx.strokeStyle = '#475569';
+  ctx.setLineDash([2,2]);
+  ctx.beginPath();
+  ctx.moveTo(x2_1, m2y + 25);
+  ctx.lineTo(x2_1, m2y - 25);
+  ctx.moveTo(x2_2, m2y + 25);
+  ctx.lineTo(x2_2, m2y - 25);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = '#f87171';
+  ctx.beginPath();
+  ctx.arc(x2_1 + a2_1 * 20, m2y, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x2_2 + a2_2 * 20, m2y, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#f87171';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('φ₂ = [' + modes.phi2[0].toFixed(2) + ', ' + modes.phi2[1].toFixed(2) + ']', ox + 8, m2y + 45);
+
+  // Note
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('Mode 1: masses in phase', ox + 8, oy + h - 30);
+  ctx.fillText('Mode 2: masses out of phase', ox + 8, oy + h - 15);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const modes = computeModes();
+  document.querySelector('#mW1 .mvalue').innerHTML = modes.w1.toFixed(2) + '<span class="munit">rad/s</span>';
+  document.querySelector('#mW2 .mvalue').innerHTML = modes.w2.toFixed(2) + '<span class="munit">rad/s</span>';
+  document.querySelector('#mX1 .mvalue').innerHTML = S.x1.toFixed(4) + '<span class="munit">m</span>';
+  document.querySelector('#mX2 .mvalue').innerHTML = S.x2.toFixed(4) + '<span class="munit">m</span>';
+  document.querySelector('#mRatio .mvalue').textContent = (S.x1 !== 0 ? S.x2 / S.x1 : 0).toFixed(3);
+
+  // Determine dominant mode
+  let activeMode = 'MIXED';
+  const r = Math.abs(modes.phi1[1]) > 0.01 ? Math.abs(modes.phi2[1] / modes.phi1[1]) : 1;
+  const currentRatio = S.x1 !== 0 ? S.x2 / S.x1 : 0;
+  const ratioMode1 = modes.phi1[1] / modes.phi1[0];
+  const ratioMode2 = modes.phi2[1] / modes.phi2[0];
+  if(Math.abs(currentRatio - ratioMode1) < 0.15){
+    activeMode = 'MODE 1';
+  } else if(Math.abs(currentRatio - ratioMode2) < 0.15){
+    activeMode = 'MODE 2';
+  }
+  document.querySelector('#mMode .mvalue').textContent = activeMode;
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  if(S.running){
+    const steps = 10;
+    const dt = 1/60 / steps;
+    for(let i=0;i<steps;i++) stepODE(dt);
+  }
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+m1Slider.addEventListener('input', e => {
+  S.m1 = parseFloat(e.target.value);
+  document.getElementById('m1Val').textContent = S.m1.toFixed(1) + ' kg';
+});
+
+m2Slider.addEventListener('input', e => {
+  S.m2 = parseFloat(e.target.value);
+  document.getElementById('m2Val').textContent = S.m2.toFixed(1) + ' kg';
+});
+
+k1Slider.addEventListener('input', e => {
+  S.k1 = parseFloat(e.target.value);
+  document.getElementById('k1Val').textContent = S.k1 + ' N/m';
+});
+
+k2Slider.addEventListener('input', e => {
+  S.k2 = parseFloat(e.target.value);
+  document.getElementById('k2Val').textContent = S.k2 + ' N/m';
+});
+
+k3Slider.addEventListener('input', e => {
+  S.k3 = parseFloat(e.target.value);
+  document.getElementById('k3Val').textContent = S.k3 + ' N/m';
+});
+
+modeSel.addEventListener('change', e => {
+  S.mode = e.target.value;
+  const modes = computeModes();
+  if(S.mode === 'mode1'){
+    teach('MODE 1', 'Mode 1: masses in phase, lower frequency ω₁ = ' + modes.w1.toFixed(2) + ' rad/s. Mode shape φ₁ = [' + modes.phi1[0].toFixed(2) + ', ' + modes.phi1[1].toFixed(2) + '].', 'concept');
+  } else if(S.mode === 'mode2'){
+    teach('MODE 2', 'Mode 2: masses out of phase, higher frequency ω₂ = ' + modes.w2.toFixed(2) + ' rad/s. Mode shape φ₂ = [' + modes.phi2[0].toFixed(2) + ', ' + modes.phi2[1].toFixed(2) + '].', 'concept');
+  } else {
+    teach('MIXED', 'Mixed excitation: both modes active. The response is a superposition — like two tuning forks struck at once.', 'concept');
+  }
+});
+
+playBtn.addEventListener('click', () => {
+  if(!S.running && S.time === 0){
+    exciteMode(S.mode);
+  }
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ EXCITE';
+  if(S.running){
+    const modes = computeModes();
+    teach('RUN', 'Exciting system. Modes at ω₁ = ' + modes.w1.toFixed(2) + ' and ω₂ = ' + modes.w2.toFixed(2) + ' rad/s. Watch x₂/x₁ ratio identify the mode.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  if(S.time === 0) exciteMode(S.mode);
+  for(let i=0;i<30;i++) stepODE(1/120);
+  teach('STEP', 'x₁ = ' + S.x1.toFixed(4) + ' m, x₂ = ' + S.x2.toFixed(4) + ' m. Ratio x₂/x₁ = ' + (S.x1 !== 0 ? (S.x2/S.x1).toFixed(3) : 0), 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.m1 = 2; S.m2 = 3; S.k1 = 2000; S.k2 = 1000; S.k3 = 1000;
+  S.x1 = 0.1; S.x2 = 0; S.v1 = 0; S.v2 = 0; S.time = 0;
+  S.running = false; S.mode = 'mode1';
+  S.history1 = []; S.history2 = [];
+  m1Slider.value = 2; m2Slider.value = 3;
+  k1Slider.value = 2000; k2Slider.value = 1000; k3Slider.value = 1000;
+  modeSel.value = 'mode1';
+  document.getElementById('m1Val').textContent = '2.0 kg';
+  document.getElementById('m2Val').textContent = '3.0 kg';
+  document.getElementById('k1Val').textContent = '2000 N/m';
+  document.getElementById('k2Val').textContent = '1000 N/m';
+  document.getElementById('k3Val').textContent = '1000 N/m';
+  playBtn.textContent = '▶ EXCITE';
+  teach('RESET', '2-DOF system reset to defaults.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('mode2Btn').addEventListener('click', () => {
+  S.mode = 'mode2';
+  modeSel.value = 'mode2';
+  exciteMode('mode2');
+  S.running = true;
+  playBtn.textContent = '⏸ PAUSE';
+  const modes = computeModes();
+  teach('MODE 2', 'Exciting Mode 2: masses move OUT of phase. ω₂ = ' + modes.w2.toFixed(2) + ' rad/s. Watch x₁ and x₂ cross zero together — classic out-of-phase motion.', 'warn');
+  toast('⚡ Mode 2');
+});
+
+document.getElementById('beatBtn').addEventListener('click', () => {
+  // Slightly detune to get beats
+  S.m2 = S.m1 * 1.05;
+  m2Slider.value = S.m2;
+  document.getElementById('m2Val').textContent = S.m2.toFixed(2) + ' kg';
+  S.mode = 'mixed';
+  modeSel.value = 'mixed';
+  exciteMode('mixed');
+  S.running = true;
+  playBtn.textContent = '⏸ PAUSE';
+  teach('BEAT', 'Beat phenomenon: when masses are slightly different, the two modes have close frequencies. Energy sloshes between masses — like a swing that slowly transfers motion to another.', 'warn');
+});
+
+document.getElementById('detuneBtn').addEventListener('click', () => {
+  S.m1 = 2; S.m2 = 6;
+  m1Slider.value = 2; m2Slider.value = 6;
+  document.getElementById('m1Val').textContent = '2.0 kg';
+  document.getElementById('m2Val').textContent = '6.0 kg';
+  const modes = computeModes();
+  S.mode = 'mixed';
+  modeSel.value = 'mixed';
+  exciteMode('mixed');
+  S.running = true;
+  playBtn.textContent = '⏸ PAUSE';
+  teach('DETUNE', 'Masses detuned (m₂ = 3× m₁). Modes separate: ω₁ = ' + modes.w1.toFixed(2) + ', ω₂ = ' + modes.w2.toFixed(2) + '. Larger frequency gap — no beats.', 'warn');
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'car'){
+      S.m1 = 1500; S.m2 = 500; S.k1 = 30000; S.k2 = 20000; S.k3 = 30000;
+      m1Slider.value = 10; m2Slider.value = 5;
+      k1Slider.value = 10000; k2Slider.value = 10000; k3Slider.value = 10000;
+      updateLabels();
+      resetState();
+      const modes = computeModes();
+      teach('CAR+TRAILER', 'Car-trailer: two coupled masses. Frequencies ' + modes.w1.toFixed(2) + ' and ' + modes.w2.toFixed(2) + ' rad/s. Trailer sway can be a coupled-mode instability.', 'concept');
+    } else if(p === 'building'){
+      S.m1 = 50000; S.m2 = 40000; S.k1 = 2000000; S.k2 = 1500000; S.k3 = 1500000;
+      m1Slider.value = 10; m2Slider.value = 10;
+      k1Slider.value = 10000; k2Slider.value = 10000; k3Slider.value = 10000;
+      updateLabels();
+      resetState();
+      const modes = computeModes();
+      teach('BUILDING', '2-story building: floor masses, inter-story stiffnesses. Two sway modes. Earthquakes excite both — tall buildings need to be tuned so ω_n avoids seismic frequencies.', 'concept');
+    } else if(p === 'machinetool'){
+      S.m1 = 100; S.m2 = 50; S.k1 = 500000; S.k2 = 200000; S.k3 = 500000;
+      m1Slider.value = 10; m2Slider.value = 5;
+      k1Slider.value = 10000; k2Slider.value = 10000; k3Slider.value = 10000;
+      updateLabels();
+      resetState();
+      const modes = computeModes();
+      teach('MACHINE TOOL', 'Machine tool: heavy bed + lighter tool head. Natural frequencies must avoid cutting excitation — chatter ruins surface finish.', 'concept');
+    } else {
+      // Vibration absorber: small mass tuned to cancel specific frequency
+      S.m1 = 10; S.m2 = 1; S.k1 = 1000; S.k2 = 100; S.k3 = 0.1;
+      m1Slider.value = 10; m2Slider.value = 1;
+      k1Slider.value = 1000; k2Slider.value = 500; k3Slider.value = 500;
+      updateLabels();
+      resetState();
+      const modes = computeModes();
+      teach('ABSORBER', 'Tuned mass damper: small mass (m₂) with carefully chosen k₂ cancels vibration at a specific frequency. Used in Taipei 101 (660-tonne pendulum!) and F1 cars.', 'concept');
+    }
+  });
+});
+
+function updateLabels(){
+  document.getElementById('m1Val').textContent = S.m1.toFixed(1) + ' kg';
+  document.getElementById('m2Val').textContent = S.m2.toFixed(1) + ' kg';
+  document.getElementById('k1Val').textContent = S.k1 + ' N/m';
+  document.getElementById('k2Val').textContent = S.k2 + ' N/m';
+  document.getElementById('k3Val').textContent = S.k3 + ' N/m';
+}
+
+function resetState(){
+  S.x1 = 0.1; S.x2 = 0; S.v1 = 0; S.v2 = 0; S.time = 0;
+  S.running = false;
+  S.history1 = []; S.history2 = [];
+  playBtn.textContent = '▶ EXCITE';
+}
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Multi-DOF Vibration. Real systems have many masses and springs — buildings have floors, machines have components. Each has its own set of natural frequencies and mode shapes.', 'concept');
+  teach('MODES', 'An N-DOF system has N natural frequencies and N mode shapes. Mode 1 is usually all masses moving in phase. Higher modes have alternating signs (nodes).', 'concept');
+  teach('HOWTO', 'Adjust masses and stiffnesses. Choose a mode to excite. Press EXCITE and watch the masses move. The x₂/x₁ ratio identifies which mode dominates.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

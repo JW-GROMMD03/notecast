@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API Gateway Routing &amp; Authentication — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #8b5cf6, #06b6d4, #10b981);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(139,92,246,0.15);
+    color: #c4b5fd;
+    border-color: #8b5cf6;
+  }
+  .teaching-toggle:hover { background: rgba(139,92,246,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #8b5cf6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+  .btn.primary:hover { background: #7c3aed; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #c4b5fd; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #8b5cf6; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(139,92,246,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* GATEWAY TOPOLOGY */
+  .topology-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(139,92,246,0.15);
+    min-height: 0;
+  }
+  .topo-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #topoCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+  }
+
+  /* REQUEST LOG */
+  .log-wrap {
+    background: #070a14;
+    border: 2px solid #10b981;
+    border-radius: 12px;
+    padding: 10px 12px;
+    height: 180px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 20px rgba(16,185,129,0.15);
+    flex-shrink: 0;
+  }
+  .log-title {
+    font-size: 0.58rem;
+    letter-spacing: 2px;
+    color: #6ee7b7;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .log-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    padding: 6px 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.58rem;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .log-entry {
+    padding: 2px 6px;
+    border-radius: 3px;
+    border-left: 2px solid transparent;
+    animation: logIn 0.3s ease;
+  }
+  @keyframes logIn {
+    from { transform: translateX(-6px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .log-entry.received { border-left-color: #06b6d4; color: #cbd5e1; }
+  .log-entry.auth-ok { border-left-color: #10b981; color: #86efac; }
+  .log-entry.auth-fail { border-left-color: #ef4444; color: #fca5a5; font-weight: 700; }
+  .log-entry.rate-limited { border-left-color: #f59e0b; color: #fcd34d; font-weight: 700; }
+  .log-entry.route { border-left-color: #8b5cf6; color: #c4b5fd; }
+  .log-entry.error { border-left-color: #ef4444; color: #fca5a5; }
+  .log-entry.success { border-left-color: #10b981; color: #6ee7b7; font-weight: 700; }
+  .log-entry .ts { color: #475569; margin-right: 6px; font-size: 0.5rem; }
+  .log-entry .method { font-weight: 800; }
+  .log-entry .path { color: #67e8f9; }
+
+  /* SERVICE STATS */
+  .services-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .service-card {
+    background: #070a14;
+    border: 2px solid #334155;
+    border-radius: 10px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: all 0.3s;
+    min-height: 0;
+    cursor: pointer;
+  }
+  .service-card:hover { border-color: #8b5cf6; }
+  .service-card.active {
+    border-color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+    transform: translateY(-2px);
+  }
+  .service-card.error {
+    border-color: #ef4444;
+    box-shadow: 0 0 15px rgba(239,68,68,0.4);
+  }
+  .service-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: monospace;
+    font-size: 0.6rem;
+  }
+  .service-name {
+    color: #c4b5fd;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+  }
+  .service-status {
+    font-size: 0.5rem;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: rgba(16,185,129,0.2);
+    color: #6ee7b7;
+    letter-spacing: 0.5px;
+    font-weight: 800;
+  }
+  .service-status.slow {
+    background: rgba(245,158,11,0.2);
+    color: #fcd34d;
+  }
+  .service-status.down {
+    background: rgba(239,68,68,0.2);
+    color: #fca5a5;
+  }
+  .service-stats {
+    display: flex;
+    justify-content: space-between;
+    font-family: monospace;
+    font-size: 0.5rem;
+    color: #64748b;
+    letter-spacing: 0.3px;
+  }
+  .service-stats .val {
+    color: #cbd5e1;
+    font-weight: 900;
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(139,92,246,0.06);
+    border: 1px solid rgba(139,92,246,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #c4b5fd;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #8b5cf6;
+    background: rgba(139,92,246,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(139,92,246,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(139,92,246,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #8b5cf6;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(139,92,246,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #8b5cf6;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #c4b5fd;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(139,92,246,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.ok { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.err { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+  .status-banner.warn { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>API GATEWAY ROUTING &amp; AUTH</h1>
+    <span class="sub">ROUTING · AUTH · RATE LIMIT · CIRCUIT BREAKER</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Send Requests</h3>
+      <button class="btn primary" id="btnSend">📨 Send Request (valid)</button>
+      <button class="btn" id="btnSendNoAuth">🚫 Send Without Token</button>
+      <button class="btn warn" id="btnSendExpired">⏰ Send Expired Token</button>
+      <button class="btn" id="btnBurst">⚡ Burst 20 Requests</button>
+    </div>
+
+    <div class="panel">
+      <h3>Gateway Policies</h3>
+      <button class="btn success active" id="btnAuthToggle">🔐 Auth: ON</button>
+      <button class="btn success active" id="btnRateToggle">🚦 Rate Limit: ON</button>
+      <button class="btn success active" id="btnCircuitToggle">🔌 Circuit Breaker: ON</button>
+    </div>
+
+    <div class="panel">
+      <h3>Fault Injection</h3>
+      <button class="btn danger" id="btnKillService">💀 Kill a Backend</button>
+      <button class="btn warn" id="btnSlowService">🐌 Slow a Backend</button>
+      <button class="btn success" id="btnHealAll">✅ Heal All Backends</button>
+    </div>
+
+    <div class="panel">
+      <h3>Request Config</h3>
+      <div class="slider-row"><span>Rate limit (req/s)</span><span class="value" id="rateLimitVal">8</span></div>
+      <input type="range" id="rateLimitRange" min="2" max="30" value="8">
+      <div class="slider-row"><span>Token TTL (s)</span><span class="value" id="ttlVal">10</span></div>
+      <input type="range" id="ttlRange" min="2" max="60" value="10">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#06b6d4;border-radius:50%;margin-right:6px;"></span>Client</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#8b5cf6;border-radius:50%;margin-right:6px;"></span>Gateway</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:50%;margin-right:6px;"></span>Backend service</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">GATEWAY = SINGLE ENTRY POINT · AUTH · ROUTING · RESILIENCE</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="topology-wrap">
+          <div class="topo-title">
+            <span>🌐 REQUEST FLOW</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="topoHint">— click SEND REQUEST —</span>
+          </div>
+          <canvas id="topoCanvas"></canvas>
+        </div>
+
+        <div class="log-wrap">
+          <div class="log-title">
+            <span>📋 REQUEST LOG</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="logHint">— 0 requests —</span>
+          </div>
+          <div class="log-body" id="logBody"></div>
+        </div>
+
+        <div class="services-grid" id="servicesGrid">
+          <!-- Backend services injected by JS -->
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Requests</div>
+        <div class="metric-value" id="mRequests">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Authorized</div>
+        <div class="metric-value good" id="mAuth">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Rejected 401</div>
+        <div class="metric-value bad" id="m401">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Rate 429</div>
+        <div class="metric-value bad" id="m429">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 API Gateway Responsibilities</div>
+      <div class="info-row"><span class="lbl">Routing</span><span class="val good">Path → service</span></div>
+      <div class="info-row"><span class="lbl">Authentication</span><span class="val">JWT / API key</span></div>
+      <div class="info-row"><span class="lbl">Rate limiting</span><span class="val warn">Token bucket</span></div>
+      <div class="info-row"><span class="lbl">Circuit breaker</span><span class="val">Fail fast</span></div>
+      <div class="info-row"><span class="lbl">Observability</span><span class="val">Logs · traces · metrics</span></div>
+      <div class="info-row"><span class="lbl">Also common</span><span class="val">TLS · caching · CORS</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">Kong, AWS API GW, Nginx</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  authEnabled: true,
+  rateLimitEnabled: true,
+  circuitEnabled: true,
+  rateLimit: 8,
+  tokenTTL: 10,
+  // Backend services
+  services: [
+    { id: 'users',    name: '/users',    x: 0.75, y: 0.15, state: 'up', requests: 0, errors: 0, color: '#10b981' },
+    { id: 'orders',   name: '/orders',   x: 0.75, y: 0.4,  state: 'up', requests: 0, errors: 0, color: '#06b6d4' },
+    { id: 'payments', name: '/payments', x: 0.75, y: 0.65, state: 'up', requests: 0, errors: 0, color: '#f59e0b' },
+    { id: 'products', name: '/products', x: 0.75, y: 0.9,  state: 'up', requests: 0, errors: 0, color: '#a855f7' }
+  ],
+  // Circuit breaker state per service
+  circuits: {
+    users:    { state: 'closed', failures: 0, threshold: 3, openedAt: 0 },
+    orders:   { state: 'closed', failures: 0, threshold: 3, openedAt: 0 },
+    payments: { state: 'closed', failures: 0, threshold: 3, openedAt: 0 },
+    products: { state: 'closed', failures: 0, threshold: 3, openedAt: 0 }
+  },
+  // Stats
+  totalRequests: 0,
+  authorizedCount: 0,
+  count401: 0,
+  count429: 0,
+  // Rate limiting window
+  rateWindow: [],
+  // Visual
+  particles: [],
+  currentToken: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+/* ============================================================
+   DOM
+   ============================================================ */
+const DOM = {
+  topoCanvas: document.getElementById('topoCanvas'),
+  topoHint: document.getElementById('topoHint'),
+  logBody: document.getElementById('logBody'),
+  logHint: document.getElementById('logHint'),
+  servicesGrid: document.getElementById('servicesGrid'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Buttons
+  btnSend: document.getElementById('btnSend'),
+  btnSendNoAuth: document.getElementById('btnSendNoAuth'),
+  btnSendExpired: document.getElementById('btnSendExpired'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnAuthToggle: document.getElementById('btnAuthToggle'),
+  btnRateToggle: document.getElementById('btnRateToggle'),
+  btnCircuitToggle: document.getElementById('btnCircuitToggle'),
+  btnKillService: document.getElementById('btnKillService'),
+  btnSlowService: document.getElementById('btnSlowService'),
+  btnHealAll: document.getElementById('btnHealAll'),
+  rateLimitRange: document.getElementById('rateLimitRange'),
+  rateLimitVal: document.getElementById('rateLimitVal'),
+  ttlRange: document.getElementById('ttlRange'),
+  ttlVal: document.getElementById('ttlVal'),
+  // Metrics
+  mRequests: document.getElementById('mRequests'),
+  mAuth: document.getElementById('mAuth'),
+  m401: document.getElementById('m401'),
+  m429: document.getElementById('m429'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+let LOG_TS = 0;
+function logEntry(cls, method, path, msg) {
+  LOG_TS++;
+  const el = document.createElement('div');
+  el.className = `log-entry ${cls}`;
+  el.innerHTML = `<span class="ts">[${String(LOG_TS).padStart(3, '0')}]</span>` +
+    (method ? `<span class="method">${method}</span> ` : '') +
+    (path ? `<span class="path">${path}</span> ` : '') +
+    (msg || '');
+  DOM.logBody.prepend(el);
+  while (DOM.logBody.children.length > 40) DOM.logBody.lastChild.remove();
+  DOM.logHint.textContent = `${LOG_TS} requests`;
+}
+
+function clearLog() {
+  LOG_TS = 0;
+  DOM.logBody.innerHTML = '';
+  DOM.logHint.textContent = '0 requests';
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining API gateway routing and authentication.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   TOKEN UTILITIES
+   ============================================================ */
+function generateToken() {
+  return {
+    value: 'jwt_' + Math.random().toString(36).substring(2, 12),
+    issuedAt: Date.now(),
+    expiresAt: Date.now() + STATE.tokenTTL * 1000,
+    subject: 'user_' + Math.floor(Math.random() * 1000)
+  };
+}
+
+function validateToken(token) {
+  if (!token) return { valid: false, reason: 'missing' };
+  if (token.expiresAt < Date.now()) return { valid: false, reason: 'expired' };
+  return { valid: true, reason: 'ok' };
+}
+
+/* ============================================================
+   RATE LIMIT CHECK
+   ============================================================ */
+function checkRateLimit() {
+  const now = Date.now();
+  const window = 1000;  // 1 second
+  STATE.rateWindow = STATE.rateWindow.filter(t => now - t < window);
+  if (STATE.rateWindow.length >= STATE.rateLimit) {
+    return false;
+  }
+  STATE.rateWindow.push(now);
+  return true;
+}
+
+/* ============================================================
+   CIRCUIT BREAKER
+   ============================================================ */
+function checkCircuit(serviceId) {
+  const circuit = STATE.circuits[serviceId];
+  if (!STATE.circuitEnabled) return 'closed';
+  // If open and timeout expired, go to half-open
+  if (circuit.state === 'open') {
+    if (Date.now() - circuit.openedAt > 5000) {
+      circuit.state = 'half-open';
+      teach('CIRCUIT HALF-OPEN',
+        `Circuit for /${serviceId} is half-open. The gateway will let ONE probe request through. If it succeeds, the circuit closes. If it fails, the circuit reopens for another timeout.`,
+        'warn'
+      );
+      return 'half-open';
+    }
+    return 'open';
+  }
+  return circuit.state;
+}
+
+function recordServiceSuccess(serviceId) {
+  const circuit = STATE.circuits[serviceId];
+  circuit.failures = 0;
+  if (circuit.state === 'half-open') {
+    circuit.state = 'closed';
+    teach('CIRCUIT CLOSED',
+      `Probe succeeded for /${serviceId}. The circuit breaker is now closed — normal traffic resumes. This is how the gateway self-heals: it automatically re-enables a failing backend once it recovers.`,
+      'ok'
+    );
+  }
+}
+
+function recordServiceFailure(serviceId) {
+  const circuit = STATE.circuits[serviceId];
+  circuit.failures++;
+  if (circuit.failures >= circuit.threshold && circuit.state !== 'open') {
+    circuit.state = 'open';
+    circuit.openedAt = Date.now();
+    teach('CIRCUIT OPEN',
+      `/ ${serviceId} failed ${circuit.failures} consecutive times. Circuit is now OPEN — the gateway will fail fast for this service for the next 5 seconds. This protects the whole system: instead of waiting for timeouts, requests are rejected immediately, giving the struggling backend time to recover.`,
+      'error'
+    );
+  }
+}
+
+/* ============================================================
+   SEND REQUEST
+   ============================================================ */
+async function sendRequest(opts = {}) {
+  STATE.totalRequests++;
+
+  // Pick a service
+  const service = STATE.services[Math.floor(Math.random() * STATE.services.length)];
+  const method = ['GET', 'POST', 'PUT', 'DELETE'][Math.floor(Math.random() * 4)];
+  const path = service.name;
+
+  logEntry('received', method, path, 'received by gateway');
+
+  // 1. RATE LIMIT CHECK
+  if (STATE.rateLimitEnabled && !checkRateLimit()) {
+    STATE.count429++;
+    logEntry('rate-limited', '', '', '→ 429 Too Many Requests');
+    showStatus(`⚠️ 429 rate limited`, 'warn');
+    teach('RATE LIMITED',
+      `The gateway rejected this request with 429 Too Many Requests. The client exceeded the rate limit of ${STATE.rateLimit} requests per second. This protects backends from overload — legitimate clients see occasional 429s and should retry with backoff (or wait for the window to reset).`,
+      'warn'
+    );
+    updateMetrics();
+    return;
+  }
+
+  await sleep(200);
+
+  // 2. AUTH CHECK
+  if (STATE.authEnabled) {
+    let token;
+    let reason;
+
+    if (opts.noAuth) {
+      reason = 'missing';
+    } else if (opts.expired) {
+      reason = 'expired';
+    } else {
+      // Use a fresh token
+      token = generateToken();
+      reason = 'ok';
+    }
+
+    if (reason !== 'ok') {
+      STATE.count401++;
+      logEntry('auth-fail', '', '', `→ 401 Unauthorized (${reason})`);
+      showStatus(`🚫 401 Unauthorized`, 'err');
+      teach('AUTH FAILED',
+        `Gateway rejected the request with 401 Unauthorized. Reason: ${reason === 'missing' ? 'the Authorization header is absent' : 'the JWT has expired'}. The request never reached a backend. This is the whole point of authentication at the gateway: bad requests are stopped at the edge before they consume backend resources.`,
+        'error'
+      );
+      updateMetrics();
+      return;
+    }
+
+    STATE.authorizedCount++;
+    logEntry('auth-ok', '', '', `✓ JWT verified (sub=${token.subject})`);
+  }
+
+  await sleep(200);
+
+  // 3. CIRCUIT BREAKER CHECK
+  const circuitState = checkCircuit(service.id);
+  if (circuitState === 'open') {
+    logEntry('error', '', '', `→ 503 Service Unavailable (circuit open for ${service.name})`);
+    showStatus(`⚡ Circuit open for ${service.name}`, 'err');
+    teach('CIRCUIT OPEN — FAIL FAST',
+      `Request rejected with 503 because the circuit breaker for ${service.name} is OPEN. The gateway doesn't even try to call the failing backend — it fails fast. This prevents request pile-up, thread exhaustion, and cascading failures. The circuit will enter half-open state in a few seconds and probe the backend again.`,
+      'error'
+    );
+    updateMetrics();
+    return;
+  }
+
+  // 4. ROUTE TO BACKEND
+  logEntry('route', '', '', `→ routed to ${service.name} backend (${circuitState})`);
+  spawnParticle('gateway', service.id);
+
+  await sleep(300);
+
+  // 5. BACKEND RESPONSE
+  const failed = service.state === 'down' || (circuitState === 'half-open' && Math.random() < 0.5);
+
+  if (failed) {
+    service.errors++;
+    recordServiceFailure(service.id);
+    logEntry('error', '', '', `← backend ${service.name} returned 500`);
+    showStatus(`❌ ${service.name} failed`, 'err');
+  } else {
+    service.requests++;
+    recordServiceSuccess(service.id);
+    const latency = service.state === 'slow' ? Math.round(500 + Math.random() * 500) : Math.round(20 + Math.random() * 80);
+    logEntry('success', '', '', `← 200 OK (${latency}ms)`);
+    showStatus(`✅ 200 OK from ${service.name}`, 'ok');
+  }
+
+  updateMetrics();
+  drawServices();
+  draw();
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+/* ============================================================
+   BURST
+   ============================================================ */
+function sendBurst() {
+  for (let i = 0; i < 20; i++) {
+    setTimeout(() => {
+      // Burst requests are valid tokens by default
+      sendRequest({});
+    }, i * 30);
+  }
+  teach('BURST',
+    `Sent 20 requests in under a second. Watch the rate limiter kick in — once the window has more than ${STATE.rateLimit} requests, the gateway starts returning 429. This is exactly how a hostile client or a runaway retry loop looks to a gateway: a flood that must be contained before it reaches the backends.`,
+    'cyan'
+  );
+}
+
+/* ============================================================
+   FAULT INJECTION
+   ============================================================ */
+function killService() {
+  const alive = STATE.services.filter(s => s.state !== 'down');
+  if (alive.length === 0) {
+    showToast('⚠ No services left');
+    return;
+  }
+  const victim = alive[Math.floor(Math.random() * alive.length)];
+  victim.state = 'down';
+  logEntry('error', '', '', `💀 ${victim.name} backend is now DOWN`);
+  showStatus(`💀 ${victim.name} down`, 'err');
+  teach('SERVICE DOWN',
+    `${victim.name} backend is DOWN. The gateway will keep routing to it until the circuit breaker trips. After ${STATE.circuits[victim.id].threshold} consecutive failures, the circuit opens and requests to this backend return 503 immediately — no more waiting for timeouts.`,
+    'error'
+  );
+  drawServices();
+  draw();
+}
+
+function slowService() {
+  const candidates = STATE.services.filter(s => s.state === 'up');
+  if (candidates.length === 0) return;
+  const victim = candidates[Math.floor(Math.random() * candidates.length)];
+  victim.state = 'slow';
+  logEntry('rate-limited', '', '', `🐌 ${victim.name} backend is now SLOW`);
+  showStatus(`🐌 ${victim.name} degraded`, 'warn');
+  teach('SLOW BACKEND',
+    `${victim.name} is now slow — responses take 500-1000ms instead of the usual 20-80ms. Slow backends are sneakier than dead ones: requests still succeed, but they tie up gateway threads and inflate tail latency. Real gateways watch p99 latency, not just error rate.`,
+    'warn'
+  );
+  drawServices();
+}
+
+function healAll() {
+  for (const s of STATE.services) s.state = 'up';
+  for (const c of Object.values(STATE.circuits)) {
+    c.state = 'closed';
+    c.failures = 0;
+  }
+  showToast('✅ All backends healed');
+  teach('HEALED',
+    `All backends are healthy again, and all circuit breakers are closed. Normal traffic flow resumes. In production, this would be triggered automatically as the recovering backends pass health checks — no operator action required.`,
+    'ok'
+  );
+  drawServices();
+  draw();
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.topoCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function spawnParticle(from, toService) {
+  const canvas = DOM.topoCanvas;
+  if (!canvas._w) return;
+  STATE.particles.push({
+    from: 'gateway',
+    toService,
+    progress: 0,
+    color: '#8b5cf6'
+  });
+}
+
+function draw() {
+  const canvas = DOM.topoCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Layout positions
+  const clientX = 0.1 * W;
+  const clientY = 0.5 * H;
+  const gatewayX = 0.42 * W;
+  const gatewayY = 0.5 * H;
+
+  // Draw edges gateway → services
+  for (const svc of STATE.services) {
+    const sx = svc.x * W;
+    const sy = svc.y * H;
+    const circuit = STATE.circuits[svc.id];
+
+    let edgeColor = '#334155';
+    let edgeWidth = 1.5;
+    if (svc.state === 'down') { edgeColor = '#7f1d1d'; edgeWidth = 2; }
+    else if (svc.state === 'slow') { edgeColor = '#78350f'; edgeWidth = 2; }
+    else if (circuit.state === 'open') { edgeColor = '#ef4444'; edgeWidth = 2.5; }
+    else if (circuit.state === 'half-open') { edgeColor = '#f59e0b'; edgeWidth = 2; }
+    else { edgeColor = '#10b981'; edgeWidth = 1.5; }
+
+    ctx.strokeStyle = edgeColor;
+    ctx.lineWidth = edgeWidth;
+    ctx.setLineDash(circuit.state === 'open' ? [4, 4] : []);
+    ctx.beginPath();
+    ctx.moveTo(gatewayX, gatewayY);
+    ctx.lineTo(sx, sy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Edge client → gateway
+  ctx.strokeStyle = '#06b6d4';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(clientX + 40, clientY);
+  ctx.lineTo(gatewayX - 40, gatewayY);
+  ctx.stroke();
+
+  // Draw client
+  drawNode(ctx, clientX, clientY, 32, '#06b6d4', '👤', 'CLIENT');
+  // Draw gateway
+  drawNode(ctx, gatewayX, gatewayY, 42, '#8b5cf6', '🚪', 'GATEWAY');
+
+  // Draw service nodes
+  for (const svc of STATE.services) {
+    const sx = svc.x * W;
+    const sy = svc.y * H;
+    const r = 30;
+
+    let color = svc.color;
+    let icon = '⚙️';
+    if (svc.state === 'down') { color = '#ef4444'; icon = '💀'; }
+    else if (svc.state === 'slow') { color = '#f59e0b'; icon = '🐌'; }
+
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.font = '20px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(icon, sx, sy - 4);
+
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = color;
+    ctx.textBaseline = 'top';
+    ctx.fillText(svc.name, sx, sy + r + 4);
+
+    // Circuit state badge
+    const c = STATE.circuits[svc.id];
+    ctx.font = 'bold 8px monospace';
+    ctx.fillStyle = c.state === 'open' ? '#fca5a5' : c.state === 'half-open' ? '#fcd34d' : '#6ee7b7';
+    ctx.fillText(c.state.toUpperCase(), sx, sy + r + 18);
+  }
+
+  // Draw particles
+  for (let i = STATE.particles.length - 1; i >= 0; i--) {
+    const p = STATE.particles[i];
+    p.progress += 0.03;
+    if (p.progress >= 1) {
+      STATE.particles.splice(i, 1);
+      continue;
+    }
+    const svc = STATE.services.find(s => s.id === p.toService);
+    if (!svc) continue;
+    const tx = svc.x * W;
+    const ty = svc.y * H;
+    const x = gatewayX + (tx - gatewayX) * p.progress;
+    const y = gatewayY + (ty - gatewayY) * p.progress;
+
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  DOM.topoHint.textContent = `— ${STATE.totalRequests} requests · ${STATE.particles.length} in flight —`;
+}
+
+function drawNode(ctx, x, y, r, color, icon, label) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#0f172a';
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.font = `${r * 0.7}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(icon, x, y);
+
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = color;
+  ctx.textBaseline = 'top';
+  ctx.fillText(label, x, y + r + 5);
+}
+
+function animate() {
+  draw();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   SERVICE GRID
+   ============================================================ */
+function drawServices() {
+  DOM.servicesGrid.innerHTML = '';
+  for (const svc of STATE.services) {
+    const c = STATE.circuits[svc.id];
+    const card = document.createElement('div');
+    card.className = 'service-card';
+    if (svc.state === 'down') card.classList.add('error');
+    card.innerHTML = `
+      <div class="service-head">
+        <span class="service-name">${svc.name}</span>
+        <span class="service-status ${svc.state === 'down' ? 'down' : svc.state === 'slow' ? 'slow' : ''}">
+          ${svc.state === 'down' ? 'DOWN' : svc.state === 'slow' ? 'SLOW' : 'UP'}
+        </span>
+      </div>
+      <div class="service-stats">
+        <span>req</span><span class="val">${svc.requests}</span>
+      </div>
+      <div class="service-stats">
+        <span>errors</span><span class="val" style="color:${svc.errors > 0 ? '#fca5a5' : '#cbd5e1'}">${svc.errors}</span>
+      </div>
+      <div class="service-stats">
+        <span>circuit</span>
+        <span class="val" style="color:${c.state === 'open' ? '#fca5a5' : c.state === 'half-open' ? '#fcd34d' : '#6ee7b7'}">
+          ${c.state}
+        </span>
+      </div>
+    `;
+    DOM.servicesGrid.appendChild(card);
+  }
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.mRequests.textContent = STATE.totalRequests;
+  DOM.mAuth.textContent = STATE.authorizedCount;
+  DOM.m401.textContent = STATE.count401;
+  DOM.m429.textContent = STATE.count429;
+  DOM.m401.className = 'metric-value ' + (STATE.count401 === 0 ? 'good' : STATE.count401 < 5 ? 'warn' : 'bad');
+  DOM.m429.className = 'metric-value ' + (STATE.count429 === 0 ? 'good' : STATE.count429 < 5 ? 'warn' : 'bad');
+}
+
+/* ============================================================
+   TOGGLE POLICIES
+   ============================================================ */
+function toggleAuth() {
+  STATE.authEnabled = !STATE.authEnabled;
+  DOM.btnAuthToggle.classList.toggle('active', STATE.authEnabled);
+  DOM.btnAuthToggle.textContent = STATE.authEnabled ? '🔐 Auth: ON' : '🔓 Auth: OFF';
+  teach('AUTH TOGGLE',
+    STATE.authEnabled
+      ? 'Authentication is enabled. Requests missing a valid JWT get 401 Unauthorized immediately.'
+      : 'Authentication is DISABLED. Any request — with or without a token — is forwarded to a backend. In production this is catastrophic: unauthenticated users can hit privileged endpoints.',
+    STATE.authEnabled ? 'ok' : 'error'
+  );
+}
+
+function toggleRateLimit() {
+  STATE.rateLimitEnabled = !STATE.rateLimitEnabled;
+  DOM.btnRateToggle.classList.toggle('active', STATE.rateLimitEnabled);
+  DOM.btnRateToggle.textContent = STATE.rateLimitEnabled ? '🚦 Rate Limit: ON' : '🚦 Rate Limit: OFF';
+  teach('RATE LIMIT TOGGLE',
+    STATE.rateLimitEnabled
+      ? `Rate limiting enabled. The gateway rejects the ${STATE.rateLimit + 1}th request within a 1-second window with HTTP 429.`
+      : 'Rate limiting DISABLED. A hostile client can flood the gateway with unlimited requests. Real API gateways always enforce some rate limit, even if generous.',
+    STATE.rateLimitEnabled ? 'ok' : 'warn'
+  );
+}
+
+function toggleCircuit() {
+  STATE.circuitEnabled = !STATE.circuitEnabled;
+  DOM.btnCircuitToggle.classList.toggle('active', STATE.circuitEnabled);
+  DOM.btnCircuitToggle.textContent = STATE.circuitEnabled ? '🔌 Circuit Breaker: ON' : '🔌 Circuit Breaker: OFF';
+  if (!STATE.circuitEnabled) {
+    // Reset all circuits to closed
+    for (const c of Object.values(STATE.circuits)) {
+      c.state = 'closed';
+      c.failures = 0;
+    }
+  }
+  teach('CIRCUIT BREAKER TOGGLE',
+    STATE.circuitEnabled
+      ? 'Circuit breakers enabled. Each backend has a per-service breaker that trips after 3 consecutive failures.'
+      : 'Circuit breakers DISABLED. Every request attempts to reach its backend, even if it has been failing. This is dangerous: hung requests pile up, threads exhaust, and failures cascade across the system.',
+    STATE.circuitEnabled ? 'ok' : 'warn'
+  );
+  drawServices();
+  draw();
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.services.forEach(s => {
+    s.state = 'up';
+    s.requests = 0;
+    s.errors = 0;
+  });
+  for (const c of Object.values(STATE.circuits)) {
+    c.state = 'closed';
+    c.failures = 0;
+  }
+  STATE.totalRequests = 0;
+  STATE.authorizedCount = 0;
+  STATE.count401 = 0;
+  STATE.count429 = 0;
+  STATE.rateWindow = [];
+  STATE.particles = [];
+  clearLog();
+  updateMetrics();
+  drawServices();
+  draw();
+  showToast('⟲ Reset complete');
+  teach('RESET', 'Gateway, backends, and stats all cleared.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnSend.addEventListener('click', () => sendRequest({}));
+DOM.btnSendNoAuth.addEventListener('click', () => sendRequest({ noAuth: true }));
+DOM.btnSendExpired.addEventListener('click', () => sendRequest({ expired: true }));
+DOM.btnBurst.addEventListener('click', sendBurst);
+
+DOM.btnAuthToggle.addEventListener('click', toggleAuth);
+DOM.btnRateToggle.addEventListener('click', toggleRateLimit);
+DOM.btnCircuitToggle.addEventListener('click', toggleCircuit);
+
+DOM.btnKillService.addEventListener('click', killService);
+DOM.btnSlowService.addEventListener('click', slowService);
+DOM.btnHealAll.addEventListener('click', healAll);
+
+DOM.rateLimitRange.addEventListener('input', e => {
+  STATE.rateLimit = parseInt(e.target.value);
+  DOM.rateLimitVal.textContent = STATE.rateLimit;
+});
+DOM.ttlRange.addEventListener('input', e => {
+  STATE.tokenTTL = parseInt(e.target.value);
+  DOM.ttlVal.textContent = STATE.tokenTTL;
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+// Click on a service card to inspect
+DOM.servicesGrid.addEventListener('click', e => {
+  const card = e.target.closest('.service-card');
+  if (!card) return;
+  const name = card.querySelector('.service-name').textContent;
+  const svc = STATE.services.find(s => s.name === name);
+  if (!svc) return;
+  const c = STATE.circuits[svc.id];
+  teach('SERVICE: ' + svc.name,
+    `Backend ${svc.name} — state: ${svc.state}. Requests: ${svc.requests}, errors: ${svc.errors}. Circuit breaker: ${c.state} (${c.failures}/${c.threshold} failures). The gateway keeps per-service state so it can apply different policies to different backends.`,
+    svc.state === 'down' ? 'error' : svc.state === 'slow' ? 'warn' : 'cyan'
+  );
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+drawServices();
+updateMetrics();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to API Gateway Routing & Authentication. An API gateway is the single entry point for all external traffic to your backend services. Every request passes through it: routing, authentication, rate limiting, circuit breaking, logging — all happen here before the request ever reaches a backend.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('WHY A GATEWAY?',
+      `Without a gateway, every client must know every backend URL, handle auth on every service, and implement retries everywhere. With a gateway, clients talk to ONE endpoint, and the gateway handles cross-cutting concerns. This is how Kong, AWS API Gateway, and Nginx-based gateways work — the front door to your microservices.`,
+      'purple'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('AUTHENTICATION',
+      `The gateway validates every request's token BEFORE forwarding it. This is critical: unauthenticated requests never reach backends. JWT validation is fast (verify signature + check expiry), and a 401 at the gateway is 10x cheaper than a 401 at the backend. Real systems use OAuth2 / OIDC flows with short-lived JWTs, refreshed via a separate endpoint.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('CIRCUIT BREAKER',
+      `The gateway holds per-service circuit breakers. When a backend fails ${STATE.circuits.users.threshold} consecutive times, the breaker opens. Subsequent requests return 503 immediately — no waiting for timeouts, no thread pile-up. After 5 seconds, the breaker goes half-open, letting one probe through. If it succeeds, the circuit closes. This is how systems self-heal without human intervention.`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Try SEND, then kill a backend to see the circuit breaker', 4500);
+}, 500);
+</script>
+</body>
+</html>

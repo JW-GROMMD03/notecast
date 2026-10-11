@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brayton Cycle — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>BRAYTON CYCLE</h1>
+    <span class="sub">GAS TURBINE · COMPRESSOR · COMBUSTOR · TURBINE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Operating Conditions</div>
+    <div class="control-group">
+      <label>Pressure Ratio r_p <span class="val" id="rpVal">12</span></label>
+      <input type="range" id="rpSlider" min="2" max="40" value="12" step="0.5">
+    </div>
+    <div class="control-group">
+      <label>Turbine Inlet Temp <span class="val" id="titVal">1200 °C</span></label>
+      <input type="range" id="titSlider" min="800" max="1600" value="1200" step="10">
+    </div>
+    <div class="control-group">
+      <label>Compressor Efficiency <span class="val" id="effCVal">85%</span></label>
+      <input type="range" id="effCSlider" min="60" max="95" value="85" step="1">
+    </div>
+    <div class="control-group">
+      <label>Turbine Efficiency <span class="val" id="effTVal">90%</span></label>
+      <input type="range" id="effTSlider" min="60" max="95" value="90" step="1">
+    </div>
+    <div class="control-group">
+      <label>Inlet Air Temp <span class="val" id="t1Val">15 °C</span></label>
+      <input type="range" id="t1Slider" min="-40" max="50" value="15" step="1">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ RUN CYCLE</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="hotDayBtn">☀ HOT DAY (40°C)</button>
+    <button class="btn warn" id="compFoulBtn">⚠ FOULED COMPRESSOR</button>
+    <button class="btn warn" id="regenBtn">🔁 ADD REGENERATOR</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="powergen">Power Generation</button>
+    <button class="btn" data-preset="jet">Jet Engine Core</button>
+    <button class="btn" data-preset="micro">Micro Turbine</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      η_th = 1 − 1/r_p^((γ−1)/γ) &nbsp;|&nbsp; W_net = W_turb − W_comp &nbsp;|&nbsp; <span class="hl">Back work ratio ~50–70%</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mEff">
+          <div class="mlabel">THERMAL η</div>
+          <div class="mvalue">0<span class="munit">%</span></div>
+        </div>
+        <div class="metric" id="mWnet">
+          <div class="mlabel">NET WORK</div>
+          <div class="mvalue">0<span class="munit">kJ/kg</span></div>
+        </div>
+        <div class="metric" id="mBwr">
+          <div class="mlabel">BACK WORK RATIO</div>
+          <div class="mvalue">0<span class="munit">%</span></div>
+        </div>
+        <div class="metric" id="mQin">
+          <div class="mlabel">Q_IN</div>
+          <div class="mvalue">0<span class="munit">kJ/kg</span></div>
+        </div>
+        <div class="metric" id="mT3">
+          <div class="mlabel">T3 (TIT)</div>
+          <div class="mvalue">0<span class="munit">°C</span></div>
+        </div>
+        <div class="metric" id="mT4">
+          <div class="mlabel">T4 (EXHAUST)</div>
+          <div class="mvalue">0<span class="munit">°C</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">Ideal η = 1 − 1/r_p^((γ−1)/γ)</div>
+      <div class="eq">W_net = cp·[(T3−T4) − (T2−T1)]</div>
+      <div class="def">
+        The Brayton cycle powers jet engines and gas turbines. Air is 
+        compressed, fuel is burned, hot gas expands through a turbine. 
+        Back work ratio is high (~50–70%) because the compressor consumes 
+        most of the turbine output. Regenerators and intercoolers improve it.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const S = {
+  rp: 12,           // pressure ratio
+  TIT: 1200,        // °C turbine inlet
+  effC: 85,         // % compressor isentropic efficiency
+  effT: 90,         // % turbine isentropic efficiency
+  T1: 15,           // °C inlet air
+  running: false,
+  phase: 0,         // 0=compressor, 1=combustor, 2=turbine, 3=exhaust
+  phaseProgress: 0,
+  time: 0,
+  regenerator: false,
+  compFouled: false,
+  cycles: 0
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const rpSlider = document.getElementById('rpSlider');
+const titSlider = document.getElementById('titSlider');
+const effCSlider = document.getElementById('effCSlider');
+const effTSlider = document.getElementById('effTSlider');
+const t1Slider = document.getElementById('t1Slider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── BRAYTON PHYSICS ───────────────────────────────────────
+// Air: cp = 1.005 kJ/kg·K, γ = 1.4, R = 0.287
+const CP = 1.005;
+const GAMMA = 1.4;
+const ETA_C_NOM = 0.85;
+const ETA_T_NOM = 0.90;
+
+function computeCycle(){
+  const T1K = S.T1 + 273.15;
+  const T3K = S.TIT + 273.15;
+  const rp = S.rp;
+  const etaC = S.compFouled ? 0.65 : S.effC / 100;
+  const etaT = S.effT / 100;
+  const gamma = GAMMA;
+
+  // Ideal isentropic temperature ratios
+  const k = (gamma - 1) / gamma;
+  const isentropicRatio = Math.pow(rp, k);
+
+  // Compressor: T2s/T1 = rp^(k)
+  const T2s = T1K * isentropicRatio;
+  // Actual T2 with efficiency: T2 = T1 + (T2s − T1)/η_c
+  const T2 = T1K + (T2s - T1K) / etaC;
+
+  // Turbine: T4s/T3 = 1/rp^(k)
+  const T4s = T3K / isentropicRatio;
+  // Actual T4: T4 = T3 − η_t·(T3 − T4s)
+  const T4 = T3K - etaT * (T3K - T4s);
+
+  // Regenerator pre-heats compressor exit using exhaust heat
+  let T2Regen = T2;
+  if(S.regenerator){
+    // Effectiveness 0.75
+    T2Regen = T2 + 0.75 * (T4 - T2);
+  }
+
+  // Work and heat
+  const wComp = CP * (T2 - T1K);
+  const wTurb = CP * (T3K - T4);
+  const wNet = wTurb - wComp;
+  const qIn = CP * (T3K - T2Regen);
+  const qOut = CP * (T4 - T1K);
+  const eff = wNet / qIn;
+  const bwr = wComp / wTurb;
+
+  // Ideal (Carnot-like) efficiency for comparison
+  const effIdeal = 1 - 1 / isentropicRatio;
+
+  return { T1K, T2, T2Regen, T3K, T4, T4s, wComp, wTurb, wNet, qIn, qOut, eff, effIdeal, bwr, rp };
+}
+
+function stateAtPhase(phase, u){
+  const c = computeCycle();
+  const R = 0.287;
+  if(phase === 0){
+    // Compressor: 1→2
+    const T = c.T1K + (c.T2 - c.T1K) * u;
+    const P = 0.101 * Math.pow(S.rp, u);
+    return { T, P, label:'COMPRESSOR', color:'#22d3ee' };
+  } else if(phase === 1){
+    // Combustor: 2→3
+    const T = c.T2Regen + (c.T3K - c.T2Regen) * u;
+    const P = S.rp * 0.101;
+    return { T, P, label:'COMBUSTOR', color:'#ef4444' };
+  } else if(phase === 2){
+    // Turbine: 3→4
+    const T = c.T3K + (c.T4 - c.T3K) * u;
+    const P = S.rp * 0.101 * Math.pow(1/S.rp, u);
+    return { T, P, label:'TURBINE', color:'#4ade80' };
+  } else {
+    // Exhaust: 4→1
+    const T = c.T4 + (c.T1K - c.T4) * u;
+    const P = 0.101;
+    return { T, P, label:'EXHAUST', color:'#a78bfa' };
+  }
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawTSDiagram(W, H);
+  drawSchematic(W, H);
+  drawEnergyBars(W, H);
+}
+
+function drawTSDiagram(W, H){
+  const pad = { l:70, r:40, t:50, b:60 };
+  const gw = W * 0.55 - pad.l - pad.r;
+  const gh = H - pad.t - pad.b - 40;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('T-s DIAGRAM (Brayton Cycle)', pad.l, pad.t - 12);
+
+  // axes
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t+gh);
+  ctx.lineTo(pad.l+gw, pad.t+gh);
+  ctx.stroke();
+
+  const sMin = 1.0, sMax = 3.5;
+  const tMin = 250, tMax = 1800;
+  const xOf = s => pad.l + gw * (s - sMin) / (sMax - sMin);
+  const yOf = T => pad.t + gh - gh * (T - tMin) / (tMax - tMin);
+
+  // grid
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  for(let i=0;i<=7;i++){
+    const y = pad.t + gh*i/7;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+gw, y); ctx.stroke();
+  }
+  for(let i=0;i<=5;i++){
+    const x = pad.l + gw*i/5;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t+gh); ctx.stroke();
+  }
+  ctx.restore();
+
+  // labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  for(let i=0;i<=5;i++){
+    ctx.fillText((sMin + i*(sMax-sMin)/5).toFixed(1), pad.l + gw*i/5, pad.t+gh+14);
+  }
+  ctx.fillText('Entropy s (kJ/kg·K)', pad.l + gw/2, pad.t+gh+34);
+  ctx.textAlign = 'right';
+  for(let i=0;i<=7;i++){
+    ctx.fillText((tMin + i*(tMax-tMin)/7).toFixed(0), pad.l-6, pad.t+gh-gh*i/7+3);
+  }
+  ctx.textAlign = 'left';
+  ctx.save();
+  ctx.translate(18, pad.t + gh/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign = 'center';
+  ctx.fillText('Temperature (K)', 0, 0);
+  ctx.restore();
+
+  // Ideal Brayton cycle
+  const c = computeCycle();
+  // Air standard: T1 (K) s1, then isentropic compression (s=const) to T2s
+  // Then isobaric heating (line at P2) to T3
+  // Then isentropic expansion to T4s
+  // Then isobaric cooling back
+  // Since entropy of air: s2 - s1 = cp·ln(T2/T1) - R·ln(P2/P1)
+  // For ideal isentropic: Δs = 0, so T2/T1 = (P2/P1)^(k)
+  // For isobaric heating: Δs = cp·ln(T3/T2)
+
+  const s1 = 1.7; // typical entropy at 288K, 1 atm (arbitrary units)
+  const dS_comp_ideal = 0;
+  const s2s = s1;
+  const dS_heat = CP * Math.log(c.T3K / (c.T1K * Math.pow(S.rp, (GAMMA-1)/GAMMA)));
+  const s3 = s2s + dS_heat;
+  const s4s = s3;
+
+  // Real cycle (with inefficiencies)
+  const dS_comp_real = CP * Math.log(c.T2 / c.T1K) - 0.287 * Math.log(S.rp);
+  const s2 = s1 + dS_comp_real;
+  const dS_heat_real = CP * Math.log(c.T3K / c.T2Regen);
+  const s3_real = s2 + dS_heat_real;
+  const s4_real = s3_real + (0); // assume turbine still isentropic in this simplified view
+
+  // Coordinates for real cycle points
+  const P = [
+    { s: s1, T: c.T1K },
+    { s: s2, T: c.T2 },
+    { s: s3_real, T: c.T3K },
+    { s: s4_real, T: c.T4 }
+  ];
+
+  // Draw real cycle path
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for(let i=0;i<P.length;i++){
+    const x = xOf(P[i].s);
+    const y = yOf(P[i].T);
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  // close cycle
+  ctx.lineTo(xOf(P[0].s), yOf(P[0].T));
+  ctx.stroke();
+
+  // Label processes
+  const midPoints = [
+    { s: (s1+s2)/2, T: (c.T1K+c.T2)/2, label:'COMP', color:'#22d3ee' },
+    { s: (s2+s3_real)/2, T: (c.T2+c.T3K)/2, label:'HEAT IN', color:'#ef4444' },
+    { s: (s3_real+s4_real)/2, T: (c.T3K+c.T4)/2, label:'TURBINE', color:'#4ade80' },
+    { s: (s4_real+s1)/2, T: (c.T4+c.T1K)/2, label:'EXHAUST', color:'#a78bfa' }
+  ];
+
+  for(const mp of midPoints){
+    ctx.fillStyle = mp.color;
+    ctx.font = '9px Consolas, monospace';
+    ctx.fillText(mp.label, xOf(mp.s) + 6, yOf(mp.T));
+  }
+
+  // State numbers
+  for(let i=0;i<P.length;i++){
+    const x = xOf(P[i].s);
+    const y = yOf(P[i].T);
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI*2);
+    ctx.fillStyle = '#fbbf24';
+    ctx.strokeStyle = '#0a0e1a';
+    ctx.lineWidth = 1.5;
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 11px Consolas, monospace';
+    ctx.fillText((i+1).toString(), x+8, y-8);
+  }
+
+  // Ideal cycle outline (dashed) for reference
+  ctx.strokeStyle = 'rgba(100,116,139,0.4)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4,3]);
+  // Ideal points
+  const T2sK = c.T1K * Math.pow(S.rp, (GAMMA-1)/GAMMA);
+  const T4sK = c.T3K / Math.pow(S.rp, (GAMMA-1)/GAMMA);
+  ctx.beginPath();
+  ctx.moveTo(xOf(s1), yOf(c.T1K));
+  ctx.lineTo(xOf(s1), yOf(T2sK));
+  ctx.lineTo(xOf(s3), yOf(c.T3K));
+  ctx.lineTo(xOf(s3), yOf(T4sK));
+  ctx.closePath();
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Current marker
+  const cur = stateAtPhase(S.phase, S.phaseProgress);
+  // Approximate entropy for current position
+  let sCur;
+  if(S.phase === 0) sCur = s1 + (s2 - s1) * S.phaseProgress;
+  else if(S.phase === 1) sCur = s2 + (s3_real - s2) * S.phaseProgress;
+  else if(S.phase === 2) sCur = s3_real + (s4_real - s3_real) * S.phaseProgress;
+  else sCur = s4_real + (s1 - s4_real) * S.phaseProgress;
+
+  ctx.beginPath();
+  ctx.arc(xOf(sCur), yOf(cur.T), 7, 0, Math.PI*2);
+  ctx.fillStyle = cur.color;
+  ctx.shadowColor = cur.color;
+  ctx.shadowBlur = 15;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Legend for ideal vs real
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('—— Real cycle', pad.l + gw - 120, pad.t + 20);
+  ctx.fillStyle = '#64748b';
+  ctx.fillText('--- Ideal cycle', pad.l + gw - 120, pad.t + 34);
+}
+
+function drawSchematic(W, H){
+  const ox = W - 260;
+  const oy = 60;
+  const w = 240;
+  const h = 240;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('GAS TURBINE SCHEMATIC', ox, oy - 6);
+
+  // Compressor
+  const compX = ox + 20;
+  const compY = oy + 80;
+  ctx.fillStyle = '#0c4a6e';
+  ctx.fillRect(compX, compY, 60, 60);
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(compX, compY, 60, 60);
+  ctx.fillStyle = '#67e8f9';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.fillText('COMP', compX + 10, compY + 34);
+
+  // Combustor
+  const combX = ox + 110;
+  const combY = oy + 40;
+  ctx.fillStyle = '#7f1d1d';
+  ctx.fillRect(combX, combY, 80, 60);
+  ctx.strokeStyle = '#ef4444';
+  ctx.strokeRect(combX, combY, 80, 60);
+  ctx.fillStyle = '#fca5a5';
+  ctx.fillText('COMBUSTOR', combX + 5, combY + 34);
+
+  // Turbine
+  const turbX = ox + 110;
+  const turbY = oy + 150;
+  ctx.fillStyle = '#14532d';
+  ctx.fillRect(turbX, turbY, 80, 60);
+  ctx.strokeStyle = '#4ade80';
+  ctx.strokeRect(turbX, turbY, 80, 60);
+  ctx.fillStyle = '#86efac';
+  ctx.fillText('TURBINE', turbX + 10, turbY + 34);
+
+  // Shaft connecting compressor and turbine
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(compX + 30, compY + 60);
+  ctx.lineTo(compX + 30, compY + 90);
+  ctx.lineTo(turbX + 40, turbY + 30);
+  ctx.lineTo(turbX + 40, turbY);
+  ctx.stroke();
+
+  // Flow arrows
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(compX + 60, compY + 20);
+  ctx.lineTo(combX, combY + 20);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(combX + 40, combY + 60);
+  ctx.lineTo(combX + 40, turbY + 20);
+  ctx.lineTo(turbX, turbY + 20);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(turbX + 80, turbY + 40);
+  ctx.lineTo(ox + 220, turbY + 40);
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#67e8f9';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('AIR IN', compX - 30, compY + 40);
+  ctx.fillStyle = '#fca5a5';
+  ctx.fillText('FUEL', combX + 30, combY - 6);
+  ctx.fillStyle = '#86efac';
+  ctx.fillText('EXHAUST', turbX + 70, turbY + 56);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('SHAFT', compX + 50, compY + 80);
+
+  // State temperatures
+  ctx.fillStyle = '#22d3ee';
+  ctx.fillText('T1=' + S.T1 + '°C', compX - 20, compY - 6);
+  ctx.fillStyle = '#67e8f9';
+  ctx.fillText('T2=' + (computeCycle().T2 - 273.15).toFixed(0) + '°C', compX + 70, compY + 6);
+  ctx.fillStyle = '#fca5a5';
+  ctx.fillText('T3=' + S.TIT + '°C', combX + 90, combY + 34);
+  ctx.fillStyle = '#86efac';
+  ctx.fillText('T4=' + (computeCycle().T4 - 273.15).toFixed(0) + '°C', turbX + 90, turbY + 56);
+}
+
+function drawEnergyBars(W, H){
+  const ox = W - 260;
+  const oy = H - 220;
+  const w = 240;
+  const h = 200;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('WORK & HEAT BREAKDOWN', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const c = computeCycle();
+  const maxVal = Math.max(c.qIn, c.wTurb, 1);
+  const scale = (w - 130) / maxVal;
+
+  const drawBar = (y, label, val, color, unit) => {
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '10px Consolas, monospace';
+    ctx.fillText(label, ox + 8, y + 14);
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(ox + 80, y, w - 90, 16);
+    ctx.fillStyle = color;
+    ctx.fillRect(ox + 80, y, val * scale, 16);
+    ctx.fillStyle = color;
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.fillText(val.toFixed(0) + ' ' + unit, ox + 85, y + 27);
+  };
+
+  drawBar(oy + 15, 'Q_in', c.qIn, '#ef4444', 'kJ/kg');
+  drawBar(oy + 50, 'W_turb', c.wTurb, '#4ade80', 'kJ/kg');
+  drawBar(oy + 85, 'W_comp', c.wComp, '#22d3ee', 'kJ/kg');
+  drawBar(oy + 120, 'W_net', c.wNet, '#fbbf24', 'kJ/kg');
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('Back work ratio = ' + (c.bwr*100).toFixed(0) + '%', ox + 8, oy + h - 20);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const c = computeCycle();
+  document.querySelector('#mEff .mvalue').innerHTML = (c.eff*100).toFixed(1) + '<span class="munit">%</span>';
+  document.querySelector('#mWnet .mvalue').innerHTML = c.wNet.toFixed(0) + '<span class="munit">kJ/kg</span>';
+  document.querySelector('#mBwr .mvalue').innerHTML = (c.bwr*100).toFixed(0) + '<span class="munit">%</span>';
+  document.querySelector('#mQin .mvalue').innerHTML = c.qIn.toFixed(0) + '<span class="munit">kJ/kg</span>';
+  document.querySelector('#mT3 .mvalue').innerHTML = S.TIT + '<span class="munit">°C</span>';
+  document.querySelector('#mT4 .mvalue').innerHTML = (c.T4 - 273.15).toFixed(0) + '<span class="munit">°C</span>';
+
+  document.getElementById('mEff').className = 'metric' + (c.eff > 0.35 ? ' ok' : c.eff > 0.2 ? '' : ' warn');
+  document.getElementById('mBwr').className = 'metric' + (c.bwr > 0.75 ? ' bad' : c.bwr > 0.65 ? ' warn' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  if(S.running){
+    S.phaseProgress += 0.008;
+    S.time += 1/60;
+
+    if(S.phaseProgress >= 1){
+      S.phaseProgress = 0;
+      S.phase++;
+      if(S.phase > 3){
+        S.phase = 0;
+        S.cycles++;
+        const c = computeCycle();
+        teach('CYCLE', 'Brayton cycle complete. Thermal efficiency = ' + (c.eff*100).toFixed(1) + '%. Back work ratio = ' + (c.bwr*100).toFixed(0) + '% (compressor consumes this much of turbine output).', 'concept');
+      } else {
+        const names = ['COMPRESSOR', 'COMBUSTOR', 'TURBINE', 'EXHAUST'];
+        const descs = [
+          'Compressor raises air pressure from 1 atm to ' + S.rp + ' atm. Temperature rises from ' + S.T1 + ' to ' + (computeCycle().T2-273.15).toFixed(0) + ' °C. Consumes work — this is the back work.',
+          'Combustor burns fuel in high-pressure air. Temperature rises to ' + S.TIT + ' °C at nearly constant pressure. Adds the heat Q_in.',
+          'Turbine expands hot gas back to atmospheric pressure. Produces work — about 2x the compressor work.',
+          'Exhaust rejects remaining heat to atmosphere. Hot exhaust can drive a bottoming steam cycle (combined cycle → 60% efficiency).'
+        ];
+        teach('PHASE', names[S.phase-1] + ': ' + descs[S.phase-1], 'info');
+      }
+    }
+  }
+
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+rpSlider.addEventListener('input', e => {
+  S.rp = parseFloat(e.target.value);
+  document.getElementById('rpVal').textContent = S.rp.toFixed(1);
+});
+
+titSlider.addEventListener('input', e => {
+  S.TIT = parseFloat(e.target.value);
+  document.getElementById('titVal').textContent = S.TIT + ' °C';
+  if(S.TIT > 1400){
+    teach('HIGH TIT', 'Turbine inlet temperature above 1400 °C requires nickel superalloys with thermal barrier coatings and film cooling. Above 1500 °C, even the best superalloys melt. This is the material limit of gas turbines.', 'warn');
+  }
+});
+
+effCSlider.addEventListener('input', e => {
+  S.effC = parseFloat(e.target.value);
+  document.getElementById('effCVal').textContent = S.effC + '%';
+});
+
+effTSlider.addEventListener('input', e => {
+  S.effT = parseFloat(e.target.value);
+  document.getElementById('effTVal').textContent = S.effT + '%';
+});
+
+t1Slider.addEventListener('input', e => {
+  S.T1 = parseFloat(e.target.value);
+  document.getElementById('t1Val').textContent = S.T1 + ' °C';
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ RUN CYCLE';
+  if(S.running){
+    const c = computeCycle();
+    teach('RUN', 'Brayton cycle running. r_p = ' + S.rp + ', TIT = ' + S.TIT + ' °C. Thermal efficiency = ' + (c.eff*100).toFixed(1) + '%. Note how back work ratio (' + (c.bwr*100).toFixed(0) + '%) limits net output.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  S.phaseProgress += 0.25;
+  if(S.phaseProgress >= 1){
+    S.phaseProgress = 0;
+    S.phase = (S.phase + 1) % 4;
+  }
+  const names = ['COMPRESSOR', 'COMBUSTOR', 'TURBINE', 'EXHAUST'];
+  teach('STEP', 'Advanced to ' + names[S.phase] + ' at ' + (S.phaseProgress*100).toFixed(0) + '%.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.rp = 12; S.TIT = 1200; S.effC = 85; S.effT = 90; S.T1 = 15;
+  S.regenerator = false; S.compFouled = false;
+  S.phase = 0; S.phaseProgress = 0; S.running = false; S.cycles = 0;
+  rpSlider.value = 12; titSlider.value = 1200;
+  effCSlider.value = 85; effTSlider.value = 90;
+  t1Slider.value = 15;
+  document.getElementById('rpVal').textContent = '12';
+  document.getElementById('titVal').textContent = '1200 °C';
+  document.getElementById('effCVal').textContent = '85%';
+  document.getElementById('effTVal').textContent = '90%';
+  document.getElementById('t1Val').textContent = '15 °C';
+  playBtn.textContent = '▶ RUN CYCLE';
+  teach('RESET', 'Cycle reset to default conditions.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('hotDayBtn').addEventListener('click', () => {
+  S.T1 = 40;
+  t1Slider.value = 40;
+  document.getElementById('t1Val').textContent = '40 °C';
+  const c = computeCycle();
+  teach('HOT DAY', 'Hot day fault: inlet air 40 °C. Efficiency drops to ' + (c.eff*100).toFixed(1) + '%, and net power output drops too. This is why power plants lose ~2% output per 10°C ambient temperature rise.', 'warn');
+  toast('☀ Hot inlet');
+});
+
+document.getElementById('compFoulBtn').addEventListener('click', () => {
+  S.compFouled = true;
+  const c = computeCycle();
+  teach('FOULED COMP', 'Compressor fouling: efficiency drops from 85% to 65% (dirt on blades). Net work drops from ' + c.wNet.toFixed(0) + ' kJ/kg. Real operators wash compressor blades periodically to recover performance.', 'warn');
+});
+
+document.getElementById('regenBtn').addEventListener('click', () => {
+  S.regenerator = !S.regenerator;
+  if(S.regenerator){
+    const c = computeCycle();
+    teach('REGENERATOR', 'Regenerator added — exhaust gas preheats compressor exit. Efficiency improves to ' + (c.eff*100).toFixed(1) + '%. Regenerator is effective only when exhaust (T4) is hotter than compressor exit (T2).', 'ok');
+  } else {
+    teach('NO REGEN', 'Regenerator removed. Back to simple cycle.', 'info');
+  }
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'powergen'){
+      S.rp = 15; S.TIT = 1300; S.effC = 87; S.effT = 90; S.T1 = 15;
+      rpSlider.value = 15; titSlider.value = 1300;
+      effCSlider.value = 87; effTSlider.value = 90; t1Slider.value = 15;
+      teach('POWER GEN', 'Gas turbine power generation: r_p = 15, TIT = 1300 °C. Ideal for peaking plants — quick startup, but lower efficiency than combined cycle. Simple cycle η ≈ 40%.', 'concept');
+    } else if(p === 'jet'){
+      S.rp = 30; S.TIT = 1500; S.effC = 90; S.effT = 92; S.T1 = 15;
+      rpSlider.value = 30; titSlider.value = 1500;
+      effCSlider.value = 90; effTSlider.value = 92;
+      teach('JET ENGINE', 'Jet engine core: r_p = 30, TIT = 1500 °C. High pressure ratio and temperature give high thermal efficiency, but thrust (not thermal efficiency) is what matters — most energy goes out the back as kinetic energy.', 'concept');
+    } else {
+      S.rp = 4; S.TIT = 950; S.effC = 78; S.effT = 85; S.T1 = 15;
+      rpSlider.value = 4; titSlider.value = 950;
+      effCSlider.value = 78; effTSlider.value = 85;
+      teach('MICRO TURBINE', 'Micro turbine: r_p = 4, TIT = 950 °C. Lower pressure ratio because single-stage compressor/turbine. Used for distributed power (100 kW scale).', 'concept');
+    }
+    document.getElementById('rpVal').textContent = S.rp.toFixed(1);
+    document.getElementById('titVal').textContent = S.TIT + ' °C';
+    document.getElementById('effCVal').textContent = S.effC + '%';
+    document.getElementById('effTVal').textContent = S.effT + '%';
+    document.getElementById('t1Val').textContent = S.T1 + ' °C';
+    S.regenerator = false;
+    S.compFouled = false;
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to the Brayton Cycle — the thermodynamic cycle behind jet engines and gas turbine power plants. It is an open cycle using air as the working fluid.', 'concept');
+  teach('FOUR-PROCESS', 'Four processes: compress air (isnetropic), burn fuel (isobaric heating), expand through turbine (isentropic), exhaust heat. Unlike Rankine, no phase change — stays gas throughout.', 'concept');
+  teach('HOWTO', 'Adjust pressure ratio and turbine inlet temperature. Press RUN CYCLE to see the T-s diagram and plant schematic animate. Note how back work ratio limits net output.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

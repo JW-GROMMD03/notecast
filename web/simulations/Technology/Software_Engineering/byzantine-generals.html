@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Byzantine Generals Problem — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(239,68,68,0.15); color: #fca5a5; border-color: #ef4444; }
+  .teaching-toggle:hover { background: rgba(239,68,68,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #fca5a5;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #ef4444; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #ef4444; color: #fff; border-color: #ef4444; }
+  .btn.primary:hover { background: #dc2626; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #ef4444; color: #fff; border-color: #ef4444; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(239,68,68,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .battlefield-wrap {
+    flex: 1; background: #070a14; border: 2px solid #ef4444; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(239,68,68,0.15); min-height: 0;
+  }
+  .bf-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #fca5a5; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #bfCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .round-strip {
+    background: #070a14; border: 2px solid #8b5cf6; border-radius: 12px;
+    padding: 10px 14px; display: flex; gap: 10px; align-items: center;
+    flex-shrink: 0; overflow-x: auto; min-height: 80px;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15);
+  }
+  .round-chip {
+    padding: 8px 14px; border-radius: 6px; font-family: monospace;
+    font-size: 0.65rem; font-weight: 800; background: #1e293b; color: #cbd5e1;
+    border: 2px solid #334155; flex-shrink: 0;
+    transition: all 0.3s;
+  }
+  .round-chip.active {
+    border-color: #fcd34d;
+    background: rgba(245,158,11,0.2);
+    color: #fcd34d;
+    box-shadow: 0 0 15px rgba(245,158,11,0.6);
+  }
+  .round-chip.done {
+    border-color: #10b981;
+    background: rgba(16,185,129,0.15);
+    color: #86efac;
+    opacity: 0.7;
+  }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #fca5a5; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #ef4444;
+    background: rgba(239,68,68,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(239,68,68,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(239,68,68,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #fca5a5;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #ef4444; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(239,68,68,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #ef4444; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #fca5a5; z-index: 12;
+    box-shadow: 0 0 20px rgba(239,68,68,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.ok { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.warn { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>BYZANTINE GENERALS</h1>
+    <span class="sub">CONSENSUS · TRAITORS · 3F+1 REQUIREMENT</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Army Size</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.7;">
+        <div>Total generals: <b style="color:#67e8f9;">7</b></div>
+        <div>Traitors: <b style="color:#fca5a5;" id="traitCount">2</b></div>
+        <div>Loyal: <b style="color:#86efac;" id="loyalCount">5</b></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Traitors</h3>
+      <div class="slider-row"><span>Count (f)</span><span class="value" id="fVal">2</span></div>
+      <input type="range" id="fRange" min="0" max="3" value="2">
+      <div style="font-size:0.6rem; color:#64748b; line-height:1.5;">
+        To tolerate f traitors, need ≥ 3f + 1 generals total.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Protocol</h3>
+      <button class="btn primary" id="btnRun">▶ Run Consensus</button>
+      <button class="btn success" id="btnSafe">✅ Safe Config (f=2, n=7)</button>
+      <button class="btn danger" id="btnUnsafe">❌ Unsafe Config (f=2, n=5)</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:50%;margin-right:6px;"></span>Loyal general</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:50%;margin-right:6px;"></span>Traitor</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#fcd34d;border-radius:50%;margin-right:6px;"></span>Commander</div>
+        <div style="margin-top:4px;">All loyal must agree on same plan</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">ALL LOYAL GENERALS MUST AGREE — EVEN WITH TRAITORS LYING</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="battlefield-wrap">
+          <div class="bf-title">
+            <span>⚔️ BATTLEFIELD</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="bfHint">— click RUN CONSENSUS —</span>
+          </div>
+          <canvas id="bfCanvas"></canvas>
+        </div>
+        <div class="round-strip" id="roundStrip">
+          <span style="font-family:monospace; font-size:0.55rem; color:#64748b; font-weight:800; letter-spacing:1.5px; padding-right:10px; border-right:1px solid #1e293b;">ROUNDS</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Generals</div>
+        <div class="metric-value" id="mN">7</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Traitors</div>
+        <div class="metric-value bad" id="mF">2</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">3f+1 Req</div>
+        <div class="metric-value good" id="mReq">7</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Consensus</div>
+        <div class="metric-value" id="mConsensus">—</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Byzantine Fault Tolerance</div>
+      <div class="info-row"><span class="lbl">Traitors</span><span class="val bad">Arbitrary lies</span></div>
+      <div class="info-row"><span class="lbl">Requirement</span><span class="val">n ≥ 3f + 1</span></div>
+      <div class="info-row"><span class="lbl">Rounds</span><span class="val">f + 1</span></div>
+      <div class="info-row"><span class="lbl">Messages</span><span class="val warn">O(n^f) exponential</span></div>
+      <div class="info-row"><span class="lbl">Original</span><span class="val">Lamport, Shostak, Pease 1982</span></div>
+      <div class="info-row"><span class="lbl">Practical BFT</span><span class="val good">PBFT (Castro-Liskov 1999)</span></div>
+      <div class="info-row"><span class="lbl">Blockchains</span><span class="val">Bitcoin, Ethereum, Tendermint</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  totalGenerals: 7,
+  traitors: 2,
+  commander: 0,
+  generals: [],
+  rounds: [],
+  currentRound: 0,
+  consensus: null,
+  running: false,
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  bfCanvas: document.getElementById('bfCanvas'),
+  bfHint: document.getElementById('bfHint'),
+  roundStrip: document.getElementById('roundStrip'),
+  statusBanner: document.getElementById('statusBanner'),
+  fRange: document.getElementById('fRange'),
+  fVal: document.getElementById('fVal'),
+  btnRun: document.getElementById('btnRun'),
+  btnSafe: document.getElementById('btnSafe'),
+  btnUnsafe: document.getElementById('btnUnsafe'),
+  btnReset: document.getElementById('btnReset'),
+  traitCount: document.getElementById('traitCount'),
+  loyalCount: document.getElementById('loyalCount'),
+  mN: document.getElementById('mN'),
+  mF: document.getElementById('mF'),
+  mReq: document.getElementById('mReq'),
+  mConsensus: document.getElementById('mConsensus'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining the Byzantine Generals problem.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   SETUP
+   ============================================================ */
+function setupArmy() {
+  STATE.traitors = parseInt(DOM.fRange.value);
+  DOM.fVal.textContent = STATE.traitors;
+  STATE.totalGenerals = 7;
+  STATE.commander = 0;
+
+  // Determine traitors
+  const indices = [1, 2, 3, 4, 5, 6];
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  const traitorIndices = new Set(indices.slice(0, STATE.traitors));
+
+  STATE.generals = [];
+  const centerX = 0.5, centerY = 0.5;
+  const radius = 0.3;
+
+  for (let i = 0; i < STATE.totalGenerals; i++) {
+    const angle = (i / STATE.totalGenerals) * Math.PI * 2 - Math.PI / 2;
+    STATE.generals.push({
+      id: i,
+      name: i === 0 ? 'C' : `G${i}`,
+      isTraitor: traitorIndices.has(i),
+      isCommander: i === 0,
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius,
+      plan: null,      // 'attack' | 'retreat'
+      received: {}     // messages received from others
+    });
+  }
+
+  STATE.rounds = [];
+  STATE.currentRound = 0;
+  STATE.consensus = null;
+
+  updateStats();
+  renderRounds();
+  draw();
+}
+
+function updateStats() {
+  DOM.traitCount.textContent = STATE.traitors;
+  DOM.loyalCount.textContent = STATE.totalGenerals - STATE.traitors;
+  DOM.mN.textContent = STATE.totalGenerals;
+  DOM.mF.textContent = STATE.traitors;
+  DOM.mReq.textContent = 3 * STATE.traitors + 1;
+}
+
+/* ============================================================
+   CONSENSUS PROTOCOL (simplified)
+   ============================================================ */
+async function runConsensus() {
+  if (STATE.running) return;
+  STATE.running = true;
+  STATE.rounds = [];
+
+  const n = STATE.totalGenerals;
+  const f = STATE.traitors;
+  const req = 3 * f + 1;
+
+  showStatus('▶ Starting consensus protocol');
+  teach('PROTOCOL START',
+    `Beginning Byzantine consensus. ${n} generals, ${f} traitors. Requirement for consensus: n ≥ 3f + 1 = ${req}. ${n >= req ? '✅ Requirement satisfied.' : '❌ Requirement NOT satisfied — consensus will FAIL.'}`,
+    n >= req ? 'ok' : 'error'
+  );
+
+  await sleep(800);
+
+  // Commander's true plan
+  const trueplan = Math.random() < 0.5 ? 'attack' : 'retreat';
+  teach('COMMANDER\'S ORDER',
+    `Commander's true order: "${trueplan}". This is what loyal generals should agree on. Traitors will send contradictory messages to different generals.`,
+    'cyan'
+  );
+
+  // Round 1: commander sends to all
+  STATE.currentRound = 1;
+  STATE.rounds.push({ id: 1, name: 'Commander → Lieutenants', status: 'active' });
+  renderRounds();
+
+  STATE.generals[0].plan = trueplan;
+
+  // Commander sends (loyal commanders send true plan; traitor commanders send different to different)
+  for (let i = 1; i < n; i++) {
+    const g = STATE.generals[i];
+    // If commander is loyal: all get trueplan
+    // If commander is traitor: he sends different plans to different generals
+    let sent;
+    if (STATE.generals[0].isTraitor) {
+      // Alternate messages
+      sent = i % 2 === 0 ? 'attack' : 'retreat';
+    } else {
+      sent = trueplan;
+    }
+    g.received['C'] = sent;
+    // Record in visual
+    g._lastMsg = sent;
+  }
+
+  draw();
+  await sleep(1500);
+
+  teach('ROUND 1',
+    `Commander sent orders to all ${n - 1} lieutenants. ${STATE.generals[0].isTraitor ? 'The COMMANDER is a traitor, so different generals received different orders!' : 'The commander is loyal, so everyone got the same order: ' + trueplan + '.'}`,
+    STATE.generals[0].isTraitor ? 'warn' : 'ok'
+  );
+
+  STATE.rounds[0].status = 'done';
+  renderRounds();
+  await sleep(800);
+
+  // Round 2: lieutenants exchange messages
+  STATE.currentRound = 2;
+  STATE.rounds.push({ id: 2, name: 'Lieutenants ↔ Lieutenants', status: 'active' });
+  renderRounds();
+
+  for (let i = 1; i < n; i++) {
+    for (let j = 1; j < n; j++) {
+      if (i === j) continue;
+      // i sends to j what he received from commander (or a lie if traitor)
+      let msg;
+      const sender = STATE.generals[i];
+      if (sender.isTraitor) {
+        msg = Math.random() < 0.5 ? 'attack' : 'retreat';
+      } else {
+        msg = sender.received['C'];  // honest relay
+      }
+      STATE.generals[j].received[sender.name] = msg;
+    }
+  }
+
+  // Animate messages
+  for (let i = 1; i < n; i++) {
+    STATE.generals[i]._broadcasting = true;
+  }
+  draw();
+  await sleep(2000);
+
+  for (let i = 1; i < n; i++) {
+    STATE.generals[i]._broadcasting = false;
+  }
+
+  teach('ROUND 2',
+    `Lieutenants exchanged the orders they received in round 1. Each lieutenant now has a set of received values: his own, the commander's, and every other lieutenant's. Traitors sent conflicting values to different peers to confuse them.`,
+    'purple'
+  );
+
+  STATE.rounds[1].status = 'done';
+  renderRounds();
+  await sleep(800);
+
+  // Round 3+: for higher f, more rounds needed. Here we just do majority vote.
+  STATE.currentRound = 3;
+  STATE.rounds.push({ id: 3, name: 'Majority Vote', status: 'active' });
+  renderRounds();
+
+  // Each loyal general decides by majority of values received
+  for (let i = 1; i < n; i++) {
+    const g = STATE.generals[i];
+    if (g.isTraitor) {
+      g.plan = Math.random() < 0.5 ? 'attack' : 'retreat';
+      continue;
+    }
+    const values = Object.values(g.received);
+    const attacks = values.filter(v => v === 'attack').length;
+    const retreats = values.filter(v => v === 'retreat').length;
+    g.plan = attacks > retreats ? 'attack' : 'retreat';
+  }
+
+  draw();
+  await sleep(1500);
+
+  // Check consensus among loyal generals
+  const loyalPlans = STATE.generals.filter(g => !g.isTraitor).map(g => g.plan);
+  const allSame = loyalPlans.every(p => p === loyalPlans[0]);
+
+  if (allSame && n >= req) {
+    STATE.consensus = loyalPlans[0];
+    showStatus(`✅ CONSENSUS: All loyal generals agree — ${STATE.consensus.toUpperCase()}`, 'ok');
+    teach('CONSENSUS REACHED',
+      `All loyal generals agree: "${STATE.consensus}". With n=${n} and f=${f}, we satisfy n ≥ 3f+1 = ${req}, so Byzantine consensus is achievable. Even though ${f} general${f === 1 ? '' : 's'} lied, the honest majority correctly filtered out the lies.`,
+      'ok'
+    );
+  } else if (n < req) {
+    STATE.consensus = 'NONE';
+    showStatus(`❌ NO CONSENSUS — 3f+1 requirement violated`, 'warn');
+    teach('CONSENSUS FAILED (TOO FEW GENERALS)',
+      `With n=${n} and f=${f}, the requirement n ≥ 3f+1 = ${req} is violated. Byzantine consensus is mathematically IMPOSSIBLE — the traitors can confuse the loyal generals into disagreeing. This is the fundamental limit of Byzantine fault tolerance: no algorithm can solve it below 3f+1.`,
+      'error'
+    );
+  } else {
+    STATE.consensus = 'SPLIT';
+    showStatus(`❌ NO CONSENSUS — loyal generals split`, 'warn');
+    teach('CONSENSUS FAILED',
+      `Loyal generals did NOT agree: ${loyalPlans.join(', ')}. Even with n≥3f+1 the simplified protocol here can fail — real Byzantine protocols need f+1 rounds and are more sophisticated. This demonstrates how easily coordination breaks in the presence of lying peers.`,
+      'error'
+    );
+  }
+
+  STATE.rounds[2].status = 'done';
+  renderRounds();
+  DOM.mConsensus.textContent = STATE.consensus;
+  DOM.mConsensus.className = 'metric-value ' + (STATE.consensus === true || STATE.consensus === 'attack' || STATE.consensus === 'retreat' ? 'good' : 'bad');
+
+  STATE.running = false;
+  draw();
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.bfCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function draw() {
+  const canvas = DOM.bfCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (STATE.generals.length === 0) return;
+
+  const n = STATE.generals.length;
+
+  // Draw network edges between all generals (light)
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const g1 = STATE.generals[i];
+      const g2 = STATE.generals[j];
+      ctx.strokeStyle = 'rgba(71,85,105,0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(g1.x * W, g1.y * H);
+      ctx.lineTo(g2.x * W, g2.y * H);
+      ctx.stroke();
+    }
+  }
+
+  // Draw message flow (round 1: commander → lieutenants)
+  if (STATE.currentRound >= 1) {
+    for (let i = 1; i < n; i++) {
+      const c = STATE.generals[0];
+      const g = STATE.generals[i];
+      if (g.received['C']) {
+        const color = g.received['C'] === 'attack' ? '#ef4444' : '#3b82f6';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(c.x * W, c.y * H);
+        ctx.lineTo(g.x * W, g.y * H);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  // Draw broadcasting lines in round 2
+  if (STATE.currentRound === 2) {
+    for (let i = 1; i < n; i++) {
+      const g = STATE.generals[i];
+      if (!g._broadcasting) continue;
+      for (let j = 1; j < n; j++) {
+        if (i === j) continue;
+        const g2 = STATE.generals[j];
+        ctx.strokeStyle = 'rgba(168,85,247,0.2)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(g.x * W, g.y * H);
+        ctx.lineTo(g2.x * W, g2.y * H);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // Draw generals
+  for (const g of STATE.generals) {
+    const x = g.x * W;
+    const y = g.y * H;
+    const r = g.isCommander ? 34 : 28;
+
+    // Glow for traitor
+    if (g.isTraitor) {
+      ctx.shadowColor = '#ef4444';
+      ctx.shadowBlur = 20;
+    } else if (g.isCommander) {
+      ctx.shadowColor = '#fcd34d';
+      ctx.shadowBlur = 20;
+    }
+
+    // Circle
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = g.isTraitor ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.15)';
+    ctx.fill();
+    ctx.strokeStyle = g.isTraitor ? '#ef4444' : (g.isCommander ? '#fcd34d' : '#10b981');
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Icon
+    ctx.font = `${g.isCommander ? 22 : 18}px monospace`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const icon = g.isCommander ? '👑' : (g.isTraitor ? '😈' : '⚔️');
+    ctx.fillText(icon, x, y);
+
+    // Label
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = g.isTraitor ? '#fca5a5' : (g.isCommander ? '#fcd34d' : '#86efac');
+    ctx.textBaseline = 'top';
+    ctx.fillText(g.name, x, y + r + 4);
+
+    // Plan badge
+    if (g.plan) {
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = g.plan === 'attack' ? '#fca5a5' : '#93c5fd';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(g.plan.toUpperCase(), x, y - r - 4);
+    }
+
+    // Received count
+    const recvCount = Object.keys(g.received).length;
+    if (recvCount > 0) {
+      ctx.font = '8px monospace';
+      ctx.fillStyle = '#64748b';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'right';
+      ctx.fillText(`rx:${recvCount}`, x - r - 4, y);
+      ctx.textAlign = 'center';
+    }
+  }
+
+  DOM.bfHint.textContent = `— ${STATE.generals.length} generals · ${STATE.traitors} traitor${STATE.traitors === 1 ? '' : 's'} —`;
+}
+
+function animate() {
+  draw();
+  requestAnimationFrame(animate);
+}
+
+function renderRounds() {
+  DOM.roundStrip.innerHTML = '<span style="font-family:monospace; font-size:0.55rem; color:#64748b; font-weight:800; letter-spacing:1.5px; padding-right:10px; border-right:1px solid #1e293b;">ROUNDS</span>';
+
+  for (const r of STATE.rounds) {
+    const el = document.createElement('div');
+    el.className = 'round-chip ' + r.status;
+    el.textContent = `R${r.id}: ${r.name}`;
+    DOM.roundStrip.appendChild(el);
+  }
+
+  if (STATE.rounds.length === 0) {
+    const placeholder = document.createElement('span');
+    placeholder.style.cssText = 'color:#475569; font-family:monospace; font-size:0.6rem;';
+    placeholder.textContent = '— run consensus to see rounds —';
+    DOM.roundStrip.appendChild(placeholder);
+  }
+}
+
+/* ============================================================
+   EVENT HANDLERS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.fRange.addEventListener('input', e => {
+  DOM.fVal.textContent = e.target.value;
+  setupArmy();
+});
+
+DOM.btnRun.addEventListener('click', runConsensus);
+DOM.btnSafe.addEventListener('click', () => {
+  DOM.fRange.value = 2;
+  DOM.fVal.textContent = 2;
+  setupArmy();
+  showStatus('✅ Configured: n=7, f=2 (safe)');
+  teach('SAFE CONFIG',
+    `Safe configuration: 7 generals, 2 traitors. Check: 3·2+1 = 7. We have exactly 7 generals — the minimum for tolerating 2 Byzantine faults. Consensus is achievable.`,
+    'ok'
+  );
+});
+DOM.btnUnsafe.addEventListener('click', () => {
+  STATE.totalGenerals = 5;
+  DOM.fRange.value = 2;
+  DOM.fVal.textContent = 2;
+  // Reconfigure with 5 generals
+  STATE.traitors = 2;
+  const traitorIndices = new Set([1, 3]);
+  STATE.generals = [];
+  for (let i = 0; i < 5; i++) {
+    const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+    STATE.generals.push({
+      id: i,
+      name: i === 0 ? 'C' : `G${i}`,
+      isTraitor: traitorIndices.has(i),
+      isCommander: i === 0,
+      x: 0.5 + Math.cos(angle) * 0.3,
+      y: 0.5 + Math.sin(angle) * 0.3,
+      plan: null,
+      received: {}
+    });
+  }
+  STATE.rounds = [];
+  STATE.currentRound = 0;
+  STATE.consensus = null;
+  updateStats();
+  renderRounds();
+  draw();
+  showStatus('❌ Configured: n=5, f=2 (unsafe)', 'warn');
+  teach('UNSAFE CONFIG',
+    `Unsafe configuration: 5 generals, 2 traitors. Check: 3·2+1 = 7. We only have 5 generals — BELOW the minimum. Byzantine consensus is mathematically IMPOSSIBLE. The traitors can consistently confuse the 3 loyal generals into disagreeing. No algorithm can save this — it's an information-theoretic limit.`,
+    'error'
+  );
+});
+
+DOM.btnReset.addEventListener('click', () => {
+  STATE.totalGenerals = 7;
+  DOM.fRange.value = 2;
+  DOM.fVal.textContent = 2;
+  setupArmy();
+  showStatus('⟲ Reset');
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+setupArmy();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to the Byzantine Generals Problem. Several generals surround an enemy city. They must all agree on a coordinated plan: attack or retreat. They communicate only by messenger. Some generals may be TRAITORS who send conflicting messages to different generals. How do the loyal generals agree?`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE 3F+1 LIMIT',
+      `Leslie Lamport proved (1982) that with f traitors, consensus is only possible if there are at least 3f+1 generals total. So 1 traitor needs ≥ 4 generals; 2 traitors need ≥ 7. Why? Consider 3 generals with 1 traitor — the two loyal ones can't distinguish the traitor from each other. You need enough honest voices to outvote the lies.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('WHY IT MATTERS',
+      `The Byzantine Generals Problem is the theoretical foundation of blockchain consensus. Bitcoin's proof-of-work, Ethereum's PBFT, Cosmos' Tendermint — they all solve some variant of this problem. In practical BFT protocols like PBFT, message complexity is O(n²), feasible for dozens of nodes but not thousands. Blockchains use economic incentives to scale to thousands.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click RUN CONSENSUS with f=2 (safe) and watch the rounds: commander → lieutenants, then lieutenant ↔ lieutenant, then majority vote. Now click UNSAFE CONFIG to set f=2, n=5 and run again. The loyal generals FAIL to reach consensus — that's the 3f+1 limit in action.`,
+      'warn'
+    );
+  }, 13000);
+  showToast('👋 Run both configs to see the 3f+1 limit', 4500);
+}, 500);
+</script>
+</body>
+</html>

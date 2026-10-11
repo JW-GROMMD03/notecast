@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event-Driven Architecture Message Queues — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f97316, #f59e0b, #facc15);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(249,115,22,0.15);
+    color: #fdba74;
+    border-color: #f97316;
+  }
+  .teaching-toggle:hover { background: rgba(249,115,22,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f97316; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f97316; color: #fff; border-color: #f97316; }
+  .btn.primary:hover { background: #ea580c; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fdba74; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f97316; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(249,115,22,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* TOPOLOGY: producer → broker → consumers */
+  .topology-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #f97316;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(249,115,22,0.15);
+    min-height: 0;
+  }
+  .topology-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .topology-canvas {
+    flex: 1;
+    position: relative;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 0;
+  }
+  #queueCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* BROKER + QUEUE VIEW */
+  .broker-wrap {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .broker-box {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #facc15;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 20px rgba(250,204,21,0.15);
+  }
+  .broker-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #fde047;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .queue-visual {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    min-height: 32px;
+    padding: 4px;
+    background: #02040a;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    overflow-x: auto;
+  }
+  .queue-slot {
+    min-width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    background: #1e293b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.5rem;
+    font-family: monospace;
+    font-weight: 900;
+    color: #64748b;
+    transition: all 0.3s;
+    flex-shrink: 0;
+  }
+  .queue-slot.filled {
+    background: linear-gradient(145deg, #ea580c, #7c2d12);
+    color: #fff;
+    box-shadow: 0 0 8px rgba(249,115,22,0.6);
+    animation: slotIn 0.3s ease;
+  }
+  @keyframes slotIn {
+    from { transform: scale(0.5); }
+    to { transform: scale(1); }
+  }
+  .queue-slot.consumed {
+    background: #065f46;
+    color: #86efac;
+  }
+
+  .broker-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 8px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .broker-stat {
+    background: rgba(30,41,59,0.4);
+    border-radius: 4px;
+    padding: 4px 6px;
+    text-align: center;
+  }
+  .broker-stat .lbl {
+    color: #64748b;
+    font-size: 0.5rem;
+    letter-spacing: 0.3px;
+    display: block;
+  }
+  .broker-stat .val {
+    color: #fcd34d;
+    font-weight: 900;
+    display: block;
+    font-size: 0.7rem;
+    margin-top: 1px;
+  }
+
+  /* CONSUMER PANEL */
+  .consumers-wrap {
+    background: #070a14;
+    border: 2px solid #10b981;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+    box-shadow: 0 0 20px rgba(16,185,129,0.15);
+  }
+  .consumer-box {
+    flex: 1;
+    background: #02040a;
+    border: 1.5px solid #334155;
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: all 0.3s;
+    min-width: 0;
+  }
+  .consumer-box.busy {
+    border-color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.5);
+  }
+  .consumer-box.slow {
+    border-color: #f59e0b;
+  }
+  .consumer-box.dead {
+    border-color: #ef4444;
+    opacity: 0.5;
+  }
+  .consumer-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .consumer-name {
+    font-family: monospace;
+    font-size: 0.62rem;
+    font-weight: 800;
+    color: #6ee7b7;
+    letter-spacing: 0.5px;
+  }
+  .consumer-box.slow .consumer-name { color: #fcd34d; }
+  .consumer-box.dead .consumer-name { color: #fca5a5; }
+  .consumer-status {
+    font-size: 0.5rem;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgba(100,116,139,0.2);
+    color: #94a3b8;
+    letter-spacing: 0.5px;
+    font-family: monospace;
+  }
+  .consumer-status.busy { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+  .consumer-status.slow { background: rgba(245,158,11,0.2); color: #fcd34d; }
+  .consumer-status.dead { background: rgba(239,68,68,0.2); color: #fca5a5; }
+  .consumer-info {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-family: monospace;
+    letter-spacing: 0.3px;
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(249,115,22,0.06);
+    border: 1px solid rgba(249,115,22,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fdba74;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f97316;
+    background: rgba(249,115,22,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(249,115,22,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(249,115,22,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f97316;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(249,115,22,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #f97316;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fdba74;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(249,115,22,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.danger { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>EVENT-DRIVEN MESSAGE QUEUES</h1>
+    <span class="sub">PRODUCER · BROKER · QUEUE · CONSUMER · BACKPRESSURE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Produce Events</h3>
+      <button class="btn primary" id="btnProduce1">📤 Produce 1 Event</button>
+      <button class="btn" id="btnProduce10">📤 Produce 10 Events</button>
+      <button class="btn warn" id="btnBurst">⚡ Burst (50 events)</button>
+    </div>
+
+    <div class="panel">
+      <h3>Consumer Faults</h3>
+      <button class="btn danger" id="btnKillConsumer">💀 Kill a Consumer</button>
+      <button class="btn warn" id="btnSlowConsumer">🐌 Make Consumer Slow</button>
+      <button class="btn success" id="btnHealConsumers">🔄 Heal All Consumers</button>
+    </div>
+
+    <div class="panel">
+      <h3>Queue Actions</h3>
+      <button class="btn" id="btnDrain">⏬ Drain Queue</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Queue Config</h3>
+      <div class="slider-row"><span>Queue capacity</span><span class="value" id="capVal">20</span></div>
+      <input type="range" id="capRange" min="5" max="50" value="20">
+      <div class="slider-row"><span>Auto-produce rate</span><span class="value" id="rateVal">2/s</span></div>
+      <input type="range" id="rateRange" min="0" max="20" value="2">
+      <div class="slider-row"><span>Consumer speed</span><span class="value" id="speedVal">1/s</span></div>
+      <input type="range" id="speedRange" min="1" max="10" value="1">
+    </div>
+
+    <div class="panel">
+      <h3>Semantics</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.7rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="sem" value="atleast" checked style="accent-color:#f97316;">
+          At-least-once
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="sem" value="atmost" style="accent-color:#f97316;">
+          At-most-once
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="sem" value="exactly" style="accent-color:#f97316;">
+          Exactly-once
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ea580c;border-radius:3px;margin-right:6px;"></span>Message in queue</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#065f46;border-radius:3px;margin-right:6px;"></span>Message consumed</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:3px;margin-right:6px;"></span>Failed / DLQ</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">DECOUPLED PRODUCERS AND CONSUMERS · ASYNC MESSAGING</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="topology-wrap">
+          <div class="topology-title">
+            <span>🌐 EVENT FLOW</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="topoHint">— producer → broker → consumers —</span>
+          </div>
+          <div class="topology-canvas">
+            <canvas id="queueCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="broker-wrap">
+          <div class="broker-box">
+            <div class="broker-title">
+              <span>📬 MESSAGE QUEUE</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="qLenHint">0 / 20</span>
+            </div>
+            <div class="queue-visual" id="queueVisual"></div>
+            <div class="broker-metrics">
+              <div class="broker-stat"><span class="lbl">PRODUCED</span><span class="val" id="statProduced">0</span></div>
+              <div class="broker-stat"><span class="lbl">CONSUMED</span><span class="val" id="statConsumed">0</span></div>
+              <div class="broker-stat"><span class="lbl">DROPPED</span><span class="val" id="statDropped">0</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="consumers-wrap" id="consumersWrap">
+          <!-- Consumer boxes injected by JS -->
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Queue Depth</div>
+        <div class="metric-value warn" id="mDepth">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Throughput</div>
+        <div class="metric-value good" id="mThroughput">0/s</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Lag</div>
+        <div class="metric-value" id="mLag">0 ms</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">DLQ</div>
+        <div class="metric-value bad" id="mDlq">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Messaging Patterns</div>
+      <div class="info-row"><span class="lbl">Producer</span><span class="val good">Publishes events</span></div>
+      <div class="info-row"><span class="lbl">Broker</span><span class="val">Kafka, RabbitMQ, SQS</span></div>
+      <div class="info-row"><span class="lbl">Consumer</span><span class="val">Processes events</span></div>
+      <div class="info-row"><span class="lbl">At-least-once</span><span class="val warn">Retry → dupes</span></div>
+      <div class="info-row"><span class="lbl">At-most-once</span><span class="val warn">Fire-and-forget</span></div>
+      <div class="info-row"><span class="lbl">Exactly-once</span><span class="val bad">Hard to guarantee</span></div>
+      <div class="info-row"><span class="lbl">Backpressure</span><span class="val">Queue fills up</span></div>
+      <div class="info-row"><span class="lbl">DLQ</span><span class="val">Dead-letter queue</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  queueCapacity: 20,
+  queue: [],       // messages
+  nextMessageId: 1,
+  consumers: [],
+  producerRate: 2,
+  consumerSpeed: 1,
+  semantics: 'atleast',
+  // Stats
+  produced: 0,
+  consumed: 0,
+  dropped: 0,
+  failedConsumed: 0,
+  // Animation
+  particles: [],
+  raf: null,
+  // Timers
+  produceTimer: null,
+  consumeTimer: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  capacityWarned: false
+};
+
+const DOM = {
+  queueCanvas: document.getElementById('queueCanvas'),
+  topoHint: document.getElementById('topoHint'),
+  queueVisual: document.getElementById('queueVisual'),
+  qLenHint: document.getElementById('qLenHint'),
+  statProduced: document.getElementById('statProduced'),
+  statConsumed: document.getElementById('statConsumed'),
+  statDropped: document.getElementById('statDropped'),
+  consumersWrap: document.getElementById('consumersWrap'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Controls
+  btnProduce1: document.getElementById('btnProduce1'),
+  btnProduce10: document.getElementById('btnProduce10'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnKillConsumer: document.getElementById('btnKillConsumer'),
+  btnSlowConsumer: document.getElementById('btnSlowConsumer'),
+  btnHealConsumers: document.getElementById('btnHealConsumers'),
+  btnDrain: document.getElementById('btnDrain'),
+  btnReset: document.getElementById('btnReset'),
+  capRange: document.getElementById('capRange'),
+  capVal: document.getElementById('capVal'),
+  rateRange: document.getElementById('rateRange'),
+  rateVal: document.getElementById('rateVal'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  // Metrics
+  mDepth: document.getElementById('mDepth'),
+  mThroughput: document.getElementById('mThroughput'),
+  mLag: document.getElementById('mLag'),
+  mDlq: document.getElementById('mDlq'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2400);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining event driven message queues.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   CONSUMERS
+   ============================================================ */
+function createConsumers() {
+  STATE.consumers = [
+    { id: 'C1', name: 'Consumer 1', state: 'idle', speed: 1, handled: 0 },
+    { id: 'C2', name: 'Consumer 2', state: 'idle', speed: 1, handled: 0 },
+    { id: 'C3', name: 'Consumer 3', state: 'idle', speed: 1, handled: 0 }
+  ];
+  renderConsumers();
+}
+
+function renderConsumers() {
+  DOM.consumersWrap.innerHTML = '';
+  for (const c of STATE.consumers) {
+    const box = document.createElement('div');
+    box.className = `consumer-box ${c.state === 'busy' ? 'busy' : c.state === 'slow' ? 'slow' : c.state === 'dead' ? 'dead' : ''}`;
+    box.innerHTML = `
+      <div class="consumer-head">
+        <span class="consumer-name">${c.name}</span>
+        <span class="consumer-status ${c.state}">${c.state.toUpperCase()}</span>
+      </div>
+      <div class="consumer-info">handled: ${c.handled} messages</div>
+      <div class="consumer-info">speed: ${c.speed}x</div>
+    `;
+    DOM.consumersWrap.appendChild(box);
+  }
+}
+
+/* ============================================================
+   PRODUCE MESSAGE
+   ============================================================ */
+function produceMessage() {
+  const msg = {
+    id: STATE.nextMessageId++,
+    createdAt: Date.now(),
+    payload: `event-${Math.random().toString(36).substring(2, 8)}`
+  };
+
+  // Check capacity
+  if (STATE.queue.length >= STATE.queueCapacity) {
+    // Backpressure: drop or block. Simulate blocking → drop after warning.
+    STATE.dropped++;
+    if (!STATE.capacityWarned) {
+      STATE.capacityWarned = true;
+      teach('BACKPRESSURE',
+        `Queue is FULL (${STATE.queueCapacity}/${STATE.queueCapacity}). Producer is blocked or dropping messages. This is BACKPRESSURE — the consumer can't keep up. Real systems either: (1) block the producer until space is available (bounded queue), (2) drop messages with the DLQ (dead-letter queue), or (3) scale consumers up.`,
+        'error'
+      );
+      showStatus(`⚠️ QUEUE FULL — BACKPRESSURE`, 'danger');
+    }
+    updateMetrics();
+    return;
+  }
+
+  STATE.queue.push(msg);
+  STATE.produced++;
+  STATE.capacityWarned = false;
+
+  // Spawn particle
+  spawnParticle(msg);
+
+  renderQueue();
+  updateMetrics();
+}
+
+/* ============================================================
+   CONSUME — each consumer pulls from the queue on its interval
+   ============================================================ */
+function consumeCycle() {
+  // Find active consumers (idle or busy → not dead)
+  const active = STATE.consumers.filter(c => c.state !== 'dead');
+  if (active.length === 0) return;
+
+  for (const c of active) {
+    if (STATE.queue.length === 0) break;
+
+    // Simulate processing delay: at "slow", consumer only pulls every other tick
+    if (c.state === 'slow' && Math.random() < 0.7) continue;
+
+    // Sometimes consumption "fails" — sends to DLQ
+    const fails = Math.random() < 0.05;
+    const msg = STATE.queue.shift();
+
+    if (fails) {
+      STATE.failedConsumed++;
+      c.handled++;
+      c.state = 'busy';
+      setTimeout(() => { if (c.state === 'busy') c.state = 'idle'; renderConsumers(); }, 300);
+      teach('DLQ',
+        `Message ${msg.id} failed processing — moved to Dead Letter Queue. Real systems route messages that fail N retries to a DLQ. Ops teams monitor DLQ size — a growing DLQ means a bug in the consumer or a poison message.`,
+        'warn', false
+      );
+    } else {
+      STATE.consumed++;
+      c.handled++;
+      c.state = 'busy';
+      setTimeout(() => { if (c.state === 'busy') c.state = 'idle'; renderConsumers(); }, 300);
+    }
+  }
+
+  renderQueue();
+  renderConsumers();
+  updateMetrics();
+}
+
+/* ============================================================
+   RENDER QUEUE
+   ============================================================ */
+function renderQueue() {
+  DOM.queueVisual.innerHTML = '';
+  const displaySlots = Math.max(STATE.queue.length, Math.min(STATE.queueCapacity, 20));
+
+  for (let i = 0; i < STATE.queueCapacity; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'queue-slot';
+    if (i < STATE.queue.length) {
+      slot.classList.add('filled');
+      slot.textContent = STATE.queue[i].id;
+    } else {
+      slot.textContent = '·';
+    }
+    DOM.queueVisual.appendChild(slot);
+  }
+
+  DOM.qLenHint.textContent = `${STATE.queue.length} / ${STATE.queueCapacity}`;
+  DOM.statProduced.textContent = STATE.produced;
+  DOM.statConsumed.textContent = STATE.consumed;
+  DOM.statDropped.textContent = STATE.dropped;
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  const depth = STATE.queue.length;
+  DOM.mDepth.textContent = depth;
+  DOM.mDepth.className = 'metric-value ' + (depth >= STATE.queueCapacity ? 'bad' : depth > STATE.queueCapacity * 0.7 ? 'warn' : '');
+
+  // Throughput in the last second (approximate)
+  DOM.mThroughput.textContent = STATE.consumers.filter(c => c.state !== 'dead').length * STATE.consumerSpeed + '/s';
+
+  // Lag: messages waiting = depth
+  DOM.mLag.textContent = depth * 50 + ' ms';
+
+  DOM.mDlq.textContent = STATE.failedConsumed;
+  DOM.mDlq.className = 'metric-value ' + (STATE.failedConsumed === 0 ? 'good' : STATE.failedConsumed < 5 ? 'warn' : 'bad');
+}
+
+/* ============================================================
+   CANVAS ANIMATION — particles flow from producer to broker to consumers
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.queueCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function spawnParticle(msg) {
+  const canvas = DOM.queueCanvas;
+  if (!canvas._w) return;
+
+  // Producer at left-center, broker in middle, consumers at right
+  STATE.particles.push({
+    x: 30,
+    y: canvas._h / 2,
+    startX: 30,
+    startY: canvas._h / 2,
+    targetX: canvas._w * 0.45,
+    targetY: canvas._h / 2,
+    progress: 0,
+    speed: 0.03,
+    color: '#f97316',
+    phase: 'to-broker'
+  });
+}
+
+function drawCanvas() {
+  const canvas = DOM.queueCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Layout positions
+  const producerX = 30;
+  const producerY = H / 2;
+  const brokerX = W * 0.45;
+  const brokerY = H / 2;
+  const consumerX = W - 30;
+  const consumerYs = [H * 0.25, H * 0.5, H * 0.75];
+
+  // Draw producer node
+  ctx.fillStyle = '#1e293b';
+  ctx.strokeStyle = '#f97316';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(producerX, producerY, 26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = 'bold 14px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('📤', producerX, producerY + 5);
+  ctx.font = 'bold 9px monospace';
+  ctx.fillStyle = '#fdba74';
+  ctx.fillText('PRODUCER', producerX, producerY + 44);
+
+  // Draw broker node
+  ctx.fillStyle = '#0f172a';
+  ctx.strokeStyle = '#facc15';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(brokerX, brokerY, 32, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = 'bold 16px monospace';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('📬', brokerX, brokerY + 6);
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = '#fde047';
+  ctx.fillText('BROKER', brokerX, brokerY + 52);
+  ctx.font = 'bold 9px monospace';
+  ctx.fillText(`${STATE.queue.length} msgs`, brokerX, brokerY + 64);
+
+  // Draw consumers
+  for (let i = 0; i < STATE.consumers.length; i++) {
+    const c = STATE.consumers[i];
+    const cy = consumerYs[i];
+    const isDead = c.state === 'dead';
+    const isSlow = c.state === 'slow';
+
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = isDead ? '#ef4444' : isSlow ? '#f59e0b' : '#10b981';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(consumerX, cy, 24, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(isDead ? '💀' : isSlow ? '🐌' : '⚙️', consumerX, cy + 4);
+    ctx.font = 'bold 8px monospace';
+    ctx.fillStyle = isDead ? '#fca5a5' : isSlow ? '#fcd34d' : '#6ee7b7';
+    ctx.fillText(c.name, consumerX, cy + 38);
+  }
+
+  // Draw edges from producer to broker
+  ctx.strokeStyle = '#f97316';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(producerX + 26, producerY);
+  ctx.lineTo(brokerX - 32, brokerY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw edges from broker to consumers
+  for (let i = 0; i < STATE.consumers.length; i++) {
+    const c = STATE.consumers[i];
+    const cy = consumerYs[i];
+    ctx.strokeStyle = c.state === 'dead' ? '#7f1d1d' : '#10b981';
+    ctx.lineWidth = c.state === 'dead' ? 1 : 1.5;
+    ctx.setLineDash(c.state === 'dead' ? [2, 4] : [5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(brokerX + 32, brokerY);
+    ctx.quadraticCurveTo(brokerX + (consumerX - brokerX) / 2, cy, consumerX - 24, cy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Draw particles
+  for (const p of STATE.particles) {
+    ctx.beginPath();
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 10;
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Legend
+  ctx.font = '9px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'left';
+  ctx.fillText('async decoupling', 20, H - 12);
+}
+
+function updateParticles() {
+  for (let i = STATE.particles.length - 1; i >= 0; i--) {
+    const p = STATE.particles[i];
+    p.progress += p.speed;
+    if (p.progress >= 1) {
+      STATE.particles.splice(i, 1);
+      continue;
+    }
+    const t = p.progress;
+    const mt = 1 - t;
+    p.x = mt * p.startX + t * p.targetX;
+    p.y = mt * p.startY + t * p.targetY;
+  }
+}
+
+function animate() {
+  updateParticles();
+  drawCanvas();
+  STATE.raf = requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   CONTROL LOOPS
+   ============================================================ */
+function startProducerLoop() {
+  if (STATE.produceTimer) clearInterval(STATE.produceTimer);
+  if (STATE.producerRate === 0) return;
+  STATE.produceTimer = setInterval(produceMessage, 1000 / STATE.producerRate);
+}
+
+function startConsumerLoop() {
+  if (STATE.consumeTimer) clearInterval(STATE.consumeTimer);
+  STATE.consumeTimer = setInterval(consumeCycle, 1000 / STATE.consumerSpeed);
+}
+
+/* ============================================================
+   FAULT INJECTION
+   ============================================================ */
+function killConsumer() {
+  const alive = STATE.consumers.filter(c => c.state !== 'dead');
+  if (alive.length <= 1) {
+    showToast('⚠ Cannot kill last consumer');
+    return;
+  }
+  const victim = alive[Math.floor(Math.random() * alive.length)];
+  victim.state = 'dead';
+
+  showStatus(`💀 ${victim.name} killed`, 'danger');
+  teach('CONSUMER DOWN',
+    `${victim.name} crashed. The queue keeps filling because fewer consumers are pulling. If the queue hits capacity, we get backpressure — producers block or messages get dropped. Real systems scale consumers horizontally to handle load, and use consumer groups (each message goes to exactly one consumer within a group).`,
+    'error'
+  );
+  renderConsumers();
+  updateMetrics();
+}
+
+function slowConsumer() {
+  const candidates = STATE.consumers.filter(c => c.state !== 'dead' && c.state !== 'slow');
+  if (candidates.length === 0) return;
+  const victim = candidates[Math.floor(Math.random() * candidates.length)];
+  victim.state = 'slow';
+  victim.speed = 0.3;
+
+  showStatus(`🐌 ${victim.name} is slow`, '');
+  teach('SLOW CONSUMER',
+    `${victim.name} is now slow — processing only 30% of its normal rate. Notice the queue depth growing: producers keep pushing, but consumers can't pull fast enough. If this continues, the queue will hit capacity and cause backpressure. Consumer lag is the key metric to monitor in event-driven systems.`,
+    'warn'
+  );
+  renderConsumers();
+  updateMetrics();
+}
+
+function healConsumers() {
+  for (const c of STATE.consumers) {
+    c.state = 'idle';
+    c.speed = 1;
+  }
+  showToast('🔄 All consumers healed');
+  teach('HEALED',
+    `All consumers are healthy. Queue will drain at full speed. Notice the depth dropping quickly — this is why monitoring consumer health is critical: catching a slow or dead consumer early prevents the queue from filling up.`,
+    'ok'
+  );
+  renderConsumers();
+  updateMetrics();
+}
+
+function drainQueue() {
+  const drained = STATE.queue.length;
+  STATE.queue = [];
+  renderQueue();
+  updateMetrics();
+  showToast(`⏬ Drained ${drained} messages`);
+  teach('DRAIN',
+    `Queue drained — all pending messages processed at once. In a real broker, you'd do this by scaling consumers temporarily or by using batch-processing. Draining is useful for cleanup but hides the underlying imbalance — better to fix the root cause (slow consumers).`,
+    'info', false
+  );
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.queue = [];
+  STATE.nextMessageId = 1;
+  STATE.produced = 0;
+  STATE.consumed = 0;
+  STATE.dropped = 0;
+  STATE.failedConsumed = 0;
+  STATE.particles = [];
+  STATE.capacityWarned = false;
+  createConsumers();
+  renderQueue();
+  updateMetrics();
+  showStatus('⟲ Reset complete');
+  teach('RESET', 'Queue cleared, consumers reset, metrics zeroed.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnProduce1.addEventListener('click', produceMessage);
+DOM.btnProduce10.addEventListener('click', () => {
+  for (let i = 0; i < 10; i++) setTimeout(produceMessage, i * 80);
+  showToast('📤 10 events produced');
+});
+DOM.btnBurst.addEventListener('click', () => {
+  for (let i = 0; i < 50; i++) setTimeout(produceMessage, i * 20);
+  showToast('⚡ 50-event burst — watch the queue');
+  teach('BURST',
+    `50 events injected in one burst. This is what happens when a marketing campaign fires or a batch job runs — the producer rate spikes way above the consumer rate. Queues absorb bursts as a buffer, letting consumers catch up at their own pace. This is the primary reason to use a queue: decoupling producer speed from consumer speed.`,
+    'warn'
+  );
+});
+DOM.btnKillConsumer.addEventListener('click', killConsumer);
+DOM.btnSlowConsumer.addEventListener('click', slowConsumer);
+DOM.btnHealConsumers.addEventListener('click', healConsumers);
+DOM.btnDrain.addEventListener('click', drainQueue);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.capRange.addEventListener('input', e => {
+  STATE.queueCapacity = parseInt(e.target.value);
+  DOM.capVal.textContent = STATE.queueCapacity;
+  // Trim queue if it exceeds new capacity
+  while (STATE.queue.length > STATE.queueCapacity) {
+    STATE.queue.pop();
+    STATE.dropped++;
+  }
+  renderQueue();
+  updateMetrics();
+});
+
+DOM.rateRange.addEventListener('input', e => {
+  STATE.producerRate = parseInt(e.target.value);
+  DOM.rateVal.textContent = STATE.producerRate + '/s';
+  startProducerLoop();
+});
+
+DOM.speedRange.addEventListener('input', e => {
+  STATE.consumerSpeed = parseInt(e.target.value);
+  DOM.speedVal.textContent = STATE.consumerSpeed + '/s';
+  startConsumerLoop();
+});
+
+document.querySelectorAll('input[name="sem"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.semantics = e.target.value;
+    const desc = {
+      atleast: 'At-least-once: messages are never lost, but may be duplicated if the consumer crashes after processing before ACK. Most common. Requires idempotent consumers.',
+      atmost: 'At-most-once: messages may be lost if consumer crashes, but never duplicated. Fast, but risk of losing data. Used for telemetry, non-critical metrics.',
+      exactly: 'Exactly-once: messages processed once and only once. Theoretically possible with 2PC or idempotent + deduplication. Expensive and rarely truly achievable end-to-end.'
+    };
+    teach('SEMANTICS', desc[e.target.value], 'purple');
+  });
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+createConsumers();
+renderQueue();
+updateMetrics();
+startProducerLoop();
+startConsumerLoop();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Event-Driven Message Queues. In event-driven architecture, services don't call each other synchronously — they publish events to a broker, and consumers process them asynchronously. This decouples producers from consumers: they don't need to know about each other, run at the same speed, or even be online at the same time.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('WHY QUEUES',
+      `Queues solve three problems: (1) Decoupling — producers don't need to know who consumes. (2) Buffering — producer bursts are absorbed by the queue; consumers catch up later. (3) Resilience — if a consumer crashes, messages stay in the queue until it recovers. Synchronous HTTP calls can't do any of this.`,
+      'ok'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('BACKPRESSURE',
+      `When producers outpace consumers, the queue fills up. Eventually it hits capacity. What happens then? Options: (1) Block the producer (bounded queue) — safer, but cascades back up. (2) Drop messages — smaller blast radius, but data loss. (3) Scale consumers — the right answer if possible. Watch what happens when I make a consumer slow or kill one.`,
+      'warn'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('DELIVERY SEMANTICS',
+      `Three delivery guarantees: at-most-once (may lose, never dupe), at-least-once (may dupe, never lose), exactly-once (impossible to guarantee end-to-end). Most systems choose at-least-once and require idempotent consumers — since retries can cause duplicates, consumers must handle the same message twice gracefully. Try the semantics radio to see explanations.`,
+      'purple'
+    );
+  }, 13500);
+
+  showToast('👋 Watch the queue, then kill or slow a consumer', 4500);
+}, 500);
+</script>
+</body>
+</html>

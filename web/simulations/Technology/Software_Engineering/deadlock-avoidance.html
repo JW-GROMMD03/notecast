@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deadlock Avoidance (Banker's Algorithm) — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #ef4444, #f59e0b, #a855f7);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(239,68,68,0.15); color: #fca5a5; border-color: #ef4444; }
+  .teaching-toggle:hover { background: rgba(239,68,68,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #fca5a5;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #ef4444; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #ef4444; color: #fff; border-color: #ef4444; }
+  .btn.primary:hover { background: #dc2626; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(239,68,68,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .rag-wrap {
+    flex: 1.3; background: #070a14; border: 2px solid #ef4444; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(239,68,68,0.15); min-height: 0;
+  }
+  .rag-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #fca5a5; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #ragCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .matrix-wrap {
+    display: grid; grid-template-columns: 2fr 1fr; gap: 10px; flex-shrink: 0; height: 200px;
+  }
+  .matrix-panel {
+    background: #070a14; border: 2px solid #8b5cf6; border-radius: 12px;
+    padding: 10px 12px; display: flex; flex-direction: column; min-height: 0;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15);
+  }
+  .matrix-panel.available { border-color: #10b981; box-shadow: 0 0 20px rgba(16,185,129,0.15); }
+  .matrix-title {
+    font-size: 0.6rem; letter-spacing: 2px; color: #c4b5fd; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .matrix-panel.available .matrix-title { color: #6ee7b7; }
+  .matrix-body {
+    flex: 1; overflow: auto; font-family: monospace; font-size: 0.6rem; min-height: 0;
+  }
+  table.alloc {
+    width: 100%; border-collapse: collapse;
+  }
+  table.alloc th, table.alloc td {
+    padding: 3px 6px; text-align: center; border-bottom: 1px solid #1e293b;
+  }
+  table.alloc th {
+    font-size: 0.5rem; color: #64748b; letter-spacing: 0.5px;
+    text-transform: uppercase; font-weight: 700;
+  }
+  table.alloc td { color: #cbd5e1; font-weight: 700; }
+  table.alloc tr.unsafe td { background: rgba(239,68,68,0.15); color: #fca5a5; }
+  table.alloc tr.safe td { background: rgba(16,185,129,0.1); }
+  .avail-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    align-content: center;
+  }
+  .avail-chip {
+    background: rgba(16,185,129,0.1); border: 2px solid #10b981;
+    border-radius: 6px; padding: 6px; text-align: center;
+    font-family: monospace;
+  }
+  .avail-chip .lbl { color: #64748b; font-size: 0.5rem; display: block; }
+  .avail-chip .val { color: #86efac; font-weight: 900; font-size: 1.1rem; display: block; }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #fca5a5; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #ef4444;
+    background: rgba(239,68,68,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(239,68,68,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(239,68,68,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #fca5a5;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #ef4444; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(239,68,68,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #ef4444; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #fca5a5; z-index: 12;
+    box-shadow: 0 0 20px rgba(239,68,68,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.safe { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>DEADLOCK AVOIDANCE</h1>
+    <span class="sub">BANKER'S ALGORITHM · SAFE STATE · RESOURCE GRAPH</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Simulation</h3>
+      <button class="btn primary" id="btnCheck">🔍 Check Safe State</button>
+      <button class="btn" id="btnRequest">📨 Process Request</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Scenario</h3>
+      <button class="btn success" id="btnSafe">✅ Load Safe State</button>
+      <button class="btn danger" id="btnUnsafe">❌ Load Unsafe State</button>
+      <button class="btn warn" id="btnRisky">⚠️ Load Risky Request</button>
+    </div>
+
+    <div class="panel">
+      <h3>Process Selection</h3>
+      <div id="procSelector" style="display:flex; gap:4px; flex-wrap:wrap;"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #10b981;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Safe process</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #ef4444;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Unsafe / blocked</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #f59e0b;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Requesting</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">NEVER ALLOCATE IF THE RESULT IS AN UNSAFE STATE</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="rag-wrap">
+          <div class="rag-title">
+            <span>📊 RESOURCE ALLOCATION GRAPH</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="ragHint">— click CHECK SAFE STATE —</span>
+          </div>
+          <canvas id="ragCanvas"></canvas>
+        </div>
+
+        <div class="matrix-wrap">
+          <div class="matrix-panel">
+            <div class="matrix-title">
+              <span>🔢 ALLOCATION MATRIX</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="matrixHint">— max / allocated / need —</span>
+            </div>
+            <div class="matrix-body" id="matrixBody"></div>
+          </div>
+          <div class="matrix-panel available">
+            <div class="matrix-title">
+              <span>💰 AVAILABLE</span>
+            </div>
+            <div class="matrix-body">
+              <div class="avail-grid" id="availGrid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">State</div>
+        <div class="metric-value good" id="mState">SAFE</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Processes</div>
+        <div class="metric-value" id="mProcs">5</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Resources</div>
+        <div class="metric-value" id="mRes">3</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Checked</div>
+        <div class="metric-value" id="mChecks">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Banker's Algorithm</div>
+      <div class="info-row"><span class="lbl">Safe state</span><span class="val good">All can finish</span></div>
+      <div class="info-row"><span class="lbl">Unsafe state</span><span class="val bad">May deadlock</span></div>
+      <div class="info-row"><span class="lbl">Request</span><span class="val warn">Grant only if safe</span></div>
+      <div class="info-row"><span class="lbl">Need matrix</span><span class="val">Max − Allocated</span></div>
+      <div class="info-row"><span class="lbl">Complexity</span><span class="val">O(n²·m)</span></div>
+      <div class="info-row"><span class="lbl">Downside</span><span class="val bad">Requires max upfront</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">Rarely; mostly teaching</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  processes: [],
+  resources: ['A', 'B', 'C'],
+  available: [3, 3, 2],
+  selectedProcess: 0,
+  state: 'safe',
+  checks: 0,
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  ragCanvas: document.getElementById('ragCanvas'),
+  ragHint: document.getElementById('ragHint'),
+  matrixBody: document.getElementById('matrixBody'),
+  matrixHint: document.getElementById('matrixHint'),
+  availGrid: document.getElementById('availGrid'),
+  procSelector: document.getElementById('procSelector'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnCheck: document.getElementById('btnCheck'),
+  btnRequest: document.getElementById('btnRequest'),
+  btnReset: document.getElementById('btnReset'),
+  btnSafe: document.getElementById('btnSafe'),
+  btnUnsafe: document.getElementById('btnUnsafe'),
+  btnRisky: document.getElementById('btnRisky'),
+  mState: document.getElementById('mState'),
+  mProcs: document.getElementById('mProcs'),
+  mRes: document.getElementById('mRes'),
+  mChecks: document.getElementById('mChecks'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2500);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining deadlock avoidance.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+function loadSafe() {
+  STATE.available = [3, 3, 2];
+  STATE.processes = [
+    { id: 'P0', max: [7, 5, 3], alloc: [0, 1, 0] },
+    { id: 'P1', max: [3, 2, 2], alloc: [2, 0, 0] },
+    { id: 'P2', max: [9, 0, 2], alloc: [3, 0, 2] },
+    { id: 'P3', max: [2, 2, 2], alloc: [2, 1, 1] },
+    { id: 'P4', max: [4, 3, 3], alloc: [0, 0, 2] }
+  ];
+  STATE.state = 'safe';
+  updateUI();
+  teach('SAFE STATE',
+    `Loaded the classic Banker's Algorithm example. 5 processes, 3 resource types (A, B, C). Available = (3,3,2). The system is in a SAFE state: there exists an ordering like P1, P3, P4, P2, P0 in which every process can finish. Click CHECK SAFE STATE to compute it.`,
+    'ok'
+  );
+}
+
+function loadUnsafe() {
+  STATE.available = [0, 0, 0];
+  STATE.processes = [
+    { id: 'P0', max: [7, 5, 3], alloc: [7, 5, 3] },
+    { id: 'P1', max: [3, 2, 2], alloc: [3, 2, 2] },
+    { id: 'P2', max: [9, 0, 2], alloc: [9, 0, 2] },
+    { id: 'P3', max: [2, 2, 2], alloc: [2, 2, 2] },
+    { id: 'P4', max: [4, 3, 3], alloc: [4, 3, 3] }
+  ];
+  STATE.state = 'unsafe';
+  updateUI();
+  teach('UNSAFE STATE',
+    `Loaded an UNSAFE state. All resources are allocated — available = (0,0,0). No process can finish because every process needs more resources that don't exist. This is a deadlock. In real systems this happens when processes greedily grab resources without coordination.`,
+    'error'
+  );
+}
+
+function loadRisky() {
+  STATE.available = [1, 1, 1];
+  STATE.processes = [
+    { id: 'P0', max: [7, 5, 3], alloc: [6, 4, 3] },
+    { id: 'P1', max: [3, 2, 2], alloc: [2, 1, 1] },
+    { id: 'P2', max: [9, 0, 2], alloc: [4, 0, 2] },
+    { id: 'P3', max: [2, 2, 2], alloc: [1, 1, 1] },
+    { id: 'P4', max: [4, 3, 3], alloc: [0, 0, 1] }
+  ];
+  STATE.state = 'risky';
+  updateUI();
+  teach('RISKY STATE',
+    `Loaded a RISKY state. Only (1,1,1) resources are available. If P0 asks for more, the system may tip into unsafe. Run a safe-state check to see if we're still safe. This is the "edge case" scenario Banker's Algorithm is designed to catch.`,
+    'warn'
+  );
+}
+
+function getNeed(p) {
+  return p.max.map((m, i) => m - p.alloc[i]);
+}
+
+function isSafe() {
+  const work = [...STATE.available];
+  const finish = STATE.processes.map(() => false);
+  const sequence = [];
+
+  while (true) {
+    let progress = false;
+    for (let i = 0; i < STATE.processes.length; i++) {
+      if (finish[i]) continue;
+      const need = getNeed(STATE.processes[i]);
+      const canFinish = need.every((n, k) => n <= work[k]);
+      if (canFinish) {
+        // Simulate: process runs and releases resources
+        for (let k = 0; k < work.length; k++) work[k] += STATE.processes[i].alloc[k];
+        finish[i] = true;
+        sequence.push(STATE.processes[i].id);
+        progress = true;
+      }
+    }
+    if (!progress) break;
+  }
+
+  const safe = finish.every(f => f);
+  return { safe, sequence };
+}
+
+function checkSafe() {
+  STATE.checks++;
+  const { safe, sequence } = isSafe();
+
+  if (safe) {
+    STATE.state = 'safe';
+    showStatus('✅ SAFE state — all processes can finish', 'safe');
+    teach('SAFE STATE',
+      `The system is SAFE. There exists a completion order: ${sequence.join(' → ')}. Each process's need can be satisfied by the current available + released resources. Safe state means no deadlock is possible, even if the worst-case resource requests occur.`,
+      'ok'
+    );
+  } else {
+    STATE.state = 'unsafe';
+    showStatus('❌ UNSAFE state — possible deadlock', '');
+    teach('UNSAFE STATE',
+      `The system is UNSAFE! No completion order exists. Even if we grant maximum requests, some process will never get its needs. Note: unsafe doesn't mean deadlock is certain — it means deadlock is POSSIBLE. Banker's Algorithm refuses to enter unsafe states to prevent this.`,
+      'error'
+    );
+  }
+
+  updateUI();
+}
+
+function requestResources() {
+  const proc = STATE.processes[STATE.selectedProcess];
+  if (!proc) return;
+  const need = getNeed(proc);
+  // Simulate a request of 1 resource of the first type where need > 0
+  const req = [0, 0, 0];
+  for (let i = 0; i < need.length; i++) {
+    if (need[i] > 0 && STATE.available[i] > 0) {
+      req[i] = 1;
+      break;
+    }
+  }
+
+  if (req.every(r => r === 0)) {
+    showToast('⚠ No valid request');
+    return;
+  }
+
+  teach('REQUEST',
+    `${proc.id} requests ${req.filter(r => r > 0).length} unit(s) of resources. Banker's Algorithm will simulate granting this and check if the resulting state is still safe. If not, the request is DENIED (process must wait).`,
+    'cyan'
+  );
+
+  // Simulate
+  const newAvailable = STATE.available.map((a, i) => a - req[i]);
+  if (newAvailable.some(a => a < 0)) {
+    showStatus(`❌ ${proc.id} request denied (not enough resources)`);
+    teach('DENIED',
+      `${proc.id}'s request is denied — not enough available resources. The process must wait. This is standard resource blocking, not the Banker's algorithm working.`,
+      'error'
+    );
+    return;
+  }
+
+  const newAlloc = proc.alloc.map((a, i) => a + req[i]);
+  const saved = {
+    alloc: [...proc.alloc],
+    avail: [...STATE.available]
+  };
+  proc.alloc = newAlloc;
+  STATE.available = newAvailable;
+
+  const { safe } = isSafe();
+
+  if (safe) {
+    showStatus(`✅ ${proc.id} request granted (safe)`);
+    teach('GRANTED',
+      `${proc.id}'s request is GRANTED. After the allocation, the system is still in a safe state — some completion order exists. Banker's algorithm proceeds. Try requesting again to see if this changes.`,
+      'ok'
+    );
+  } else {
+    // Roll back
+    proc.alloc = saved.alloc;
+    STATE.available = saved.avail;
+    showStatus(`❌ ${proc.id} request denied (would be unsafe)`);
+    teach('DENIED (UNSAFE)',
+      `${proc.id}'s request would make the system UNSAFE. Banker's Algorithm denies it — even though there are enough resources RIGHT NOW. This is the key insight: never advance into a state where you can't guarantee all processes can finish. The process must wait.`,
+      'error'
+    );
+  }
+
+  updateUI();
+}
+
+function updateUI() {
+  // Matrix
+  let html = '<table class="alloc"><thead><tr><th>PID</th><th>Max</th><th>Alloc</th><th>Need</th></tr></thead><tbody>';
+  for (const p of STATE.processes) {
+    const need = getNeed(p);
+    const cls = STATE.state === 'unsafe' ? 'unsafe' : 'safe';
+    html += `<tr class="${cls}">
+      <td>${p.id}</td>
+      <td>${p.max.join(',')}</td>
+      <td>${p.alloc.join(',')}</td>
+      <td>${need.join(',')}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  DOM.matrixBody.innerHTML = html;
+
+  // Available
+  DOM.availGrid.innerHTML = STATE.available.map((a, i) => `
+    <div class="avail-chip">
+      <span class="lbl">${STATE.resources[i]}</span>
+      <span class="val">${a}</span>
+    </div>
+  `).join('');
+
+  // Process selector
+  DOM.procSelector.innerHTML = STATE.processes.map((p, i) => `
+    <button class="btn ${i === STATE.selectedProcess ? 'primary' : 'ghost'}" style="width:auto; padding:4px 10px; font-size:0.65rem; margin:0;" data-idx="${i}">${p.id}</button>
+  `).join('');
+  DOM.procSelector.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      STATE.selectedProcess = parseInt(btn.dataset.idx);
+      updateUI();
+    });
+  });
+
+  // Metrics
+  DOM.mState.textContent = STATE.state.toUpperCase();
+  DOM.mState.className = 'metric-value ' + (STATE.state === 'safe' ? 'good' : STATE.state === 'unsafe' ? 'bad' : 'warn');
+  DOM.mProcs.textContent = STATE.processes.length;
+  DOM.mRes.textContent = STATE.resources.length;
+  DOM.mChecks.textContent = STATE.checks;
+
+  DOM.matrixHint.textContent = `— avail: (${STATE.available.join(',')}) —`;
+
+  drawRAG();
+}
+
+function resizeCanvas() {
+  const canvas = DOM.ragCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawRAG() {
+  const canvas = DOM.ragCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Left side: processes in a column
+  const procX = 100;
+  const procStartY = 60;
+  const procGap = Math.min((H - 100) / Math.max(STATE.processes.length, 1), 60);
+
+  // Right side: resources in a column
+  const resX = W - 100;
+  const resStartY = 60;
+  const resGap = Math.min((H - 100) / Math.max(STATE.resources.length, 1), 80);
+
+  // Draw edges first (behind nodes)
+  for (let pi = 0; pi < STATE.processes.length; pi++) {
+    const p = STATE.processes[pi];
+    const px = procX;
+    const py = procStartY + pi * procGap;
+
+    for (let ri = 0; ri < STATE.resources.length; ri++) {
+      const rx = resX;
+      const ry = resStartY + ri * resGap;
+
+      // Allocation edges (resource → process)
+      if (p.alloc[ri] > 0) {
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(rx - 30, ry);
+        ctx.lineTo(px + 30, py);
+        ctx.stroke();
+        // Arrow head
+        const ang = Math.atan2(py - ry, px - rx);
+        ctx.beginPath();
+        ctx.moveTo(px + 30, py);
+        ctx.lineTo(px + 30 - 8 * Math.cos(ang - 0.4), py - 8 * Math.sin(ang - 0.4));
+        ctx.lineTo(px + 30 - 8 * Math.cos(ang + 0.4), py - 8 * Math.sin(ang + 0.4));
+        ctx.closePath();
+        ctx.fillStyle = '#10b981';
+        ctx.fill();
+      }
+
+      // Request edges (process → resource)
+      const need = p.max[ri] - p.alloc[ri];
+      if (need > 0) {
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(px + 30, py + 10);
+        ctx.lineTo(rx - 30, ry + 10);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // Draw processes
+  for (let i = 0; i < STATE.processes.length; i++) {
+    const p = STATE.processes[i];
+    const x = procX;
+    const y = procStartY + i * procGap;
+
+    ctx.beginPath();
+    ctx.arc(x, y, 24, 0, Math.PI * 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = i === STATE.selectedProcess ? '#fcd34d' : '#3b82f6';
+    ctx.lineWidth = i === STATE.selectedProcess ? 3.5 : 2.5;
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = '#93c5fd';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.id, x, y);
+  }
+
+  // Draw resources
+  for (let i = 0; i < STATE.resources.length; i++) {
+    const x = resX;
+    const y = resStartY + i * resGap;
+
+    ctx.beginPath();
+    ctx.arc(x, y, 28, 0, Math.PI * 2);
+    ctx.fillStyle = '#0f2a1e';
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 3;
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = '#86efac';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(STATE.resources[i], x, y - 3);
+    ctx.font = '9px monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText(STATE.available[i], x, y + 10);
+  }
+
+  // Title labels
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('PROCESSES', procX, 20);
+  ctx.fillText('RESOURCES', resX, 20);
+
+  DOM.ragHint.textContent = `— ${STATE.processes.length} processes · ${STATE.resources.length} resources —`;
+}
+
+function animate() {
+  drawRAG();
+  requestAnimationFrame(animate);
+}
+
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnCheck.addEventListener('click', checkSafe);
+DOM.btnRequest.addEventListener('click', requestResources);
+DOM.btnReset.addEventListener('click', () => { STATE.checks = 0; loadSafe(); });
+DOM.btnSafe.addEventListener('click', loadSafe);
+DOM.btnUnsafe.addEventListener('click', loadUnsafe);
+DOM.btnRisky.addEventListener('click', loadRisky);
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+loadSafe();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Deadlock Avoidance. A deadlock occurs when two or more processes wait for each other's held resources — none can proceed. Banker's Algorithm is a classic deadlock avoidance scheme: before granting a resource request, it simulates the allocation and checks whether the resulting state is SAFE. If not, the request is denied.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('SAFE vs UNSAFE',
+      `A state is SAFE if there exists a sequence in which all processes can complete. This doesn't mean they will complete in that order — it means there EXISTS a way. If no such sequence exists, the state is UNSAFE, and deadlock is possible (though not guaranteed). Banker's Algorithm refuses to enter unsafe states — that's how it prevents deadlock.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('WHY IT\'S RARELY USED',
+      `Banker's Algorithm requires knowing each process's MAXIMUM resource need in advance. Most real systems can't provide this. So instead of deadlock AVOIDANCE, real systems use deadlock PREVENTION (e.g., lock ordering) or deadlock DETECTION (periodic cycle detection). Banker's is great for teaching the concept.`,
+      'warn'
+    );
+  }, 9000);
+  showToast('👋 Click CHECK SAFE STATE, then try a REQUEST', 4500);
+}, 500);
+</script>
+</body>
+</html>

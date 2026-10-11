@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dining Philosophers Resource Allocation — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #a855f7, #ef4444, #f59e0b);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(168,85,247,0.15); color: #c4b5fd; border-color: #a855f7; }
+  .teaching-toggle:hover { background: rgba(168,85,247,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #c4b5fd;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #a855f7; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #a855f7; color: #fff; border-color: #a855f7; }
+  .btn.primary:hover { background: #9333ea; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #a855f7; color: #fff; border-color: #a855f7; }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #c4b5fd; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #a855f7; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(168,85,247,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .table-wrap {
+    flex: 1; background: #070a14; border: 2px solid #a855f7; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(168,85,247,0.15); min-height: 0;
+  }
+  .table-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #c4b5fd; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #tableCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .phil-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; flex-shrink: 0;
+  }
+  .phil-card {
+    background: #070a14; border: 2px solid #334155; border-radius: 10px;
+    padding: 8px; transition: all 0.3s;
+  }
+  .phil-card.thinking { border-color: #64748b; box-shadow: 0 0 15px rgba(100,116,139,0.2); }
+  .phil-card.hungry { border-color: #f59e0b; box-shadow: 0 0 15px rgba(245,158,11,0.3); }
+  .phil-card.eating { border-color: #10b981; box-shadow: 0 0 20px rgba(16,185,129,0.5); }
+  .phil-card.blocked { border-color: #ef4444; box-shadow: 0 0 15px rgba(239,68,68,0.4); }
+  .phil-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: monospace; font-size: 0.6rem; margin-bottom: 6px;
+  }
+  .phil-name { color: #c4b5fd; font-weight: 900; letter-spacing: 0.5px; }
+  .phil-state {
+    font-size: 0.5rem; font-weight: 900; padding: 1px 6px; border-radius: 8px;
+    letter-spacing: 0.5px; text-transform: uppercase;
+  }
+  .phil-card.thinking .phil-state { background: rgba(100,116,139,0.3); color: #cbd5e1; }
+  .phil-card.hungry .phil-state { background: rgba(245,158,11,0.3); color: #fcd34d; }
+  .phil-card.eating .phil-state { background: rgba(16,185,129,0.3); color: #86efac; }
+  .phil-card.blocked .phil-state { background: rgba(239,68,68,0.3); color: #fca5a5; }
+  .phil-forks {
+    display: flex; gap: 4px; justify-content: center; font-size: 0.9rem;
+  }
+  .fork { opacity: 0.25; transition: all 0.3s; }
+  .fork.held { opacity: 1; filter: drop-shadow(0 0 6px #fcd34d); }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(168,85,247,0.06); border: 1px solid rgba(168,85,247,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #c4b5fd; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #a855f7;
+    background: rgba(168,85,247,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(168,85,247,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(168,85,247,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #c4b5fd;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #a855f7; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(168,85,247,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #a855f7; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #c4b5fd; z-index: 12;
+    box-shadow: 0 0 20px rgba(168,85,247,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.deadlock { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 30px rgba(239,68,68,0.7); }
+  .status-banner.safe { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>DINING PHILOSOPHERS</h1>
+    <span class="sub">RACE FORKS · DEADLOCK · ASYMMETRY · WAITER</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Control</h3>
+      <button class="btn primary" id="btnRun">▶ Start Simulation</button>
+      <button class="btn" id="btnStep">⏭ Step Tick</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Solution Strategy</h3>
+      <button class="btn" id="btnNaive">❌ Naive (deadlocks)</button>
+      <button class="btn" id="btnAsymmetric">🔀 Asymmetric (odd/even)</button>
+      <button class="btn" id="btnWaiter">🎩 Waiter (arbiter)</button>
+      <button class="btn" id="btnChandy">📨 Chandy-Misra (distributed)</button>
+    </div>
+
+    <div class="panel">
+      <h3>Parameters</h3>
+      <div class="slider-row"><span>Thinking time</span><span class="value" id="thinkVal">2s</span></div>
+      <input type="range" id="thinkRange" min="1" max="5" value="2">
+      <div class="slider-row"><span>Eating time</span><span class="value" id="eatVal">2s</span></div>
+      <input type="range" id="eatRange" min="1" max="5" value="2">
+      <div class="slider-row"><span>Speed</span><span class="value" id="speedVal">2×</span></div>
+      <input type="range" id="speedRange" min="1" max="8" value="2">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #64748b;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Thinking</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #f59e0b;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Hungry (waiting)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #10b981;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Eating</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #ef4444;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Blocked on fork</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">5 PHILOSOPHERS · 5 FORKS · ONE TABLE · POSSIBLE DEADLOCK</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="table-wrap">
+          <div class="table-title">
+            <span>🍽️ ROUND TABLE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="tableHint">— click Start Simulation —</span>
+          </div>
+          <canvas id="tableCanvas"></canvas>
+        </div>
+        <div class="phil-grid" id="philGrid"></div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Strategy</div>
+        <div class="metric-value" id="mStrategy" style="font-size:0.65rem;">Naive</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Eating</div>
+        <div class="metric-value good" id="mEating">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Hungry</div>
+        <div class="metric-value warn" id="mHungry">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Deadlocks</div>
+        <div class="metric-value bad" id="mDeadlocks">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 The Problem</div>
+      <div class="info-row"><span class="lbl">Philosophers</span><span class="val">5 (threads)</span></div>
+      <div class="info-row"><span class="lbl">Forks</span><span class="val">5 (mutexes)</span></div>
+      <div class="info-row"><span class="lbl">Rule</span><span class="val bad">Need both forks</span></div>
+      <div class="info-row"><span class="lbl">Circular wait</span><span class="val bad">Deadlock cause</span></div>
+      <div class="info-row"><span class="lbl">Prevention</span><span class="val good">Break the cycle</span></div>
+      <div class="info-row"><span class="lbl">Classic paper</span><span class="val">Dijkstra 1965</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  philosophers: [],
+  forks: [],
+  running: false,
+  strategy: 'naive',
+  thinkingTime: 2,
+  eatingTime: 2,
+  speed: 2,
+  simTime: 0,
+  deadlocks: 0,
+  timer: null,
+  teaching: true,
+  voiceEnabled: false
+};
+
+const PHIL_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
+
+const DOM = {
+  tableCanvas: document.getElementById('tableCanvas'),
+  tableHint: document.getElementById('tableHint'),
+  philGrid: document.getElementById('philGrid'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnNaive: document.getElementById('btnNaive'),
+  btnAsymmetric: document.getElementById('btnAsymmetric'),
+  btnWaiter: document.getElementById('btnWaiter'),
+  btnChandy: document.getElementById('btnChandy'),
+  thinkRange: document.getElementById('thinkRange'),
+  thinkVal: document.getElementById('thinkVal'),
+  eatRange: document.getElementById('eatRange'),
+  eatVal: document.getElementById('eatVal'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  mStrategy: document.getElementById('mStrategy'),
+  mEating: document.getElementById('mEating'),
+  mHungry: document.getElementById('mHungry'),
+  mDeadlocks: document.getElementById('mDeadlocks'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2800);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining the dining philosophers problem.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+function initPhilosophers() {
+  STATE.philosophers = [];
+  STATE.forks = [];
+  STATE.deadlocks = 0;
+  STATE.simTime = 0;
+  for (let i = 0; i < 5; i++) {
+    STATE.philosophers.push({
+      id: i,
+      name: 'P' + (i + 1),
+      color: PHIL_COLORS[i],
+      state: 'thinking',       // thinking | hungry | eating | blocked
+      stateTimer: 2,
+      // Forks held
+      leftFork: false,
+      rightFork: false,
+      mealsEaten: 0,
+      waits: 0
+    });
+    STATE.forks.push({ id: i, holder: null });
+  }
+  renderPhilosophers();
+}
+
+function tryAcquireFork(phil, forkIdx) {
+  const fork = STATE.forks[forkIdx];
+  if (fork.holder === null) {
+    fork.holder = phil.id;
+    return true;
+  }
+  return false;
+}
+
+function releaseFork(forkIdx) {
+  STATE.forks[forkIdx].holder = null;
+}
+
+function tick() {
+  STATE.simTime++;
+  let anyEating = false;
+  let anyHungry = false;
+  let anyBlocked = false;
+
+  for (const p of STATE.philosophers) {
+    p.stateTimer--;
+
+    if (p.state === 'thinking') {
+      if (p.stateTimer <= 0) {
+        p.state = 'hungry';
+        // Record fork acquisition attempts based on strategy
+        attemptEat(p);
+      }
+    } else if (p.state === 'eating') {
+      anyEating = true;
+      if (p.stateTimer <= 0) {
+        // Done eating — release forks
+        const left = p.id;
+        const right = (p.id + 4) % 5;
+        releaseFork(left);
+        releaseFork(right);
+        p.leftFork = false;
+        p.rightFork = false;
+        p.state = 'thinking';
+        p.stateTimer = STATE.thinkingTime;
+        p.mealsEaten++;
+      }
+    } else if (p.state === 'hungry') {
+      anyHungry = true;
+      // Retry fork acquisition (unless deadlock detected below)
+    } else if (p.state === 'blocked') {
+      anyBlocked = true;
+      // Try to acquire now-held forks (they may have been released)
+      attemptEat(p);
+    }
+  }
+
+  // Deadlock detection: all philosophers hungry or blocked AND no forks available
+  const allStuck = STATE.philosophers.every(p => p.state === 'hungry' || p.state === 'blocked');
+  const totalHeld = STATE.forks.filter(f => f.holder !== null).length;
+  if (allStuck && STATE.strategy === 'naive' && totalHeld >= 3) {
+    STATE.deadlocks++;
+    showStatus('💥 DEADLOCK DETECTED!', 'deadlock');
+    if (STATE.deadlocks < 4) {
+      teach('DEADLOCK',
+        `Deadlock! All 5 philosophers are holding their left fork and waiting for their right. Circular wait: P1 waits for fork 2, P2 waits for fork 3, ..., P5 waits for fork 1. No one can proceed. This is the classic deadlock — 4 necessary conditions (mutual exclusion, hold-and-wait, no preemption, circular wait) are all satisfied.`,
+        'error'
+      );
+    }
+  }
+
+  // Update UI
+  for (const p of STATE.philosophers) {
+    p.leftFork = STATE.forks[p.id].holder === p.id;
+    p.rightFork = STATE.forks[(p.id + 4) % 5].holder === p.id;
+  }
+
+  renderPhilosophers();
+  drawTable();
+  updateMetrics();
+}
+
+function attemptEat(p) {
+  const left = p.id;
+  const right = (p.id + 4) % 5;
+
+  switch (STATE.strategy) {
+    case 'naive':
+      // Grab left first, then try right
+      if (STATE.forks[left].holder === null || STATE.forks[left].holder === p.id) {
+        STATE.forks[left].holder = p.id;
+      }
+      if (STATE.forks[right].holder === null || STATE.forks[right].holder === p.id) {
+        STATE.forks[right].holder = p.id;
+      }
+      if (STATE.forks[left].holder === p.id && STATE.forks[right].holder === p.id) {
+        p.state = 'eating';
+        p.stateTimer = STATE.eatingTime;
+      } else {
+        p.state = 'blocked';
+        p.waits++;
+      }
+      break;
+
+    case 'asymmetric':
+      // Odd philosophers grab left first; even grab right first
+      // This breaks circular wait
+      const firstFork = (p.id % 2 === 0) ? right : left;
+      const secondFork = (p.id % 2 === 0) ? left : right;
+      if (STATE.forks[firstFork].holder !== null && STATE.forks[firstFork].holder !== p.id) {
+        p.state = 'blocked';
+        p.waits++;
+        return;
+      }
+      STATE.forks[firstFork].holder = p.id;
+      if (STATE.forks[secondFork].holder !== null && STATE.forks[secondFork].holder !== p.id) {
+        // Can't get second — put back first to avoid partial hold
+        // (In strict asymmetric, we just wait — but let's release to show the improvement)
+        p.state = 'blocked';
+        p.waits++;
+        return;
+      }
+      STATE.forks[secondFork].holder = p.id;
+      p.state = 'eating';
+      p.stateTimer = STATE.eatingTime;
+      break;
+
+    case 'waiter':
+      // Only one philosopher can try to pick up forks at a time
+      // Simplification: check if both forks are free
+      if (STATE.forks[left].holder === null && STATE.forks[right].holder === null) {
+        STATE.forks[left].holder = p.id;
+        STATE.forks[right].holder = p.id;
+        p.state = 'eating';
+        p.stateTimer = STATE.eatingTime;
+      } else {
+        p.state = 'blocked';
+        p.waits++;
+      }
+      break;
+
+    case 'chandy':
+      // Chandy-Misra: forks have priorities; requests are sent along edges
+      // Simplified: allow eating if both forks free, otherwise send request
+      if (STATE.forks[left].holder === null && STATE.forks[right].holder === null) {
+        STATE.forks[left].holder = p.id;
+        STATE.forks[right].holder = p.id;
+        p.state = 'eating';
+        p.stateTimer = STATE.eatingTime;
+      } else {
+        // Try to steal from lower-priority holder
+        let gotBoth = true;
+        for (const f of [left, right]) {
+          if (STATE.forks[f].holder === null) {
+            STATE.forks[f].holder = p.id;
+          } else if (STATE.forks[f].holder !== p.id) {
+            const holder = STATE.philosophers[STATE.forks[f].holder];
+            if (holder && holder.id > p.id) {
+              // Higher ID holder gives up fork
+              STATE.forks[f].holder = p.id;
+            } else {
+              gotBoth = false;
+            }
+          }
+        }
+        if (gotBoth) {
+          p.state = 'eating';
+          p.stateTimer = STATE.eatingTime;
+        } else {
+          p.state = 'blocked';
+          p.waits++;
+        }
+      }
+      break;
+  }
+}
+
+function renderPhilosophers() {
+  DOM.philGrid.innerHTML = '';
+  for (const p of STATE.philosophers) {
+    const card = document.createElement('div');
+    card.className = `phil-card ${p.state}`;
+    card.innerHTML = `
+      <div class="phil-head">
+        <span class="phil-name">🍽️ ${p.name}</span>
+        <span class="phil-state">${p.state}</span>
+      </div>
+      <div class="phil-forks">
+        <span class="fork ${p.leftFork ? 'held' : ''}">🍴</span>
+        <span style="font-size:0.5rem; color:#64748b; align-self:center;">${p.mealsEaten} meals</span>
+        <span class="fork ${p.rightFork ? 'held' : ''}">🍴</span>
+      </div>
+    `;
+    DOM.philGrid.appendChild(card);
+  }
+}
+
+function resizeCanvas() {
+  const canvas = DOM.tableCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawTable() {
+  const canvas = DOM.tableCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const cx = W / 2;
+  const cy = H / 2;
+  const tableR = Math.min(W, H) * 0.28;
+  const philR = tableR + 70;
+  const forkR = tableR + 30;
+
+  // Draw table
+  ctx.beginPath();
+  ctx.arc(cx, cy, tableR, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(30,41,59,0.5)';
+  ctx.fill();
+  ctx.strokeStyle = '#a855f7';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  // Table center label
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#c4b5fd';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('ROUND TABLE', cx, cy);
+
+  // Draw forks between philosophers
+  for (let i = 0; i < 5; i++) {
+    // Fork i is between philosopher i and philosopher (i+1)%5
+    const angle = (i + 0.5) * (Math.PI * 2 / 5) - Math.PI / 2;
+    const fx = cx + Math.cos(angle) * forkR;
+    const fy = cy + Math.sin(angle) * forkR;
+
+    const held = STATE.forks[i].holder !== null;
+    // Fork color: gold if held, gray if free
+    ctx.save();
+    ctx.translate(fx, fy);
+    ctx.rotate(angle);
+    ctx.font = '20px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (held) {
+      ctx.shadowColor = '#fcd34d';
+      ctx.shadowBlur = 15;
+      ctx.fillStyle = '#fcd34d';
+    } else {
+      ctx.fillStyle = '#475569';
+    }
+    ctx.fillText('🍴', 0, 0);
+    ctx.restore();
+
+    // Label fork number
+    ctx.font = '9px monospace';
+    ctx.fillStyle = held ? '#fcd34d' : '#64748b';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('F' + (i + 1), fx, fy + 22);
+  }
+
+  // Draw philosophers
+  for (let i = 0; i < 5; i++) {
+    const p = STATE.philosophers[i];
+    const angle = i * (Math.PI * 2 / 5) - Math.PI / 2;
+    const px = cx + Math.cos(angle) * philR;
+    const py = cy + Math.sin(angle) * philR;
+
+    // Glow by state
+    if (p.state === 'eating') {
+      ctx.shadowColor = '#10b981';
+      ctx.shadowBlur = 20;
+    } else if (p.state === 'hungry') {
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 15;
+    } else if (p.state === 'blocked') {
+      ctx.shadowColor = '#ef4444';
+      ctx.shadowBlur = 15;
+    }
+
+    // Circle background
+    ctx.beginPath();
+    ctx.arc(px, py, 28, 0, Math.PI * 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+
+    // Stroke by state
+    ctx.strokeStyle = p.state === 'eating' ? '#10b981' :
+                     p.state === 'hungry' ? '#f59e0b' :
+                     p.state === 'blocked' ? '#ef4444' : '#64748b';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Emoji by state
+    ctx.font = '22px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const emoji = p.state === 'eating' ? '😋' : p.state === 'hungry' ? '😐' : p.state === 'blocked' ? '😡' : '🤔';
+    ctx.fillText(emoji, px, py);
+
+    // Name label
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = p.color;
+    ctx.textBaseline = 'top';
+    ctx.fillText(p.name, px, py + 32);
+  }
+
+  DOM.tableHint.textContent = `— t=${STATE.simTime} · strategy: ${STATE.strategy} —`;
+}
+
+function animate() {
+  drawTable();
+  requestAnimationFrame(animate);
+}
+
+function updateMetrics() {
+  DOM.mEating.textContent = STATE.philosophers.filter(p => p.state === 'eating').length;
+  DOM.mHungry.textContent = STATE.philosophers.filter(p => p.state === 'hungry' || p.state === 'blocked').length;
+  DOM.mDeadlocks.textContent = STATE.deadlocks;
+  DOM.mDeadlocks.className = 'metric-value ' + (STATE.deadlocks === 0 ? 'good' : STATE.deadlocks < 3 ? 'warn' : 'bad');
+}
+
+function runSimulation() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.timer);
+    STATE.timer = null;
+    DOM.btnRun.textContent = '▶ Start Simulation';
+    return;
+  }
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+  showStatus(`▶ Running with strategy: ${STATE.strategy}`, 'safe');
+  teach('SIMULATION START',
+    `Running Dining Philosophers with strategy "${STATE.strategy}". Watch whether the philosophers can all make progress, or if they get stuck in a deadlock.`,
+    'cyan'
+  );
+  STATE.timer = setInterval(tick, 1000 / STATE.speed);
+}
+
+function setStrategy(s) {
+  STATE.strategy = s;
+  DOM.btnNaive.classList.toggle('active', s === 'naive');
+  DOM.btnAsymmetric.classList.toggle('active', s === 'asymmetric');
+  DOM.btnWaiter.classList.toggle('active', s === 'waiter');
+  DOM.btnChandy.classList.toggle('active', s === 'chandy');
+  DOM.mStrategy.textContent = s.charAt(0).toUpperCase() + s.slice(1);
+
+  const descs = {
+    naive: 'NAIVE: Every philosopher grabs left fork, then right fork. Classic recipe for deadlock — all grab left simultaneously, all wait forever for right. This is what happens when you don\'t think about circular wait.',
+    asymmetric: 'ASYMMETRIC: Odd philosophers grab left-then-right; even grab right-then-left. This breaks the circular wait — no cycle can form. Simple but requires knowing philosopher IDs in advance. One of the four Coffman conditions (circular wait) is denied.',
+    waiter: 'WAITER: One central arbiter (waiter) grants fork access one philosopher at a time. This serializes the pick-up phase — no two philosophers can be holding "half" a meal simultaneously. Simple but creates a bottleneck (the waiter).',
+    chandy: 'CHANDY-MISRA: Forks have priorities based on philosopher IDs. When a fork is needed, a request is sent to the holder; lower-priority holders yield. Fully distributed — no central coordinator. More complex, but scales.'
+  };
+  teach('STRATEGY: ' + s.toUpperCase(), descs[s], s === 'naive' ? 'error' : 'ok');
+}
+
+function resetAll() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.timer = null;
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Start Simulation';
+  initPhilosophers();
+  updateMetrics();
+  drawTable();
+  DOM.statusBanner.classList.remove('show');
+  teach('RESET', 'Table reset — all philosophers thinking.', 'info', false);
+}
+
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRun.addEventListener('click', runSimulation);
+DOM.btnStep.addEventListener('click', tick);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnNaive.addEventListener('click', () => setStrategy('naive'));
+DOM.btnAsymmetric.addEventListener('click', () => setStrategy('asymmetric'));
+DOM.btnWaiter.addEventListener('click', () => setStrategy('waiter'));
+DOM.btnChandy.addEventListener('click', () => setStrategy('chandy'));
+
+DOM.thinkRange.addEventListener('input', e => {
+  STATE.thinkingTime = parseInt(e.target.value);
+  DOM.thinkVal.textContent = STATE.thinkingTime + 's';
+});
+DOM.eatRange.addEventListener('input', e => {
+  STATE.eatingTime = parseInt(e.target.value);
+  DOM.eatVal.textContent = STATE.eatingTime + 's';
+});
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseInt(e.target.value);
+  DOM.speedVal.textContent = STATE.speed + '×';
+  if (STATE.running) {
+    clearInterval(STATE.timer);
+    STATE.timer = setInterval(tick, 1000 / STATE.speed);
+  }
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+initPhilosophers();
+updateMetrics();
+setStrategy('naive');
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Dining Philosophers. Five philosophers sit around a table. Between each pair is a single fork. To eat, a philosopher needs BOTH adjacent forks. Fork acquisition requires the fork, eating, then releasing. Dijkstra posed this in 1965 as a classic synchronization problem.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE DEADLOCK',
+      `Naive strategy: every philosopher grabs their left fork, then reaches for the right. If all 5 grab simultaneously, they all hold their left fork and all wait for their right — forever. This satisfies all four Coffman conditions: mutual exclusion (forks are exclusive), hold-and-wait (holding left, waiting for right), no preemption (forks can\'t be forcibly taken), and circular wait (each waits for the next).`,
+      'error'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('THE FIXES',
+      `Break one of the four conditions. Asymmetric: number philosophers, odd grab left-first, even grab right-first — no cycle. Waiter: central arbiter grants access one at a time. Chandy-Misra: distributed — forks have priorities, requests flow. All work; each has trade-offs (bottleneck, complexity, or global knowledge).`,
+      'ok'
+    );
+  }, 9000);
+  showToast('👋 Try Naive first, then switch strategies', 4500);
+}, 500);
+</script>
+</body>
+</html>

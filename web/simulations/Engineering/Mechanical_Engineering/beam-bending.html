@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beam Bending — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:14px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>BEAM BENDING</h1>
+    <span class="sub">SHEAR & MOMENT DIAGRAMS · DEFLECTION · SECTION MODULUS</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Beam Configuration</div>
+    <div class="control-group">
+      <label>Beam Type</label>
+      <select id="beamType" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="simply">Simply Supported</option>
+        <option value="cantilever">Cantilever</option>
+        <option value="overhang">Overhanging</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Load (P) <span class="val" id="loadVal">10 kN</span></label>
+      <input type="range" id="loadSlider" min="1" max="50" value="10" step="1">
+    </div>
+    <div class="control-group">
+      <label>Span (L) <span class="val" id="spanVal">6.0 m</span></label>
+      <input type="range" id="spanSlider" min="2" max="12" value="6" step="0.5">
+    </div>
+    <div class="control-group">
+      <label>Load Position (a/L) <span class="val" id="posVal">0.50</span></label>
+      <input type="range" id="posSlider" min="0.1" max="0.9" value="0.5" step="0.05">
+    </div>
+    <div class="control-group">
+      <label>Section Height (h) <span class="val" id="heightVal">300 mm</span></label>
+      <input type="range" id="heightSlider" min="100" max="600" value="300" step="20">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ ANIMATE LOAD</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="overloadBtn">⚠ OVERLOAD BEAM</button>
+    <button class="btn warn" id="deflectionBtn">📐 EXCESS DEFLECTION</button>
+    <button class="btn warn" id="yieldBtn">⚡ YIELD INITIATION</button>
+
+    <div class="section-title">Section</div>
+    <button class="btn" data-section="rect">Rectangle</button>
+    <button class="btn" data-section="ibeam">I-Beam</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      M = P·a·b/L &nbsp;|&nbsp; σ = M·c/I &nbsp;|&nbsp; δ_max = P·a·b·(L²−b²)^1.5 / (9√3·L·EI) &nbsp;|&nbsp; <span class="hl">σ = M·y/I</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mMmax">
+          <div class="mlabel">MAX MOMENT</div>
+          <div class="mvalue">0<span class="munit">kN·m</span></div>
+        </div>
+        <div class="metric" id="mVmax">
+          <div class="mlabel">MAX SHEAR</div>
+          <div class="mvalue">0<span class="munit">kN</span></div>
+        </div>
+        <div class="metric" id="mSigma">
+          <div class="mlabel">MAX STRESS</div>
+          <div class="mvalue">0<span class="munit">MPa</span></div>
+        </div>
+        <div class="metric" id="mDefl">
+          <div class="mlabel">DEFLECTION</div>
+          <div class="mvalue">0<span class="munit">mm</span></div>
+        </div>
+        <div class="metric" id="mSF">
+          <div class="mlabel">SAFETY FACTOR</div>
+          <div class="mvalue">—</div>
+        </div>
+        <div class="metric" id="mI">
+          <div class="mlabel">INERTIA I</div>
+          <div class="mvalue">0<span class="munit">×10⁻⁶ m⁴</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">σ = M·y / I &nbsp;(bending stress)</div>
+      <div class="eq">τ = V·Q / (I·t) &nbsp;(shear stress)</div>
+      <div class="def">
+        Bending moment M causes normal stress. Shear force V causes shear 
+        stress. Max bending stress occurs at extreme fibers (y = c). 
+        Max shear at the neutral axis. The section modulus S = I/c.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const S = {
+  beamType: 'simply',
+  load: 10,           // kN
+  span: 6,            // m
+  pos: 0.5,           // a/L
+  height: 300,        // mm
+  width: 150,         // mm (fixed for rect)
+  section: 'rect',
+  E: 200e9,           // Pa (steel)
+  yield: 250e6,       // Pa
+  animating: false,
+  animationT: 0,      // 0..1 for load application
+  loadApplied: false
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const loadSlider = document.getElementById('loadSlider');
+const spanSlider = document.getElementById('spanSlider');
+const posSlider = document.getElementById('posSlider');
+const heightSlider = document.getElementById('heightSlider');
+const beamTypeSel = document.getElementById('beamType');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+// ─── VOICE ─────────────────────────────────────────────────
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastText: '', lastTime: 0,
+  synth: window.speechSynthesis, voices: [],
+  init(){
+    if(this.synth){
+      this.voices = this.synth.getVoices();
+      this.synth.onvoiceschanged = () => { this.voices = this.synth.getVoices(); };
+    }
+  },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── BEAM MECHANICS ────────────────────────────────────────
+// Section properties
+function sectionProps(){
+  const h = S.height / 1000; // m
+  const b = S.width / 1000;  // m
+  if(S.section === 'rect'){
+    const I = b * h*h*h / 12;
+    const c = h / 2;
+    const A = b * h;
+    return { I, c, A, name:'Rect '+(S.width)+'×'+(S.height) };
+  } else {
+    // I-beam approximation: flanges + web
+    const tf = h*0.12, tw = b*0.08, bf = b;
+    const I = (bf*h*h*h - (bf-tw)*(h-2*tf)*(h-2*tf)*(h-2*tf)) / 12;
+    const c = h / 2;
+    const A = 2*bf*tf + tw*(h-2*tf);
+    return { I, c, A, name:'I-Beam h='+S.height };
+  }
+}
+
+// Solve beam for given load position
+function solveBeam(){
+  const L = S.span;
+  const P = S.load;         // kN
+  const a = S.pos * L;
+  const b = L - a;
+  const props = sectionProps();
+
+  if(S.beamType === 'simply'){
+    const Ra = P * b / L;
+    const Rb = P * a / L;
+    const Mmax = P * a * b / L;  // kN·m
+    const Vmax = Math.max(Ra, Rb);
+    // deflection at load point
+    const E = S.E, I = props.I;
+    const Pn = P*1000;
+    const dmax = Pn * a*a * b*b / (3 * E * I * L) * 1000; // mm
+    return { Ra, Rb, Mmax, Vmax, dmax, props, a, b, L };
+  } else if(S.beamType === 'cantilever'){
+    // load at distance a from fixed end
+    const Mmax = P * a;
+    const Vmax = P;
+    const E = S.E, I = props.I;
+    const Pn = P*1000;
+    const dmax = Pn * a*a * (3*L - a) / (6 * E * I) * 1000; // mm (at tip)
+    return { Ra: P, Rb: 0, Mmax, Vmax, dmax, props, a, b, L };
+  } else {
+    // overhang: supported at x=0 and x=L, load outside
+    const Mmax = P * a;
+    const Vmax = P;
+    const E = S.E, I = props.I;
+    const Pn = P*1000;
+    const dmax = Pn * a*a / (3 * E * I) * 1000;
+    return { Ra: P, Rb: 0, Mmax, Vmax, dmax, props, a, b, L };
+  }
+}
+
+// Moment at position x along beam
+function momentAt(x, r){
+  const { L, a, b } = r;
+  if(S.beamType === 'simply'){
+    if(x <= a) return r.Ra * x;
+    else return r.Ra * x - S.load * (x - a);
+  } else if(S.beamType === 'cantilever'){
+    // fixed at x=0, load at x=a
+    if(x <= a) return -S.load * (a - x);
+    else return 0;
+  } else {
+    if(x <= L) return r.Ra * x;
+    else return r.Ra * x - S.load * (x - a);
+  }
+}
+
+// Shear at position x
+function shearAt(x, r){
+  const { L, a } = r;
+  if(S.beamType === 'simply'){
+    if(x < a) return r.Ra;
+    else return r.Ra - S.load;
+  } else if(S.beamType === 'cantilever'){
+    if(x < a) return S.load;
+    else return 0;
+  } else {
+    if(x < L) return r.Ra;
+    else return r.Ra - S.load;
+  }
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  const r = solveBeam();
+  const beamY = H * 0.32;
+  const beamL = W * 0.78;
+  const beamX0 = W * 0.11;
+
+  // color by stress state
+  const stress = r.Mmax * 1e3 * r.props.c / r.props.I; // Pa
+  const stressMPa = stress / 1e6;
+  const ratio = stress / S.yield;
+
+  drawBeam(W,H,beamX0,beamY,beamL,r,ratio);
+  drawLoadArrow(W,H,beamX0,beamY,beamL,r);
+  drawShearDiagram(W,H,beamX0,beamY+120,beamL,r);
+  drawMomentDiagram(W,H,beamX0,beamY+240,beamL,r);
+  drawSectionView(W,H,r,ratio);
+  drawDeflection(W,H,beamX0,beamY,beamL,r);
+}
+
+function drawBeam(W,H,x0,y0,L,r,ratio){
+  const th = 22;
+  const deflScale = 800; // exaggerated deflection
+
+  // beam shape with deflection
+  ctx.beginPath();
+  const N = 80;
+  for(let i=0;i<=N;i++){
+    const t = i/N;
+    const x = x0 + L * t;
+    const xm = t * r.L;
+    let defl = 0;
+    if(r.dmax !== 0){
+      // simple sinusoidal shape approximation
+      defl = Math.sin(Math.PI * t) * Math.sign(r.dmax);
+    }
+    const y = y0 - defl * deflScale * 0.001 * Math.min(1, S.animationT);
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = ratio > 1 ? '#ef4444' : ratio > 0.7 ? '#f59e0b' : '#22d3ee';
+  ctx.lineWidth = th;
+  ctx.lineCap = 'round';
+  ctx.shadowColor = ratio > 1 ? '#ef4444' : '#22d3ee';
+  ctx.shadowBlur = 12;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // supports
+  if(S.beamType === 'simply'){
+    // triangle at left
+    ctx.fillStyle = '#64748b';
+    ctx.beginPath();
+    ctx.moveTo(x0, y0+th/2);
+    ctx.lineTo(x0-12, y0+th/2+16);
+    ctx.lineTo(x0+12, y0+th/2+16);
+    ctx.closePath();
+    ctx.fill();
+    // roller at right
+    ctx.beginPath();
+    ctx.moveTo(x0+L, y0+th/2);
+    ctx.lineTo(x0+L-12, y0+th/2+16);
+    ctx.lineTo(x0+L+12, y0+th/2+16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x0+L-8, y0+th/2+20, 3, 0, Math.PI*2);
+    ctx.arc(x0+L+8, y0+th/2+20, 3, 0, Math.PI*2);
+    ctx.fill();
+  } else if(S.beamType === 'cantilever'){
+    // fixed wall at left
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(x0-30, y0-th, 14, th*2);
+    for(let i=0;i<5;i++){
+      const yy = y0 - th + i*th*2/5 + 4;
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x0-30, yy);
+      ctx.lineTo(x0-42, yy-8);
+      ctx.stroke();
+    }
+  } else {
+    ctx.fillStyle = '#64748b';
+    ctx.beginPath();
+    ctx.moveTo(x0, y0+th/2);
+    ctx.lineTo(x0-12, y0+th/2+16);
+    ctx.lineTo(x0+12, y0+th/2+16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x0+L, y0+th/2);
+    ctx.lineTo(x0+L-12, y0+th/2+16);
+    ctx.lineTo(x0+L+12, y0+th/2+16);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // dimension line
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  ctx.moveTo(x0, y0+60); ctx.lineTo(x0+L, y0+60);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('L = ' + S.span.toFixed(1) + ' m', x0 + L/2, y0+74);
+  ctx.textAlign = 'left';
+}
+
+function drawLoadArrow(W,H,x0,y0,L,r){
+  const xa = x0 + L * S.pos;
+  const applied = S.animationT;
+  const yTop = y0 - 60;
+  const yBot = y0 - 20 - applied * 0;
+
+  // arrow shaft
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(xa, yTop);
+  ctx.lineTo(xa, yTop + 25 + applied*10);
+  ctx.stroke();
+
+  // arrow head
+  ctx.fillStyle = '#fbbf24';
+  ctx.beginPath();
+  ctx.moveTo(xa, yTop + 35 + applied*10);
+  ctx.lineTo(xa-8, yTop + 25 + applied*10);
+  ctx.lineTo(xa+8, yTop + 25 + applied*10);
+  ctx.closePath();
+  ctx.fill();
+
+  // label
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(S.load.toFixed(0) + ' kN', xa, yTop - 6);
+  ctx.textAlign = 'left';
+
+  // position marker
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  ctx.moveTo(xa, y0+22);
+  ctx.lineTo(xa, y0+58);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('a = ' + (S.pos*S.span).toFixed(2) + ' m', xa, y0+58);
+  ctx.textAlign = 'left';
+}
+
+function drawShearDiagram(W,H,x0,y0,L,r){
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('SHEAR FORCE (kN)', x0, y0 - 12);
+
+  const maxV = Math.max(Math.abs(r.Vmax), 0.01);
+  const scale = 50 / maxV;
+
+  // axis
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x0+L, y0);
+  ctx.stroke();
+
+  // diagram
+  const N = 80;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const t = i/N;
+    const xm = t * S.span;
+    const v = shearAt(xm, r);
+    const X = x0 + t*L;
+    const Y = y0 - v * scale;
+    if(i===0) ctx.moveTo(X, y0);
+    ctx.lineTo(X, Y);
+  }
+  // return to axis at end
+  ctx.lineTo(x0+L, y0);
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // fill
+  ctx.globalAlpha = 0.15;
+  ctx.fillStyle = '#a78bfa';
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawMomentDiagram(W,H,x0,y0,L,r){
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('BENDING MOMENT (kN·m)', x0, y0 - 12);
+
+  const maxM = Math.max(Math.abs(r.Mmax), 0.01);
+  const scale = 50 / maxM;
+
+  ctx.strokeStyle = '#1e293b';
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x0+L, y0);
+  ctx.stroke();
+
+  const N = 80;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const t = i/N;
+    const xm = t * S.span;
+    const m = momentAt(xm, r);
+    const X = x0 + t*L;
+    const Y = y0 + m * scale; // moment positive downward in this convention
+    if(i===0) ctx.moveTo(X, y0);
+    ctx.lineTo(X, Y);
+  }
+  ctx.lineTo(x0+L, y0);
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.15;
+  ctx.fillStyle = '#22d3ee';
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // max point
+  if(S.beamType === 'simply'){
+    const xa = x0 + L*S.pos;
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(xa, y0 + r.Mmax*scale, 4, 0, Math.PI*2);
+    ctx.fill();
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.fillText(r.Mmax.toFixed(1) + ' kN·m', xa+8, y0 + r.Mmax*scale - 6);
+  }
+}
+
+function drawSectionView(W,H,r,ratio){
+  const ox = W - 130, oy = H - 220;
+  ctx.save();
+  ctx.translate(ox, oy);
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('SECTION & STRESS', 0, -10);
+
+  const h = Math.min(140, S.height * 0.4);
+  const w = S.section === 'rect' ? 70 : 80;
+
+  // draw section
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1.5;
+
+  if(S.section === 'rect'){
+    ctx.strokeRect(0, 0, w, h);
+    // stress gradient
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    const maxStress = ratio;
+    const colA = maxStress > 1 ? '#ef4444' : maxStress > 0.7 ? '#f59e0b' : '#22d3ee';
+    grad.addColorStop(0, colA + 'cc');
+    grad.addColorStop(0.5, '#00000000');
+    grad.addColorStop(1, '#7c3aedcc');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+  } else {
+    // I-beam
+    const tf = h*0.12;
+    ctx.beginPath();
+    ctx.moveTo(0,0); ctx.lineTo(w,0); ctx.lineTo(w,tf);
+    ctx.lineTo(w*0.65,tf); ctx.lineTo(w*0.65,h-tf); ctx.lineTo(w,h-tf);
+    ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.lineTo(0,h-tf);
+    ctx.lineTo(w*0.35,h-tf); ctx.lineTo(w*0.35,tf); ctx.lineTo(0,tf);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fillStyle = ratio > 1 ? '#ef444488' : '#22d3ee44';
+    ctx.fill();
+  }
+
+  // neutral axis
+  ctx.strokeStyle = '#fbbf24';
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  ctx.moveTo(-10, h/2); ctx.lineTo(w+10, h/2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('NA', w+12, h/2+3);
+
+  // stress arrows
+  ctx.strokeStyle = ratio > 1 ? '#f87171' : '#22d3ee';
+  ctx.lineWidth = 1.5;
+  const arrows = 5;
+  for(let i=0;i<arrows;i++){
+    const y = h * i / (arrows-1);
+    const dist = (y - h/2) / (h/2); // -1..1
+    const len = Math.abs(dist) * 18;
+    if(dist > 0){
+      ctx.beginPath();
+      ctx.moveTo(w, y); ctx.lineTo(w + len, y);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(0, y); ctx.lineTo(0 - len, y);
+      ctx.stroke();
+    }
+  }
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('σ max = ' + (ratio*S.yield/1e6).toFixed(0) + ' MPa', 0, h+16);
+  ctx.restore();
+}
+
+function drawDeflection(W,H,x0,y0,L,r){
+  // draw a ghost beam showing the deflected shape
+  const scale = 40; // px per unit deflection exaggeration
+  const dmax = Math.abs(r.dmax);
+
+  ctx.strokeStyle = 'rgba(251,191,36,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  const N = 60;
+  for(let i=0;i<=N;i++){
+    const t = i/N;
+    const x = x0 + L*t;
+    const defl = Math.sin(Math.PI*t) * dmax / 50;
+    const y = y0 + defl * scale * 0.3;
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const r = solveBeam();
+  const stress = r.Mmax * 1e3 * r.props.c / r.props.I / 1e6; // MPa
+  const sf = S.yield/1e6 / Math.max(stress, 0.001);
+  const deflLimit = S.span * 1000 / 250; // L/250 typical
+
+  document.querySelector('#mMmax .mvalue').innerHTML = r.Mmax.toFixed(1) + '<span class="munit">kN·m</span>';
+  document.querySelector('#mVmax .mvalue').innerHTML = r.Vmax.toFixed(1) + '<span class="munit">kN</span>';
+  document.querySelector('#mSigma .mvalue').innerHTML = stress.toFixed(1) + '<span class="munit">MPa</span>';
+  document.querySelector('#mDefl .mvalue').innerHTML = Math.abs(r.dmax).toFixed(2) + '<span class="munit">mm</span>';
+  document.querySelector('#mSF .mvalue').textContent = sf.toFixed(2);
+  document.querySelector('#mI .mvalue').innerHTML = (r.props.I*1e6).toFixed(1) + '<span class="munit">×10⁻⁶</span>';
+
+  document.getElementById('mSigma').className = 'metric' + (stress > S.yield/1e6 ? ' bad' : stress > S.yield/1e6*0.7 ? ' warn' : ' ok');
+  document.getElementById('mSF').className = 'metric' + (sf < 1 ? ' bad' : sf < 1.5 ? ' warn' : ' ok');
+  document.getElementById('mDefl').className = 'metric' + (Math.abs(r.dmax) > deflLimit ? ' bad' : Math.abs(r.dmax) > deflLimit*0.7 ? ' warn' : ' ok');
+  document.getElementById('mMmax').className = 'metric' + (stress > S.yield/1e6 ? ' bad' : '');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  if(S.animating){
+    S.animationT = Math.min(1, S.animationT + 0.02);
+    if(S.animationT >= 1){
+      S.animating = false;
+      playBtn.textContent = '▶ ANIMATE LOAD';
+    }
+  }
+  render();
+  if(ts - lastMetrics > 80){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+loadSlider.addEventListener('input', e => {
+  S.load = parseFloat(e.target.value);
+  document.getElementById('loadVal').textContent = S.load + ' kN';
+});
+spanSlider.addEventListener('input', e => {
+  S.span = parseFloat(e.target.value);
+  document.getElementById('spanVal').textContent = S.span.toFixed(1) + ' m';
+});
+posSlider.addEventListener('input', e => {
+  S.pos = parseFloat(e.target.value);
+  document.getElementById('posVal').textContent = S.pos.toFixed(2);
+});
+heightSlider.addEventListener('input', e => {
+  S.height = parseFloat(e.target.value);
+  document.getElementById('heightVal').textContent = S.height + ' mm';
+});
+beamTypeSel.addEventListener('change', e => {
+  S.beamType = e.target.value;
+  teach('BEAM', 'Switched to ' + e.target.options[e.target.selectedIndex].text + ' beam. Each support condition gives different moment and deflection formulas.', 'info');
+});
+
+playBtn.addEventListener('click', () => {
+  S.animating = !S.animating;
+  if(S.animating){
+    S.animationT = 0;
+    playBtn.textContent = '⏸ LOADING...';
+    teach('LOAD', 'Applying ' + S.load + ' kN load gradually. Watch the beam deflect and stress gradients build. The moment diagram grows with the load.', 'info');
+  } else {
+    playBtn.textContent = '▶ ANIMATE LOAD';
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  S.animationT = Math.min(1, S.animationT + 0.2);
+  const r = solveBeam();
+  const stress = r.Mmax * 1e3 * r.props.c / r.props.I / 1e6;
+  teach('STEP', 'Load at ' + (S.animationT*100).toFixed(0) + '%. Max moment ' + (r.Mmax*S.animationT).toFixed(1) + ' kN·m, stress ' + (stress*S.animationT).toFixed(1) + ' MPa.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.load = 10; S.span = 6; S.pos = 0.5; S.height = 300;
+  S.animationT = 0; S.animating = false;
+  loadSlider.value = 10; spanSlider.value = 6; posSlider.value = 0.5; heightSlider.value = 300;
+  document.getElementById('loadVal').textContent = '10 kN';
+  document.getElementById('spanVal').textContent = '6.0 m';
+  document.getElementById('posVal').textContent = '0.50';
+  document.getElementById('heightVal').textContent = '300 mm';
+  playBtn.textContent = '▶ ANIMATE LOAD';
+  teach('RESET', 'Beam reset to defaults: simply supported, 10 kN at midspan of 6 m span. Classic textbook case.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('overloadBtn').addEventListener('click', () => {
+  S.load = 45;
+  loadSlider.value = 45;
+  document.getElementById('loadVal').textContent = '45 kN';
+  S.animationT = 1;
+  const r = solveBeam();
+  const stress = r.Mmax * 1e3 * r.props.c / r.props.I / 1e6;
+  if(stress > S.yield/1e6){
+    teach('OVERLOAD', 'Load raised to 45 kN. Max bending stress = ' + stress.toFixed(0) + ' MPa exceeds yield (250 MPa). The beam yields at the outer fibers and could collapse. Real bridges are designed with safety factors of 1.5–3 to prevent this.', 'error');
+    toast('⚠ Beam overloaded');
+  } else {
+    teach('LOAD', 'Load raised to 45 kN. Stress = ' + stress.toFixed(0) + ' MPa. Still within elastic range — increasing section height would reduce stress further.', 'warn');
+  }
+});
+
+document.getElementById('deflectionBtn').addEventListener('click', () => {
+  S.height = 150;
+  heightSlider.value = 150;
+  document.getElementById('heightVal').textContent = '150 mm';
+  S.animationT = 1;
+  const r = solveBeam();
+  const limit = S.span * 1000 / 250;
+  if(Math.abs(r.dmax) > limit){
+    teach('DEFLECTION', 'Reduced section height to 150 mm. Deflection now = ' + Math.abs(r.dmax).toFixed(1) + ' mm, exceeding the L/250 serviceability limit of ' + limit.toFixed(1) + ' mm. Serviceability failures (sagging floors) are often more common than strength failures.', 'warn');
+    toast('📐 Excessive deflection');
+  }
+});
+
+document.getElementById('yieldBtn').addEventListener('click', () => {
+  S.height = 200;
+  heightSlider.value = 200;
+  document.getElementById('heightVal').textContent = '200 mm';
+  S.load = 30;
+  loadSlider.value = 30;
+  document.getElementById('loadVal').textContent = '30 kN';
+  S.animationT = 1;
+  const r = solveBeam();
+  const stress = r.Mmax * 1e3 * r.props.c / r.props.I / 1e6;
+  teach('YIELD INIT', 'Combination of 30 kN and 200 mm height gives stress ' + stress.toFixed(0) + ' MPa. Yield starts at the extreme fibers (top/bottom). Plastic hinges would form if load increased — this is how limit-state design works.', 'warn');
+});
+
+document.querySelectorAll('[data-section]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    S.section = btn.dataset.section;
+    const p = sectionProps();
+    teach('SECTION', 'Changed to ' + p.name + '. Inertia I = ' + (p.I*1e6).toFixed(1) + '×10⁻⁶ m⁴. I-beams put material far from the neutral axis where it resists bending best — much more efficient than rectangles.', 'concept');
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Beam Bending. This simulator shows how transverse loads create shear forces and bending moments inside a beam — the core of structural design.', 'concept');
+  teach('CONCEPT', 'When a beam bends, one side stretches (tension) and the other compresses. The neutral axis stays the same length. Stress is σ = M·y/I — biggest at the outer fibers.', 'concept');
+  teach('HOWTO', 'Choose a beam type, set load and span, then press ANIMATE LOAD. Watch the shear and moment diagrams build up, and the section view show the stress gradient. Try the fault buttons to see overload and deflection issues.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

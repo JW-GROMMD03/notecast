@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rigid Body Rotation &amp; Moment of Inertia — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>RIGID BODY DYNAMICS</h1>
+    <span class="sub">MOMENT OF INERTIA · TORQUE · ANGULAR MOMENTUM · GYROSCOPE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Body</div>
+    <div class="control-group">
+      <label>Shape</label>
+      <select id="shapeSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="disk">Solid Disk</option>
+        <option value="ring">Thin Ring</option>
+        <option value="sphere">Solid Sphere</option>
+        <option value="shell">Spherical Shell</option>
+        <option value="rod">Rod (about end)</option>
+        <option value="rod-center">Rod (about center)</option>
+        <option value="cylinder">Solid Cylinder</option>
+        <option value="plate">Rectangular Plate</option>
+      </select>
+    </div>
+
+    <div class="section-title">Geometry</div>
+    <div class="control-group">
+      <label>Mass m <span class="val" id="mVal">5.0 kg</span></label>
+      <input type="range" id="mSlider" min="0.1" max="50" value="5" step="0.1">
+    </div>
+    <div class="control-group">
+      <label>Radius / Length R <span class="val" id="rVal">0.30 m</span></label>
+      <input type="range" id="rSlider" min="0.05" max="1.5" value="0.3" step="0.01">
+    </div>
+
+    <div class="section-title">Motion</div>
+    <div class="control-group">
+      <label>Applied Torque τ <span class="val" id="tauVal">10 N·m</span></label>
+      <input type="range" id="tauSlider" min="0" max="100" value="10" step="0.5">
+    </div>
+    <div class="control-group">
+      <label>Initial ω₀ <span class="val" id="w0Val">0 rad/s</span></label>
+      <input type="range" id="w0Slider" min="0" max="30" value="0" step="0.5">
+    </div>
+    <div class="control-group">
+      <label>Friction Torque <span class="val" id="fricVal">0.5 N·m</span></label>
+      <input type="range" id="fricSlider" min="0" max="5" value="0.5" step="0.1">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ START ROTATION</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="flywheelBtn">⚠ RUNAWAY FLYWHEEL</button>
+    <button class="btn warn" id="stopBtn">⚠ FORCE STOP (Brake)</button>
+    <button class="btn warn" id="changeAxisBtn">⚠ CHANGE AXIS</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="flywheel">Energy Storage Flywheel</button>
+    <button class="btn" data-preset="wheel">Bicycle Wheel</button>
+    <button class="btn" data-preset="turbine">Turbine Rotor</button>
+    <button class="btn" data-preset="door">Swinging Door</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      τ = I·α &nbsp;|&nbsp; L = I·ω &nbsp;|&nbsp; KE_rot = ½Iω² &nbsp;|&nbsp; <span class="hl">I_disk = ½mR²</span> &nbsp;|&nbsp; I_ring = mR²
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mI">
+          <div class="mlabel">INERTIA I</div>
+          <div class="mvalue">0<span class="munit">kg·m²</span></div>
+        </div>
+        <div class="metric" id="mOmega">
+          <div class="mlabel">ANG. VELOCITY ω</div>
+          <div class="mvalue">0<span class="munit">rad/s</span></div>
+        </div>
+        <div class="metric" id="mAlpha">
+          <div class="mlabel">ANG. ACCEL α</div>
+          <div class="mvalue">0<span class="munit">rad/s²</span></div>
+        </div>
+        <div class="metric" id="mL">
+          <div class="mlabel">ANG. MOMENTUM L</div>
+          <div class="mvalue">0<span class="munit">kg·m²/s</span></div>
+        </div>
+        <div class="metric" id="mKE">
+          <div class="mlabel">KINETIC ENERGY</div>
+          <div class="mvalue">0<span class="munit">J</span></div>
+        </div>
+        <div class="metric" id="mRPM">
+          <div class="mlabel">SPEED</div>
+          <div class="mvalue">0<span class="munit">rpm</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">τ = I·α (Newton's 2nd for rotation)</div>
+      <div class="eq">L = I·ω (angular momentum)</div>
+      <div class="eq">KE = ½·I·ω² (rotational KE)</div>
+      <div class="def">
+        Moment of inertia I depends on mass distribution. Moving mass 
+        away from the axis increases I quadratically with r. A ring has 
+        twice the I of a disk of same mass and radius. This is why a 
+        hollow tube resists rotation more than a solid rod.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const SHAPES = {
+  disk:       { name:'Solid Disk',       I: (m,R) => 0.5*m*R*R,            color:'#22d3ee' },
+  ring:       { name:'Thin Ring',        I: (m,R) => m*R*R,                color:'#4ade80' },
+  sphere:     { name:'Solid Sphere',     I: (m,R) => 0.4*m*R*R,            color:'#fbbf24' },
+  shell:      { name:'Spherical Shell',  I: (m,R) => (2/3)*m*R*R,          color:'#a78bfa' },
+  rod:        { name:'Rod (about end)',  I: (m,R) => (1/3)*m*R*R,          color:'#f87171' },
+  'rod-center':{ name:'Rod (about center)', I: (m,R) => (1/12)*m*R*R,      color:'#fb923c' },
+  cylinder:   { name:'Solid Cylinder',   I: (m,R) => 0.5*m*R*R,            color:'#c4b5fd' },
+  plate:      { name:'Rectangular Plate', I: (m,R) => (1/12)*m*R*R,        color:'#67e8f9' }
+};
+
+const S = {
+  shape: 'disk',
+  mass: 5.0,
+  R: 0.30,
+  tau: 10,
+  w0: 0,
+  friction: 0.5,
+  running: false,
+  time: 0,
+  omega: 0,
+  theta: 0,
+  history: [],
+  braked: false
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const shapeSel = document.getElementById('shapeSelect');
+const mSlider = document.getElementById('mSlider');
+const rSlider = document.getElementById('rSlider');
+const tauSlider = document.getElementById('tauSlider');
+const w0Slider = document.getElementById('w0Slider');
+const fricSlider = document.getElementById('fricSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── RIGID BODY MATH ───────────────────────────────────────
+function getShape(){ return SHAPES[S.shape]; }
+
+function computeBody(){
+  const sh = getShape();
+  const I = sh.I(S.mass, S.R);
+  const alpha = (S.tau - S.friction * Math.sign(S.omega || 1)) / I;
+  const L = I * S.omega;
+  const KE = 0.5 * I * S.omega * S.omega;
+  const rpm = S.omega * 60 / (2 * Math.PI);
+  return { I, alpha, L, KE, rpm, sh };
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawBody(W, H);
+  drawEnergyChart(W, H);
+  drawMomentChart(W, H);
+}
+
+function drawBody(W, H){
+  const cx = W * 0.35;
+  const cy = H * 0.4;
+
+  const info = computeBody();
+  const scale = Math.min(200, 150 * S.R + 50);
+  const R = scale;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(S.theta);
+
+  const color = info.sh.color;
+
+  if(S.shape === 'disk' || S.shape === 'cylinder'){
+    // Solid disk
+    ctx.beginPath();
+    ctx.arc(0, 0, R, 0, Math.PI * 2);
+    const grad = ctx.createRadialGradient(-R*0.3, -R*0.3, R*0.1, 0, 0, R);
+    grad.addColorStop(0, color + 'ff');
+    grad.addColorStop(1, color + '66');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Radial lines to show rotation
+    for(let i=0;i<6;i++){
+      const ang = i * Math.PI / 3;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(ang) * R * 0.85, Math.sin(ang) * R * 0.85);
+      ctx.strokeStyle = color + '88';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  } else if(S.shape === 'ring'){
+    // Thin ring
+    ctx.beginPath();
+    ctx.arc(0, 0, R, 0, Math.PI * 2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 12;
+    ctx.stroke();
+    // Spokes
+    for(let i=0;i<6;i++){
+      const ang = i * Math.PI / 3;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(ang) * R * 0.9, Math.sin(ang) * R * 0.9);
+      ctx.strokeStyle = color + '88';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  } else if(S.shape === 'sphere' || S.shape === 'shell'){
+    // Sphere
+    ctx.beginPath();
+    ctx.arc(0, 0, R, 0, Math.PI * 2);
+    const grad = ctx.createRadialGradient(-R*0.3, -R*0.3, R*0.1, 0, 0, R);
+    grad.addColorStop(0, color + 'ff');
+    grad.addColorStop(1, color + '33');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Equator line
+    ctx.beginPath();
+    ctx.ellipse(0, 0, R, R*0.3, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = color + '88';
+    ctx.stroke();
+
+    // Rotation marker
+    ctx.beginPath();
+    ctx.moveTo(R * 0.85, 0);
+    ctx.lineTo(R * 0.85, R * 0.25);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  } else if(S.shape === 'rod' || S.shape === 'rod-center'){
+    // Rod
+    const rodW = 18;
+    const rodL = R * 2;
+    ctx.fillStyle = color + '66';
+    ctx.fillRect(-rodW/2, -rodL/2, rodW, rodL);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(-rodW/2, -rodL/2, rodW, rodL);
+
+    // End caps
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(0, -rodL/2, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(0, rodL/2, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Axis indicator
+    if(S.shape === 'rod'){
+      // Axis at bottom
+      ctx.fillStyle = '#f87171';
+      ctx.beginPath();
+      ctx.arc(0, rodL/2, 10, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Axis at center
+      ctx.fillStyle = '#f87171';
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // Plate
+    const pw = R * 2;
+    const ph = R * 1.2;
+    ctx.fillStyle = color + '66';
+    ctx.fillRect(-pw/2, -ph/2, pw, ph);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(-pw/2, -ph/2, pw, ph);
+  }
+
+  // Pivot center
+  ctx.beginPath();
+  ctx.arc(0, 0, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#f87171';
+  ctx.fill();
+
+  ctx.restore();
+
+  // Info
+  ctx.fillStyle = info.sh.color;
+  ctx.font = 'bold 13px Consolas, monospace';
+  ctx.fillText(info.sh.name, 20, 30);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('I = ' + info.I.toFixed(3) + ' kg·m²', 20, 50);
+  ctx.fillText('m = ' + S.mass + ' kg, R = ' + S.R + ' m', 20, 68);
+
+  // Torque arrow (tangential)
+  ctx.strokeStyle = '#fbbf24';
+  ctx.fillStyle = '#fbbf24';
+  ctx.lineWidth = 3;
+  const torqueAngle = -Math.PI/2;
+  const tx = cx + Math.cos(torqueAngle) * (R + 15);
+  const ty = cy + Math.sin(torqueAngle) * (R + 15);
+  const arrowLen = Math.min(60, S.tau * 3);
+  ctx.beginPath();
+  ctx.moveTo(tx, ty);
+  ctx.lineTo(tx + arrowLen, ty);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(tx + arrowLen + 10, ty);
+  ctx.lineTo(tx + arrowLen, ty - 6);
+  ctx.lineTo(tx + arrowLen, ty + 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('τ = ' + S.tau + ' N·m', tx + 10, ty - 12);
+
+  // Angular velocity arc arrow
+  if(Math.abs(S.omega) > 0.1){
+    const sign = Math.sign(S.omega);
+    ctx.strokeStyle = '#a78bfa';
+    ctx.fillStyle = '#a78bfa';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R + 30, 0.3, 2.5, sign < 0);
+    ctx.stroke();
+    // Arrowhead at end
+    const endAng = sign < 0 ? 0.3 : 2.5;
+    const ex = cx + Math.cos(endAng) * (R + 30);
+    const ey = cy + Math.sin(endAng) * (R + 30);
+    ctx.beginPath();
+    ctx.arc(ex, ey, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.font = 'bold 12px Consolas, monospace';
+    ctx.fillText('ω = ' + S.omega.toFixed(2) + ' rad/s', cx - 40, cy + R + 60);
+  }
+
+  // Faults
+  if(S.braked){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 16px Consolas, monospace';
+    ctx.fillText('⚠ BRAKED', cx - 50, cy - R - 40);
+  }
+}
+
+function drawEnergyChart(W, H){
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 200;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('ROTATIONAL KINETIC ENERGY', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const info = computeBody();
+  const KE = info.KE;
+  const KEmax = 1000; // J
+  const barW = w - 60;
+  const barH = 40;
+  const barY = oy + 60;
+
+  // Background
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(ox + 30, barY, barW, barH);
+
+  // Fill
+  const fillW = Math.min(1, KE / KEmax) * barW;
+  const color = KE > 500 ? '#f87171' : KE > 200 ? '#fbbf24' : '#4ade80';
+  ctx.fillStyle = color;
+  ctx.fillRect(ox + 30, barY, fillW, barH);
+
+  // Labels
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('KE_rot', ox + 30, barY - 8);
+  ctx.fillStyle = color;
+  ctx.font = 'bold 14px Consolas, monospace';
+  ctx.fillText(KE.toFixed(1) + ' J', ox + 30, barY + 28);
+
+  // Formulas
+  ctx.fillStyle = '#c4b5fd';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('KE = ½·I·ω²', ox + 8, oy + 130);
+  ctx.fillText('I = ' + info.I.toFixed(3) + ' kg·m²', ox + 8, oy + 150);
+  ctx.fillText('ω = ' + S.omega.toFixed(2) + ' rad/s', ox + 8, oy + 170);
+
+  // Flywheel burst warning
+  if(KE > 800){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 11px Consolas, monospace';
+    ctx.fillText('⚠ HIGH ENERGY — BURST RISK', ox + 8, oy + h - 8);
+  }
+}
+
+function drawMomentChart(W, H){
+  const ox = W - 280;
+  const oy = H - 200;
+  const w = 260;
+  const h = 180;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('MOMENT OF INERTIA (shapes)', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  // Bar chart of I for each shape, same mass and R
+  const shapes = ['disk', 'ring', 'sphere', 'shell', 'rod', 'rod-center'];
+  const labels = ['Disk ½', 'Ring 1', 'Sph 0.4', 'Shell ⅔', 'Rod ⅓', 'Rod 1/12'];
+  const maxI = 1.0 * S.mass * S.R * S.R;
+  const barW = (w - 40) / shapes.length;
+
+  for(let i=0;i<shapes.length;i++){
+    const sh = SHAPES[shapes[i]];
+    const I = sh.I(S.mass, S.R);
+    const barH = Math.min(h - 60, (I / maxI) * (h - 60));
+    const x = ox + 20 + i * barW;
+    const y = oy + h - 30 - barH;
+
+    const isCurrent = shapes[i] === S.shape;
+    ctx.fillStyle = isCurrent ? sh.color : sh.color + '66';
+    ctx.fillRect(x + 2, y, barW - 4, barH);
+
+    ctx.fillStyle = isCurrent ? '#fff' : '#cbd5e1';
+    ctx.font = 'bold 9px Consolas, monospace';
+    ctx.fillText((I * 100).toFixed(1), x + 4, y - 4);
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '8px Consolas, monospace';
+    ctx.save();
+    ctx.translate(x + barW/2 - 2, oy + h - 15);
+    ctx.rotate(-Math.PI/4);
+    ctx.fillText(labels[i], -10, 0);
+    ctx.restore();
+  }
+
+  // Info
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('Current I = ' + computeBody().I.toFixed(3), ox + 8, oy + 16);
+
+  // Comparison
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('(for m = ' + S.mass + ' kg, R = ' + S.R + ' m)', ox + 8, oy + h - 2);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const info = computeBody();
+  document.querySelector('#mI .mvalue').innerHTML = info.I.toFixed(3) + '<span class="munit">kg·m²</span>';
+  document.querySelector('#mOmega .mvalue').innerHTML = S.omega.toFixed(2) + '<span class="munit">rad/s</span>';
+  document.querySelector('#mAlpha .mvalue').innerHTML = info.alpha.toFixed(2) + '<span class="munit">rad/s²</span>';
+  document.querySelector('#mL .mvalue').innerHTML = info.L.toFixed(2) + '<span class="munit">kg·m²/s</span>';
+  document.querySelector('#mKE .mvalue').innerHTML = info.KE.toFixed(1) + '<span class="munit">J</span>';
+  document.querySelector('#mRPM .mvalue').innerHTML = info.rpm.toFixed(0) + '<span class="munit">rpm</span>';
+
+  document.getElementById('mOmega').className = 'metric' + (S.omega > 30 ? ' bad' : S.omega > 15 ? ' warn' : ' ok');
+  document.getElementById('mKE').className = 'metric' + (info.KE > 500 ? ' bad' : info.KE > 200 ? ' warn' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  S.time += 1/60;
+
+  if(S.running && !S.braked){
+    const info = computeBody();
+    const dt = 1/60;
+    S.omega += info.alpha * dt;
+    if(S.omega < 0 && S.tau <= 0){
+      S.omega = 0;
+    }
+    S.theta += S.omega * dt;
+
+    // Record history
+    if(Math.floor(S.time * 10) % 2 === 0){
+      S.history.push({ t: S.time, omega: S.omega, theta: S.theta });
+      if(S.history.length > 500) S.history.shift();
+    }
+
+    // Teaching on overspeed
+    if(Math.abs(S.omega) > 25 && !S._overspeedTaught){
+      S._overspeedTaught = true;
+      teach('OVERSPEED', 'Angular velocity reached ' + S.omega.toFixed(1) + ' rad/s. Real rotors have critical speeds, bearing limits, and burst containment requirements. Flywheels in cars (KERS) spin at 60,000 rpm.', 'warn');
+    }
+    if(Math.abs(S.omega) <= 25) S._overspeedTaught = false;
+  }
+
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+shapeSel.addEventListener('change', e => {
+  S.shape = e.target.value;
+  const sh = getShape();
+  const info = computeBody();
+  teach('SHAPE', sh.name + ': I = ' + info.I.toFixed(3) + ' kg·m². Mass distribution matters — a ring has more inertia than a disk of the same mass and radius.', 'concept');
+});
+
+mSlider.addEventListener('input', e => {
+  S.mass = parseFloat(e.target.value);
+  document.getElementById('mVal').textContent = S.mass.toFixed(1) + ' kg';
+});
+
+rSlider.addEventListener('input', e => {
+  S.R = parseFloat(e.target.value);
+  document.getElementById('rVal').textContent = S.R.toFixed(2) + ' m';
+});
+
+tauSlider.addEventListener('input', e => {
+  S.tau = parseFloat(e.target.value);
+  document.getElementById('tauVal').textContent = S.tau.toFixed(1) + ' N·m';
+});
+
+w0Slider.addEventListener('input', e => {
+  S.w0 = parseFloat(e.target.value);
+  document.getElementById('w0Val').textContent = S.w0.toFixed(1) + ' rad/s';
+});
+
+fricSlider.addEventListener('input', e => {
+  S.friction = parseFloat(e.target.value);
+  document.getElementById('fricVal').textContent = S.friction.toFixed(1) + ' N·m';
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ START ROTATION';
+  if(S.running){
+    if(S.omega === 0) S.omega = S.w0;
+    const info = computeBody();
+    teach('RUN', 'Body rotating. I = ' + info.I.toFixed(3) + ' kg·m², α = ' + info.alpha.toFixed(2) + ' rad/s².', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  if(S.omega === 0) S.omega = S.w0;
+  const info = computeBody();
+  const dt = 0.1;
+  S.omega += info.alpha * dt;
+  S.theta += S.omega * dt;
+  teach('STEP', 'ω = ' + S.omega.toFixed(2) + ' rad/s, θ = ' + (S.theta % (2*Math.PI)).toFixed(2) + ' rad. KE = ' + (0.5*info.I*S.omega*S.omega).toFixed(2) + ' J.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.shape = 'disk'; S.mass = 5.0; S.R = 0.30; S.tau = 10; S.w0 = 0; S.friction = 0.5;
+  S.running = false; S.omega = 0; S.theta = 0; S.braked = false;
+  S.history = [];
+  shapeSel.value = 'disk';
+  mSlider.value = 5; rSlider.value = 0.3; tauSlider.value = 10;
+  w0Slider.value = 0; fricSlider.value = 0.5;
+  document.getElementById('mVal').textContent = '5.0 kg';
+  document.getElementById('rVal').textContent = '0.30 m';
+  document.getElementById('tauVal').textContent = '10.0 N·m';
+  document.getElementById('w0Val').textContent = '0.0 rad/s';
+  document.getElementById('fricVal').textContent = '0.5 N·m';
+  playBtn.textContent = '▶ START ROTATION';
+  teach('RESET', 'Rigid body reset to defaults.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('flywheelBtn').addEventListener('click', () => {
+  S.shape = 'ring'; S.mass = 50; S.R = 0.8; S.tau = 80; S.w0 = 20;
+  shapeSel.value = 'ring';
+  mSlider.value = 50; rSlider.value = 0.8; tauSlider.value = 80; w0Slider.value = 20;
+  document.getElementById('mVal').textContent = '50.0 kg';
+  document.getElementById('rVal').textContent = '0.80 m';
+  document.getElementById('tauVal').textContent = '80.0 N·m';
+  document.getElementById('w0Val').textContent = '20.0 rad/s';
+  S.omega = 20;
+  S.running = true;
+  playBtn.textContent = '⏸ PAUSE';
+  const info = computeBody();
+  teach('FLYWHEEL', 'Runaway flywheel! I = ' + info.I.toFixed(2) + ' kg·m², KE = ' + info.KE.toFixed(0) + ' J. A failed flywheel releases all this energy in milliseconds — burst containment housings are mandatory.', 'error');
+  toast('⚠ Runaway');
+});
+
+document.getElementById('stopBtn').addEventListener('click', () => {
+  S.braked = !S.braked;
+  if(S.braked){
+    S.running = false;
+    playBtn.textContent = '▶ START ROTATION';
+    const info = computeBody();
+    teach('BRAKE', 'Emergency brake applied. ω = ' + S.omega.toFixed(2) + ' rad/s, KE = ' + info.KE.toFixed(1) + ' J to dissipate. Real brakes convert this to heat — brake fade occurs when the pad gets too hot.', 'warn');
+  } else {
+    teach('RELEASE', 'Brake released.', 'ok');
+  }
+});
+
+document.getElementById('changeAxisBtn').addEventListener('click', () => {
+  // Change axis of rotation by flipping between rod and rod-center shapes
+  if(S.shape === 'rod'){
+    S.shape = 'rod-center';
+    teach('AXIS CHANGE', 'Axis moved to center. I dropped from ⅓mR² to 1/12mR² — 4× smaller! Same rod, different inertia. This is the parallel axis theorem in action.', 'warn');
+  } else {
+    S.shape = 'rod';
+    teach('AXIS CHANGE', 'Axis moved to end. I increased from 1/12mR² to ⅓mR² — 4× larger. Moving mass away from the axis increases inertia.', 'warn');
+  }
+  shapeSel.value = S.shape;
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'flywheel'){
+      S.shape = 'ring'; S.mass = 30; S.R = 0.5; S.tau = 20; S.w0 = 0; S.friction = 1;
+      shapeSel.value = 'ring';
+      mSlider.value = 30; rSlider.value = 0.5; tauSlider.value = 20;
+      w0Slider.value = 0; fricSlider.value = 1;
+      updateLabels();
+      resetState();
+      teach('FLYWHEEL', 'Energy storage flywheel: 30 kg ring, 0.5 m radius. I = ' + (30*0.25).toFixed(2) + ' kg·m². Stores kinetic energy for grid frequency regulation or KERS.', 'concept');
+    } else if(p === 'wheel'){
+      S.shape = 'ring'; S.mass = 1.5; S.R = 0.35; S.tau = 2; S.w0 = 0; S.friction = 0.1;
+      shapeSel.value = 'ring';
+      mSlider.value = 1.5; rSlider.value = 0.35; tauSlider.value = 2;
+      w0Slider.value = 0; fricSlider.value = 0.1;
+      updateLabels();
+      resetState();
+      teach('WHEEL', 'Bicycle wheel: 1.5 kg (mass concentrated at rim), 0.35 m radius. Small inertia but gyroscopic effect keeps bike stable at speed.', 'concept');
+    } else if(p === 'turbine'){
+      S.shape = 'cylinder'; S.mass = 500; S.R = 1.0; S.tau = 500; S.w0 = 0; S.friction = 50;
+      shapeSel.value = 'cylinder';
+      mSlider.value = 50; rSlider.value = 1.0; tauSlider.value = 100;
+      w0Slider.value = 0; fricSlider.value = 5;
+      updateLabels();
+      resetState();
+      teach('TURBINE', 'Steam turbine rotor: hundreds of kg, ~1 m radius. Enormous I. Accelerating it from rest takes minutes. Overspeed is catastrophic — trip systems are essential.', 'concept');
+    } else {
+      S.shape = 'rod'; S.mass = 20; S.R = 1.0; S.tau = 15; S.w0 = 0; S.friction = 2;
+      shapeSel.value = 'rod';
+      mSlider.value = 20; rSlider.value = 1.0; tauSlider.value = 15;
+      w0Slider.value = 0; fricSlider.value = 2;
+      updateLabels();
+      resetState();
+      teach('DOOR', 'Swinging door: 20 kg, 1 m wide, hinged at one end. I = ⅓mR². Push near the hinge — easy to close. Push at the far edge — takes more torque. Same door, different lever arm.', 'concept');
+    }
+  });
+});
+
+function updateLabels(){
+  document.getElementById('mVal').textContent = S.mass.toFixed(1) + ' kg';
+  document.getElementById('rVal').textContent = S.R.toFixed(2) + ' m';
+  document.getElementById('tauVal').textContent = S.tau.toFixed(1) + ' N·m';
+  document.getElementById('w0Val').textContent = S.w0.toFixed(1) + ' rad/s';
+  document.getElementById('fricVal').textContent = S.friction.toFixed(1) + ' N·m';
+}
+
+function resetState(){
+  S.running = false; S.omega = 0; S.theta = 0; S.braked = false; S.history = [];
+  playBtn.textContent = '▶ START ROTATION';
+}
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Rigid Body Rotation. Moment of inertia is rotational mass — it depends not just on how much mass, but on how far it is from the axis.', 'concept');
+  teach('NEWTON-2', 'τ = I·α is Newton\'s second law for rotation. Angular momentum L = I·ω is conserved if no external torque acts — the basis of gyroscopes and figure skating spins.', 'concept');
+  teach('HOWTO', 'Choose a shape and adjust mass, radius, and torque. Press START ROTATION to spin it up. Compare inertia between shapes with the same mass and size.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

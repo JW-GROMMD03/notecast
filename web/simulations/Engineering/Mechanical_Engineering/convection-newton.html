@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stefan-Boltzmann Radiation — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>STEFAN-BOLTZMANN RADIATION</h1>
+    <span class="sub">BLACKBODY · EMISSIVITY · VIEW FACTOR · WIEN · INFRARED</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Radiating Surface</div>
+    <div class="control-group">
+      <label>Surface Material</label>
+      <select id="matSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="blackbody">Ideal Blackbody (ε=1.0)</option>
+        <option value="oxidized_steel">Oxidized Steel (ε=0.8)</option>
+        <option value="brick">Red Brick (ε=0.93)</option>
+        <option value="concrete">Concrete (ε=0.94)</option>
+        <option value="polished_al">Polished Aluminum (ε=0.05)</option>
+        <option value="polished_au">Polished Gold (ε=0.02)</option>
+        <option value="paint_white">White Paint (ε=0.9)</option>
+        <option value="human_skin">Human Skin (ε=0.98)</option>
+      </select>
+    </div>
+
+    <div class="section-title">Temperatures</div>
+    <div class="control-group">
+      <label>Surface Temp T_s <span class="val" id="tsVal">500 K</span></label>
+      <input type="range" id="tsSlider" min="100" max="2000" value="500" step="10">
+    </div>
+    <div class="control-group">
+      <label>Surroundings T_surr <span class="val" id="tsurrVal">300 K</span></label>
+      <input type="range" id="tsurrSlider" min="0" max="600" value="300" step="5">
+    </div>
+    <div class="control-group">
+      <label>Surface Area A <span class="val" id="aVal">1.0 m²</span></label>
+      <input type="range" id="aSlider" min="0.05" max="10" value="1" step="0.05">
+    </div>
+    <div class="control-group">
+      <label>View Factor F <span class="val" id="fVal">1.00</span></label>
+      <input type="range" id="fSlider" min="0.1" max="1" value="1" step="0.05">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ START RADIATION</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="sunBtn">☀ SUN EXPOSURE</button>
+    <button class="btn warn" id="spaceBtn">❄ RADIATING TO SPACE</button>
+    <button class="btn warn" id="polishedBtn">⚙ POLISHED SURFACE</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="furnace">Furnace Wall (800K)</button>
+    <button class="btn" data-preset="satellite">Satellite Radiator</button>
+    <button class="btn" data-preset="solar">Solar Collector</button>
+    <button class="btn" data-preset="human">Human Body</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      Q̇ = ε·σ·A·(T_s⁴ − T_surr⁴) &nbsp;|&nbsp; σ = 5.67×10⁻⁸ W/m²·K⁴ &nbsp;|&nbsp; <span class="hl">λ_max·T = 2898 μm·K (Wien)</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mQ">
+          <div class="mlabel">NET RADIATION Q̇</div>
+          <div class="mvalue">0<span class="munit">W</span></div>
+        </div>
+        <div class="metric" id="mE">
+          <div class="mlabel">EMISSIVE POWER E</div>
+          <div class="mvalue">0<span class="munit">W/m²</span></div>
+        </div>
+        <div class="metric" id="mEps">
+          <div class="mlabel">EMISSIVITY ε</div>
+          <div class="mvalue">1.00</div>
+        </div>
+        <div class="metric" id="mLam">
+          <div class="mlabel">λ_max (Wien)</div>
+          <div class="mvalue">0<span class="munit">μm</span></div>
+        </div>
+        <div class="metric" id="mT4">
+          <div class="mlabel">T_s⁴</div>
+          <div class="mvalue">0<span class="munit">×10¹² K⁴</span></div>
+        </div>
+        <div class="metric" id="mRad">
+          <div class="mlabel">% of TOTAL</div>
+          <div class="mvalue">0<span class="munit">%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">Q̇ = ε·σ·A·(T_s⁴ − T_surr⁴)</div>
+      <div class="eq">λ_max = 2898 / T (μm·K)</div>
+      <div class="def">
+        Every surface radiates. The rate depends on T⁴ — extremely sensitive 
+        to temperature. A polished (low-ε) surface is a poor emitter/absorber. 
+        This is why spacecraft use polished gold foil. Wien's law tells us 
+        hotter objects peak at shorter wavelengths (red glow → white hot).
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const MATERIALS = {
+  blackbody:      { name:'Ideal Blackbody',   eps:1.00, color:'#0a0e1a' },
+  oxidized_steel: { name:'Oxidized Steel',    eps:0.80, color:'#78350f' },
+  brick:          { name:'Red Brick',         eps:0.93, color:'#7f1d1d' },
+  concrete:       { name:'Concrete',          eps:0.94, color:'#475569' },
+  polished_al:    { name:'Polished Aluminum', eps:0.05, color:'#cbd5e1' },
+  polished_au:    { name:'Polished Gold',     eps:0.02, color:'#fbbf24' },
+  paint_white:    { name:'White Paint',       eps:0.90, color:'#e2e8f0' },
+  human_skin:     { name:'Human Skin',        eps:0.98, color:'#fbcfe8' }
+};
+
+const SIGMA = 5.67e-8; // W/m²K⁴
+const WIEN = 2898;     // μm·K
+
+const S = {
+  material: 'blackbody',
+  Ts: 500,       // K
+  Tsurr: 300,    // K
+  A: 1.0,        // m²
+  F: 1.0,        // view factor
+  running: false,
+  time: 0,
+  sunExposure: false,
+  toSpace: false,
+  photons: [],
+  spectrumBars: []
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const matSelect = document.getElementById('matSelect');
+const tsSlider = document.getElementById('tsSlider');
+const tsurrSlider = document.getElementById('tsurrSlider');
+const aSlider = document.getElementById('aSlider');
+const fSlider = document.getElementById('fSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── RADIATION PHYSICS ─────────────────────────────────────
+function getMaterial(){ return MATERIALS[S.material]; }
+
+function computeRadiation(){
+  const mat = getMaterial();
+  const eps = mat.eps;
+  const Ts = S.Ts;
+  const Tsurr = S.Tsurr;
+  const A = S.A;
+  const F = S.F;
+
+  // Emissive power (W/m²)
+  const E = eps * SIGMA * Math.pow(Ts, 4);
+
+  // Net radiation with surroundings
+  let Q = eps * SIGMA * A * F * (Math.pow(Ts, 4) - Math.pow(Tsurr, 4));
+
+  // Sun exposure (solar constant ~1000 W/m² absorbed)
+  if(S.sunExposure){
+    Q += 1000 * A * eps;
+  }
+
+  // Radiating to space (Ts_surr effectively 0 K)
+  let Q_toSpace = 0;
+  if(S.toSpace){
+    Q_toSpace = eps * SIGMA * A * F * Math.pow(Ts, 4);
+  }
+
+  // Wien's law peak wavelength
+  const lambda_max = WIEN / Ts; // μm
+
+  // Compare to total heat transfer (all three modes) for context
+  // Assume h=10 W/m²K convection, assume it happens
+  const Qconv = 10 * A * Math.max(0, Ts - Tsurr);
+  const Qtotal = Math.abs(Q) + Qconv;
+  const radFraction = Qtotal > 0 ? Math.abs(Q) / Qtotal * 100 : 0;
+
+  return {
+    eps, Ts, Tsurr, A, F,
+    E, Q, Qconv, Qtotal, radFraction,
+    lambda_max, Q_toSpace
+  };
+}
+
+// Planck's law for spectral radiance (relative)
+function planck(lambda, T){
+  // lambda in μm, T in K
+  const h = 6.626e-34;
+  const c = 3e8;
+  const kB = 1.381e-23;
+  const lam_m = lambda * 1e-6;
+  const num = 2 * h * c * c / Math.pow(lam_m, 5);
+  const den = Math.exp(h * c / (lam_m * kB * T)) - 1;
+  return num / den;
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawSurfaceAndPhotons(W, H);
+  drawSpectrum(W, H);
+  drawRadiationComparison(W, H);
+}
+
+function drawSurfaceAndPhotons(W, H){
+  const cx = W * 0.35;
+  const cy = H * 0.35;
+  const surfW = W * 0.5;
+  const surfH = 80;
+  const x0 = cx - surfW/2;
+
+  const c = computeRadiation();
+  const mat = getMaterial();
+
+  // Glow effect proportional to T⁴
+  const glowIntensity = Math.min(1, c.E / 50000);
+  if(glowIntensity > 0.05){
+    const grad = ctx.createRadialGradient(cx, cy + surfH/2, 10, cx, cy + surfH/2, surfW);
+    const glowColor = tempGlowColor(S.Ts);
+    grad.addColorStop(0, glowColor + Math.round(glowIntensity*150).toString(16).padStart(2, '0'));
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x0 - 100, cy - 100, surfW + 200, surfH + 200);
+  }
+
+  // Surface
+  ctx.fillStyle = mat.color;
+  ctx.fillRect(x0, cy, surfW, surfH);
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x0, cy, surfW, surfH);
+
+  // Surface label
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText(mat.name, x0, cy - 12);
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 13px Consolas, monospace';
+  ctx.fillText('T_s = ' + S.Ts + ' K (ε = ' + mat.eps.toFixed(2) + ')', x0 + 20, cy + surfH/2 + 4);
+
+  // Photon particles radiating out
+  if(S.running){
+    const emitRate = Math.min(0.8, 0.05 + c.E / 100000);
+    if(S.photons.length < 150 && Math.random() < emitRate){
+      S.photons.push({
+        x: x0 + Math.random() * surfW,
+        y: cy + surfH,
+        vx: (Math.random() - 0.5) * 1.5,
+        vy: 1 + Math.random() * 3,
+        life: 1,
+        color: tempGlowColor(S.Ts)
+      });
+    }
+    for(let i=S.photons.length-1;i>=0;i--){
+      const p = S.photons[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life -= 0.005;
+      if(p.life <= 0 || p.y > cy + surfH + 200){
+        S.photons.splice(i, 1);
+      }
+    }
+  }
+
+  // Draw photons as wavy arrows
+  for(const p of S.photons){
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Surroundings indicator
+  ctx.fillStyle = '#475569';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('Surroundings T_surr = ' + S.Tsurr + ' K', x0, cy + surfH + 30);
+
+  // Net radiation arrow
+  const arrowLen = Math.min(120, Math.abs(c.Q) / 100);
+  if(arrowLen > 5){
+    ctx.strokeStyle = c.Q > 0 ? '#ef4444' : '#22d3ee';
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + surfH + 50);
+    ctx.lineTo(cx, cy + surfH + 50 + arrowLen);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + surfH + 55 + arrowLen);
+    ctx.lineTo(cx - 8, cy + surfH + 45 + arrowLen);
+    ctx.lineTo(cx + 8, cy + surfH + 45 + arrowLen);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = 'bold 12px Consolas, monospace';
+    ctx.fillText('Q̇_net = ' + c.Q.toFixed(0) + ' W', cx + 15, cy + surfH + 70);
+  }
+}
+
+function tempGlowColor(T){
+  // Approximate color for a blackbody at T (in K)
+  // 1000K: dull red; 2000K: orange; 3000K: yellow-white; 6000K: white; 10000K: blue-white
+  if(T < 800) return '#7f1d1d'; // dark red / infrared
+  if(T < 1200) return '#dc2626'; // red
+  if(T < 1800) return '#f59e0b'; // orange
+  if(T < 2500) return '#fbbf24'; // yellow
+  if(T < 4000) return '#fcd34d'; // warm white
+  if(T < 7000) return '#f8fafc'; // white
+  return '#93c5fd'; // blue-white
+}
+
+function drawSpectrum(W, H){
+  // Planck spectrum
+  const ox = 60;
+  const oy = H * 0.62;
+  const w = W * 0.55;
+  const h = H * 0.3;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('PLANCK SPECTRUM (spectral emissive power)', ox, oy - 10);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const pad = { l:50, r:20, t:20, b:30 };
+  const gw = w - pad.l - pad.r;
+  const gh = h - pad.t - pad.b;
+
+  // Axes
+  ctx.strokeStyle = '#334155';
+  ctx.beginPath();
+  ctx.moveTo(ox + pad.l, oy + pad.t);
+  ctx.lineTo(ox + pad.l, oy + h - pad.b);
+  ctx.lineTo(ox + w - pad.r, oy + h - pad.b);
+  ctx.stroke();
+
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('E_λ', ox + pad.l - 5, oy + pad.t + 10);
+  ctx.textAlign = 'center';
+  ctx.fillText('Wavelength λ (μm)', ox + w/2, oy + h - 10);
+
+  // Draw spectrum for current temperature
+  const lambdaMin = 0.2;
+  const lambdaMax = 20;
+  const xOf = l => ox + pad.l + (Math.log10(l) - Math.log10(lambdaMin)) / (Math.log10(lambdaMax) - Math.log10(lambdaMin)) * gw;
+
+  // Compute max for scaling
+  const N = 100;
+  const values = [];
+  let maxVal = 0;
+  for(let i=0;i<=N;i++){
+    const lam = Math.pow(10, Math.log10(lambdaMin) + i/N * (Math.log10(lambdaMax) - Math.log10(lambdaMin)));
+    const val = planck(lam, S.Ts);
+    values.push({ lam, val });
+    if(val > maxVal) maxVal = val;
+  }
+
+  const yOf = v => oy + h - pad.b - (v / maxVal) * gh * 0.9;
+
+  // Fill area under curve
+  ctx.beginPath();
+  ctx.moveTo(xOf(values[0].lam), oy + h - pad.b);
+  for(const v of values){
+    ctx.lineTo(xOf(v.lam), yOf(v.val));
+  }
+  ctx.lineTo(xOf(values[values.length-1].lam), oy + h - pad.b);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, oy + pad.t, 0, oy + h - pad.b);
+  grad.addColorStop(0, 'rgba(239,68,68,0.5)');
+  grad.addColorStop(1, 'rgba(239,68,68,0.05)');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.strokeStyle = '#ef4444';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for(let i=0;i<values.length;i++){
+    const v = values[i];
+    const x = xOf(v.lam);
+    const y = yOf(v.val);
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Wien peak marker
+  const c = computeRadiation();
+  const peakX = xOf(c.lambda_max);
+  const peakVal = planck(c.lambda_max, S.Ts);
+  const peakY = yOf(peakVal);
+  ctx.strokeStyle = '#fbbf24';
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  ctx.moveTo(peakX, oy + h - pad.b);
+  ctx.lineTo(peakX, peakY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#fbbf24';
+  ctx.beginPath();
+  ctx.arc(peakX, peakY, 5, 0, Math.PI*2);
+  ctx.fill();
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.fillText('λ_max=' + c.lambda_max.toFixed(2) + ' μm', peakX + 8, peakY - 8);
+
+  // Visible spectrum indicator
+  ctx.fillStyle = 'rgba(248,113,113,0.3)';
+  const visX1 = xOf(0.38);
+  const visX2 = xOf(0.75);
+  ctx.fillRect(visX1, oy + h - pad.b - 8, visX2 - visX1, 8);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '8px Consolas, monospace';
+  ctx.fillText('visible', (visX1 + visX2)/2 - 15, oy + h - pad.b - 10);
+
+  ctx.textAlign = 'left';
+}
+
+function drawRadiationComparison(W, H){
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 220;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('RADIATION vs OTHER MODES', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const c = computeRadiation();
+
+  // Bar chart showing Q_rad vs Q_conv (assumed h=10)
+  const maxQ = Math.max(Math.abs(c.Q), c.Qconv, 1);
+  const barW = (w - 60) / 2;
+
+  // Radiation bar
+  ctx.fillStyle = '#ef4444';
+  const radH = Math.min(h - 80, Math.abs(c.Q) / maxQ * (h - 100));
+  ctx.fillRect(ox + 30, oy + h - 40 - radH, barW, radH);
+  ctx.fillStyle = '#fca5a5';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Radiation', ox + 30 + barW/2, oy + h - 25);
+  ctx.fillText(c.Q.toFixed(0) + ' W', ox + 30 + barW/2, oy + h - 40 - radH - 8);
+
+  // Convection bar
+  ctx.fillStyle = '#22d3ee';
+  const convH = Math.min(h - 80, c.Qconv / maxQ * (h - 100));
+  ctx.fillRect(ox + 30 + barW + 20, oy + h - 40 - convH, barW, convH);
+  ctx.fillStyle = '#67e8f9';
+  ctx.fillText('Convection*', ox + 30 + barW + 20 + barW/2, oy + h - 25);
+  ctx.fillText(c.Qconv.toFixed(0) + ' W', ox + 30 + barW + 20 + barW/2, oy + h - 40 - convH - 8);
+
+  ctx.textAlign = 'left';
+
+  // Fraction label
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('Radiation is ' + c.radFraction.toFixed(0) + '% of total', ox + 8, oy + h - 8);
+
+  // Note
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('*assumed h = 10 W/m²K', ox + 8, oy + h + 12);
+
+  // Wien info
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('λ_max = 2898/T', ox + 8, oy + 18);
+  ctx.fillStyle = '#c4b5fd';
+  ctx.fillText('= ' + (2898/S.Ts).toFixed(2) + ' μm', ox + 8, oy + 32);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const c = computeRadiation();
+  document.querySelector('#mQ .mvalue').innerHTML = c.Q.toFixed(1) + '<span class="munit">W</span>';
+  document.querySelector('#mE .mvalue').innerHTML = c.E.toFixed(0) + '<span class="munit">W/m²</span>';
+  document.querySelector('#mEps .mvalue').textContent = c.eps.toFixed(2);
+  document.querySelector('#mLam .mvalue').innerHTML = c.lambda_max.toFixed(2) + '<span class="munit">μm</span>';
+  document.querySelector('#mT4 .mvalue').innerHTML = (Math.pow(S.Ts,4)/1e12).toFixed(3) + '<span class="munit">×10¹²</span>';
+  document.querySelector('#mRad .mvalue').innerHTML = c.radFraction.toFixed(0) + '<span class="munit">%</span>';
+
+  document.getElementById('mQ').className = 'metric' + (c.Q > 10000 ? ' bad' : c.Q > 2000 ? ' warn' : ' ok');
+  document.getElementById('mEps').className = 'metric' + (c.eps > 0.85 ? ' ok' : c.eps > 0.5 ? ' warn' : '');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  S.time += 1/60;
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+matSelect.addEventListener('change', e => {
+  S.material = e.target.value;
+  const mat = getMaterial();
+  teach('MATERIAL', mat.name + ': ε = ' + mat.eps.toFixed(2) + '. ' + 
+    (mat.eps < 0.1 ? 'Low-emissivity — poor radiator. Polished metals are reflective and poor emitters. This is why spacecraft are wrapped in gold foil.' :
+     mat.eps > 0.85 ? 'High-emissivity — excellent radiator. Most non-metallic surfaces have ε > 0.85.' :
+     'Moderate emissivity.'), 'concept');
+});
+
+tsSlider.addEventListener('input', e => {
+  S.Ts = parseFloat(e.target.value);
+  document.getElementById('tsVal').textContent = S.Ts + ' K';
+  if(S.Ts > 1200 && S.Ts - 10 <= 1200){
+    teach('GLOW', 'T = ' + S.Ts + ' K. The surface now glows visibly red. Wien\'s law says peak wavelength dropped to ' + (2898/S.Ts).toFixed(2) + ' μm. This is incandescence.', 'info');
+  }
+});
+
+tsurrSlider.addEventListener('input', e => {
+  S.Tsurr = parseFloat(e.target.value);
+  document.getElementById('tsurrVal').textContent = S.Tsurr + ' K';
+});
+
+aSlider.addEventListener('input', e => {
+  S.A = parseFloat(e.target.value);
+  document.getElementById('aVal').textContent = S.A.toFixed(2) + ' m²';
+});
+
+fSlider.addEventListener('input', e => {
+  S.F = parseFloat(e.target.value);
+  document.getElementById('fVal').textContent = S.F.toFixed(2);
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ START RADIATION';
+  if(S.running){
+    const c = computeRadiation();
+    teach('RUN', 'Radiation started. Q̇ = ' + c.Q.toFixed(0) + ' W. Emissive power E = ' + c.E.toFixed(0) + ' W/m². Wien peak at ' + c.lambda_max.toFixed(2) + ' μm.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  const c = computeRadiation();
+  teach('STEP', 'Q̇ = ' + c.Q.toFixed(0) + ' W. T⁴ dependence means small temperature changes cause big changes in radiation. Doubling T increases Q by 16×!', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.material = 'blackbody'; S.Ts = 500; S.Tsurr = 300; S.A = 1.0; S.F = 1.0;
+  S.running = false; S.sunExposure = false; S.toSpace = false;
+  S.photons = [];
+  matSelect.value = 'blackbody';
+  tsSlider.value = 500; tsurrSlider.value = 300; aSlider.value = 1; fSlider.value = 1;
+  document.getElementById('tsVal').textContent = '500 K';
+  document.getElementById('tsurrVal').textContent = '300 K';
+  document.getElementById('aVal').textContent = '1.00 m²';
+  document.getElementById('fVal').textContent = '1.00';
+  playBtn.textContent = '▶ START RADIATION';
+  teach('RESET', 'Reset to blackbody at 500 K radiating to 300 K surroundings.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('sunBtn').addEventListener('click', () => {
+  S.sunExposure = !S.sunExposure;
+  if(S.sunExposure){
+    teach('SOLAR', 'Sun exposure added: ~1000 W/m² absorbed. Solar collectors use selective surfaces — high absorptivity (dark) but low emissivity (to reduce re-radiation losses).', 'warn');
+  } else {
+    teach('SUN OFF', 'Sun exposure removed.', 'ok');
+  }
+});
+
+document.getElementById('spaceBtn').addEventListener('click', () => {
+  S.toSpace = !S.toSpace;
+  if(S.toSpace){
+    S.Tsurr = 3;
+    tsurrSlider.value = 3;
+    document.getElementById('tsurrVal').textContent = '3 K';
+    teach('SPACE', 'Radiating to deep space (T_surr = 3 K, cosmic background). Spacecraft rely 100% on radiation to dump waste heat. This is why ISS has huge radiator panels.', 'warn');
+  } else {
+    S.Tsurr = 300;
+    tsurrSlider.value = 300;
+    document.getElementById('tsurrVal').textContent = '300 K';
+    teach('EARTH', 'Back to Earth-like surroundings.', 'ok');
+  }
+});
+
+document.getElementById('polishedBtn').addEventListener('click', () => {
+  S.material = S.material === 'polished_au' ? 'oxidized_steel' : 'polished_au';
+  matSelect.value = S.material;
+  const mat = getMaterial();
+  const c = computeRadiation();
+  teach('POLISHED', 'Surface: ' + mat.name + ' (ε = ' + mat.eps + '). Radiation drops to ' + c.Q.toFixed(0) + ' W. Low-ε surfaces reflect infrared — that is why emergency blankets and spacecraft are shiny.', 'warn');
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'furnace'){
+      S.material = 'brick'; S.Ts = 800; S.Tsurr = 300; S.A = 5;
+      matSelect.value = 'brick';
+      tsSlider.value = 800; tsurrSlider.value = 300; aSlider.value = 5;
+      document.getElementById('tsVal').textContent = '800 K';
+      document.getElementById('tsurrVal').textContent = '300 K';
+      document.getElementById('aVal').textContent = '5.00 m²';
+      teach('FURNACE', 'Furnace wall at 800 K (527 °C). Radiative heat loss dominates at high T. Furnace insulation uses low-emissivity reflective layers (aluminum foil) to reduce losses.', 'concept');
+    } else if(p === 'satellite'){
+      S.material = 'polished_al'; S.Ts = 350; S.Tsurr = 3; S.A = 10; S.F = 0.9;
+      matSelect.value = 'polished_al';
+      tsSlider.value = 350; tsurrSlider.value = 3; aSlider.value = 10; fSlider.value = 0.9;
+      document.getElementById('tsVal').textContent = '350 K';
+      document.getElementById('tsurrVal').textContent = '3 K';
+      document.getElementById('aVal').textContent = '10.00 m²';
+      document.getElementById('fVal').textContent = '0.90';
+      S.toSpace = true;
+      teach('SATELLITE', 'Satellite radiator at 350 K radiating to space (3 K). Q̇ = ' + computeRadiation().Q.toFixed(0) + ' W. Space is the perfect heat sink — no conduction or convection.', 'concept');
+    } else if(p === 'solar'){
+      S.material = 'paint_white'; S.Ts = 400; S.Tsurr = 300; S.A = 2;
+      matSelect.value = 'paint_white';
+      tsSlider.value = 400; tsurrSlider.value = 300; aSlider.value = 2;
+      document.getElementById('tsVal').textContent = '400 K';
+      document.getElementById('tsurrVal').textContent = '300 K';
+      document.getElementById('aVal').textContent = '2.00 m²';
+      S.sunExposure = true;
+      teach('SOLAR COLLECTOR', 'Solar thermal collector: absorbing surface heats to 400 K. Selective coatings maximize solar absorption while minimizing infrared re-radiation.', 'concept');
+    } else {
+      S.material = 'human_skin'; S.Ts = 306; S.Tsurr = 293; S.A = 1.8; S.F = 0.85;
+      matSelect.value = 'human_skin';
+      tsSlider.value = 306; tsurrSlider.value = 293; aSlider.value = 1.8; fSlider.value = 0.85;
+      document.getElementById('tsVal').textContent = '306 K';
+      document.getElementById('tsurrVal').textContent = '293 K';
+      document.getElementById('aVal').textContent = '1.80 m²';
+      document.getElementById('fVal').textContent = '0.85';
+      S.toSpace = false;
+      teach('HUMAN', 'Human body at 306 K (33°C skin) radiating to 293 K (20°C room). Nude human loses ~100 W by radiation — that is why we feel cold in a cool room even with still air.', 'concept');
+    }
+    S.sunExposure = false;
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Stefan-Boltzmann Radiation. Every object radiates energy as electromagnetic waves — even you, right now.', 'concept');
+  teach('PRINCIPLE', 'Q̇ = ε·σ·A·(T_s⁴ − T_surr⁴). The T⁴ dependence makes radiation dominant at high temperatures. Wien\'s law relates temperature to peak wavelength.', 'concept');
+  teach('HOWTO', 'Choose a surface material (different emissivities), set temperature and area. Press START RADIATION to see photons emitted. Try the sun and space buttons.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

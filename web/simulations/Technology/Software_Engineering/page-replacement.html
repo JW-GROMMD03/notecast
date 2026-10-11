@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Virtual Memory Page Replacement — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #10b981, #06b6d4, #3b82f6);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(16,185,129,0.15); color: #86efac; border-color: #10b981; }
+  .teaching-toggle:hover { background: rgba(16,185,129,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #86efac;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #10b981; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #10b981; color: #022c22; border-color: #10b981; }
+  .btn.primary:hover { background: #059669; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #10b981; color: #022c22; border-color: #10b981; }
+  .algo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .algo-btn {
+    padding: 7px 6px; background: #02040a; border: 1.5px solid #334155;
+    border-radius: 6px; font-family: monospace; font-size: 0.6rem;
+    font-weight: 800; color: #94a3b8; cursor: pointer;
+    letter-spacing: 0.5px; transition: all 0.2s;
+  }
+  .algo-btn:hover { border-color: #10b981; color: #86efac; }
+  .algo-btn.active {
+    background: rgba(16,185,129,0.2); border-color: #10b981;
+    color: #86efac; box-shadow: 0 0 10px rgba(16,185,129,0.4);
+  }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #86efac; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #10b981; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(16,185,129,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .frames-wrap {
+    flex: 1.3; background: #070a14; border: 2px solid #10b981; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(16,185,129,0.15); min-height: 0;
+  }
+  .frames-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #86efac; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #framesCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .refs-strip {
+    background: #070a14; border: 2px solid #06b6d4; border-radius: 12px;
+    padding: 10px 12px; display: flex; gap: 6px; overflow-x: auto;
+    flex-shrink: 0; align-items: center; min-height: 80px;
+    box-shadow: 0 0 20px rgba(6,182,212,0.15);
+  }
+  .ref-chip {
+    padding: 6px 12px; border-radius: 6px; font-family: monospace;
+    font-size: 0.75rem; font-weight: 900; background: #1e293b; color: #cbd5e1;
+    border: 2px solid #334155; letter-spacing: 0.5px; flex-shrink: 0;
+    transition: all 0.3s;
+  }
+  .ref-chip.current {
+    background: rgba(16,185,129,0.3); border-color: #10b981;
+    color: #86efac; box-shadow: 0 0 15px rgba(16,185,129,0.6);
+    transform: scale(1.1);
+  }
+  .ref-chip.hit { background: rgba(16,185,129,0.15); border-color: #10b981; color: #86efac; }
+  .ref-chip.miss { background: rgba(239,68,68,0.15); border-color: #ef4444; color: #fca5a5; }
+  .ref-chip.done { opacity: 0.4; }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #86efac; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #10b981;
+    background: rgba(16,185,129,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(16,185,129,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(16,185,129,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #86efac;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #10b981; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(16,185,129,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #10b981; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #86efac; z-index: 12;
+    box-shadow: 0 0 20px rgba(16,185,129,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.hit { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.miss { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>PAGE REPLACEMENT</h1>
+    <span class="sub">FIFO · LRU · OPTIMAL · CLOCK</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Algorithm</h3>
+      <div class="algo-grid" id="algoGrid">
+        <button class="algo-btn active" data-algo="fifo">FIFO</button>
+        <button class="algo-btn" data-algo="lru">LRU</button>
+        <button class="algo-btn" data-algo="optimal">OPTIMAL</button>
+        <button class="algo-btn" data-algo="clock">CLOCK</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Control</h3>
+      <button class="btn primary" id="btnRun">▶ Run All</button>
+      <button class="btn" id="btnStep">⏭ Step Reference</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Config</h3>
+      <div class="slider-row"><span>Frames</span><span class="value" id="framesVal">3</span></div>
+      <input type="range" id="framesRange" min="2" max="6" value="3">
+      <button class="btn" id="btnRandom">🎲 Random Reference String</button>
+    </div>
+
+    <div class="panel">
+      <h3>Compare</h3>
+      <button class="btn success" id="btnCompare">📊 Compare All Algorithms</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:6px;"></span>Hit</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:2px;margin-right:6px;"></span>Miss</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:2px;margin-right:6px;"></span>Evicted</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">WHICH PAGE TO EVICT WHEN MEMORY IS FULL?</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="frames-wrap">
+          <div class="frames-title">
+            <span>📄 PHYSICAL FRAMES</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="framesHint">— 3 frames —</span>
+          </div>
+          <canvas id="framesCanvas"></canvas>
+        </div>
+        <div class="refs-strip" id="refsStrip">
+          <span style="font-family:monospace; font-size:0.55rem; color:#64748b; font-weight:800; letter-spacing:1.5px; padding-right:10px; border-right:1px solid #1e293b;">REF STRING</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Frames</div>
+        <div class="metric-value" id="mFrames">3</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Hits</div>
+        <div class="metric-value good" id="mHits">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Misses</div>
+        <div class="metric-value bad" id="mMisses">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Hit Rate</div>
+        <div class="metric-value warn" id="mHitRate">0%</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Algorithms</div>
+      <div class="info-row"><span class="lbl">FIFO</span><span class="val warn">Belady's anomaly</span></div>
+      <div class="info-row"><span class="lbl">LRU</span><span class="val good">Good, needs tracking</span></div>
+      <div class="info-row"><span class="lbl">Optimal</span><span class="val">Theoretical best</span></div>
+      <div class="info-row"><span class="lbl">CLOCK</span><span class="val good">LRU approximation</span></div>
+      <div class="info-row"><span class="lbl">Belady's</span><span class="val bad">More frames ≠ fewer misses</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">Linux (CLOCK), Windows</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  algorithm: 'fifo',
+  frames: [],
+  frameCount: 3,
+  referenceString: [],
+  currentRef: -1,
+  hits: 0,
+  misses: 0,
+  history: [],       // per-reference result
+  teaching: true,
+  voiceEnabled: false,
+  running: false,
+  timer: null
+};
+
+const DOM = {
+  framesCanvas: document.getElementById('framesCanvas'),
+  framesHint: document.getElementById('framesHint'),
+  refsStrip: document.getElementById('refsStrip'),
+  statusBanner: document.getElementById('statusBanner'),
+  algoGrid: document.getElementById('algoGrid'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnRandom: document.getElementById('btnRandom'),
+  btnCompare: document.getElementById('btnCompare'),
+  framesRange: document.getElementById('framesRange'),
+  framesVal: document.getElementById('framesVal'),
+  mFrames: document.getElementById('mFrames'),
+  mHits: document.getElementById('mHits'),
+  mMisses: document.getElementById('mMisses'),
+  mHitRate: document.getElementById('mHitRate'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 1800);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining page replacement.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+function initFrames() {
+  STATE.frames = [];
+  STATE.currentRef = -1;
+  STATE.hits = 0;
+  STATE.misses = 0;
+  STATE.history = [];
+  for (let i = 0; i < STATE.frameCount; i++) {
+    STATE.frames.push({ page: null, loadedAt: 0, lastUsed: 0, useBit: 0 });
+  }
+  renderRefs();
+  drawFrames();
+  updateMetrics();
+}
+
+function generateRandomRefString() {
+  const len = 15 + Math.floor(Math.random() * 10);
+  STATE.referenceString = [];
+  for (let i = 0; i < len; i++) {
+    STATE.referenceString.push(Math.floor(Math.random() * 7));  // pages 0-6
+  }
+  renderRefs();
+  teach('REFERENCE STRING',
+    `Generated a random reference string of ${STATE.referenceString.length} page references over pages 0-6. This mimics a process touching different pages of its address space over time. The pattern (repeats, locality) determines which algorithm does best.`,
+    'cyan'
+  );
+}
+
+function renderRefs() {
+  DOM.refsStrip.innerHTML = '<span style="font-family:monospace; font-size:0.55rem; color:#64748b; font-weight:800; letter-spacing:1.5px; padding-right:10px; border-right:1px solid #1e293b;">REF STRING</span>';
+  STATE.referenceString.forEach((ref, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'ref-chip';
+    if (i < STATE.currentRef) {
+      const h = STATE.history[i];
+      chip.classList.add(h && h.hit ? 'hit' : 'miss', 'done');
+    } else if (i === STATE.currentRef) {
+      chip.classList.add('current');
+    }
+    chip.textContent = ref;
+    DOM.refsStrip.appendChild(chip);
+  });
+}
+
+function stepReference() {
+  if (STATE.currentRef >= STATE.referenceString.length - 1) {
+    showStatus('✅ All references processed');
+    return false;
+  }
+  STATE.currentRef++;
+  const ref = STATE.referenceString[STATE.currentRef];
+
+  // Find or load page
+  let hit = false;
+  let evicted = null;
+
+  const frameIdx = STATE.frames.findIndex(f => f.page === ref);
+  if (frameIdx >= 0) {
+    // HIT
+    hit = true;
+    STATE.hits++;
+    STATE.frames[frameIdx].lastUsed = STATE.currentRef;
+    STATE.frames[frameIdx].useBit = 1;
+  } else {
+    // MISS
+    STATE.misses++;
+    // Find empty frame
+    const emptyIdx = STATE.frames.findIndex(f => f.page === null);
+    if (emptyIdx >= 0) {
+      STATE.frames[emptyIdx].page = ref;
+      STATE.frames[emptyIdx].loadedAt = STATE.currentRef;
+      STATE.frames[emptyIdx].lastUsed = STATE.currentRef;
+      STATE.frames[emptyIdx].useBit = 1;
+    } else {
+      // Evict
+      const victim = selectVictim();
+      evicted = STATE.frames[victim].page;
+      STATE.frames[victim].page = ref;
+      STATE.frames[victim].loadedAt = STATE.currentRef;
+      STATE.frames[victim].lastUsed = STATE.currentRef;
+      STATE.frames[victim].useBit = 1;
+    }
+  }
+
+  STATE.history[STATE.currentRef] = { hit, evicted, ref };
+
+  // Feedback
+  if (hit) {
+    showStatus(`✅ HIT — page ${ref} in frame`, 'hit');
+  } else {
+    const msg = evicted !== null ? `❌ MISS — page ${ref}, evicted ${evicted}` : `❌ MISS — page ${ref} loaded into empty frame`;
+    showStatus(msg, 'miss');
+  }
+
+  renderRefs();
+  drawFrames();
+  updateMetrics();
+  return true;
+}
+
+function selectVictim() {
+  switch (STATE.algorithm) {
+    case 'fifo': {
+      // Oldest loadedAt
+      let oldest = 0;
+      for (let i = 1; i < STATE.frames.length; i++) {
+        if (STATE.frames[i].loadedAt < STATE.frames[oldest].loadedAt) oldest = i;
+      }
+      return oldest;
+    }
+    case 'lru': {
+      // Least recently used
+      let lru = 0;
+      for (let i = 1; i < STATE.frames.length; i++) {
+        if (STATE.frames[i].lastUsed < STATE.frames[lru].lastUsed) lru = i;
+      }
+      return lru;
+    }
+    case 'optimal': {
+      // Page that won't be used for the longest time
+      let farthest = -1;
+      let victim = 0;
+      for (let i = 0; i < STATE.frames.length; i++) {
+        const page = STATE.frames[i].page;
+        let nextUse = Infinity;
+        for (let j = STATE.currentRef + 1; j < STATE.referenceString.length; j++) {
+          if (STATE.referenceString[j] === page) {
+            nextUse = j;
+            break;
+          }
+        }
+        if (nextUse > farthest) {
+          farthest = nextUse;
+          victim = i;
+        }
+      }
+      return victim;
+    }
+    case 'clock': {
+      // Second-chance CLOCK
+      let tries = 0;
+      while (tries < STATE.frames.length * 2) {
+        const f = STATE.frames[STATE.clockHand || 0];
+        if (f.useBit === 0) {
+          const victim = STATE.clockHand || 0;
+          STATE.clockHand = (victim + 1) % STATE.frames.length;
+          return victim;
+        }
+        f.useBit = 0;
+        STATE.clockHand = ((STATE.clockHand || 0) + 1) % STATE.frames.length;
+        tries++;
+      }
+      // Fallback
+      return 0;
+    }
+  }
+  return 0;
+}
+
+function resizeCanvas() {
+  const canvas = DOM.framesCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawFrames() {
+  const canvas = DOM.framesCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const totalWidth = W - 80;
+  const boxWidth = Math.min(120, totalWidth / STATE.frameCount);
+  const boxHeight = Math.min(80, H - 60);
+  const startX = (W - boxWidth * STATE.frameCount) / 2;
+  const boxY = (H - boxHeight) / 2;
+
+  for (let i = 0; i < STATE.frameCount; i++) {
+    const x = startX + i * boxWidth;
+    const f = STATE.frames[i];
+    const isEmpty = f.page === null;
+
+    ctx.fillStyle = isEmpty ? '#0f172a' : '#0f2a1e';
+    ctx.strokeStyle = isEmpty ? '#475569' : '#10b981';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(x + 6, boxY, boxWidth - 12, boxHeight, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    // Frame label
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`FRAME ${i}`, x + boxWidth / 2, boxY - 16);
+
+    // Page number
+    ctx.font = 'bold 32px monospace';
+    ctx.fillStyle = isEmpty ? '#475569' : '#86efac';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(isEmpty ? '·' : f.page, x + boxWidth / 2, boxY + boxHeight / 2 - 6);
+
+    // Metadata
+    if (!isEmpty) {
+      ctx.font = '9px monospace';
+      ctx.fillStyle = '#94a3b8';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`loaded t${f.loadedAt}`, x + boxWidth / 2, boxY + boxHeight - 6);
+      // Use bit for CLOCK
+      if (STATE.algorithm === 'clock') {
+        ctx.font = 'bold 10px monospace';
+        ctx.fillStyle = f.useBit ? '#fcd34d' : '#475569';
+        ctx.textBaseline = 'top';
+        ctx.fillText(f.useBit ? '● 1' : '○ 0', x + boxWidth / 2, boxY + 5);
+      }
+    }
+  }
+
+  // Legend at bottom
+  ctx.font = '10px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`Algorithm: ${STATE.algorithm.toUpperCase()} · ${STATE.frames.filter(f => f.page !== null).length}/${STATE.frameCount} frames used`, W / 2, H - 20);
+
+  DOM.framesHint.textContent = `— ${STATE.frameCount} frames · ${STATE.algorithm} —`;
+}
+
+function animate() {
+  drawFrames();
+  requestAnimationFrame(animate);
+}
+
+function updateMetrics() {
+  DOM.mFrames.textContent = STATE.frameCount;
+  DOM.mHits.textContent = STATE.hits;
+  DOM.mMisses.textContent = STATE.misses;
+  const total = STATE.hits + STATE.misses;
+  const rate = total > 0 ? Math.round((STATE.hits / total) * 100) : 0;
+  DOM.mHitRate.textContent = rate + '%';
+  DOM.mHitRate.className = 'metric-value ' + (rate > 60 ? 'good' : rate > 30 ? 'warn' : 'bad');
+}
+
+function runAll() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.timer);
+    STATE.timer = null;
+    DOM.btnRun.textContent = '▶ Run All';
+    return;
+  }
+  initFrames();
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+  STATE.timer = setInterval(() => {
+    if (!stepReference()) {
+      STATE.running = false;
+      clearInterval(STATE.timer);
+      STATE.timer = null;
+      DOM.btnRun.textContent = '▶ Run All';
+    }
+  }, 600);
+}
+
+function resetAll() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.timer = null;
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Run All';
+  initFrames();
+  teach('RESET', 'Frames cleared.', 'info', false);
+}
+
+function setAlgorithm(algo) {
+  STATE.algorithm = algo;
+  document.querySelectorAll('.algo-btn').forEach(b => b.classList.toggle('active', b.dataset.algo === algo));
+  const descs = {
+    fifo: 'FIFO: evict the page that has been in memory the longest. Simple with a queue. But subject to Belady\'s Anomaly — sometimes MORE frames causes MORE page faults.',
+    lru: 'LRU: evict the least recently used page. Good hit rates because of locality. But requires tracking every access — expensive in hardware. Approximated by CLOCK in real systems.',
+    optimal: 'OPTIMAL: evict the page that won\'t be used for the longest time. Provably best possible. But requires knowing the future — only useful as a benchmark to compare against.',
+    clock: 'CLOCK: an efficient LRU approximation. Each page has a "use bit". On eviction, sweep the "clock hand": if use bit = 1, clear it and skip; if 0, evict. Hardware-friendly.'
+  };
+  teach('ALGORITHM: ' + algo.toUpperCase(), descs[algo], algo === 'optimal' ? 'purple' : 'ok');
+}
+
+function compareAll() {
+  const results = [];
+  const originalAlgo = STATE.algorithm;
+  const originalFrames = STATE.frameCount;
+
+  for (const algo of ['fifo', 'lru', 'optimal', 'clock']) {
+    STATE.algorithm = algo;
+    STATE.frames = [];
+    STATE.currentRef = -1;
+    STATE.hits = 0;
+    STATE.misses = 0;
+    STATE.history = [];
+    STATE.clockHand = 0;
+    for (let i = 0; i < STATE.frameCount; i++) {
+      STATE.frames.push({ page: null, loadedAt: 0, lastUsed: 0, useBit: 0 });
+    }
+    while (STATE.currentRef < STATE.referenceString.length - 1) {
+      STATE.currentRef++;
+      const ref = STATE.referenceString[STATE.currentRef];
+      const frameIdx = STATE.frames.findIndex(f => f.page === ref);
+      if (frameIdx >= 0) {
+        STATE.hits++;
+        STATE.frames[frameIdx].lastUsed = STATE.currentRef;
+        STATE.frames[frameIdx].useBit = 1;
+      } else {
+        STATE.misses++;
+        const emptyIdx = STATE.frames.findIndex(f => f.page === null);
+        if (emptyIdx >= 0) {
+          STATE.frames[emptyIdx].page = ref;
+          STATE.frames[emptyIdx].loadedAt = STATE.currentRef;
+          STATE.frames[emptyIdx].lastUsed = STATE.currentRef;
+          STATE.frames[emptyIdx].useBit = 1;
+        } else {
+          const victim = selectVictim();
+          STATE.frames[victim].page = ref;
+          STATE.frames[victim].loadedAt = STATE.currentRef;
+          STATE.frames[victim].lastUsed = STATE.currentRef;
+          STATE.frames[victim].useBit = 1;
+        }
+      }
+    }
+    results.push({ algo, hits: STATE.hits, misses: STATE.misses });
+  }
+
+  STATE.algorithm = originalAlgo;
+  resetAll();
+
+  const lines = results.map(r => {
+    const total = r.hits + r.misses;
+    const rate = total > 0 ? Math.round((r.hits / total) * 100) : 0;
+    return `${r.algo.toUpperCase()}: ${rate}% (${r.hits}H / ${r.misses}M)`;
+  }).join(' · ');
+
+  teach('COMPARISON',
+    `Ran all algorithms on the same reference string. Results: ${lines}. Optimal is always best. LRU is usually close. FIFO can underperform or even hit Belady's anomaly. CLOCK is between LRU and FIFO in quality but much cheaper to implement.`,
+    'purple'
+  );
+  showToast('📊 Compared 4 algorithms');
+}
+
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+document.querySelectorAll('.algo-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    setAlgorithm(btn.dataset.algo);
+    resetAll();
+  });
+});
+
+DOM.btnRun.addEventListener('click', runAll);
+DOM.btnStep.addEventListener('click', () => stepReference());
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnRandom.addEventListener('click', () => {
+  generateRandomRefString();
+  resetAll();
+});
+DOM.btnCompare.addEventListener('click', compareAll);
+
+DOM.framesRange.addEventListener('input', e => {
+  STATE.frameCount = parseInt(e.target.value);
+  DOM.framesVal.textContent = STATE.frameCount;
+  resetAll();
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+    return this;
+  };
+}
+
+resizeCanvas();
+animate();
+
+// Seed
+STATE.referenceString = [7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1];
+initFrames();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Page Replacement. When physical memory is full and a process needs a page that isn't loaded, the OS must choose which page to evict to make room. The algorithm it picks determines the page fault rate — and the difference between a fast system and a slow one.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE CLASSICS',
+      `FIFO: evict oldest loaded. Simple, but Belady's anomaly means more frames can mean MORE faults. LRU: evict least recently used. Good because of locality — recently-used data is likely to be used again. Optimal: evict page used farthest in the future. Best possible but needs future knowledge — only useful as a benchmark.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('CLOCK: THE REAL-WORLD ANSWER',
+      `LRU is expensive in hardware (need to track every access). CLOCK approximates LRU with one use bit per page and a rotating hand. It's what Linux and Windows actually use. Cheap enough for real hardware, good enough for realistic workloads. Try Compare All to see how the four stack up.`,
+      'ok'
+    );
+  }, 9000);
+  showToast('👋 Run, then try Compare All', 4500);
+}, 500);
+</script>
+</body>
+</html>

@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Heat Treatment — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>HEAT TREATMENT</h1>
+    <span class="sub">ANNEALING · QUENCHING · TEMPERING · TTT CURVES</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Process</div>
+    <div class="control-group">
+      <label>Heat Treatment</label>
+      <select id="processSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="anneal">Full Annealing</option>
+        <option value="normalize">Normalizing</option>
+        <option value="quench">Quenching (Martensite)</option>
+        <option value="temper">Quench + Temper</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Austenitizing Temp <span class="val" id="austVal">850 °C</span></label>
+      <input type="range" id="austSlider" min="750" max="1000" value="850" step="10">
+    </div>
+    <div class="control-group">
+      <label>Hold Time <span class="val" id="holdVal">60 min</span></label>
+      <input type="range" id="holdSlider" min="10" max="240" value="60" step="10">
+    </div>
+    <div class="control-group">
+      <label>Cooling Rate <span class="val" id="coolVal">10 °C/s</span></label>
+      <input type="range" id="coolSlider" min="0.1" max="200" value="10" step="0.1">
+    </div>
+    <div class="control-group">
+      <label>Temper Temp <span class="val" id="temperVal">400 °C</span></label>
+      <input type="range" id="temperSlider" min="150" max="650" value="400" step="10">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ RUN TREATMENT</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="slowQuenchBtn">⚠ SLOW QUENCH</button>
+    <button class="btn warn" id="overheatBtn">🔥 OVER-AUSTENITIZE</button>
+    <button class="btn warn" id="temperEmbrittleBtn">⚠ TEMPER EMBRITTLEMENT</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="toolsteel">Tool Steel (Hard)</button>
+    <button class="btn" data-preset="spring">Spring Steel (Tough)</button>
+    <button class="btn" data-preset="soft">Soft Machining Steel</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      CCT Curve &nbsp;|&nbsp; M_s ≈ 250 °C &nbsp;|&nbsp; Hardness (HRC) vs Cooling Rate &nbsp;|&nbsp; <span class="hl">Martensite = supersaturated C in Fe</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mTemp">
+          <div class="mlabel">TEMPERATURE</div>
+          <div class="mvalue">25<span class="munit">°C</span></div>
+        </div>
+        <div class="metric" id="mPhase">
+          <div class="mlabel">PHASE</div>
+          <div class="mvalue" style="font-size:11px;">FERRITE</div>
+        </div>
+        <div class="metric" id="mHard">
+          <div class="mlabel">HARDNESS</div>
+          <div class="mvalue">0<span class="munit">HRC</span></div>
+        </div>
+        <div class="metric" id="mTough">
+          <div class="mlabel">TOUGHNESS</div>
+          <div class="mvalue">—</div>
+        </div>
+        <div class="metric" id="mMicro">
+          <div class="mlabel">MICROSTRUCTURE</div>
+          <div class="mvalue" style="font-size:10px;">FERRITE+PEARLITE</div>
+        </div>
+        <div class="metric" id="mState">
+          <div class="mlabel">STATE</div>
+          <div class="mvalue" style="font-size:11px;">IDLE</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">Austenite (FCC) → Ferrite + Pearlite (slow)</div>
+      <div class="eq">Austenite → Martensite (fast, BCT)</div>
+      <div class="def">
+        Heating steel above ~727 °C (A1) forms austenite. Cooling rate 
+        decides the outcome: slow → soft pearlite, fast → hard martensite. 
+        Martensite is hard but brittle; tempering restores toughness.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const PROCESSES = {
+  anneal:   { name:'Full Annealing',     coolRate:0.05,  holdTime:60, temper:null, color:'#4ade80' },
+  normalize:{ name:'Normalizing',        coolRate:1.0,   holdTime:30, temper:null, color:'#22d3ee' },
+  quench:   { name:'Quenching',          coolRate:100,   holdTime:30, temper:null, color:'#f87171' },
+  temper:   { name:'Quench + Temper',    coolRate:100,   holdTime:30, temper:400,  color:'#a78bfa' }
+};
+
+const S = {
+  process: 'anneal',
+  austTemp: 850,
+  holdTime: 60,
+  coolRate: 10,
+  temperTemp: 400,
+  currentTemp: 25,
+  currentPhase: 'FERRITE + PEARLITE',
+  currentMicro: 'FERRITE + PEARLITE',
+  currentHardness: 20,
+  currentToughness: 8,
+  state: 'IDLE',   // IDLE | HEATING | HOLDING | COOLING | TEMPERING | DONE
+  progress: 0,
+  time: 0,
+  austeniteFormed: false,
+  martensiteFormed: false,
+  history: [],   // time-temperature trace
+  particlePhase: 0
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const processSel = document.getElementById('processSelect');
+const austSlider = document.getElementById('austSlider');
+const holdSlider = document.getElementById('holdSlider');
+const coolSlider = document.getElementById('coolSlider');
+const temperSlider = document.getElementById('temperSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── MICROSTRUCTURE PREDICTION ─────────────────────────────
+function predictStructure(coolRate, temperTemp, hasTemper){
+  // Empirical model based on cooling rate
+  // Slow (0.01-1 °C/s) → ferrite + pearlite, hardness 15-30 HRC
+  // Medium (1-30) → bainite, hardness 30-45 HRC
+  // Fast (>50) → martensite, hardness 55-65 HRC
+
+  let hardness, micro, toughness;
+  if(coolRate < 0.5){
+    hardness = 15 + coolRate * 20;
+    micro = 'FERRITE + PEARLITE (coarse)';
+    toughness = 10;
+  } else if(coolRate < 3){
+    hardness = 25 + (coolRate - 0.5) * 5;
+    micro = 'FINE PEARLITE';
+    toughness = 7;
+  } else if(coolRate < 30){
+    hardness = 30 + (coolRate - 3) * 0.6;
+    micro = 'BAINITE';
+    toughness = 5;
+  } else {
+    hardness = 55 + Math.min(12, (coolRate - 30) / 15);
+    micro = 'MARTENSITE (untempered)';
+    toughness = 1.5;
+  }
+
+  // Apply tempering
+  if(hasTemper && temperTemp){
+    if(temperTemp < 200){
+      hardness -= 3;
+      micro = 'TEMPERED MARTENSITE (low T)';
+      toughness = 3;
+    } else if(temperTemp < 400){
+      hardness -= 12;
+      micro = 'TEMPERED MARTENSITE';
+      toughness = 6;
+    } else if(temperTemp < 550){
+      hardness -= 22;
+      micro = 'TEMPERED MARTENSITE (high T)';
+      toughness = 9;
+    } else {
+      hardness -= 32;
+      micro = 'SPHEROIDIZED PEARLITE';
+      toughness = 11;
+    }
+  }
+
+  hardness = Math.max(5, Math.min(68, hardness));
+  return { hardness, micro, toughness };
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawTempCurve(W, H);
+  drawMicrostructure(W, H);
+  drawFurnace(W, H);
+  drawCCTDiagram(W, H);
+}
+
+function drawTempCurve(W, H){
+  // Temperature vs time chart (top half)
+  const pad = { l:60, r:40, t:30, b:100 };
+  const gw = W - pad.l - pad.r;
+  const gh = H * 0.4 - pad.t;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('TEMPERATURE vs TIME (Heat Treatment Cycle)', pad.l, pad.t - 8);
+
+  // axes
+  ctx.strokeStyle = '#1e293b';
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t+gh);
+  ctx.lineTo(pad.l+gw, pad.t+gh);
+  ctx.stroke();
+
+  // grid
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  for(let i=0;i<=6;i++){
+    const y = pad.t + gh * i / 6;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+gw, y); ctx.stroke();
+  }
+  ctx.restore();
+
+  // critical temperatures
+  const tMax = 1000;
+  const yOf = T => pad.t + gh - gh * (T / tMax);
+  const xOf = t => pad.l + gw * (t);
+
+  // Ac1 / Ac3 lines
+  const ac1Y = yOf(727);
+  const ac3Y = yOf(912);
+  ctx.strokeStyle = '#f87171';
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  ctx.moveTo(pad.l, ac1Y);
+  ctx.lineTo(pad.l+gw, ac1Y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#f87171';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('A1 = 727°C', pad.l + gw - 80, ac1Y - 4);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('A3 = 912°C', pad.l + gw - 80, ac3Y - 4);
+
+  // Ms line
+  const msY = yOf(250);
+  ctx.strokeStyle = '#a78bfa';
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  ctx.moveTo(pad.l, msY);
+  ctx.lineTo(pad.l+gw, msY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillText('Ms = 250°C', pad.l + gw - 80, msY - 4);
+
+  // draw trace
+  if(S.history.length > 1){
+    ctx.beginPath();
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = '#22d3ee';
+    ctx.shadowBlur = 8;
+    for(let i=0;i<S.history.length;i++){
+      const p = S.history[i];
+      const X = xOf(p.t / 240);
+      const Y = yOf(p.T);
+      if(i===0) ctx.moveTo(X, Y);
+      else ctx.lineTo(X, Y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // current temp marker
+  if(S.history.length > 0){
+    const last = S.history[S.history.length-1];
+    const X = xOf(last.t / 240);
+    const Y = yOf(last.T);
+    ctx.beginPath();
+    ctx.arc(X, Y, 6, 0, Math.PI*2);
+    ctx.fillStyle = '#fbbf24';
+    ctx.shadowColor = '#fbbf24';
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // axis labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '10px Consolas, monospace';
+  ctx.textAlign = 'right';
+  for(let i=0;i<=5;i++){
+    const T = (i/5)*tMax;
+    const y = yOf(T);
+    ctx.fillText(Math.round(T), pad.l-6, y+3);
+  }
+  ctx.textAlign = 'left';
+  ctx.fillText('Time (min)', pad.l + gw - 60, pad.t + gh + 16);
+  ctx.fillText('T(°C)', pad.l + 2, pad.t + 12);
+}
+
+function drawFurnace(W, H){
+  // simple furnace/part icon on the side
+  const ox = W - 90, oy = 40;
+  ctx.save();
+  ctx.translate(ox, oy);
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('PART', 0, -4);
+
+  const temp = S.currentTemp;
+  const ratio = Math.min(1, temp / 900);
+  // part body color based on temp
+  const r = 30 + ratio * 225;
+  const g = 30 + ratio * 100;
+  const b = 100 - ratio * 80;
+  ctx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
+  ctx.fillRect(0, 8, 60, 40);
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(0, 8, 60, 40);
+
+  // glow if hot
+  if(temp > 500){
+    ctx.shadowColor = `rgb(${r|0},${g|0},${b|0})`;
+    ctx.shadowBlur = 20 * ratio;
+    ctx.strokeRect(0, 8, 60, 40);
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText(Math.round(temp) + ' °C', 5, 65);
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('STATE: ' + S.state, 0, 82);
+
+  ctx.restore();
+}
+
+function drawMicrostructure(W, H){
+  // grain / phase diagram (bottom half)
+  const ox = 40, oy = H * 0.5 + 30;
+  const gw = W * 0.55;
+  const gh = H * 0.36;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('MICROSTRUCTURE', ox, oy - 8);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, gw, gh);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, gw, gh);
+
+  const micro = S.currentMicro;
+  const T = S.currentTemp;
+  const hardnessRatio = S.currentHardness / 68;
+
+  if(micro.includes('MARTENSITE')){
+    // needle-like structure
+    const needles = 60;
+    for(let i=0;i<needles;i++){
+      const x1 = ox + (i / needles) * gw + Math.sin(i*7)*10;
+      const y1 = oy;
+      const x2 = ox + (i / needles) * gw + Math.sin(i*7)*10 + (Math.random()-0.5)*40;
+      const y2 = oy + gh;
+      ctx.strokeStyle = micro.includes('TEMPERED') ? 'rgba(167,139,250,0.7)' : 'rgba(248,113,113,0.8)';
+      ctx.lineWidth = 1 + hardnessRatio;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+  } else if(micro.includes('BAINITE')){
+    // feathery
+    for(let i=0;i<40;i++){
+      const cx = ox + Math.random() * gw;
+      const cy = oy + Math.random() * gh;
+      ctx.strokeStyle = 'rgba(34,211,238,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for(let a=0;a<Math.PI*2;a+=0.3){
+        ctx.lineTo(cx + Math.cos(a) * 6, cy + Math.sin(a) * 6);
+      }
+      ctx.stroke();
+    }
+  } else if(micro.includes('PEARLITE') || micro.includes('SPHEROIDIZED')){
+    // layered pearlite
+    for(let i=0;i<14;i++){
+      const y = oy + (i/14) * gh + 4;
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(74,222,128,0.5)' : 'rgba(100,116,139,0.4)';
+      ctx.fillRect(ox+2, y, gw-4, gh/14 - 2);
+    }
+    if(micro.includes('SPHEROIDIZED')){
+      // add spheroid particles
+      for(let i=0;i<30;i++){
+        ctx.beginPath();
+        ctx.arc(ox + Math.random()*gw, oy + Math.random()*gh, 3, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(248,113,113,0.7)';
+        ctx.fill();
+      }
+    }
+  } else {
+    // ferrite - polygonal grains
+    for(let i=0;i<20;i++){
+      const cx = ox + Math.random() * gw;
+      const cy = oy + Math.random() * gh;
+      const r = 15 + Math.random() * 20;
+      ctx.beginPath();
+      const n = 5 + Math.floor(Math.random()*3);
+      for(let a=0;a<n;a++){
+        const ang = (a/n) * Math.PI * 2;
+        const px = cx + Math.cos(ang) * r;
+        const py = cy + Math.sin(ang) * r;
+        if(a===0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(74,222,128,0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(74,222,128,0.1)';
+      ctx.fill();
+    }
+  }
+
+  // label
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText(micro, ox, oy + gh + 16);
+}
+
+function drawCCTDiagram(W, H){
+  // simplified CCT curve in side region
+  const ox = W - 260, oy = H - 200;
+  const w = 220, h = 160;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('CCT DIAGRAM', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  // A1 line
+  const yOfT = T => oy + h - (T / 900) * h;
+  ctx.strokeStyle = '#f87171';
+  ctx.setLineDash([3,2]);
+  ctx.beginPath();
+  ctx.moveTo(ox, yOfT(727));
+  ctx.lineTo(ox + w, yOfT(727));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#f87171';
+  ctx.font = '8px Consolas, monospace';
+  ctx.fillText('A1', ox + 2, yOfT(727) - 2);
+
+  // Ms line
+  ctx.strokeStyle = '#a78bfa';
+  ctx.setLineDash([3,2]);
+  ctx.beginPath();
+  ctx.moveTo(ox, yOfT(250));
+  ctx.lineTo(ox + w, yOfT(250));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillText('Ms', ox + 2, yOfT(250) - 2);
+
+  // C-curve (pearlite nose)
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(ox + 30, oy + 10);
+  for(let x=30;x<w-20;x++){
+    const t = (x - 30) / (w - 50);
+    // nose shape
+    const noseY = yOfT(550) + (t - 0.5) * (t - 0.5) * 80 - 30;
+    if(x === 30) ctx.moveTo(ox + x, oy + 10);
+    else ctx.lineTo(ox + x, noseY);
+  }
+  ctx.stroke();
+
+  // quenching line (vertical, fast)
+  const qx = ox + 60;
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(qx, oy);
+  ctx.lineTo(qx, oy + h);
+  ctx.stroke();
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = '8px Consolas, monospace';
+  ctx.fillText('quench', qx + 4, oy + 40);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  document.querySelector('#mTemp .mvalue').innerHTML = Math.round(S.currentTemp) + '<span class="munit">°C</span>';
+  document.querySelector('#mPhase .mvalue').textContent = S.currentPhase;
+  document.querySelector('#mHard .mvalue').innerHTML = S.currentHardness.toFixed(0) + '<span class="munit">HRC</span>';
+  document.querySelector('#mTough .mvalue').textContent = S.currentToughness.toFixed(1);
+  document.querySelector('#mMicro .mvalue').textContent = S.currentMicro.split(' ')[0];
+  document.querySelector('#mState .mvalue').textContent = S.state;
+
+  document.getElementById('mTemp').className = 'metric' + (S.currentTemp > 900 ? ' bad' : S.currentTemp > 700 ? ' warn' : '');
+  document.getElementById('mHard').className = 'metric' + (S.currentHardness > 55 ? ' bad' : S.currentHardness > 40 ? ' warn' : ' ok');
+  document.getElementById('mTough').className = 'metric' + (S.currentToughness < 3 ? ' bad' : S.currentToughness < 6 ? ' warn' : ' ok');
+}
+
+// ─── SIMULATION LOOP ───────────────────────────────────────
+let lastMetrics = 0;
+let lastRecordedT = 0;
+function loop(ts){
+  S.time += 1/60;
+
+  // record history every ~0.5 min of sim time
+  if(S.time - lastRecordedT > 0.15 && S.state !== 'IDLE'){
+    lastRecordedT = S.time;
+    S.history.push({ t: S.time, T: S.currentTemp });
+    if(S.history.length > 500) S.history.shift();
+  }
+
+  // State machine
+  if(S.state === 'HEATING'){
+    S.currentTemp += 15;
+    if(S.currentTemp >= S.austTemp){
+      S.currentTemp = S.austTemp;
+      S.state = 'HOLDING';
+      S.holdProgress = 0;
+      teach('AUSTENITIZE', 'Reached austenitizing temperature ' + S.austTemp + ' °C. Holding to dissolve all carbides and homogenize. This forms austenite (FCC) which can later transform.', 'info');
+    }
+  } else if(S.state === 'HOLDING'){
+    S.holdProgress = (S.holdProgress || 0) + 1;
+    if(S.holdProgress >= S.holdTime * 6){
+      S.state = 'COOLING';
+      teach('COOLING', 'Hold complete. Beginning cooling at ' + S.coolRate + ' °C/s. Cooling rate determines final microstructure.', 'info');
+    }
+  } else if(S.state === 'COOLING'){
+    S.currentTemp -= S.coolRate * 3;
+    if(S.currentTemp <= 25){
+      S.currentTemp = 25;
+      // determine microstructure
+      const p = predictStructure(S.coolRate, S.temperTemp, false);
+      S.currentHardness = p.hardness;
+      S.currentMicro = p.micro;
+      S.currentToughness = p.toughness;
+      S.currentPhase = p.micro.includes('MARTENSITE') ? 'MARTENSITE' : 
+                       p.micro.includes('BAINITE') ? 'BAINITE' : 'FERRITE + PEARLITE';
+      if(S.coolRate > 30){
+        S.martensiteFormed = true;
+        S.state = 'DONE';
+        S.currentPhase = 'MARTENSITE';
+        teach('MARTENSITE', 'Rapid quench trapped carbon in a body-centered tetragonal (BCT) structure. Hardness reached ' + p.hardness.toFixed(0) + ' HRC — but toughness is only ' + p.toughness.toFixed(1) + '. Very brittle. Untempered martensite is unusable for most applications.', 'warn');
+        if(S.process !== 'temper'){
+          teach('CAUTION', 'Untempered martensite is too brittle for service. Real components are always tempered after quenching to restore some toughness. Try the Quench + Temper process.', 'error');
+        }
+      } else {
+        S.state = 'DONE';
+        teach('MICROSTRUCTURE', 'Slow cooling produced ' + p.micro + '. Hardness: ' + p.hardness.toFixed(0) + ' HRC. This is the soft, machinable structure — used for parts that need to be cut or formed.', 'ok');
+      }
+    }
+  } else if(S.state === 'TEMPERING'){
+    S.currentTemp += (S.temperTemp - S.currentTemp) * 0.05;
+    if(Math.abs(S.currentTemp - S.temperTemp) < 5){
+      S.currentTemp = S.temperTemp;
+      const p = predictStructure(S.coolRate, S.temperTemp, true);
+      S.currentHardness = p.hardness;
+      S.currentMicro = p.micro;
+      S.currentToughness = p.toughness;
+      S.state = 'DONE';
+      teach('TEMPERED', 'Tempered at ' + S.temperTemp + ' °C: hardness dropped to ' + p.hardness.toFixed(0) + ' HRC, toughness improved to ' + p.toughness.toFixed(1) + '. Trade-off: sacrifice some hardness for ductility. That is the essence of heat treatment design.', 'ok');
+    }
+  }
+
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+processSel.addEventListener('change', e => {
+  S.process = e.target.value;
+  const p = PROCESSES[S.process];
+  S.coolRate = p.coolRate;
+  coolSlider.value = Math.min(200, p.coolRate);
+  document.getElementById('coolVal').textContent = p.coolRate < 1 ? p.coolRate.toFixed(2) : p.coolRate + ' °C/s';
+  if(S.process === 'temper'){
+    S.temperTemp = p.temper;
+    temperSlider.value = p.temper;
+    document.getElementById('temperVal').textContent = p.temper + ' °C';
+  }
+  teach('PROCESS', 'Heat treatment: ' + p.name + '. Each process gives a different combination of hardness and toughness.', 'concept');
+});
+
+austSlider.addEventListener('input', e => {
+  S.austTemp = parseFloat(e.target.value);
+  document.getElementById('austVal').textContent = S.austTemp + ' °C';
+  if(S.austTemp > 950) teach('OVERHEAT', 'Austenitizing above 950 °C causes grain growth — the steel becomes coarse and brittle. Real heat treaters stay in a narrow 30–50 °C window above the critical temperature.', 'warn');
+});
+
+holdSlider.addEventListener('input', e => {
+  S.holdTime = parseFloat(e.target.value);
+  document.getElementById('holdVal').textContent = S.holdTime + ' min';
+});
+
+coolSlider.addEventListener('input', e => {
+  S.coolRate = parseFloat(e.target.value);
+  document.getElementById('coolVal').textContent = S.coolRate < 1 ? S.coolRate.toFixed(2) + ' °C/s' : S.coolRate + ' °C/s';
+});
+
+temperSlider.addEventListener('input', e => {
+  S.temperTemp = parseFloat(e.target.value);
+  document.getElementById('temperVal').textContent = S.temperTemp + ' °C';
+});
+
+playBtn.addEventListener('click', () => {
+  if(S.state === 'DONE'){ resetBtn.click(); }
+  if(S.state === 'IDLE'){
+    S.state = 'HEATING';
+    S.history = [];
+    S.time = 0;
+    playBtn.textContent = '⏸ RUNNING...';
+    teach('START', 'Starting heat treatment. Heating to ' + S.austTemp + ' °C austenitizing temperature.', 'info');
+  } else {
+    S.state = 'IDLE';
+    playBtn.textContent = '▶ RUN TREATMENT';
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  if(S.state === 'IDLE'){
+    S.state = 'HEATING';
+    playBtn.textContent = '▶ RUN TREATMENT';
+  }
+  // advance one step
+  if(S.state === 'HEATING') S.currentTemp = Math.min(S.austTemp, S.currentTemp + 200);
+  else if(S.state === 'HOLDING') S.holdProgress = (S.holdProgress || 0) + 100;
+  else if(S.state === 'COOLING') S.currentTemp = Math.max(25, S.currentTemp - 200);
+  teach('STEP', 'Manual step: T = ' + Math.round(S.currentTemp) + ' °C, state = ' + S.state, 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.state = 'IDLE';
+  S.currentTemp = 25;
+  S.currentHardness = 20;
+  S.currentToughness = 8;
+  S.currentMicro = 'FERRITE + PEARLITE';
+  S.currentPhase = 'FERRITE + PEARLITE';
+  S.history = [];
+  S.time = 0;
+  S.holdProgress = 0;
+  playBtn.textContent = '▶ RUN TREATMENT';
+  teach('RESET', 'Furnace reset to 25 °C. Part is soft ferrite + pearlite (normalized steel).', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('slowQuenchBtn').addEventListener('click', () => {
+  S.process = 'quench';
+  S.coolRate = 5;
+  coolSlider.value = 5;
+  document.getElementById('coolVal').textContent = '5 °C/s';
+  processSel.value = 'quench';
+  teach('SLOW QUENCH', 'Slow quench fault: cooling rate 5 °C/s is too slow to form full martensite. Result: bainite, with medium hardness. This is a common heat-treating mistake — the part looks hard but does not reach spec.', 'error');
+  toast('⚠ Slow quench');
+});
+
+document.getElementById('overheatBtn').addEventListener('click', () => {
+  S.austTemp = 980;
+  austSlider.value = 980;
+  document.getElementById('austVal').textContent = '980 °C';
+  teach('OVERHEAT', 'Over-austenitizing fault: 980 °C is above the recommended range. Austenite grains grow large. The resulting martensite will be coarse and brittle. Real ovens have tight temperature controls to prevent this.', 'warn');
+});
+
+document.getElementById('temperEmbrittleBtn').addEventListener('click', () => {
+  S.process = 'temper';
+  S.temperTemp = 350;
+  temperSlider.value = 350;
+  document.getElementById('temperVal').textContent = '350 °C';
+  S.coolRate = 100;
+  teach('EMBRITTLE', 'Tempering between 250–400 °C causes temper embrittlement in some alloy steels — the toughness actually drops. Aerospace and pressure-vessel codes avoid this range.', 'warn');
+  toast('⚠ Embrittlement range');
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'toolsteel'){
+      S.process = 'temper';
+      S.austTemp = 830; S.coolRate = 150; S.temperTemp = 200;
+      austSlider.value = 830; coolSlider.value = 150; temperSlider.value = 200;
+      processSel.value = 'temper';
+      document.getElementById('austVal').textContent = '830 °C';
+      document.getElementById('coolVal').textContent = '150 °C/s';
+      document.getElementById('temperVal').textContent = '200 °C';
+      teach('TOOL STEEL', 'Tool steel: fast quench + low temper (~200 °C). Result: very high hardness (60+ HRC) for cutting tools. Trade-off is low toughness — this steel is not used for shock-loaded parts.', 'concept');
+    } else if(p === 'spring'){
+      S.process = 'temper';
+      S.austTemp = 870; S.coolRate = 100; S.temperTemp = 450;
+      austSlider.value = 870; coolSlider.value = 100; temperSlider.value = 450;
+      processSel.value = 'temper';
+      document.getElementById('austVal').textContent = '870 °C';
+      document.getElementById('coolVal').textContent = '100 °C/s';
+      document.getElementById('temperVal').textContent = '450 °C';
+      teach('SPRING STEEL', 'Spring steel: quench + medium temper (~450 °C). Result: 45–50 HRC with good toughness. Optimal for springs — needs both strength and ductility.', 'concept');
+    } else {
+      S.process = 'anneal';
+      S.austTemp = 850; S.coolRate = 0.05; S.holdTime = 120;
+      austSlider.value = 850; coolSlider.value = 0.05; holdSlider.value = 120;
+      processSel.value = 'anneal';
+      document.getElementById('austVal').textContent = '850 °C';
+      document.getElementById('coolVal').textContent = '0.05 °C/s';
+      document.getElementById('holdVal').textContent = '120 min';
+      teach('SOFT STEEL', 'Full anneal: slow furnace cool. Result: coarse pearlite + ferrite, ~20 HRC. Soft and machinable — this is done before shaping parts by cutting.', 'concept');
+    }
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Heat Treatment. By controlling temperature and cooling rate, we transform steel into anything from soft machinable ferrite to ultra-hard cutting tool steel.', 'concept');
+  teach('PRINCIPLE', 'Steel is iron + carbon. Above 727 °C it becomes austenite (FCC). How fast you cool determines what it becomes: slow → pearlite, fast → martensite. Martensite is hard but brittle; tempering fixes that.', 'concept');
+  teach('HOWTO', 'Choose a process, set temperatures and cooling rate, then press RUN TREATMENT. Watch the temperature curve trace and the microstructure evolve.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

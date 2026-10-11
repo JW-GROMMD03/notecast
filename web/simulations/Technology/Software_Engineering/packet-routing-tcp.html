@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Network Packet Routing &amp; TCP Congestion Control — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #3b82f6, #06b6d4, #10b981);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(59,130,246,0.15); color: #93c5fd; border-color: #3b82f6; }
+  .teaching-toggle:hover { background: rgba(59,130,246,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #93c5fd;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #3b82f6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .btn.primary:hover { background: #2563eb; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .algo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .algo-btn {
+    padding: 8px 6px; background: #02040a; border: 1.5px solid #334155;
+    border-radius: 6px; font-family: monospace; font-size: 0.55rem;
+    font-weight: 800; color: #94a3b8; cursor: pointer;
+    letter-spacing: 0.3px; transition: all 0.2s;
+  }
+  .algo-btn:hover { border-color: #3b82f6; color: #93c5fd; }
+  .algo-btn.active {
+    background: rgba(59,130,246,0.2); border-color: #3b82f6;
+    color: #93c5fd; box-shadow: 0 0 10px rgba(59,130,246,0.4);
+  }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #93c5fd; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #3b82f6; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(59,130,246,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .topology-wrap {
+    flex: 1; background: #070a14; border: 2px solid #3b82f6; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(59,130,246,0.15); min-height: 0;
+  }
+  .topo-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #93c5fd; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #topoCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .metrics-row {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; flex-shrink: 0;
+  }
+  .metrics-card {
+    background: #070a14; border: 2px solid #06b6d4; border-radius: 10px;
+    padding: 8px 12px; text-align: center;
+    box-shadow: 0 0 15px rgba(6,182,212,0.15);
+  }
+  .metrics-card.cwnd { border-color: #10b981; box-shadow: 0 0 15px rgba(16,185,129,0.15); }
+  .metrics-card.ssthresh { border-color: #f59e0b; box-shadow: 0 0 15px rgba(245,158,11,0.15); }
+  .metrics-card.loss { border-color: #ef4444; box-shadow: 0 0 15px rgba(239,68,68,0.15); }
+  .metrics-card .lbl {
+    font-family: monospace; font-size: 0.5rem; color: #64748b;
+    letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 3px;
+  }
+  .metrics-card .val {
+    font-family: monospace; font-size: 1rem; font-weight: 900;
+  }
+  .metrics-card.rtt .val { color: #67e8f9; }
+  .metrics-card.cwnd .val { color: #86efac; }
+  .metrics-card.ssthresh .val { color: #fcd34d; }
+  .metrics-card.loss .val { color: #fca5a5; }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #93c5fd; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #3b82f6;
+    background: rgba(59,130,246,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(59,130,246,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(59,130,246,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #93c5fd;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #3b82f6; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(59,130,246,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #3b82f6; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #93c5fd; z-index: 12;
+    box-shadow: 0 0 20px rgba(59,130,246,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.warn { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+  .status-banner.ok { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.loss { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>PACKET ROUTING &amp; TCP</h1>
+    <span class="sub">ROUTING · CONGESTION CONTROL · SLOW START · AIMD</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Mode</h3>
+      <div class="algo-grid" id="algoGrid">
+        <button class="algo-btn active" data-algo="routing">ROUTING</button>
+        <button class="algo-btn" data-algo="tcp">TCP CONGESTION</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Control</h3>
+      <button class="btn primary" id="btnRun">▶ Run</button>
+      <button class="btn" id="btnSend">📨 Send Packet</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Fault Injection</h3>
+      <button class="btn danger" id="btnLoss">💥 Packet Loss</button>
+      <button class="btn warn" id="btnCongest">🚦 High Congestion</button>
+      <button class="btn success" id="btnHeal">✅ Heal Network</button>
+    </div>
+
+    <div class="panel">
+      <h3>TCP Config</h3>
+      <div class="slider-row"><span>Initial cwnd</span><span class="value" id="cwndVal">1</span></div>
+      <input type="range" id="cwndRange" min="1" max="10" value="1">
+      <div class="slider-row"><span>Bandwidth (Mbps)</span><span class="value" id="bwVal">10</span></div>
+      <input type="range" id="bwRange" min="1" max="50" value="10">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:50%;margin-right:6px;"></span>Router / node</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#fcd34d;border-radius:50%;margin-right:6px;"></span>Packet in flight</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:50%;margin-right:6px;"></span>Dropped packet</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">PACKETS TRAVEL · ROUTERS FORWARD · TCP ADAPTS TO CONGESTION</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="topology-wrap">
+          <div class="topo-title">
+            <span id="topoTitle">🌐 NETWORK TOPOLOGY</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="topoHint">— click RUN —</span>
+          </div>
+          <canvas id="topoCanvas"></canvas>
+        </div>
+        <div class="metrics-row">
+          <div class="metrics-card rtt">
+            <div class="lbl">RTT</div>
+            <div class="val" id="cardRtt">0 ms</div>
+          </div>
+          <div class="metrics-card cwnd">
+            <div class="lbl">CWND</div>
+            <div class="val" id="cardCwnd">1</div>
+          </div>
+          <div class="metrics-card ssthresh">
+            <div class="lbl">SSTHRESH</div>
+            <div class="val" id="cardSsthresh">∞</div>
+          </div>
+          <div class="metrics-card loss">
+            <div class="lbl">Loss Rate</div>
+            <div class="val" id="cardLoss">0%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Packets Sent</div>
+        <div class="metric-value" id="mSent">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Acked</div>
+        <div class="metric-value good" id="mAcked">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Lost</div>
+        <div class="metric-value bad" id="mLost">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Throughput</div>
+        <div class="metric-value warn" id="mThroughput">0 pps</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 TCP Congestion Control</div>
+      <div class="info-row"><span class="lbl">Slow Start</span><span class="val good">cwnd ×2 per RTT</span></div>
+      <div class="info-row"><span class="lbl">Congestion Avoid</span><span class="val">cwnd +1 per RTT</span></div>
+      <div class="info-row"><span class="lbl">On Loss (timeout)</span><span class="val bad">cwnd = 1, SS restart</span></div>
+      <div class="info-row"><span class="lbl">On Loss (3 dup)</span><span class="val warn">Fast retransmit</span></div>
+      <div class="info-row"><span class="lbl">ssthresh</span><span class="val">cwnd/2 on loss</span></div>
+      <div class="info-row"><span class="lbl">AIMD</span><span class="val good">Additive inc, mult dec</span></div>
+      <div class="info-row"><span class="lbl">Variants</span><span class="val">Reno, CUBIC, BBR</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  mode: 'routing',
+  nodes: [],
+  links: [],
+  packets: [],
+  // TCP state
+  cwnd: 1,
+  ssthresh: 64,
+  inSlowStart: true,
+  lossRate: 0,
+  // Stats
+  sent: 0,
+  acked: 0,
+  lost: 0,
+  rttSamples: [],
+  congestionLevel: 0,
+  // Control
+  running: false,
+  timer: null,
+  teaching: true,
+  voiceEnabled: false,
+  // Send simulation
+  sendingCycle: 0,
+  cwndInitial: 1
+};
+
+const NODE_NAMES = ['S', 'R1', 'R2', 'R3', 'D'];
+const NODE_COLORS = ['#10b981', '#3b82f6', '#3b82f6', '#3b82f6', '#a855f7'];
+
+const DOM = {
+  topoCanvas: document.getElementById('topoCanvas'),
+  topoHint: document.getElementById('topoHint'),
+  topoTitle: document.getElementById('topoTitle'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnRun: document.getElementById('btnRun'),
+  btnSend: document.getElementById('btnSend'),
+  btnReset: document.getElementById('btnReset'),
+  btnLoss: document.getElementById('btnLoss'),
+  btnCongest: document.getElementById('btnCongest'),
+  btnHeal: document.getElementById('btnHeal'),
+  cwndRange: document.getElementById('cwndRange'),
+  cwndVal: document.getElementById('cwndVal'),
+  bwRange: document.getElementById('bwRange'),
+  bwVal: document.getElementById('bwVal'),
+  cardRtt: document.getElementById('cardRtt'),
+  cardCwnd: document.getElementById('cardCwnd'),
+  cardSsthresh: document.getElementById('cardSsthresh'),
+  cardLoss: document.getElementById('cardLoss'),
+  mSent: document.getElementById('mSent'),
+  mAcked: document.getElementById('mAcked'),
+  mLost: document.getElementById('mLost'),
+  mThroughput: document.getElementById('mThroughput'),
+  algoGrid: document.getElementById('algoGrid'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 1800);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining packet routing and TCP congestion control.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   INIT TOPOLOGY
+   ============================================================ */
+function initTopology() {
+  STATE.nodes = [];
+  STATE.links = [];
+  STATE.packets = [];
+  STATE.sent = 0;
+  STATE.acked = 0;
+  STATE.lost = 0;
+  STATE.cwnd = STATE.cwndInitial;
+  STATE.ssthresh = 64;
+  STATE.inSlowStart = true;
+  STATE.lossRate = 0;
+  STATE.congestionLevel = 0;
+
+  const positions = [
+    { x: 0.08, y: 0.5 },   // source
+    { x: 0.3, y: 0.3 },    // R1
+    { x: 0.5, y: 0.7 },    // R2
+    { x: 0.7, y: 0.3 },    // R3
+    { x: 0.92, y: 0.5 }    // dest
+  ];
+
+  for (let i = 0; i < 5; i++) {
+    STATE.nodes.push({
+      id: i,
+      name: NODE_NAMES[i],
+      x: positions[i].x,
+      y: positions[i].y,
+      color: NODE_COLORS[i],
+      queue: 0
+    });
+  }
+
+  // Links: S→R1→R2→R3→D plus cross links
+  STATE.links = [
+    { from: 0, to: 1 },
+    { from: 0, to: 2 },
+    { from: 1, to: 2 },
+    { from: 1, to: 3 },
+    { from: 2, to: 3 },
+    { from: 2, to: 4 },
+    { from: 3, to: 4 }
+  ];
+
+  draw();
+  updateMetrics();
+}
+
+/* ============================================================
+   SEND PACKET
+   ============================================================ */
+function sendPacket() {
+  STATE.sent++;
+
+  // Choose a path (simple: S → R1 → R3 → D, or S → R2 → D)
+  const paths = [
+    [0, 1, 3, 4],
+    [0, 2, 4],
+    [0, 1, 2, 3, 4]
+  ];
+  const path = paths[Math.floor(Math.random() * paths.length)];
+
+  // Simulate loss
+  const lost = Math.random() < STATE.lossRate;
+
+  STATE.packets.push({
+    path,
+    progress: 0,
+    lost,
+    sendTime: performance.now(),
+    color: lost ? '#ef4444' : '#fcd34d'
+  });
+
+  if (lost) {
+    STATE.lost++;
+    teach('PACKET LOST',
+      `Packet dropped somewhere along the path — the network is congested or a router's queue overflowed. TCP will detect this via a timeout or duplicate ACKs, and respond by reducing cwnd. This is the feedback signal that drives congestion control.`,
+      'error', false
+    );
+  }
+
+  draw();
+  updateMetrics();
+}
+
+/* ============================================================
+   TCP CONGESTION LOGIC
+   ============================================================ */
+function tcpTick() {
+  STATE.sendingCycle++;
+
+  // Simulate a round of sending: send cwnd packets
+  const packetsThisRound = Math.min(STATE.cwnd, 20);
+  let lostThisRound = 0;
+  let ackedThisRound = 0;
+
+  for (let i = 0; i < packetsThisRound; i++) {
+    STATE.sent++;
+    const lost = Math.random() < STATE.lossRate;
+    if (lost) {
+      lostThisRound++;
+      STATE.lost++;
+    } else {
+      ackedThisRound++;
+      STATE.acked++;
+    }
+  }
+
+  // Sample RTT
+  const rtt = 40 + Math.random() * 20 + STATE.congestionLevel * 30;
+  STATE.rttSamples.push(rtt);
+  if (STATE.rttSamples.length > 20) STATE.rttSamples.shift();
+
+  // Congestion control logic (Reno)
+  if (lostThisRound > 0) {
+    // Loss detected: cut cwnd
+    STATE.ssthresh = Math.max(2, Math.floor(STATE.cwnd / 2));
+    STATE.cwnd = 1;
+    STATE.inSlowStart = true;
+
+    teach('CONGESTION LOSS',
+      `Packet loss detected (${lostThisRound} dropped). TCP Reno: ssthresh = cwnd/2 = ${STATE.ssthresh}, cwnd resets to 1, and we re-enter Slow Start. This is Multiplicative Decrease — the "MD" in AIMD.`,
+      'error'
+    );
+  } else if (STATE.inSlowStart) {
+    // Slow start: double cwnd
+    STATE.cwnd *= 2;
+
+    if (STATE.cwnd >= STATE.ssthresh) {
+      STATE.cwnd = STATE.ssthresh;
+      STATE.inSlowStart = false;
+      teach('THRESHOLD REACHED',
+        `cwnd reached ssthresh (${STATE.ssthresh}). Exiting Slow Start, entering Congestion Avoidance. From now on, cwnd grows by ~1 per RTT instead of doubling — additive increase.`,
+        'purple'
+      );
+    }
+  } else {
+    // Congestion avoidance: +1 per RTT
+    STATE.cwnd += 1;
+
+    if (STATE.cwnd > 100) STATE.cwnd = 100;
+  }
+
+  // Draw some packets for visual feedback
+  for (let i = 0; i < Math.min(3, packetsThisRound); i++) {
+    sendPacket();
+  }
+
+  draw();
+  updateMetrics();
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.topoCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function draw() {
+  const canvas = DOM.topoCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw links
+  for (const link of STATE.links) {
+    const a = STATE.nodes[link.from];
+    const b = STATE.nodes[link.to];
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(a.x * W, a.y * H);
+    ctx.lineTo(b.x * W, b.y * H);
+    ctx.stroke();
+  }
+
+  // Draw packets
+  for (let i = STATE.packets.length - 1; i >= 0; i--) {
+    const p = STATE.packets[i];
+    p.progress += 0.015;
+    if (p.progress >= 1) {
+      STATE.packets.splice(i, 1);
+      continue;
+    }
+
+    // Compute position along multi-hop path
+    const segments = p.path.length - 1;
+    const segProgress = p.progress * segments;
+    const segIdx = Math.min(Math.floor(segProgress), segments - 1);
+    const segT = segProgress - segIdx;
+
+    const from = STATE.nodes[p.path[segIdx]];
+    const to = STATE.nodes[p.path[segIdx + 1]];
+    const x = (from.x + (to.x - from.x) * segT) * W;
+    const y = (from.y + (to.y - from.y) * segT) * H;
+
+    ctx.beginPath();
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Draw nodes
+  for (const n of STATE.nodes) {
+    const x = n.x * W;
+    const y = n.y * H;
+    const r = 28;
+
+    // Glow for source/dest
+    if (n.id === 0 || n.id === 4) {
+      ctx.shadowColor = n.color;
+      ctx.shadowBlur = 15;
+    }
+
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+    ctx.strokeStyle = n.color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = n.color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(n.name, x, y);
+
+    // Congestion indicator
+    if (STATE.congestionLevel > 0 && n.id > 0 && n.id < 4) {
+      ctx.font = '14px monospace';
+      ctx.fillStyle = '#fcd34d';
+      ctx.fillText('🔥'.repeat(Math.min(3, STATE.congestionLevel)), x, y + r + 12);
+    }
+  }
+
+  DOM.topoHint.textContent = `— ${STATE.packets.length} packets in flight —`;
+}
+
+function animate() {
+  // Auto-advance packets when running
+  if (STATE.running && STATE.mode === 'tcp') {
+    // tcpTick handled by timer
+  }
+  draw();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.cardRtt.textContent = STATE.rttSamples.length > 0
+    ? Math.round(STATE.rttSamples.reduce((a, b) => a + b, 0) / STATE.rttSamples.length) + ' ms'
+    : '0 ms';
+  DOM.cardCwnd.textContent = STATE.cwnd;
+  DOM.cardSsthresh.textContent = STATE.ssthresh;
+  DOM.cardLoss.textContent = Math.round(STATE.lossRate * 100) + '%';
+  DOM.cardLoss.parentElement.className = 'metrics-card loss' + (STATE.lossRate > 0.1 ? '' : '');
+
+  DOM.mSent.textContent = STATE.sent;
+  DOM.mAcked.textContent = STATE.acked;
+  DOM.mLost.textContent = STATE.lost;
+  DOM.mThroughput.textContent = STATE.acked > 0
+    ? Math.round(STATE.acked / Math.max(1, STATE.sendingCycle)) + ' pps'
+    : '0 pps';
+}
+
+/* ============================================================
+   RUN / RESET
+   ============================================================ */
+function runSimulation() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.timer);
+    STATE.timer = null;
+    DOM.btnRun.textContent = '▶ Run';
+    return;
+  }
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+
+  if (STATE.mode === 'tcp') {
+    showStatus('▶ TCP Congestion Control running');
+    teach('TCP START',
+      `TCP starting. cwnd=${STATE.cwnd}, ssthresh=${STATE.ssthresh}. We're in Slow Start — cwnd will double each round trip until it hits ssthresh or a loss. Then we transition to Congestion Avoidance.`,
+      'cyan'
+    );
+    STATE.timer = setInterval(tcpTick, 1000);
+  } else {
+    // Routing mode: just send packets periodically
+    showStatus('▶ Packet routing');
+    STATE.timer = setInterval(sendPacket, 500);
+  }
+}
+
+function resetAll() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.timer = null;
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Run';
+  STATE.cwndInitial = parseInt(DOM.cwndRange.value);
+  STATE.lossRate = 0;
+  STATE.congestionLevel = 0;
+  initTopology();
+  teach('RESET', 'Network reset. Clean links, no congestion, TCP starting fresh.', 'info', false);
+}
+
+/* ============================================================
+   FAULT INJECTION
+   ============================================================ */
+function injectLoss() {
+  STATE.lossRate = Math.min(0.5, STATE.lossRate + 0.15);
+  showStatus(`💥 Packet loss: ${Math.round(STATE.lossRate * 100)}%`, 'loss');
+  teach('LOSS INJECTED',
+    `Loss rate is now ${Math.round(STATE.lossRate * 100)}%. TCP will detect this via timeouts and duplicate ACKs. Every loss event causes cwnd to be cut in half — Multiplicative Decrease. If this continues, cwnd will oscillate at a much lower average, dropping throughput dramatically.`,
+    'error'
+  );
+  updateMetrics();
+}
+
+function injectCongestion() {
+  STATE.congestionLevel = Math.min(3, STATE.congestionLevel + 1);
+  STATE.lossRate = Math.min(0.4, STATE.lossRate + 0.05);
+  showStatus('🚦 Network congestion rising', 'warn');
+  teach('CONGESTION',
+    `Network congestion increased. Routers' queues are filling up. Latency is rising (queuing delay) and packets are starting to drop. This is exactly the situation TCP congestion control was designed to handle: react to signals of overload BEFORE the network collapses (congestion collapse — a real phenomenon on the early internet).`,
+    'warn'
+  );
+  updateMetrics();
+}
+
+function heal() {
+  STATE.lossRate = 0;
+  STATE.congestionLevel = 0;
+  STATE.rttSamples = [];
+  showStatus('✅ Network healed');
+  teach('HEALED',
+    `Loss rate back to 0%, congestion cleared. TCP will now ramp back up: if it's in Slow Start, cwnd doubles each round; if in Congestion Avoidance, cwnd grows by 1 per round. This sawtooth pattern (up, cut, up, cut) is the classic TCP behavior — always probing for more bandwidth until loss signals the limit.`,
+    'ok'
+  );
+  updateMetrics();
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+document.querySelectorAll('.algo-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    STATE.mode = btn.dataset.algo;
+    document.querySelectorAll('.algo-btn').forEach(b => b.classList.toggle('active', b === btn));
+    resetAll();
+
+    if (STATE.mode === 'tcp') {
+      DOM.topoTitle.textContent = '📈 TCP CONGESTION WINDOW';
+      teach('TCP CONGESTION CONTROL',
+        `TCP uses a congestion window (cwnd) — the number of unacknowledged packets in flight. It grows cwnd slowly while things work, and cuts it aggressively when packets drop. This is AIMD: Additive Increase, Multiplicative Decrease. Every TCP connection on the internet uses some variant of this.`,
+        'cyan'
+      );
+    } else {
+      DOM.topoTitle.textContent = '🌐 NETWORK TOPOLOGY';
+      teach('PACKET ROUTING',
+        `Packets travel hop by hop through routers. Each router looks at the destination IP, consults its routing table, and forwards to the next hop. Latency accumulates at each hop (processing + queuing + transmission). A packet's path is decided independently at each router — this is the "stateless" internet model.`,
+        'cyan'
+      );
+    }
+  });
+});
+
+DOM.btnRun.addEventListener('click', runSimulation);
+DOM.btnSend.addEventListener('click', sendPacket);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnLoss.addEventListener('click', injectLoss);
+DOM.btnCongest.addEventListener('click', injectCongest);
+DOM.btnHeal.addEventListener('click', heal);
+
+DOM.cwndRange.addEventListener('input', e => {
+  STATE.cwndInitial = parseInt(e.target.value);
+  DOM.cwndVal.textContent = STATE.cwndInitial;
+  STATE.cwnd = STATE.cwndInitial;
+  updateMetrics();
+});
+DOM.bwRange.addEventListener('input', e => {
+  DOM.bwVal.textContent = e.target.value;
+  // Simulate bandwidth by affecting loss rate under load
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+initTopology();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Packet Routing and TCP Congestion Control. Packets travel through routers, hop by hop, to reach their destination. TCP runs on top, adapting its send rate to what the network can handle — this is called congestion control, and it\'s what keeps the internet from collapsing under load.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('SLOW START',
+      `When a TCP connection opens, it doesn\'t know the network\'s capacity. So it starts with cwnd=1 and DOUBLES it every round-trip. cwnd goes 1 → 2 → 4 → 8 → 16... exponentially until either a loss occurs or cwnd reaches ssthresh. This is why the beginning of every TCP connection ramps up so fast.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('AIMD',
+      `After Slow Start, TCP switches to Congestion Avoidance: cwnd grows by ~1 per round-trip (linear, not exponential). When a packet is lost, cwnd is CUT IN HALF (or reset to 1 on timeout). This creates the classic sawtooth pattern: linear increase, sudden drop, linear increase, sudden drop. Every TCP flow is constantly probing for more bandwidth.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click RUN to start TCP simulation. Watch cwnd grow — first exponentially (Slow Start), then linearly (Congestion Avoidance). Click PACKET LOSS to inject drops and see cwnd collapse and restart. Click HIGH CONGESTION for sustained pressure. Then click HEAL to watch the recovery.`,
+      'warn'
+    );
+  }, 13500);
+  showToast('👋 Run the TCP simulation, then inject loss', 4500);
+}, 500);
+</script>
+</body>
+</html>

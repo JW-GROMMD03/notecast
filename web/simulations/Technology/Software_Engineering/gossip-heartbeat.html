@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gossip Protocol &amp; Heartbeat Leader Election — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #10b981, #22c55e, #84cc16);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(16,185,129,0.15); color: #86efac; border-color: #10b981; }
+  .teaching-toggle:hover { background: rgba(16,185,129,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #86efac;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #10b981; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #10b981; color: #022c22; border-color: #10b981; }
+  .btn.primary:hover { background: #059669; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #10b981; color: #022c22; border-color: #10b981; }
+  .algo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .algo-btn {
+    padding: 8px 6px; background: #02040a; border: 1.5px solid #334155;
+    border-radius: 6px; font-family: monospace; font-size: 0.55rem;
+    font-weight: 800; color: #94a3b8; cursor: pointer;
+    letter-spacing: 0.3px; transition: all 0.2s;
+  }
+  .algo-btn:hover { border-color: #10b981; color: #86efac; }
+  .algo-btn.active {
+    background: rgba(16,185,129,0.2); border-color: #10b981;
+    color: #86efac; box-shadow: 0 0 10px rgba(16,185,129,0.4);
+  }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #86efac; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #10b981; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(16,185,129,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .cluster-wrap {
+    flex: 1; background: #070a14; border: 2px solid #10b981; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(16,185,129,0.15); min-height: 0;
+  }
+  .cluster-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #86efac; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #clusterCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .events-strip {
+    background: #070a14; border: 2px solid #8b5cf6; border-radius: 12px;
+    padding: 10px 14px; height: 90px; overflow-y: auto; display: flex;
+    flex-direction: column; gap: 2px; font-family: 'Courier New', monospace;
+    font-size: 0.58rem; line-height: 1.4;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15); flex-shrink: 0;
+  }
+  .events-strip .evt { padding: 1px 4px; border-radius: 3px; border-left: 2px solid transparent; }
+  .events-strip .evt.gossip { border-left-color: #06b6d4; color: #67e8f9; }
+  .events-strip .evt.heartbeat { border-left-color: #10b981; color: #86efac; }
+  .events-strip .evt.election { border-left-color: #fcd34d; color: #fde047; font-weight: 700; }
+  .events-strip .evt.leader { border-left-color: #a855f7; color: #c4b5fd; font-weight: 700; }
+  .events-strip .evt.dead { border-left-color: #ef4444; color: #fca5a5; }
+  .events-strip .evt.recovery { border-left-color: #10b981; color: #6ee7b7; }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #86efac; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #10b981;
+    background: rgba(16,185,129,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(16,185,129,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(16,185,129,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #86efac;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #10b981; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(16,185,129,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #10b981; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #86efac; z-index: 12;
+    box-shadow: 0 0 20px rgba(16,185,129,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.warn { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+  .status-banner.election { border-color: #a855f7; color: #c4b5fd; box-shadow: 0 0 30px rgba(168,85,247,0.7); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>GOSSIP &amp; HEARTBEAT</h1>
+    <span class="sub">EPIDEMIC PROPAGATION · LEADER ELECTION · FAILURE DETECTION</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Protocol</h3>
+      <div class="algo-grid" id="algoGrid">
+        <button class="algo-btn active" data-algo="gossip">GOSSIP</button>
+        <button class="algo-btn" data-algo="heartbeat">HEARTBEAT</button>
+        <button class="algo-btn" data-algo="election">LEADER ELECTION</button>
+        <button class="algo-btn" data-algo="swim">SWIM</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Actions</h3>
+      <button class="btn primary" id="btnBroadcast">📢 Broadcast Message</button>
+      <button class="btn success" id="btnRun">▶ Auto-Run</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Failures</h3>
+      <button class="btn danger" id="btnKill">💀 Kill Random Node</button>
+      <button class="btn warn" id="btnKillLeader">💥 Kill Leader</button>
+      <button class="btn success" id="btnRevive">🔄 Revive All</button>
+    </div>
+
+    <div class="panel">
+      <h3>Config</h3>
+      <div class="slider-row"><span>Nodes</span><span class="value" id="nodesVal">8</span></div>
+      <input type="range" id="nodesRange" min="4" max="14" value="8">
+      <div class="slider-row"><span>Gossip fanout</span><span class="value" id="fanoutVal">2</span></div>
+      <input type="range" id="fanoutRange" min="1" max="4" value="2">
+      <div class="slider-row"><span>Speed</span><span class="value" id="speedVal">1.0×</span></div>
+      <input type="range" id="speedRange" min="1" max="5" value="2">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#64748b;border-radius:50%;margin-right:6px;"></span>Node (no info)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#06b6d4;border-radius:50%;margin-right:6px;"></span>Has message</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#a855f7;border-radius:50%;margin-right:6px;"></span>Leader</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:50%;margin-right:6px;"></span>Dead</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">EPIDEMIC INFORMATION SPREAD · HEARTBEAT · LEADER ELECTION</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="cluster-wrap">
+          <div class="cluster-title">
+            <span>🌐 CLUSTER TOPOLOGY</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="clusterHint">— click BROADCAST —</span>
+          </div>
+          <canvas id="clusterCanvas"></canvas>
+        </div>
+        <div class="events-strip" id="eventsStrip"></div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Nodes</div>
+        <div class="metric-value" id="mNodes">8</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Informed</div>
+        <div class="metric-value warn" id="mInformed">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Rounds</div>
+        <div class="metric-value" id="mRounds">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Leader</div>
+        <div class="metric-value good" id="mLeader">—</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Gossip &amp; Heartbeats</div>
+      <div class="info-row"><span class="lbl">Spread</span><span class="val">O(log n) rounds</span></div>
+      <div class="info-row"><span class="lbl">Messages</span><span class="val warn">O(n log n)</span></div>
+      <div class="info-row"><span class="lbl">Failure detector</span><span class="val good">Heartbeat timeout</span></div>
+      <div class="info-row"><span class="lbl">Election</span><span class="val">Highest ID wins</span></div>
+      <div class="info-row"><span class="lbl">SWIM</span><span class="val good">Scalable failure detection</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">Cassandra, Consul, Serf</span></div>
+      <div class="info-row"><span class="lbl">Crash recovery</span><span class="val">Membership re-learned</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  protocol: 'gossip',
+  nodes: [],
+  totalNodes: 8,
+  fanout: 2,
+  speed: 2,
+  leader: null,
+  rounds: 0,
+  informedCount: 0,
+  hasMessage: false,
+  running: false,
+  timer: null,
+  messages: [],  // in-flight visuals { from, to, progress, color }
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  clusterCanvas: document.getElementById('clusterCanvas'),
+  clusterHint: document.getElementById('clusterHint'),
+  eventsStrip: document.getElementById('eventsStrip'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnBroadcast: document.getElementById('btnBroadcast'),
+  btnRun: document.getElementById('btnRun'),
+  btnReset: document.getElementById('btnReset'),
+  btnKill: document.getElementById('btnKill'),
+  btnKillLeader: document.getElementById('btnKillLeader'),
+  btnRevive: document.getElementById('btnRevive'),
+  nodesRange: document.getElementById('nodesRange'),
+  nodesVal: document.getElementById('nodesVal'),
+  fanoutRange: document.getElementById('fanoutRange'),
+  fanoutVal: document.getElementById('fanoutVal'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  algoGrid: document.getElementById('algoGrid'),
+  mNodes: document.getElementById('mNodes'),
+  mInformed: document.getElementById('mInformed'),
+  mRounds: document.getElementById('mRounds'),
+  mLeader: document.getElementById('mLeader'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2000);
+}
+
+let EVENT_TS = 0;
+function logEvent(cls, msg) {
+  EVENT_TS++;
+  const el = document.createElement('div');
+  el.className = `evt ${cls}`;
+  el.innerHTML = `<span style="color:#475569;">[${String(EVENT_TS).padStart(2, '0')}]</span> ${msg}`;
+  DOM.eventsStrip.prepend(el);
+  while (DOM.eventsStrip.children.length > 20) DOM.eventsStrip.lastChild.remove();
+}
+
+function clearEvents() {
+  EVENT_TS = 0;
+  DOM.eventsStrip.innerHTML = '';
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining gossip protocol and heartbeat leader election.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+function initCluster() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.running = false;
+  STATE.totalNodes = parseInt(DOM.nodesRange.value);
+  DOM.nodesVal.textContent = STATE.totalNodes;
+
+  STATE.nodes = [];
+  STATE.leader = null;
+  STATE.rounds = 0;
+  STATE.informedCount = 0;
+  STATE.hasMessage = false;
+
+  for (let i = 0; i < STATE.totalNodes; i++) {
+    const angle = (i / STATE.totalNodes) * Math.PI * 2 - Math.PI / 2;
+    const radius = 0.35;
+    STATE.nodes.push({
+      id: i,
+      name: `N${i}`,
+      x: 0.5 + Math.cos(angle) * radius,
+      y: 0.5 + Math.sin(angle) * radius,
+      state: 'alive',       // alive | dead
+      informed: false,
+      lastHeartbeat: 0,
+      suspected: false
+    });
+  }
+
+  // Initial leader = highest ID
+  STATE.leader = STATE.totalNodes - 1;
+  STATE.nodes[STATE.leader].isLeader = true;
+
+  clearEvents();
+  logEvent('gossip', `Cluster initialized: ${STATE.totalNodes} nodes`);
+  logEvent('leader', `Initial leader: N${STATE.leader} (highest ID)`);
+
+  draw();
+  updateMetrics();
+}
+
+/* ============================================================
+   GOSSIP BROADCAST
+   ============================================================ */
+function broadcastMessage() {
+  if (STATE.hasMessage) {
+    showToast('⚠ Message already spreading');
+    return;
+  }
+
+  // Pick a random node to originate the message (or use leader)
+  const origin = STATE.leader !== null ? STATE.leader : 0;
+  STATE.nodes[origin].informed = true;
+  STATE.informedCount = 1;
+  STATE.hasMessage = true;
+  STATE.rounds = 0;
+
+  logEvent('gossip', `N${origin} originates message`);
+  showStatus(`📢 Broadcast from N${origin}`);
+  teach('BROADCAST START',
+    `Node N${origin} originates a message. In gossip protocol, this node will forward the message to ${STATE.fanout} random peers each round. Those peers forward to their own random peers. Within O(log n) rounds, everyone learns the message.`,
+    'cyan'
+  );
+
+  updateMetrics();
+  draw();
+
+  // Auto-advance rounds
+  if (!STATE.running) {
+    autoRunGossip();
+  }
+}
+
+function gossipRound() {
+  if (!STATE.hasMessage) return;
+
+  STATE.rounds++;
+
+  // Every informed, alive node sends to N random peers
+  const informedAlive = STATE.nodes.filter(n => n.informed && n.state === 'alive');
+  const aliveNodes = STATE.nodes.filter(n => n.state === 'alive');
+
+  if (informedAlive.length === 0) {
+    stopAuto();
+    return;
+  }
+
+  let newInformed = 0;
+
+  for (const sender of informedAlive) {
+    // Pick fanout random targets
+    const targets = [];
+    const peers = aliveNodes.filter(n => n.id !== sender.id);
+    for (let i = 0; i < STATE.fanout && i < peers.length; i++) {
+      const rand = peers.splice(Math.floor(Math.random() * peers.length), 1)[0];
+      targets.push(rand);
+    }
+
+    for (const target of targets) {
+      // Spawn visual message
+      STATE.messages.push({
+        from: sender.id,
+        to: target.id,
+        progress: 0,
+        color: '#06b6d4'
+      });
+
+      if (!target.informed) {
+        target.informed = true;
+        STATE.informedCount++;
+        newInformed++;
+      }
+    }
+  }
+
+  logEvent('gossip', `Round ${STATE.rounds}: ${informedAlive.length} informed → ${newInformed} new`);
+  showStatus(`🔄 Gossip round ${STATE.rounds}`);
+
+  updateMetrics();
+  draw();
+
+  // Check convergence
+  const aliveCount = aliveNodes.length;
+  const informedAlive2 = STATE.nodes.filter(n => n.informed && n.state === 'alive').length;
+  if (informedAlive2 >= aliveCount) {
+    stopAuto();
+    logEvent('gossip', `✅ Convergence reached in ${STATE.rounds} rounds`);
+    showStatus(`✅ Message reached all ${aliveCount} alive nodes in ${STATE.rounds} rounds`, 'ok');
+    teach('GOSSIP COMPLETE',
+      `Message reached all ${aliveCount} alive nodes in just ${STATE.rounds} rounds. This is the magic of epidemic protocols: O(log n) rounds to spread to n nodes. Compare to a centralized broadcast where the origin would need O(n) direct messages.`,
+      'ok'
+    );
+  }
+}
+
+function autoRunGossip() {
+  if (STATE.running) return;
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+  STATE.timer = setInterval(() => {
+    gossipRound();
+  }, 900 / STATE.speed);
+}
+
+function stopAuto() {
+  STATE.running = false;
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.timer = null;
+  DOM.btnRun.textContent = '▶ Auto-Run';
+}
+
+/* ============================================================
+   HEARTBEAT
+   ============================================================ */
+function heartbeatRound() {
+  STATE.rounds++;
+  const aliveNodes = STATE.nodes.filter(n => n.state === 'alive');
+
+  for (const node of aliveNodes) {
+    // Send heartbeat to 2 random peers
+    const peers = aliveNodes.filter(n => n.id !== node.id);
+    for (let i = 0; i < Math.min(2, peers.length); i++) {
+      const target = peers[Math.floor(Math.random() * peers.length)];
+      STATE.messages.push({
+        from: node.id,
+        to: target.id,
+        progress: 0,
+        color: '#10b981'
+      });
+    }
+  }
+
+  logEvent('heartbeat', `Round ${STATE.rounds}: ${aliveNodes.length} heartbeats sent`);
+  updateMetrics();
+  draw();
+}
+
+/* ============================================================
+   LEADER ELECTION
+   ============================================================ */
+function triggerElection() {
+  showStatus('🗳️ Running leader election', 'election');
+  logEvent('election', `Election triggered — highest alive ID will win`);
+
+  teach('ELECTION',
+    `Leader election (simplified Bully algorithm): the node with the highest ID among alive nodes wins. Every node compares its own ID against the current leader's ID. If higher, it claims leadership and broadcasts the claim. All lower-ID nodes accept. This is the same principle behind Raft's "highest term wins", just simpler.`,
+    'purple'
+  );
+
+  // Find highest alive node
+  let newLeader = -1;
+  for (const n of STATE.nodes) {
+    if (n.state === 'alive' && n.id > newLeader) {
+      newLeader = n.id;
+    }
+  }
+
+  // Clear old leader
+  for (const n of STATE.nodes) {
+    n.isLeader = false;
+  }
+
+  if (newLeader >= 0) {
+    STATE.leader = newLeader;
+    STATE.nodes[newLeader].isLeader = true;
+    logEvent('leader', `🗳️ N${newLeader} elected leader`);
+    showStatus(`👑 New leader: N${newLeader}`, 'election');
+    teach('LEADER ELECTED',
+      `N${newLeader} is the new leader. Every alive node has accepted this. In a real system, heartbeats from the new leader confirm its authority within a round or two. During the election, the cluster is temporarily unable to handle certain operations, but it recovers automatically.`,
+      'ok'
+    );
+  } else {
+    STATE.leader = null;
+    logEvent('leader', `No alive nodes — no leader`);
+  }
+
+  updateMetrics();
+  draw();
+}
+
+/* ============================================================
+   FAILURES
+   ============================================================ */
+function killRandom() {
+  const alive = STATE.nodes.filter(n => n.state === 'alive');
+  if (alive.length <= 1) {
+    showToast('⚠ Cannot kill last node');
+    return;
+  }
+  const victim = alive[Math.floor(Math.random() * alive.length)];
+  victim.state = 'dead';
+  victim.informed = false;
+  logEvent('dead', `💀 N${victim.id} died`);
+  showStatus(`💀 N${victim.id} failed`, 'warn');
+
+  // If victim was leader, trigger election
+  if (victim.isLeader) {
+    victim.isLeader = false;
+    setTimeout(triggerElection, 800);
+  }
+
+  updateMetrics();
+  draw();
+}
+
+function killLeader() {
+  if (STATE.leader === null) {
+    showToast('⚠ No leader');
+    return;
+  }
+  const leader = STATE.nodes[STATE.leader];
+  if (leader.state === 'dead') {
+    showToast('⚠ Leader already dead');
+    return;
+  }
+  leader.state = 'dead';
+  leader.informed = false;
+  leader.isLeader = false;
+  STATE.leader = null;
+
+  logEvent('dead', `💀💀 LEADER N${leader.id} FAILED`);
+  showStatus(`💥 Leader failed — election incoming`, 'warn');
+
+  teach('LEADER FAILURE',
+    `The leader just crashed. Without a leader, the cluster can't coordinate critical operations. This is exactly the failure scenario leader election protocols handle. Within a few heartbeat timeouts, the remaining nodes will detect the failure and elect a new leader.`,
+    'error'
+  );
+
+  setTimeout(triggerElection, 1200);
+  updateMetrics();
+  draw();
+}
+
+function reviveAll() {
+  for (const n of STATE.nodes) {
+    n.state = 'alive';
+    n.suspected = false;
+  }
+  logEvent('recovery', `🔄 All nodes revived`);
+
+  // Re-elect if no leader
+  if (STATE.leader === null || STATE.nodes[STATE.leader].state === 'dead') {
+    triggerElection();
+  }
+
+  updateMetrics();
+  draw();
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.clusterCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function draw() {
+  const canvas = DOM.clusterCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw edges between alive nodes
+  const aliveNodes = STATE.nodes.filter(n => n.state === 'alive');
+  for (let i = 0; i < aliveNodes.length; i++) {
+    for (let j = i + 1; j < aliveNodes.length; j++) {
+      const a = aliveNodes[i];
+      const b = aliveNodes[j];
+      ctx.strokeStyle = 'rgba(71,85,105,0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(a.x * W, a.y * H);
+      ctx.lineTo(b.x * W, b.y * H);
+      ctx.stroke();
+    }
+  }
+
+  // Draw in-flight messages
+  for (let i = STATE.messages.length - 1; i >= 0; i--) {
+    const m = STATE.messages[i];
+    m.progress += 0.05 * STATE.speed;
+    if (m.progress >= 1) {
+      STATE.messages.splice(i, 1);
+      continue;
+    }
+    const from = STATE.nodes[m.from];
+    const to = STATE.nodes[m.to];
+    if (!from || !to) continue;
+    const x = from.x * W + (to.x - from.x) * W * m.progress;
+    const y = from.y * H + (to.y - from.y) * H * m.progress;
+
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = m.color;
+    ctx.shadowColor = m.color;
+    ctx.shadowBlur = 15;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Draw nodes
+  for (const n of STATE.nodes) {
+    const x = n.x * W;
+    const y = n.y * H;
+    const r = 22;
+
+    let fill = '#0f172a';
+    let stroke = '#64748b';
+    let textColor = '#94a3b8';
+
+    if (n.state === 'dead') {
+      fill = 'rgba(239,68,68,0.15)';
+      stroke = '#ef4444';
+      textColor = '#fca5a5';
+    } else if (n.isLeader) {
+      fill = 'rgba(168,85,247,0.2)';
+      stroke = '#a855f7';
+      textColor = '#c4b5fd';
+      ctx.shadowColor = '#a855f7';
+      ctx.shadowBlur = 20;
+    } else if (n.informed) {
+      fill = 'rgba(6,182,212,0.2)';
+      stroke = '#06b6d4';
+      textColor = '#67e8f9';
+    }
+
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = textColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(n.name, x, y);
+
+    // Icon
+    if (n.isLeader) {
+      ctx.font = '14px monospace';
+      ctx.fillStyle = '#fcd34d';
+      ctx.fillText('👑', x, y - r - 12);
+    }
+    if (n.state === 'dead') {
+      ctx.font = '14px monospace';
+      ctx.fillStyle = '#fca5a5';
+      ctx.fillText('💀', x, y - r - 12);
+    }
+  }
+
+  DOM.clusterHint.textContent = `— ${STATE.nodes.length} nodes · round ${STATE.rounds} —`;
+}
+
+function animate() {
+  draw();
+  requestAnimationFrame(animate);
+}
+
+function updateMetrics() {
+  DOM.mNodes.textContent = STATE.totalNodes;
+  const alive = STATE.nodes.filter(n => n.state === 'alive').length;
+  const informedAlive = STATE.nodes.filter(n => n.informed && n.state === 'alive').length;
+  const pct = alive > 0 ? Math.round((informedAlive / alive) * 100) : 0;
+  DOM.mInformed.textContent = pct + '%';
+  DOM.mInformed.className = 'metric-value ' + (pct === 100 ? 'good' : pct > 50 ? 'warn' : 'warn');
+  DOM.mRounds.textContent = STATE.rounds;
+  DOM.mLeader.textContent = STATE.leader !== null && STATE.nodes[STATE.leader] && STATE.nodes[STATE.leader].state === 'alive' ? `N${STATE.leader}` : '—';
+}
+
+/* ============================================================
+   AUTO RUN PER PROTOCOL
+   ============================================================ */
+function autoRun() {
+  if (STATE.running) {
+    stopAuto();
+    return;
+  }
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+
+  const tickFn = STATE.protocol === 'heartbeat' ? heartbeatRound : gossipRound;
+  STATE.timer = setInterval(() => {
+    if (STATE.protocol === 'gossip') {
+      if (!STATE.hasMessage) broadcastMessage();
+      else gossipRound();
+    } else if (STATE.protocol === 'heartbeat') {
+      heartbeatRound();
+    } else if (STATE.protocol === 'election') {
+      triggerElection();
+      stopAuto();
+    } else {
+      // SWIM: heartbeat + suspicious
+      heartbeatRound();
+      // Random suspicion
+      if (Math.random() < 0.2) {
+        const alive = STATE.nodes.filter(n => n.state === 'alive');
+        if (alive.length > 1) {
+          const suspect = alive[Math.floor(Math.random() * alive.length)];
+          suspect.suspected = true;
+          logEvent('gossip', `SWIM: N${suspect.id} suspected`);
+        }
+      }
+    }
+  }, 900 / STATE.speed);
+}
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+document.querySelectorAll('.algo-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    STATE.protocol = btn.dataset.algo;
+    document.querySelectorAll('.algo-btn').forEach(b => b.classList.toggle('active', b === btn));
+    stopAuto();
+    const descs = {
+      gossip: 'GOSSIP: epidemic-style information spread. Each round, every informed node forwards the message to a random subset of peers. In O(log n) rounds, the whole cluster knows. Robust to failures and network partitions. Used by Cassandra for membership, Bitcoin for tx propagation, Consul for service discovery.',
+      heartbeat: 'HEARTBEAT: each node periodically sends "I\'m alive" to a random subset of peers. If a node doesn\'t hear from a peer for several rounds, it marks it as suspected failed. Simple and effective, but detection can be slow at scale. Fixed timeout cannot adapt.',
+      election: 'LEADER ELECTION (Bully-style): when the leader fails, every node knows the highest ID in the cluster will be the new leader. Nodes compare IDs and the highest wins. Real algorithms (Raft, Paxos, Bully) add terms and voting for safety.',
+      swim: 'SWIM (Scalable Weakly-consistent Infection-style Membership): combines gossip with direct and indirect probing for failure detection. Suspects are tagged "suspicious" and infection-style gossip spreads the suspicion. Falsely suspected nodes can exonerate themselves. Used by Serf and Consul.'
+    };
+    teach('PROTOCOL: ' + btn.dataset.algo.toUpperCase(), descs[btn.dataset.algo], 'purple');
+  });
+});
+
+DOM.btnBroadcast.addEventListener('click', broadcastMessage);
+DOM.btnRun.addEventListener('click', autoRun);
+DOM.btnReset.addEventListener('click', () => {
+  initCluster();
+  teach('RESET', 'Cluster reset with a fresh leader.', 'info', false);
+});
+DOM.btnKill.addEventListener('click', killRandom);
+DOM.btnKillLeader.addEventListener('click', killLeader);
+DOM.btnRevive.addEventListener('click', reviveAll);
+
+DOM.nodesRange.addEventListener('input', e => {
+  DOM.nodesVal.textContent = e.target.value;
+  initCluster();
+});
+DOM.fanoutRange.addEventListener('input', e => {
+  STATE.fanout = parseInt(e.target.value);
+  DOM.fanoutVal.textContent = STATE.fanout;
+});
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseInt(e.target.value);
+  DOM.speedVal.textContent = (STATE.speed / 2).toFixed(1) + '×';
+  if (STATE.running) {
+    stopAuto();
+    autoRun();
+  }
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+initCluster();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Gossip Protocols and Heartbeat Leader Election. These are the foundation of any distributed system: how do nodes spread information, detect failures, and elect leaders — all without a central coordinator?`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('GOSSIP',
+      `Gossip is epidemic-style communication. Each round, every informed node forwards the message to K random peers. Within O(log n) rounds, everyone knows. This is remarkably robust: nodes can fail, networks can partition, and the message still reaches everyone that\'s connected. Information spreads like a rumor at a party.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('HEARTBEAT',
+      `Heartbeats detect failures. Each node periodically sends "I\'m alive" to a few random peers. If a node misses N heartbeats from a peer, it suspects failure and gossips the suspicion. This detects network partitions AND node crashes. But timeouts are tricky: too short = false positives; too long = slow detection. SWIM solves this by combining direct and indirect probing.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('LEADER ELECTION',
+      `When the leader fails, who takes over? The simplest rule: the highest-ID node wins. Every node compares its ID to the current leader; the highest alive node declares itself leader and broadcasts the claim. Real algorithms (Raft, Paxos) add terms and quorum votes for safety — you can\'t have two leaders in the same term.`,
+      'warn'
+    );
+  }, 13500);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click BROADCAST MESSAGE to see gossip spread through the cluster — each round, information moves to ~2x more nodes. Click KILL LEADER to see the automatic election pick a new one. Click KILL RANDOM a few times to see how the cluster handles multiple failures.`,
+      'cyan'
+    );
+  }, 18000);
+  showToast('👋 Broadcast a message, then kill the leader', 4500);
+}, 500);
+</script>
+</body>
+</html>

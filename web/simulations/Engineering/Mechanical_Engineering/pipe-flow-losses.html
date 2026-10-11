@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipe Flow Losses — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>PIPE FLOW LOSSES</h1>
+    <span class="sub">DARCY-WEISBACH · FRICTION FACTOR · MOODY · MINOR LOSSES</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Pipe System</div>
+    <div class="control-group">
+      <label>Fluid</label>
+      <select id="fluidSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="water">Water</option>
+        <option value="air">Air</option>
+        <option value="oil">Crude Oil</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Flow Velocity v <span class="val" id="vVal">1.5 m/s</span></label>
+      <input type="range" id="vSlider" min="0.1" max="8" value="1.5" step="0.1">
+    </div>
+    <div class="control-group">
+      <label>Pipe Diameter D <span class="val" id="dVal">100 mm</span></label>
+      <input type="range" id="dSlider" min="10" max="500" value="100" step="5">
+    </div>
+    <div class="control-group">
+      <label>Pipe Length L <span class="val" id="lVal">50 m</span></label>
+      <input type="range" id="lSlider" min="5" max="500" value="50" step="5">
+    </div>
+    <div class="control-group">
+      <label>Roughness ε <span class="val" id="epsVal">0.15 mm</span></label>
+      <input type="range" id="epsSlider" min="0.001" max="3" value="0.15" step="0.001">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ START FLOW</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="foulBtn">⚠ PIPE FOULING</button>
+    <button class="btn warn" id="bendBtn">↩ ADD ELBOWS</button>
+    <button class="btn warn" id="valveBtn">⚙ PARTIALLY CLOSED VALVE</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="newpipe">New Steel Pipe</button>
+    <button class="btn" data-preset="oldpipe">Old Rusty Pipe</button>
+    <button class="btn" data-preset="pvc">Smooth PVC</button>
+    <button class="btn" data-preset="concrete">Concrete Duct</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      h_f = f·(L/D)·(v²/2g) &nbsp;|&nbsp; h_m = K·v²/2g &nbsp;|&nbsp; <span class="hl">ΔP = f·(L/D)·½ρv²</span> &nbsp;|&nbsp; Re = ρvD/μ
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mRe">
+          <div class="mlabel">REYNOLDS</div>
+          <div class="mvalue">0</div>
+        </div>
+        <div class="metric" id="mF">
+          <div class="mlabel">FRICTION FACTOR f</div>
+          <div class="mvalue">0.0000</div>
+        </div>
+        <div class="metric" id="mHf">
+          <div class="mlabel">MAJOR LOSS h_f</div>
+          <div class="mvalue">0<span class="munit">m</span></div>
+        </div>
+        <div class="metric" id="mHm">
+          <div class="mlabel">MINOR LOSS h_m</div>
+          <div class="mvalue">0<span class="munit">m</span></div>
+        </div>
+        <div class="metric" id="mDP">
+          <div class="mlabel">PRESSURE DROP ΔP</div>
+          <div class="mvalue">0<span class="munit">kPa</span></div>
+        </div>
+        <div class="metric" id="mPump">
+          <div class="mlabel">PUMP POWER</div>
+          <div class="mvalue">0<span class="munit">kW</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">h_f = f · (L/D) · (v²/2g)</div>
+      <div class="eq">1/√f = −2·log₁₀(ε/3.7D + 2.51/Re√f)</div>
+      <div class="def">
+        Darcy-Weisbach: pressure loss from friction along a pipe. Friction 
+        factor f depends on roughness and Reynolds number (Colebrook equation, 
+        shown graphically on the Moody chart). Minor losses come from fittings, 
+        bends, valves. Typical K values: elbow 0.9, gate valve 0.2, tee 1.8.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const FLUIDS = {
+  water: { name:'Water',  rho:998, mu:0.001002, color:'#22d3ee' },
+  air:   { name:'Air',    rho:1.2, mu:0.0000181, color:'#a3e635' },
+  oil:   { name:'Crude Oil', rho:880, mu:0.04, color:'#fb923c' }
+};
+
+const S = {
+  fluid: 'water',
+  v: 1.5,
+  D: 100,   // mm
+  L: 50,    // m
+  eps: 0.15, // mm roughness
+  running: false,
+  time: 0,
+  extraElbows: 0,
+  valveLoss: 0,
+  fouled: false,
+  particles: [],
+  pressureTrace: [],
+  particlesOut: []
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const fluidSel = document.getElementById('fluidSelect');
+const vSlider = document.getElementById('vSlider');
+const dSlider = document.getElementById('dSlider');
+const lSlider = document.getElementById('lSlider');
+const epsSlider = document.getElementById('epsSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── DARCY-WEISBACH PHYSICS ────────────────────────────────
+function getFluid(){ return FLUIDS[S.fluid]; }
+
+function computeRe(){
+  const f = getFluid();
+  const D = S.D / 1000;
+  return f.rho * S.v * D / f.mu;
+}
+
+// Colebrook equation solved iteratively for f
+function frictionFactor(Re, eps_mm, D_mm){
+  const epsD = eps_mm / D_mm;
+  if(Re < 2300){
+    // Laminar: f = 64/Re
+    return Math.max(0.001, 64 / Math.max(Re, 0.01));
+  }
+  // Turbulent - Colebrook (iterative)
+  let f = 0.02;
+  for(let i=0;i<15;i++){
+    const invSqrtF = -2 * Math.log10(epsD / 3.7 + 2.51 / (Re * Math.sqrt(f)));
+    f = 1 / (invSqrtF * invSqrtF);
+  }
+  return f;
+}
+
+function computeLosses(){
+  const f = getFluid();
+  const g = 9.81;
+  const Re = computeRe();
+  const eps = S.fouled ? S.eps * 3 : S.eps;
+  const fric = frictionFactor(Re, eps, S.D);
+
+  // Major loss (Darcy-Weisbach)
+  const h_f = fric * (S.L / (S.D/1000)) * (S.v * S.v) / (2 * g);
+
+  // Minor losses: each elbow K=0.9, valve K
+  const K_elbows = S.extraElbows * 0.9;
+  const K_valve = S.valveLoss;
+  const K_total = K_elbows + K_valve;
+  const h_m = K_total * S.v * S.v / (2 * g);
+
+  const h_total = h_f + h_m;
+
+  // Pressure drop
+  const dP = f.rho * g * h_total; // Pa
+
+  // Flow rate Q
+  const A = Math.PI * Math.pow(S.D/1000/2, 2);
+  const Q = A * S.v; // m³/s
+
+  // Pump power = dP * Q
+  const pumpPower = dP * Q; // W
+
+  return { Re, f: fric, h_f, h_m, h_total, dP, pumpPower, Q, K_total, eps };
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawPipeFlow(W, H);
+  drawPressureProfile(W, H);
+  drawMoodyChart(W, H);
+}
+
+function drawPipeFlow(W, H){
+  const cx = W * 0.35;
+  const cy = H * 0.35;
+  const pipeLen = W * 0.7;
+  const pipeD = 80;
+  const x0 = cx - pipeLen/2;
+  const x1 = cx + pipeLen/2;
+
+  const L = computeLosses();
+  const f = getFluid();
+
+  // Pipe walls
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x0, cy - pipeD/2);
+  ctx.lineTo(x1, cy - pipeD/2);
+  ctx.moveTo(x0, cy + pipeD/2);
+  ctx.lineTo(x1, cy + pipeD/2);
+  ctx.stroke();
+
+  // Roughness visualization on walls
+  ctx.strokeStyle = '#f87171';
+  ctx.lineWidth = 1;
+  const roughCount = Math.min(100, S.eps * 30 + 5);
+  for(let i=0;i<roughCount;i++){
+    const x = x0 + Math.random() * pipeLen;
+    const side = Math.random() > 0.5 ? -1 : 1;
+    ctx.beginPath();
+    ctx.moveTo(x, cy + side * pipeD/2);
+    ctx.lineTo(x + (Math.random() - 0.5) * 4, cy + side * (pipeD/2 - 2 - S.eps * 3));
+    ctx.stroke();
+  }
+
+  // Pressure gradient (colored bands)
+  const bands = 20;
+  for(let i=0;i<bands;i++){
+    const u = i / bands;
+    const pLocal = 1 - u * (L.h_total / Math.max(1, L.h_total) * 0.95);
+    const alpha = 0.1 + pLocal * 0.15;
+    ctx.fillStyle = `rgba(34,211,238,${alpha})`;
+    ctx.fillRect(x0 + u * pipeLen, cy - pipeD/2 + 2, pipeLen/bands, pipeD - 4);
+  }
+
+  // Update particles
+  if(S.running){
+    // Emit
+    if(S.particles.length < 80 && Math.random() < 0.6){
+      S.particles.push({
+        x: x0 + 5,
+        y: cy + (Math.random() - 0.5) * pipeD * 0.85,
+        seed: Math.random() * 100
+      });
+    }
+    // Update - speed proportional to v, but slows as pressure drops
+    for(let i=S.particles.length-1;i>=0;i--){
+      const p = S.particles[i];
+      const u = (p.x - x0) / pipeLen;
+      const vLocal = S.v * (1 - u * 0.15); // slight deceleration
+      p.x += vLocal * 3;
+      // Turbulent or smooth depends on Re
+      if(L.Re > 4000){
+        p.y += Math.sin(S.time * 6 + p.seed) * 1.5;
+      } else {
+        p.y += Math.sin(S.time * 2 + p.seed) * 0.3;
+      }
+      // Keep in pipe
+      const half = pipeD / 2 - 5;
+      if(p.y - cy > half) p.y = cy + half;
+      if(p.y - cy < -half) p.y = cy - half;
+
+      if(p.x > x1 - 3) S.particles.splice(i, 1);
+    }
+  }
+
+  // Draw particles
+  for(const p of S.particles){
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2.2, 0, Math.PI*2);
+    ctx.fillStyle = f.color;
+    ctx.shadowColor = f.color;
+    ctx.shadowBlur = 4;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Labels
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('v = ' + S.v.toFixed(2) + ' m/s', x0, cy - pipeD/2 - 15);
+  ctx.fillText('D = ' + S.D + ' mm', x0 + 120, cy - pipeD/2 - 15);
+  ctx.fillText('L = ' + S.L + ' m', x0 + 220, cy - pipeD/2 - 15);
+
+  // Flow direction arrow
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x0 - 30, cy);
+  ctx.lineTo(x0 - 10, cy);
+  ctx.stroke();
+  ctx.fillStyle = '#4ade80';
+  ctx.beginPath();
+  ctx.moveTo(x0 - 5, cy);
+  ctx.lineTo(x0 - 15, cy - 5);
+  ctx.lineTo(x0 - 15, cy + 5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Pressure at inlet and outlet
+  ctx.fillStyle = '#ef4444';
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText('P₁', x0 - 30, cy - pipeD/2 - 30);
+
+  ctx.fillStyle = '#22d3ee';
+  ctx.fillText('P₂ = P₁ − ΔP', x1 - 120, cy - pipeD/2 - 30);
+
+  // Fouling indicator
+  if(S.fouled){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 12px Consolas, monospace';
+    ctx.fillText('⚠ FOULED PIPE (3× rough)', cx - 80, cy + pipeD/2 + 30);
+  }
+
+  // Minor losses
+  if(S.extraElbows > 0 || S.valveLoss > 0){
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = '11px Consolas, monospace';
+    ctx.fillText('Elbows: ' + S.extraElbows + '  Valve K: ' + S.valveLoss.toFixed(1), cx - 70, cy + pipeD/2 + 48);
+  }
+}
+
+function drawPressureProfile(W, H){
+  // Pressure gradient along pipe
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 160;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('PRESSURE ALONG PIPE', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const L = computeLosses();
+  const P0 = 500; // kPa inlet (for illustration)
+  const dP_kPa = L.dP / 1000;
+
+  // Axes
+  const pad = { l:30, r:10, t:10, b:20 };
+  ctx.strokeStyle = '#334155';
+  ctx.beginPath();
+  ctx.moveTo(ox + pad.l, oy + pad.t);
+  ctx.lineTo(ox + pad.l, oy + h - pad.b);
+  ctx.lineTo(ox + w - pad.r, oy + h - pad.b);
+  ctx.stroke();
+
+  const xOf = u => ox + pad.l + u * (w - pad.l - pad.r);
+  const yOf = P => oy + h - pad.b - (P / 500) * (h - pad.t - pad.b);
+
+  // Pressure line (linear for major loss; step at minor losses)
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#22d3ee';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  for(let i=0;i<=50;i++){
+    const u = i / 50;
+    const pLocal = P0 * (1 - u * dP_kPa / P0);
+    const x = xOf(u);
+    const y = yOf(Math.max(0, pLocal));
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Labels
+  ctx.fillStyle = '#ef4444';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText(P0.toFixed(0) + ' kPa', xOf(0) + 4, yOf(P0) - 4);
+
+  const P_end = P0 - dP_kPa;
+  ctx.fillStyle = '#22d3ee';
+  ctx.fillText(P_end.toFixed(0) + ' kPa', xOf(1) - 40, yOf(Math.max(0, P_end)) - 4);
+
+  // Total loss
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.fillText('ΔP = ' + dP_kPa.toFixed(1) + ' kPa', ox + 8, oy + h + 4);
+
+  // h_f, h_m
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('h_f = ' + L.h_f.toFixed(2) + ' m', ox + 8, oy + 14);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('h_m = ' + L.h_m.toFixed(2) + ' m', ox + 8, oy + 26);
+}
+
+function drawMoodyChart(W, H){
+  const ox = W - 280;
+  const oy = H - 260;
+  const w = 260;
+  const h = 220;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('MOODY CHART (f vs Re)', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const L = computeLosses();
+
+  // log Re axis
+  const ReMin = 500, ReMax = 1e8;
+  const fMin = 0.005, fMax = 0.1;
+
+  const xOf = Re => ox + 30 + (Math.log10(Math.max(ReMin, Re)) - Math.log10(ReMin)) / (Math.log10(ReMax) - Math.log10(ReMin)) * (w - 50);
+  const yOf = f => oy + h - 30 - (Math.log10(fMax) - Math.log10(f)) / (Math.log10(fMax) - Math.log10(fMin)) * (h - 50);
+
+  // Grid
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1;
+  const reGridVals = [1e3, 1e4, 1e5, 1e6, 1e7];
+  reGridVals.forEach(r => {
+    const x = xOf(r);
+    ctx.beginPath();
+    ctx.moveTo(x, oy + 20);
+    ctx.lineTo(x, oy + h - 30);
+    ctx.stroke();
+    ctx.fillStyle = '#475569';
+    ctx.font = '8px Consolas, monospace';
+    ctx.fillText(r === 1e3 ? '1k' : r === 1e4 ? '10k' : r === 1e5 ? '100k' : r === 1e6 ? '1M' : '10M', x - 8, oy + h - 18);
+  });
+
+  // Laminar line
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let i=0;i<=50;i++){
+    const Re = 500 + i * (2300-500) / 50;
+    const f = 64 / Re;
+    if(f > fMax) continue;
+    const x = xOf(Re);
+    const y = yOf(f);
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Turbulent curves for different roughness
+  const roughnessVals = [0, 0.001, 0.01, 0.05];
+  const colors = ['#22d3ee', '#fbbf24', '#f87171', '#a78bfa'];
+  roughnessVals.forEach((epsRel, idx) => {
+    ctx.strokeStyle = colors[idx];
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for(let i=0;i<=60;i++){
+      const Re = Math.pow(10, 3.5 + i / 60 * 4.5);
+      let f;
+      if(epsRel === 0){
+        // Smooth pipe (Blasius approx)
+        f = 0.316 * Math.pow(Re, -0.25);
+      } else {
+        // Colebrook
+        let ft = 0.02;
+        for(let j=0;j<10;j++){
+          const inv = -2 * Math.log10(epsRel / 3.7 + 2.51 / (Re * Math.sqrt(ft)));
+          ft = 1 / (inv * inv);
+        }
+        f = ft;
+      }
+      if(f > fMax || f < fMin) continue;
+      const x = xOf(Re);
+      const y = yOf(f);
+      if(i===0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  });
+
+  // Current point
+  const cx = xOf(L.Re);
+  const cy = yOf(Math.min(fMax, Math.max(fMin, L.f)));
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#ef4444';
+  ctx.shadowColor = '#ef4444';
+  ctx.shadowBlur = 12;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Legend
+  ctx.font = '8px Consolas, monospace';
+  ctx.fillStyle = '#4ade80';
+  ctx.fillText('Laminar', ox + 8, oy + 14);
+  ctx.fillStyle = '#22d3ee';
+  ctx.fillText('Smooth', ox + 60, oy + 14);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('ε=0.001', ox + 110, oy + 14);
+  ctx.fillStyle = '#f87171';
+  ctx.fillText('ε=0.01', ox + 170, oy + 14);
+
+  // f value label
+  ctx.fillStyle = '#ef4444';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.fillText('f = ' + L.f.toFixed(4), ox + 8, oy + h - 4);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const L = computeLosses();
+  document.querySelector('#mRe .mvalue').textContent = L.Re > 1e5 ? (L.Re/1000).toFixed(0) + 'k' : L.Re.toFixed(0);
+  document.querySelector('#mF .mvalue').textContent = L.f.toFixed(4);
+  document.querySelector('#mHf .mvalue').innerHTML = L.h_f.toFixed(2) + '<span class="munit">m</span>';
+  document.querySelector('#mHm .mvalue').innerHTML = L.h_m.toFixed(2) + '<span class="munit">m</span>';
+  document.querySelector('#mDP .mvalue').innerHTML = (L.dP/1000).toFixed(1) + '<span class="munit">kPa</span>';
+  document.querySelector('#mPump .mvalue').innerHTML = (L.pumpPower/1000).toFixed(2) + '<span class="munit">kW</span>';
+
+  document.getElementById('mRe').className = 'metric' + (L.Re < 2300 ? ' ok' : L.Re > 4000 ? '' : ' warn');
+  document.getElementById('mDP').className = 'metric' + (L.dP > 500000 ? ' bad' : L.dP > 100000 ? ' warn' : ' ok');
+  document.getElementById('mPump').className = 'metric' + (L.pumpPower > 50000 ? ' bad' : L.pumpPower > 10000 ? ' warn' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  S.time += 1/60;
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+fluidSel.addEventListener('change', e => {
+  S.fluid = e.target.value;
+  const f = getFluid();
+  teach('FLUID', f.name + ' selected: ρ = ' + f.rho + ' kg/m³, μ = ' + f.mu + ' Pa·s. Viscous fluids have higher friction losses.', 'concept');
+});
+
+vSlider.addEventListener('input', e => {
+  S.v = parseFloat(e.target.value);
+  document.getElementById('vVal').textContent = S.v.toFixed(2) + ' m/s';
+});
+
+dSlider.addEventListener('input', e => {
+  S.D = parseFloat(e.target.value);
+  document.getElementById('dVal').textContent = S.D + ' mm';
+});
+
+lSlider.addEventListener('input', e => {
+  S.L = parseFloat(e.target.value);
+  document.getElementById('lVal').textContent = S.L + ' m';
+});
+
+epsSlider.addEventListener('input', e => {
+  S.eps = parseFloat(e.target.value);
+  document.getElementById('epsVal').textContent = S.eps.toFixed(3) + ' mm';
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ START FLOW';
+  if(S.running){
+    const L = computeLosses();
+    teach('RUN', 'Flow started. Re = ' + L.Re.toFixed(0) + ', f = ' + L.f.toFixed(4) + '. Major loss h_f = ' + L.h_f.toFixed(2) + ' m. ' + (L.h_f > 10 ? 'High loss — reconsider design.' : 'Loss acceptable.'), L.h_f > 10 ? 'warn' : 'ok');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  const L = computeLosses();
+  teach('STEP', 'Re = ' + L.Re.toFixed(0) + ', f = ' + L.f.toFixed(4) + ', h_f = ' + L.h_f.toFixed(2) + ' m, h_m = ' + L.h_m.toFixed(2) + ' m, ΔP = ' + (L.dP/1000).toFixed(1) + ' kPa.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.fluid = 'water'; S.v = 1.5; S.D = 100; S.L = 50; S.eps = 0.15;
+  S.extraElbows = 0; S.valveLoss = 0; S.fouled = false;
+  S.running = false; S.particles = [];
+  fluidSel.value = 'water'; vSlider.value = 1.5; dSlider.value = 100;
+  lSlider.value = 50; epsSlider.value = 0.15;
+  document.getElementById('vVal').textContent = '1.50 m/s';
+  document.getElementById('dVal').textContent = '100 mm';
+  document.getElementById('lVal').textContent = '50 m';
+  document.getElementById('epsVal').textContent = '0.150 mm';
+  playBtn.textContent = '▶ START FLOW';
+  teach('RESET', 'Pipe reset to defaults.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('foulBtn').addEventListener('click', () => {
+  S.fouled = !S.fouled;
+  if(S.fouled){
+    const L = computeLosses();
+    teach('FOULED', 'Pipe fouling added (3× roughness). h_f increased to ' + L.h_f.toFixed(2) + ' m. Real pipes scale over time — periodic cleaning or pigging is required in industry.', 'warn');
+  } else {
+    teach('CLEAN', 'Pipe roughness restored.', 'ok');
+  }
+});
+
+document.getElementById('bendBtn').addEventListener('click', () => {
+  S.extraElbows = (S.extraElbows + 1) % 6;
+  const L = computeLosses();
+  if(S.extraElbows > 0){
+    teach('ELBOWS', 'Added elbow (' + S.extraElbows + ' total). Each 90° elbow contributes K ≈ 0.9. Total minor loss h_m = ' + L.h_m.toFixed(2) + ' m. Many elbows add up — keep pipe runs short.', 'warn');
+  }
+});
+
+document.getElementById('valveBtn').addEventListener('click', () => {
+  S.valveLoss = S.valveLoss === 0 ? 2.5 : 0;
+  const L = computeLosses();
+  if(S.valveLoss > 0){
+    teach('VALVE', 'Partially closed valve adds K = 2.5. h_m = ' + L.h_m.toFixed(2) + ' m. Throttling valves are used to control flow but waste energy — variable speed pumps are more efficient.', 'warn');
+  } else {
+    teach('OPEN', 'Valve fully open.', 'ok');
+  }
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'newpipe'){
+      S.eps = 0.045; S.fouled = false; S.extraElbows = 0; S.valveLoss = 0;
+      document.getElementById('epsVal').textContent = '0.045 mm';
+      epsSlider.value = 0.045;
+      teach('NEW STEEL', 'New commercial steel pipe: ε = 0.045 mm. Smooth, low friction. This is the baseline for clean pipe.', 'ok');
+    } else if(p === 'oldpipe'){
+      S.eps = 0.5; S.fouled = true;
+      document.getElementById('epsVal').textContent = '0.500 mm';
+      epsSlider.value = 0.5;
+      teach('OLD PIPE', 'Old rusty steel pipe: ε = 0.5 mm (with fouling, effective 1.5 mm). Friction factor increases significantly. This is why old water mains have such high pumping costs.', 'warn');
+    } else if(p === 'pvc'){
+      S.eps = 0.0015;
+      S.fouled = false;
+      document.getElementById('epsVal').textContent = '0.002 mm';
+      epsSlider.value = 0.0015;
+      teach('PVC', 'Smooth PVC pipe: ε = 0.0015 mm. Nearly hydraulically smooth. Popular for water distribution and drainage. Long life, low friction.', 'ok');
+    } else {
+      S.eps = 1.0; S.D = 300; S.fouled = false;
+      document.getElementById('epsVal').textContent = '1.000 mm';
+      epsSlider.value = 1.0;
+      dSlider.value = 300;
+      document.getElementById('dVal').textContent = '300 mm';
+      teach('CONCRETE', 'Concrete duct: ε = 1 mm. Rough but very large diameter, so ε/D is small. Used for large HVAC and water systems.', 'concept');
+    }
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Pipe Flow Losses. Every pipe carrying fluid loses energy to friction — engineers must predict this to size pumps correctly.', 'concept');
+  teach('FORMULA', 'Darcy-Weisbach: h_f = f·(L/D)·(v²/2g). The friction factor f comes from the Moody chart, depending on Reynolds number and pipe roughness.', 'concept');
+  teach('HOWTO', 'Change velocity, diameter, length, and roughness. Watch how h_f changes — doubling velocity quadruples losses (v² dependence). Try fouling or adding elbows.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

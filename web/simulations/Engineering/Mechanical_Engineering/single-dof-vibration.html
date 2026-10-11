@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Single-DOF Vibration — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>SINGLE-DOF VIBRATION</h1>
+    <span class="sub">FREE · FORCED · NATURAL FREQ · RESONANCE · DAMPING</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">System</div>
+    <div class="control-group">
+      <label>Mass m <span class="val" id="mVal">10 kg</span></label>
+      <input type="range" id="mSlider" min="0.5" max="100" value="10" step="0.5">
+    </div>
+    <div class="control-group">
+      <label>Stiffness k <span class="val" id="kVal">1000 N/m</span></label>
+      <input type="range" id="kSlider" min="50" max="10000" value="1000" step="10">
+    </div>
+    <div class="control-group">
+      <label>Damping c <span class="val" id="cVal">10 N·s/m</span></label>
+      <input type="range" id="cSlider" min="0" max="200" value="10" step="1">
+    </div>
+
+    <div class="section-title">Excitation</div>
+    <div class="control-group">
+      <label>Excitation Force F₀ <span class="val" id="f0Val">0 N</span></label>
+      <input type="range" id="f0Slider" min="0" max="500" value="0" step="5">
+    </div>
+    <div class="control-group">
+      <label>Excitation Freq ω <span class="val" id="wVal">5.0 rad/s</span></label>
+      <input type="range" id="wSlider" min="0.1" max="30" value="5" step="0.1">
+    </div>
+
+    <div class="section-title">Initial Conditions</div>
+    <div class="control-group">
+      <label>Initial Displacement x₀ <span class="val" id="x0Val">0.1 m</span></label>
+      <input type="range" id="x0Slider" min="0" max="0.5" value="0.1" step="0.005">
+    </div>
+    <div class="control-group">
+      <label>Initial Velocity v₀ <span class="val" id="v0Val">0 m/s</span></label>
+      <input type="range" id="v0Slider" min="-3" max="3" value="0" step="0.05">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ START VIBRATION</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="resonanceBtn">⚠ RESONANCE</button>
+    <button class="btn warn" id="noDampBtn">⚠ NO DAMPING</button>
+    <button class="btn warn" id="overDampBtn">⚠ OVER-DAMPED</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="car">Car Suspension</button>
+    <button class="btn" data-preset="building">Building Floor</button>
+    <button class="btn" data-preset="machine">Machine Mount</button>
+    <button class="btn" data-preset="shock">Shock Absorber</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      m·ẍ + c·ẋ + k·x = F₀·cos(ωt) &nbsp;|&nbsp; ω_n = √(k/m) &nbsp;|&nbsp; <span class="hl">ζ = c/(2√(km))</span> &nbsp;|&nbsp; r = ω/ω_n
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mWn">
+          <div class="mlabel">NATURAL FREQ ω_n</div>
+          <div class="mvalue">0<span class="munit">rad/s</span></div>
+        </div>
+        <div class="metric" id="mFn">
+          <div class="mlabel">FREQ f_n</div>
+          <div class="mvalue">0<span class="munit">Hz</span></div>
+        </div>
+        <div class="metric" id="mZeta">
+          <div class="mlabel">DAMPING ζ</div>
+          <div class="mvalue">0.00</div>
+        </div>
+        <div class="metric" id="mX">
+          <div class="mlabel">DISPLACEMENT x</div>
+          <div class="mvalue">0<span class="munit">m</span></div>
+        </div>
+        <div class="metric" id="mV">
+          <div class="mlabel">VELOCITY ẋ</div>
+          <div class="mvalue">0<span class="munit">m/s</span></div>
+        </div>
+        <div class="metric" id="mA">
+          <div class="mlabel">AMPLITUDE</div>
+          <div class="mvalue">0<span class="munit">m</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">ω_n = √(k/m) (natural frequency)</div>
+      <div class="eq">ζ = c/(2√(km)) (damping ratio)</div>
+      <div class="eq">r = ω/ω_n (frequency ratio)</div>
+      <div class="def">
+        Single-DOF vibration: mass-spring-damper. ζ &lt; 1 underdamped 
+        (oscillates), ζ = 1 critically damped, ζ &gt; 1 overdamped. 
+        When r = 1 (ω = ω_n), resonance — amplitude grows to Q = 1/(2ζ) 
+        times static deflection. This is how bridges collapse.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const S = {
+  m: 10,
+  k: 1000,
+  c: 10,
+  F0: 0,
+  omega_drive: 5,
+  x0: 0.1,
+  v0: 0,
+  x: 0.1,
+  v: 0,
+  time: 0,
+  running: false,
+  history: [],
+  resonanceAlerted: false
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const mSlider = document.getElementById('mSlider');
+const kSlider = document.getElementById('kSlider');
+const cSlider = document.getElementById('cSlider');
+const f0Slider = document.getElementById('f0Slider');
+const wSlider = document.getElementById('wSlider');
+const x0Slider = document.getElementById('x0Slider');
+const v0Slider = document.getElementById('v0Slider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── VIBRATION MATH ────────────────────────────────────────
+function computeVibration(){
+  const wn = Math.sqrt(S.k / S.m);
+  const fn = wn / (2 * Math.PI);
+  const c_critical = 2 * Math.sqrt(S.k * S.m);
+  const zeta = S.c / c_critical;
+  const r = S.omega_drive / wn;
+
+  // Steady-state amplitude (for harmonic excitation)
+  let X_ss = 0;
+  if(S.F0 > 0){
+    const denom = Math.sqrt(Math.pow(1 - r*r, 2) + Math.pow(2 * zeta * r, 2));
+    X_ss = (S.F0 / S.k) / denom;
+  }
+
+  // Magnification factor
+  let M = 1;
+  if(S.F0 > 0){
+    const denom = Math.sqrt(Math.pow(1 - r*r, 2) + Math.pow(2 * zeta * r, 2));
+    M = 1 / denom;
+  }
+
+  return { wn, fn, c_critical, zeta, r, X_ss, M, x: S.x, v: S.v };
+}
+
+function stepODE(dt){
+  // m·ẍ + c·ẋ + k·x = F0·cos(ω·t)
+  const F = S.F0 * Math.cos(S.omega_drive * S.time);
+  const a = (F - S.c * S.v - S.k * S.x) / S.m;
+  // Semi-implicit Euler
+  S.v += a * dt;
+  S.x += S.v * dt;
+  S.time += dt;
+
+  // Record history
+  if(S.history.length === 0 || S.time - S.history[S.history.length-1].t > 0.02){
+    S.history.push({ t: S.time, x: S.x });
+    if(S.history.length > 2000) S.history.shift();
+  }
+
+  // Resonance check
+  const info = computeVibration();
+  if(Math.abs(info.r - 1) < 0.05 && info.zeta < 0.1 && !S.resonanceAlerted){
+    S.resonanceAlerted = true;
+    teach('RESONANCE', 'Resonance! ω_drive ≈ ω_n (' + info.wn.toFixed(1) + ' rad/s). Amplitude grows to Q = 1/(2ζ) = ' + (1/(2*info.zeta)).toFixed(1) + '× static. Tacoma Narrows Bridge (1940) collapsed this way.', 'error');
+    toast('⚠ Resonance');
+  } else if(Math.abs(info.r - 1) > 0.15){
+    S.resonanceAlerted = false;
+  }
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawSystem(W, H);
+  drawOscillationTrace(W, H);
+  drawFrequencyResponse(W, H);
+}
+
+function drawSystem(W, H){
+  const cx = W * 0.35;
+  const topY = 60;
+  const botY = H * 0.7;
+  const wallY = botY - 40;
+
+  const info = computeVibration();
+  const xScale = 200; // px per m
+  const xPix = S.x * xScale;
+
+  // Ceiling
+  ctx.strokeStyle = '#64748b';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(cx - 120, topY);
+  ctx.lineTo(cx + 120, topY);
+  ctx.stroke();
+
+  // Spring (zigzag from ceiling to mass)
+  const massY = wallY - 30;
+  const springStart = topY + 5;
+  const springEnd = massY - 40;
+  drawSpring(cx, springStart, springEnd, 12, 35);
+
+  // Damper (dashpot alongside)
+  drawDamper(cx + 80, springStart, springEnd, info.zeta);
+
+  // Mass
+  const massW = 80 + S.m * 0.3;
+  const massH = 50;
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(cx - massW/2 + xPix, massY, massW, massH);
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(cx - massW/2 + xPix, massY, massW, massH);
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = 'bold 14px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('m = ' + S.m + ' kg', cx + xPix, massY + 30);
+  ctx.textAlign = 'left';
+
+  // Excitation force arrow
+  if(S.F0 > 0){
+    const arrowLen = Math.min(60, S.F0 * 0.15);
+    const phase = Math.cos(S.omega_drive * S.time);
+    ctx.strokeStyle = phase > 0 ? '#f87171' : '#22d3ee';
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.lineWidth = 3;
+    const arrStart = cx + xPix - massW/2 - arrowLen * (phase > 0 ? 1 : 0.5);
+    const arrEnd = cx + xPix - massW/2 - 5;
+    ctx.beginPath();
+    ctx.moveTo(arrStart, massY + massH/2);
+    ctx.lineTo(arrEnd, massY + massH/2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(arrEnd - 8, massY + massH/2);
+    ctx.lineTo(arrEnd, massY + massH/2 - 6);
+    ctx.lineTo(arrEnd, massY + massH/2 + 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.font = '10px Consolas, monospace';
+    ctx.fillText('F = ' + S.F0 + '·cos(' + S.omega_drive.toFixed(1) + 't)', cx - 90, massY - 60);
+  }
+
+  // Equilibrium line
+  ctx.strokeStyle = '#475569';
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  ctx.moveTo(cx, massY - 20);
+  ctx.lineTo(cx, massY + massH + 20);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#475569';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('equilibrium', cx + 5, massY + massH + 35);
+
+  // Displacement indicator
+  if(Math.abs(xPix) > 3){
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, massY + massH + 10);
+    ctx.lineTo(cx + xPix, massY + massH + 10);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx + xPix, massY + massH + 10, 3, 0, Math.PI*2);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fill();
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.fillText('x = ' + S.x.toFixed(3) + ' m', cx + xPix + 5, massY + massH + 22);
+  }
+
+  // Info
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText('MASS-SPRING-DAMPER SYSTEM', 20, 30);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('m = ' + S.m + ' kg, k = ' + S.k + ' N/m, c = ' + S.c + ' N·s/m', 20, 50);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillText('ω_n = ' + info.wn.toFixed(2) + ' rad/s, ζ = ' + info.zeta.toFixed(3), 20, 68);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('r = ω/ω_n = ' + info.r.toFixed(2), 20, 86);
+
+  // Fault overlays
+  if(info.zeta < 0.05 && Math.abs(info.r - 1) < 0.1 && S.F0 > 0){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 16px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚠ RESONANCE!', cx, massY - 80);
+    ctx.textAlign = 'left';
+  }
+}
+
+function drawSpring(cx, y1, y2, coils, width){
+  const height = y2 - y1;
+  const coilH = height / coils;
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(cx, y1);
+  for(let i=0;i<coils;i++){
+    const phase = i % 2 === 0 ? 1 : -1;
+    const yy = y1 + (i + 0.5) * coilH;
+    ctx.lineTo(cx - phase * width, yy);
+  }
+  ctx.lineTo(cx, y2);
+  ctx.stroke();
+}
+
+function drawDamper(cx, y1, y2, zeta){
+  const height = y2 - y1;
+  const midY = (y1 + y2) / 2;
+  const pistonH = 20;
+  const cylinderH = height * 0.5;
+  const cylTop = midY - cylinderH/2;
+
+  // Cylinder
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(cx - 15, cylTop, 30, cylinderH);
+
+  // Piston
+  ctx.fillStyle = '#a78bfa';
+  const pistonY = cylTop + 10 + zeta * 40;
+  ctx.fillRect(cx - 12, pistonY, 24, 6);
+
+  // Rod up
+  ctx.beginPath();
+  ctx.moveTo(cx, y1);
+  ctx.lineTo(cx, pistonY + 3);
+  ctx.stroke();
+
+  // Rod down
+  ctx.beginPath();
+  ctx.moveTo(cx, pistonY + 6);
+  ctx.lineTo(cx, y2);
+  ctx.stroke();
+
+  // Label
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('c', cx + 20, midY);
+}
+
+function drawOscillationTrace(W, H){
+  const ox = 60;
+  const oy = H - 160;
+  const w = W * 0.55;
+  const h = 130;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('DISPLACEMENT vs TIME', ox, oy - 10);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  // Zero line
+  ctx.strokeStyle = '#334155';
+  ctx.beginPath();
+  ctx.moveTo(ox, oy + h/2);
+  ctx.lineTo(ox + w, oy + h/2);
+  ctx.stroke();
+
+  // Get amplitude range
+  let amp = Math.max(0.05, Math.abs(S.x0) * 1.2);
+  if(S.F0 > 0) amp = Math.max(amp, computeVibration().X_ss * 1.5);
+  const tWindow = 10; // seconds shown
+
+  // Draw history
+  if(S.history.length > 1){
+    ctx.beginPath();
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#22d3ee';
+    ctx.shadowBlur = 6;
+    const tStart = Math.max(0, S.time - tWindow);
+    let first = true;
+    for(const p of S.history){
+      if(p.t < tStart) continue;
+      const u = (p.t - tStart) / tWindow;
+      const x = ox + u * w;
+      const y = oy + h/2 - (p.x / amp) * (h/2 - 10);
+      if(first){ ctx.moveTo(x, y); first = false; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // Axis labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('+' + amp.toFixed(3) + ' m', ox + 5, oy + 15);
+  ctx.fillText('-' + amp.toFixed(3) + ' m', ox + 5, oy + h - 5);
+  ctx.textAlign = 'center';
+  ctx.fillText('time (s)', ox + w/2, oy + h + 12);
+  ctx.textAlign = 'left';
+}
+
+function drawFrequencyResponse(W, H){
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 200;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('FREQUENCY RESPONSE (Bode)', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const pad = { l:40, r:15, t:20, b:30 };
+  const gw = w - pad.l - pad.r;
+  const gh = h - pad.t - pad.b;
+
+  // Amplification factor M vs r (frequency ratio)
+  const rMin = 0, rMax = 3;
+  const Mmax = 15;
+
+  const xOf = r => ox + pad.l + (r / rMax) * gw;
+  const yOf = M => oy + h - pad.b - Math.min(1, M / Mmax) * gh;
+
+  // Grid
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  for(let i=0;i<=5;i++){
+    const y = oy + pad.t + gh * i / 5;
+    ctx.beginPath(); ctx.moveTo(ox + pad.l, y); ctx.lineTo(ox + pad.l + gw, y); ctx.stroke();
+  }
+  ctx.restore();
+
+  // Curve for current zeta
+  const zeta = Math.max(0.001, S.c / (2 * Math.sqrt(S.k * S.m)));
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#4ade80';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  for(let i=0;i<=80;i++){
+    const r = rMin + (i / 80) * rMax;
+    const denom = Math.sqrt(Math.pow(1 - r*r, 2) + Math.pow(2 * zeta * r, 2));
+    const M = 1 / denom;
+    const x = xOf(r);
+    const y = yOf(M);
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Reference curves
+  ctx.strokeStyle = 'rgba(100,116,139,0.3)';
+  ctx.lineWidth = 1;
+  [0.05, 0.2, 0.5].forEach(z => {
+    ctx.beginPath();
+    for(let i=0;i<=80;i++){
+      const r = rMin + (i / 80) * rMax;
+      const denom = Math.sqrt(Math.pow(1 - r*r, 2) + Math.pow(2 * z * r, 2));
+      const M = 1 / denom;
+      const x = xOf(r);
+      const y = yOf(M);
+      if(i===0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  });
+
+  // r=1 line
+  ctx.strokeStyle = 'rgba(248,113,113,0.4)';
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  ctx.moveTo(xOf(1), oy + pad.t);
+  ctx.lineTo(xOf(1), oy + h - pad.b);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#f87171';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('r=1', xOf(1) - 10, oy + pad.t + 10);
+
+  // Current operating point
+  const r = S.omega_drive / Math.sqrt(S.k/S.m);
+  const M = 1 / Math.sqrt(Math.pow(1 - r*r, 2) + Math.pow(2 * zeta * r, 2));
+  const px = xOf(Math.min(r, rMax));
+  const py = yOf(M);
+  ctx.beginPath();
+  ctx.arc(px, py, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#fbbf24';
+  ctx.shadowColor = '#fbbf24';
+  ctx.shadowBlur = 12;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Axis labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('r = ω/ω_n', ox + w/2, oy + h - 6);
+  ctx.textAlign = 'left';
+  ctx.fillText('M', ox + 8, oy + 14);
+
+  // Info
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('M = ' + M.toFixed(2) + ' (ζ=' + zeta.toFixed(3) + ')', ox + 8, oy + h - 20);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const info = computeVibration();
+  document.querySelector('#mWn .mvalue').innerHTML = info.wn.toFixed(2) + '<span class="munit">rad/s</span>';
+  document.querySelector('#mFn .mvalue').innerHTML = info.fn.toFixed(2) + '<span class="munit">Hz</span>';
+  document.querySelector('#mZeta .mvalue').textContent = info.zeta.toFixed(3);
+  document.querySelector('#mX .mvalue').innerHTML = S.x.toFixed(4) + '<span class="munit">m</span>';
+  document.querySelector('#mV .mvalue').innerHTML = S.v.toFixed(3) + '<span class="munit">m/s</span>';
+  document.querySelector('#mA .mvalue').innerHTML = Math.max(Math.abs(S.x), info.X_ss).toFixed(4) + '<span class="munit">m</span>';
+
+  document.getElementById('mZeta').className = 'metric' + (info.zeta > 1 ? ' ok' : info.zeta > 0.5 ? ' ok' : info.zeta > 0.05 ? ' ok' : ' warn');
+  if(Math.abs(info.r - 1) < 0.1 && info.zeta < 0.1 && S.F0 > 0){
+    document.getElementById('mA').className = 'metric bad';
+  }
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  if(S.running){
+    // Multiple substeps for stability
+    const steps = 5;
+    const dt = 1/60 / steps;
+    for(let i=0;i<steps;i++) stepODE(dt);
+  }
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+mSlider.addEventListener('input', e => {
+  S.m = parseFloat(e.target.value);
+  document.getElementById('mVal').textContent = S.m.toFixed(1) + ' kg';
+});
+
+kSlider.addEventListener('input', e => {
+  S.k = parseFloat(e.target.value);
+  document.getElementById('kVal').textContent = S.k + ' N/m';
+});
+
+cSlider.addEventListener('input', e => {
+  S.c = parseFloat(e.target.value);
+  document.getElementById('cVal').textContent = S.c + ' N·s/m';
+});
+
+f0Slider.addEventListener('input', e => {
+  S.F0 = parseFloat(e.target.value);
+  document.getElementById('f0Val').textContent = S.F0 + ' N';
+});
+
+wSlider.addEventListener('input', e => {
+  S.omega_drive = parseFloat(e.target.value);
+  document.getElementById('wVal').textContent = S.omega_drive.toFixed(1) + ' rad/s';
+});
+
+x0Slider.addEventListener('input', e => {
+  S.x0 = parseFloat(e.target.value);
+  document.getElementById('x0Val').textContent = S.x0.toFixed(3) + ' m';
+});
+
+v0Slider.addEventListener('input', e => {
+  S.v0 = parseFloat(e.target.value);
+  document.getElementById('v0Val').textContent = S.v0.toFixed(2) + ' m/s';
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ START VIBRATION';
+  if(S.running){
+    const info = computeVibration();
+    teach('RUN', 'Vibration started. ω_n = ' + info.wn.toFixed(2) + ' rad/s, ζ = ' + info.zeta.toFixed(3) + '.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  for(let i=0;i<30;i++) stepODE(1/60);
+  const info = computeVibration();
+  teach('STEP', 'x = ' + S.x.toFixed(4) + ' m, v = ' + S.v.toFixed(3) + ' m/s. Amplitude envelope ~' + Math.max(Math.abs(S.x), info.X_ss).toFixed(4) + ' m.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.m = 10; S.k = 1000; S.c = 10; S.F0 = 0; S.omega_drive = 5;
+  S.x0 = 0.1; S.v0 = 0;
+  S.x = 0.1; S.v = 0; S.time = 0;
+  S.running = false; S.history = []; S.resonanceAlerted = false;
+  mSlider.value = 10; kSlider.value = 1000; cSlider.value = 10;
+  f0Slider.value = 0; wSlider.value = 5;
+  x0Slider.value = 0.1; v0Slider.value = 0;
+  document.getElementById('mVal').textContent = '10.0 kg';
+  document.getElementById('kVal').textContent = '1000 N/m';
+  document.getElementById('cVal').textContent = '10 N·s/m';
+  document.getElementById('f0Val').textContent = '0 N';
+  document.getElementById('wVal').textContent = '5.0 rad/s';
+  document.getElementById('x0Val').textContent = '0.100 m';
+  document.getElementById('v0Val').textContent = '0.00 m/s';
+  playBtn.textContent = '▶ START VIBRATION';
+  teach('RESET', 'System reset to defaults.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('resonanceBtn').addEventListener('click', () => {
+  const info = computeVibration();
+  S.omega_drive = info.wn;
+  wSlider.value = info.wn;
+  document.getElementById('wVal').textContent = info.wn.toFixed(1) + ' rad/s';
+  S.F0 = 50;
+  f0Slider.value = 50;
+  document.getElementById('f0Val').textContent = '50 N';
+  S.c = 5;
+  cSlider.value = 5;
+  document.getElementById('cVal').textContent = '5 N·s/m';
+  S.running = true;
+  playBtn.textContent = '⏸ PAUSE';
+  teach('RESONANCE', 'Resonance forced! ω_drive = ω_n = ' + info.wn.toFixed(2) + ' rad/s. Amplitude will grow until damping balances. Real systems fail here — bridges, turbine blades, buildings.', 'error');
+  toast('⚠ Resonance');
+});
+
+document.getElementById('noDampBtn').addEventListener('click', () => {
+  S.c = 0;
+  cSlider.value = 0;
+  document.getElementById('cVal').textContent = '0 N·s/m';
+  teach('NO DAMPING', 'Damping removed (c = 0). Amplitude stays constant forever, or grows unbounded if driven at resonance. Real systems always have some damping from air, joints, and material hysteresis.', 'warn');
+});
+
+document.getElementById('overDampBtn').addEventListener('click', () => {
+  S.c = 200;
+  cSlider.value = 200;
+  document.getElementById('cVal').textContent = '200 N·s/m';
+  const info = computeVibration();
+  teach('OVER-DAMPED', 'Over-damped (ζ = ' + info.zeta.toFixed(2) + '). No oscillation — the mass slowly creeps back to equilibrium. Critical damping is used in door closers and analog meter needles.', 'warn');
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'car'){
+      S.m = 300; S.k = 30000; S.c = 2000; S.F0 = 0; S.omega_drive = 5;
+      S.x0 = 0.05; S.v0 = 0;
+      mSlider.value = 100; kSlider.value = 5000; cSlider.value = 200;
+      f0Slider.value = 0;
+      x0Slider.value = 0.05;
+      updateLabels();
+      resetState();
+      const info = computeVibration();
+      teach('CAR', 'Car suspension: 300 kg corner mass, 30 kN/m spring. ω_n = ' + info.wn.toFixed(1) + ' rad/s (f = ' + info.fn.toFixed(2) + ' Hz). Damping ζ ≈ 0.3-0.5 for ride comfort.', 'concept');
+    } else if(p === 'building'){
+      S.m = 50000; S.k = 2000000; S.c = 50000;
+      mSlider.value = 100; kSlider.value = 10000; cSlider.value = 200;
+      updateLabels();
+      resetState();
+      const info = computeVibration();
+      teach('BUILDING', 'Building floor: massive (50 tonnes), stiff. ω_n = ' + info.wn.toFixed(2) + ' rad/s (f = ' + info.fn.toFixed(3) + ' Hz). Occupants feel discomfort above 0.5 m/s² acceleration.', 'concept');
+    } else if(p === 'machine'){
+      S.m = 50; S.k = 20000; S.c = 50;
+      mSlider.value = 50; kSlider.value = 10000; cSlider.value = 50;
+      updateLabels();
+      resetState();
+      const info = computeVibration();
+      teach('MACHINE', 'Machine on vibration isolators: 50 kg, 20 kN/m spring. ω_n = ' + info.wn.toFixed(1) + ' rad/s. Isolators shift ω_n well below running speed to avoid resonance.', 'concept');
+    } else {
+      S.m = 20; S.k = 5000; S.c = 500;
+      mSlider.value = 20; kSlider.value = 5000; cSlider.value = 200;
+      updateLabels();
+      resetState();
+      const info = computeVibration();
+      teach('SHOCK', 'Shock absorber: nearly critically damped (ζ = ' + info.zeta.toFixed(2) + '). Absorbs impact without bounce — like a car door closer or a gun recoil system.', 'concept');
+    }
+  });
+});
+
+function updateLabels(){
+  document.getElementById('mVal').textContent = S.m.toFixed(1) + ' kg';
+  document.getElementById('kVal').textContent = S.k + ' N/m';
+  document.getElementById('cVal').textContent = S.c + ' N·s/m';
+  document.getElementById('f0Val').textContent = S.F0 + ' N';
+  document.getElementById('wVal').textContent = S.omega_drive.toFixed(1) + ' rad/s';
+  document.getElementById('x0Val').textContent = S.x0.toFixed(3) + ' m';
+  document.getElementById('v0Val').textContent = S.v0.toFixed(2) + ' m/s';
+}
+
+function resetState(){
+  S.x = S.x0; S.v = S.v0; S.time = 0; S.history = [];
+  S.running = false; S.resonanceAlerted = false;
+  playBtn.textContent = '▶ START VIBRATION';
+}
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Single-DOF Vibration. The mass-spring-damper is the simplest vibrating system — and the basis for understanding all mechanical vibrations.', 'concept');
+  teach('NATURAL', 'Every system has a natural frequency ω_n = √(k/m). When driven at this frequency, amplitude grows — that is resonance.', 'concept');
+  teach('HOWTO', 'Adjust mass, stiffness, and damping. Add an excitation force and set its frequency. Press START VIBRATION. Try the resonance preset.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

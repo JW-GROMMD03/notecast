@@ -1,0 +1,1390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Garbage Collection &amp; Memory Leak Cycles — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #22c55e, #84cc16, #eab308);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(34,197,94,0.15);
+    color: #86efac;
+    border-color: #22c55e;
+  }
+  .teaching-toggle:hover { background: rgba(34,197,94,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #86efac;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #22c55e; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #22c55e; color: #022c22; border-color: #22c55e; }
+  .btn.primary:hover { background: #16a34a; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #86efac; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #22c55e; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(34,197,94,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* HEAP CANVAS */
+  .heap-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #22c55e;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(34,197,94,0.15);
+    min-height: 0;
+  }
+  .heap-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #86efac;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #heapCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+    cursor: crosshair;
+  }
+
+  /* ROOTS PANEL */
+  .roots-panel {
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15);
+    overflow-x: auto;
+  }
+  .root-item {
+    background: rgba(139,92,246,0.15);
+    border: 2px solid #8b5cf6;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-family: monospace;
+    font-size: 0.6rem;
+    font-weight: 800;
+    color: #c4b5fd;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .root-item .root-name { color: #c4b5fd; }
+  .root-item .root-arrow { color: #64748b; margin: 0 6px; }
+  .root-item .root-target { color: #f9a8d4; }
+
+  /* GC ALGO PANEL */
+  .algo-panel {
+    background: #070a14;
+    border: 2px solid #ec4899;
+    border-radius: 12px;
+    padding: 10px 14px;
+    flex-shrink: 0;
+    box-shadow: 0 0 20px rgba(236,72,153,0.15);
+  }
+  .algo-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #f9a8d4;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .algo-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .algo-tab {
+    padding: 5px 12px;
+    background: #0b0f19;
+    border: 1.5px solid #334155;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 0.6rem;
+    font-weight: 800;
+    color: #94a3b8;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+  }
+  .algo-tab:hover { border-color: #ec4899; color: #f9a8d4; }
+  .algo-tab.active {
+    background: rgba(236,72,153,0.2);
+    border-color: #ec4899;
+    color: #f9a8d4;
+    box-shadow: 0 0 10px rgba(236,72,153,0.4);
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(34,197,94,0.06);
+    border: 1px solid rgba(34,197,94,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #86efac;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #22c55e;
+    background: rgba(34,197,94,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(34,197,94,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(34,197,94,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #86efac;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #22c55e;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(34,197,94,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #22c55e;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #86efac;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(34,197,94,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.leak { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>GARBAGE COLLECTION</h1>
+    <span class="sub">MARK-SWEEP · REFERENCE COUNTING · LEAK CYCLES</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Simulation</h3>
+      <button class="btn primary" id="btnAutoRun">▶ Auto-GC Loop</button>
+      <button class="btn success" id="btnGC">♻️ Trigger GC Now</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Allocate Objects</h3>
+      <button class="btn" id="btnAlloc">📦 Allocate Object</button>
+      <button class="btn" id="btnLink">🔗 Create Reference</button>
+      <button class="btn warn" id="btnCreateCycle">🔄 Create Reference Cycle</button>
+    </div>
+
+    <div class="panel">
+      <h3>Break References</h3>
+      <button class="btn danger" id="btnNullRoot">🚫 Null Out a Root</button>
+      <button class="btn danger" id="btnBreakCycle">✂️ Break a Cycle</button>
+    </div>
+
+    <div class="panel">
+      <h3>Simulation Config</h3>
+      <div class="slider-row"><span>Allocation rate</span><span class="value" id="rateVal">1.0/s</span></div>
+      <input type="range" id="rateRange" min="1" max="10" step="1" value="1">
+      <div class="slider-row"><span>Heap pressure</span><span class="value" id="pressureVal">Medium</span></div>
+      <input type="range" id="pressureRange" min="1" max="3" step="1" value="2">
+    </div>
+
+    <div class="panel">
+      <h3>Algorithm</h3>
+      <div class="algo-tabs" style="flex-direction:column;">
+        <button class="algo-tab active" data-algo="marksweep">Mark &amp; Sweep</button>
+        <button class="algo-tab" data-algo="refcount">Reference Counting</button>
+        <button class="algo-tab" data-algo="generational">Generational GC</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#22c55e;border-radius:50%;margin-right:6px;"></span>Reachable object</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:50%;margin-right:6px;"></span>Garbage (collect)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#a855f7;border-radius:50%;margin-right:6px;"></span>Root</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:50%;margin-right:6px;"></span>Leaked cycle</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">REACHABILITY ANALYSIS · MARK · SWEEP · COMPACT</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="heap-wrap">
+          <div class="heap-title">
+            <span>🗄️ HEAP GRAPH</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="heapHint">— click an object for details —</span>
+          </div>
+          <canvas id="heapCanvas"></canvas>
+        </div>
+
+        <div class="roots-panel">
+          <div class="root-item">🌱 <span class="root-name">stack.root</span><span class="root-arrow">→</span><span class="root-target" id="root0">@1</span></div>
+          <div class="root-item">🌱 <span class="root-name">global.registry</span><span class="root-arrow">→</span><span class="root-target" id="root1">@2</span></div>
+          <div class="root-item">🌱 <span class="root-name">static.cache</span><span class="root-arrow">→</span><span class="root-target" id="root2">@3</span></div>
+        </div>
+
+        <div class="algo-panel">
+          <div class="algo-title">
+            <span>⚙️ GC ALGORITHM: <span id="algoName" style="color:#f9a8d4;">MARK &amp; SWEEP</span></span>
+            <span style="font-size:0.5rem; color:#64748b;" id="algoHint">— reachability from roots —</span>
+          </div>
+          <div style="font-size:0.62rem; color:#94a3b8; line-height:1.6;" id="algoDesc">
+            Traverse the object graph from GC roots, mark every reachable object, then sweep unmarked ones.
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Objects</div>
+        <div class="metric-value" id="mObjects">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Reachable</div>
+        <div class="metric-value good" id="mReachable">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Garbage</div>
+        <div class="metric-value bad" id="mGarbage">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">GC Runs</div>
+        <div class="metric-value" id="mGCRuns">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 GC Concepts</div>
+      <div class="info-row"><span class="lbl">Roots</span><span class="val good">Stack, globals, statics</span></div>
+      <div class="info-row"><span class="lbl">Mark</span><span class="val">Traverse & flag</span></div>
+      <div class="info-row"><span class="lbl">Sweep</span><span class="val bad">Free unmarked</span></div>
+      <div class="info-row"><span class="lbl">Compact</span><span class="val">Move to reduce frag</span></div>
+      <div class="info-row"><span class="lbl">Ref counting</span><span class="val warn">Fails on cycles</span></div>
+      <div class="info-row"><span class="lbl">Generational</span><span class="val">Young/old generations</span></div>
+      <div class="info-row"><span class="lbl">Stop-the-world</span><span class="val bad">Pause time</span></div>
+      <div class="info-row"><span class="lbl">Systems</span><span class="val">V8, JVM, Go, .NET</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  objects: [],
+  nextId: 1,
+  gcRuns: 0,
+  algorithm: 'marksweep',
+  // Roots: object ids
+  roots: [],
+  autoRun: false,
+  allocRate: 1,
+  autoTimer: null,
+  // Canvas
+  canvasSize: { w: 0, h: 0 },
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  // Animation
+  highlightMarked: false,
+  // Stats
+  totalCollected: 0
+};
+
+const DOM = {
+  heapCanvas: document.getElementById('heapCanvas'),
+  heapHint: document.getElementById('heapHint'),
+  algoName: document.getElementById('algoName'),
+  algoDesc: document.getElementById('algoDesc'),
+  algoHint: document.getElementById('algoHint'),
+  root0: document.getElementById('root0'),
+  root1: document.getElementById('root1'),
+  root2: document.getElementById('root2'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Buttons
+  btnAutoRun: document.getElementById('btnAutoRun'),
+  btnGC: document.getElementById('btnGC'),
+  btnReset: document.getElementById('btnReset'),
+  btnAlloc: document.getElementById('btnAlloc'),
+  btnLink: document.getElementById('btnLink'),
+  btnCreateCycle: document.getElementById('btnCreateCycle'),
+  btnNullRoot: document.getElementById('btnNullRoot'),
+  btnBreakCycle: document.getElementById('btnBreakCycle'),
+  rateRange: document.getElementById('rateRange'),
+  rateVal: document.getElementById('rateVal'),
+  pressureRange: document.getElementById('pressureRange'),
+  pressureVal: document.getElementById('pressureVal'),
+  // Metrics
+  mObjects: document.getElementById('mObjects'),
+  mReachable: document.getElementById('mReachable'),
+  mGarbage: document.getElementById('mGarbage'),
+  mGCRuns: document.getElementById('mGCRuns'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining garbage collection and memory leak cycles.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   OBJECT CREATION
+   ============================================================ */
+function createObject(type = null, isRoot = false) {
+  const types = ['User', 'Order', 'Product', 'Session', 'Cache', 'Buffer', 'Listener'];
+  const id = STATE.nextId++;
+  const obj = {
+    id,
+    type: type || types[Math.floor(Math.random() * types.length)],
+    x: 0, y: 0,
+    vx: (Math.random() - 0.5) * 0.5,
+    vy: (Math.random() - 0.5) * 0.5,
+    refs: [],          // outgoing references (ids)
+    referencedBy: [],  // incoming references (ids)
+    marked: false,
+    isRoot: isRoot,
+    age: 0,            // for generational
+    size: Math.floor(Math.random() * 40 + 20)
+  };
+  STATE.objects.push(obj);
+  return obj;
+}
+
+function addReference(fromId, toId) {
+  const from = STATE.objects.find(o => o.id === fromId);
+  const to = STATE.objects.find(o => o.id === toId);
+  if (!from || !to) return;
+  if (!from.refs.includes(toId)) from.refs.push(toId);
+  if (!to.referencedBy.includes(fromId)) to.referencedBy.push(fromId);
+}
+
+function removeReference(fromId, toId) {
+  const from = STATE.objects.find(o => o.id === fromId);
+  const to = STATE.objects.find(o => o.id === toId);
+  if (!from || !to) return;
+  from.refs = from.refs.filter(x => x !== toId);
+  to.referencedBy = to.referencedBy.filter(x => x !== fromId);
+}
+
+/* ============================================================
+   REACHABILITY ANALYSIS (mark-and-sweep)
+   ============================================================ */
+function computeReachable() {
+  // Reset marks
+  for (const o of STATE.objects) o.marked = false;
+
+  // BFS from roots
+  const queue = [...STATE.roots];
+  const visited = new Set();
+  while (queue.length > 0) {
+    const id = queue.shift();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const obj = STATE.objects.find(o => o.id === id);
+    if (!obj) continue;
+    obj.marked = true;
+    for (const ref of obj.refs) {
+      if (!visited.has(ref)) queue.push(ref);
+    }
+  }
+}
+
+function runGC() {
+  STATE.gcRuns++;
+  DOM.mGCRuns.textContent = STATE.gcRuns;
+  showStatus('♻️ MARK & SWEEP running...');
+
+  teach('GC START',
+    `Running ${STATE.algorithm === 'marksweep' ? 'mark-and-sweep' : STATE.algorithm}. Starting from GC roots (stack, globals, statics), we traverse every reachable object and mark it. Anything not marked is garbage.`,
+    'purple'
+  );
+
+  computeReachable();
+
+  // Animate marking
+  let i = 0;
+  const interval = setInterval(() => {
+    i++;
+    if (i > 8) {
+      clearInterval(interval);
+      sweepAndReport();
+    }
+  }, 100);
+}
+
+function sweepAndReport() {
+  const reachable = STATE.objects.filter(o => o.marked).length;
+  const garbage = STATE.objects.filter(o => !o.marked).length;
+
+  if (garbage > 0) {
+    showStatus(`♻️ Sweeping ${garbage} object${garbage === 1 ? '' : 's'}...`);
+
+    // Animate collection
+    for (const o of STATE.objects) {
+      if (!o.marked) {
+        o.collecting = true;
+      }
+    }
+    drawHeap();
+
+    setTimeout(() => {
+      const removedIds = STATE.objects.filter(o => !o.marked).map(o => o.id);
+      STATE.objects = STATE.objects.filter(o => o.marked);
+      STATE.totalCollected += removedIds.length;
+      // Clean refs pointing to removed
+      for (const o of STATE.objects) {
+        o.refs = o.refs.filter(r => !removedIds.includes(r));
+        o.referencedBy = o.referencedBy.filter(r => !removedIds.includes(r));
+      }
+      // Reset marks
+      for (const o of STATE.objects) o.marked = false;
+
+      drawHeap();
+      updateMetrics();
+
+      const algoNote = STATE.algorithm === 'refcount'
+        ? 'Note: reference counting would leave these objects alive because their reference count > 0 — this is exactly why cycles need mark-and-sweep or cycle detection.'
+        : 'Mark-and-sweep handles cycles correctly: even if A → B → A, if no root points to A, both are unreachable.';
+
+      teach('GC COMPLETE',
+        `Swept ${garbage} unreachable object${garbage === 1 ? '' : 's'}. ${reachable} object${reachable === 1 ? '' : 's'} still reachable from roots. ${algoNote}`,
+        'ok'
+      );
+      showStatus(`✅ Collected ${garbage} object${garbage === 1 ? '' : 's'}`, '');
+    }, 500);
+  } else {
+    // Reset marks
+    for (const o of STATE.objects) o.marked = false;
+    drawHeap();
+    teach('GC COMPLETE',
+      `No garbage found — every object is reachable from a root. Heap stays at ${reachable} object${reachable === 1 ? '' : 's'}.`,
+      'info', false
+    );
+    showStatus('✅ Nothing to collect', '');
+  }
+}
+
+/* ============================================================
+   CANVAS DRAWING
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.heapCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+  STATE.canvasSize = { w: rect.width, h: rect.height };
+
+  // Reposition objects to fit
+  if (STATE.objects.length === 0) {
+    // Initial layout happens on first allocation
+  }
+}
+
+function layoutObjects() {
+  const W = STATE.canvasSize.w;
+  const H = STATE.canvasSize.h;
+  if (W === 0 || H === 0) return;
+
+  const pad = 60;
+  // Distribute objects roughly evenly but with some randomness
+  const count = STATE.objects.length;
+  if (count === 0) return;
+
+  const cols = Math.ceil(Math.sqrt(count));
+  const rows = Math.ceil(count / cols);
+  const cellW = (W - pad * 2) / Math.max(1, cols);
+  const cellH = (H - pad * 2) / Math.max(1, rows);
+
+  STATE.objects.forEach((o, i) => {
+    if (o.x === 0 && o.y === 0) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      o.x = pad + cellW * (col + 0.5) + (Math.random() - 0.5) * 30;
+      o.y = pad + cellH * (row + 0.5) + (Math.random() - 0.5) * 30;
+    }
+  });
+}
+
+function drawHeap() {
+  const canvas = DOM.heapCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Update positions with velocity
+  for (const o of STATE.objects) {
+    if (o.collecting) continue;
+    o.x += o.vx;
+    o.y += o.vy;
+    const r = 20 + o.size / 4;
+    if (o.x < r || o.x > W - r) o.vx *= -1;
+    if (o.y < r || o.y > H - r) o.vy *= -1;
+    o.x = Math.max(r, Math.min(W - r, o.x));
+    o.y = Math.max(r, Math.min(H - r, o.y));
+  }
+
+  // Draw references as arrows
+  for (const o of STATE.objects) {
+    for (const refId of o.refs) {
+      const target = STATE.objects.find(x => x.id === refId);
+      if (!target) continue;
+      const dx = target.x - o.x;
+      const dy = target.y - o.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const r1 = 20 + o.size / 4 + 2;
+      const r2 = 20 + target.size / 4 + 2;
+      const x1 = o.x + (dx / dist) * r1;
+      const y1 = o.y + (dy / dist) * r1;
+      const x2 = target.x - (dx / dist) * r2;
+      const y2 = target.y - (dy / dist) * r2;
+
+      // Mark if this reference is on the reachable path
+      const isLive = o.marked && target.marked;
+
+      ctx.strokeStyle = isLive ? '#22c55e' : '#475569';
+      ctx.lineWidth = isLive ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+
+      // Arrowhead
+      const ah = 6;
+      const ang = Math.atan2(y2 - y1, x2 - x1);
+      ctx.beginPath();
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - ah * Math.cos(ang - 0.4), y2 - ah * Math.sin(ang - 0.4));
+      ctx.lineTo(x2 - ah * Math.cos(ang + 0.4), y2 - ah * Math.sin(ang + 0.4));
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // Draw objects
+  for (const o of STATE.objects) {
+    const r = 20 + o.size / 4;
+
+    let fillColor = '#0f172a';
+    let strokeColor = '#22c55e';
+    let textColor = '#86efac';
+
+    if (o.collecting) {
+      strokeColor = '#ef4444';
+      fillColor = '#450a0a';
+      textColor = '#fca5a5';
+    } else if (!o.marked && STATE.objects.some(x => x.marked)) {
+      // Unmarked → garbage
+      strokeColor = '#ef4444';
+      fillColor = '#2a0f0f';
+      textColor = '#fca5a5';
+    } else if (o.marked) {
+      strokeColor = '#22c55e';
+      fillColor = '#0f2a1e';
+      textColor = '#86efac';
+    }
+
+    if (o.isRoot) {
+      strokeColor = '#a855f7';
+      textColor = '#c4b5fd';
+    }
+
+    // Glow for marked
+    if (o.marked) {
+      ctx.shadowColor = '#22c55e';
+      ctx.shadowBlur = 12;
+    } else if (o.collecting) {
+      ctx.shadowColor = '#ef4444';
+      ctx.shadowBlur = 20;
+    }
+
+    ctx.beginPath();
+    ctx.arc(o.x, o.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = o.isRoot ? 3.5 : 2.5;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // ID label
+    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = textColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('@' + o.id, o.x, o.y - 4);
+
+    // Type label
+    ctx.font = '8px monospace';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(o.type, o.x, o.y + 6);
+
+    // Root marker
+    if (o.isRoot) {
+      ctx.font = '11px monospace';
+      ctx.fillStyle = '#a855f7';
+      ctx.fillText('🌱', o.x, o.y - r - 8);
+    }
+  }
+
+  // Legend
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText('objects: ' + STATE.objects.length + ' · roots: ' + STATE.roots.length, 10, 10);
+}
+
+function animate() {
+  drawHeap();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  const reachable = STATE.objects.filter(o => o.marked).length;
+  const garbage = STATE.objects.filter(o => !o.marked).length;
+  DOM.mObjects.textContent = STATE.objects.length;
+  DOM.mReachable.textContent = reachable || STATE.objects.length; // fallback to total if not computed
+  DOM.mGarbage.textContent = garbage;
+  DOM.mGarbage.className = 'metric-value ' + (garbage === 0 ? 'good' : garbage < 3 ? 'warn' : 'bad');
+}
+
+/* ============================================================
+   ACTIONS
+   ============================================================ */
+function allocateObject() {
+  const obj = createObject();
+  layoutObjects();
+  // Give it a reference from a random root if any
+  if (STATE.roots.length > 0 && Math.random() < 0.5) {
+    const rootId = STATE.roots[Math.floor(Math.random() * STATE.roots.length)];
+    addReference(rootId, obj.id);
+  }
+  updateMetrics();
+  teach('ALLOCATE',
+    `Allocated ${obj.type} (@${obj.id}). ${obj.referencedBy.length > 0 ? 'It has a reference from a root, so it will survive GC.' : 'It has no incoming references — it will be collected on the next GC run.'}`,
+    'cyan', false
+  );
+}
+
+function linkObjects() {
+  if (STATE.objects.length < 2) {
+    showToast('⚠ Need at least 2 objects');
+    return;
+  }
+  const a = STATE.objects[Math.floor(Math.random() * STATE.objects.length)];
+  const b = STATE.objects[Math.floor(Math.random() * STATE.objects.length)];
+  if (a.id === b.id) return;
+  if (a.refs.includes(b.id)) {
+    showToast('⚠ Already linked');
+    return;
+  }
+  addReference(a.id, b.id);
+  updateMetrics();
+  teach('REFERENCE',
+    `Created reference @${a.id} → @${b.id}. The source object now holds a pointer to the target. If the source is reachable, the target is reachable too — this is transitive reachability.`,
+    'info', false
+  );
+}
+
+function createCycle() {
+  if (STATE.objects.length < 2) {
+    showToast('⚠ Need at least 2 objects');
+    return;
+  }
+  // Pick two objects that are NOT reachable from roots
+  const unreachable = STATE.objects.filter(o => !STATE.roots.includes(o.id) && o.referencedBy.length === 0);
+  let a, b;
+  if (unreachable.length >= 2) {
+    a = unreachable[0];
+    b = unreachable[1];
+  } else {
+    // Create two new ones
+    a = createObject('CycleA');
+    b = createObject('CycleB');
+    layoutObjects();
+  }
+  addReference(a.id, b.id);
+  addReference(b.id, a.id);
+
+  showStatus('🔄 Reference cycle created', 'leak');
+  teach('REFERENCE CYCLE',
+    `Created a cycle: @${a.id} → @${b.id} → @${a.id}. Both objects reference each other, but no root points to either. Reference counting GCs (like Python, Swift) would NEVER collect these — their refcounts stay at 1. This is why mark-and-sweep is needed: it starts from roots and finds that neither object is reachable.`,
+    'error'
+  );
+  updateMetrics();
+}
+
+function nullOutRoot() {
+  if (STATE.roots.length === 0) {
+    showToast('⚠ No roots to null');
+    return;
+  }
+  const idx = Math.floor(Math.random() * STATE.roots.length);
+  const rootId = STATE.roots[idx];
+  STATE.roots.splice(idx, 1);
+
+  // Remove from root display
+  const rootEl = document.getElementById('root' + idx);
+  if (rootEl) rootEl.textContent = '(none)';
+
+  // Remove isRoot flag
+  const obj = STATE.objects.find(o => o.id === rootId);
+  if (obj) obj.isRoot = false;
+
+  teach('ROOT REMOVED',
+    `Removed root reference to @${rootId}. Any objects that were only reachable through this root are now garbage — they'll be collected on the next GC. This is like letting a variable go out of scope, or setting a global to null.`,
+    'warn'
+  );
+  updateMetrics();
+}
+
+function breakCycle() {
+  // Find a cycle and break one edge
+  const cycles = [];
+  for (const a of STATE.objects) {
+    for (const bId of a.refs) {
+      const b = STATE.objects.find(o => o.id === bId);
+      if (!b) continue;
+      if (b.refs.includes(a.id)) {
+        cycles.push({ a: a.id, b: b.id });
+      }
+    }
+  }
+  if (cycles.length === 0) {
+    showToast('⚠ No cycles to break');
+    return;
+  }
+  const c = cycles[0];
+  removeReference(c.a, c.b);
+  showStatus('✂️ Cycle broken');
+  teach('CYCLE BROKEN',
+    `Broke the reference @${c.a} → @${c.b}. The cycle is now broken, so reference counting could collect these objects (if they have no other refs). But in general, mark-and-sweep doesn't care about cycles — reachability from roots is what matters.`,
+    'ok'
+  );
+  updateMetrics();
+}
+
+/* ============================================================
+   AUTO LOOP
+   ============================================================ */
+function toggleAutoRun() {
+  if (STATE.autoRun) {
+    STATE.autoRun = false;
+    clearInterval(STATE.autoTimer);
+    STATE.autoTimer = null;
+    DOM.btnAutoRun.textContent = '▶ Auto-GC Loop';
+    DOM.btnAutoRun.classList.remove('danger');
+    DOM.btnAutoRun.classList.add('primary');
+    showToast('⏸ Auto-GC stopped');
+    return;
+  }
+  STATE.autoRun = true;
+  DOM.btnAutoRun.textContent = '⏸ Stop Auto-GC';
+  DOM.btnAutoRun.classList.remove('primary');
+  DOM.btnAutoRun.classList.add('danger');
+
+  const interval = 2000 / STATE.allocRate;
+  STATE.autoTimer = setInterval(() => {
+    // Allocate
+    allocateObject();
+    // Occasionally run GC based on pressure
+    const pressure = parseInt(DOM.pressureRange.value);
+    if (STATE.objects.length > 10 && Math.random() < (0.2 * pressure)) {
+      runGC();
+    }
+  }, interval);
+}
+
+/* ============================================================
+   ALGORITHM TABS
+   ============================================================ */
+document.querySelectorAll('.algo-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.algo-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    STATE.algorithm = tab.dataset.algo;
+    const names = {
+      marksweep: 'MARK & SWEEP',
+      refcount: 'REFERENCE COUNTING',
+      generational: 'GENERATIONAL GC'
+    };
+    const descs = {
+      marksweep: 'Traverse the object graph from GC roots, mark every reachable object, then sweep unmarked ones. Handles cycles correctly.',
+      refcount: 'Each object tracks how many references point to it. When refcount hits 0, the object is freed immediately. FAST but cannot collect cycles.',
+      generational: 'Most objects die young. Split heap into young and old generations. Collect young frequently (cheap), old rarely. Used by V8, JVM.'
+    };
+    DOM.algoName.textContent = names[STATE.algorithm];
+    DOM.algoDesc.textContent = descs[STATE.algorithm];
+    teach('ALGORITHM: ' + names[STATE.algorithm], descs[STATE.algorithm], 'purple');
+  });
+});
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  STATE.autoTimer = null;
+  STATE.autoRun = false;
+  STATE.objects = [];
+  STATE.nextId = 1;
+  STATE.roots = [];
+  STATE.gcRuns = 0;
+  STATE.totalCollected = 0;
+  DOM.btnAutoRun.textContent = '▶ Auto-GC Loop';
+  DOM.btnAutoRun.classList.remove('danger');
+  DOM.btnAutoRun.classList.add('primary');
+  DOM.mGCRuns.textContent = '0';
+  DOM.mObjects.textContent = '0';
+  DOM.mReachable.textContent = '0';
+  DOM.mGarbage.textContent = '0';
+  DOM.mGarbage.className = 'metric-value';
+  for (let i = 0; i < 3; i++) {
+    const el = document.getElementById('root' + i);
+    if (el) el.textContent = '(none)';
+  }
+  DOM.statusBanner.classList.remove('show');
+  drawHeap();
+  teach('RESET', 'Heap cleared, roots cleared, GC counters zeroed.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnAutoRun.addEventListener('click', toggleAutoRun);
+DOM.btnGC.addEventListener('click', runGC);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnAlloc.addEventListener('click', allocateObject);
+DOM.btnLink.addEventListener('click', linkObjects);
+DOM.btnCreateCycle.addEventListener('click', createCycle);
+DOM.btnNullRoot.addEventListener('click', nullOutRoot);
+DOM.btnBreakCycle.addEventListener('click', breakCycle);
+
+DOM.rateRange.addEventListener('input', e => {
+  STATE.allocRate = parseInt(e.target.value);
+  DOM.rateVal.textContent = STATE.allocRate + '.0/s';
+  if (STATE.autoRun) {
+    clearInterval(STATE.autoTimer);
+    toggleAutoRun();
+    toggleAutoRun();
+  }
+});
+
+DOM.pressureRange.addEventListener('input', e => {
+  const val = parseInt(e.target.value);
+  DOM.pressureVal.textContent = val === 1 ? 'Low' : val === 2 ? 'Medium' : 'High';
+});
+
+window.addEventListener('resize', () => {
+  resizeCanvas();
+  layoutObjects();
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+
+// Seed with 4 root objects and a few reachable chain
+setTimeout(() => {
+  // Create roots
+  const r1 = createObject('RootObject', true);
+  const r2 = createObject('RootObject', true);
+  const r3 = createObject('RootObject', true);
+  STATE.roots.push(r1.id, r2.id, r3.id);
+  document.getElementById('root0').textContent = '@' + r1.id;
+  document.getElementById('root1').textContent = '@' + r2.id;
+  document.getElementById('root2').textContent = '@' + r3.id;
+
+  // Create some reachable objects
+  const a = createObject('UserData');
+  const b = createObject('OrderData');
+  const c = createObject('SessionData');
+  addReference(r1.id, a.id);
+  addReference(a.id, b.id);
+  addReference(r2.id, c.id);
+
+  // Create some unreachable garbage
+  const g1 = createObject('Garbage');
+  const g2 = createObject('Garbage');
+  // Create a cycle that no root points to
+  const cycA = createObject('CycleA');
+  const cycB = createObject('CycleB');
+  addReference(cycA.id, cycB.id);
+  addReference(cycB.id, cycA.id);
+
+  layoutObjects();
+  computeReachable();
+  updateMetrics();
+
+  setTimeout(() => {
+    teach('WELCOME',
+      `Welcome to Garbage Collection. Every managed language (Java, C#, Go, JS, Python) has a GC that frees heap objects no longer in use. The fundamental question is: "Is this object still reachable?" Starting from roots (stack frames, globals, statics), the GC traverses the object graph and collects anything it can't reach.`,
+      'cyan'
+    );
+
+    setTimeout(() => {
+      teach('MARK & SWEEP',
+        `Mark & Sweep has two phases. MARK: traverse from roots, mark every reachable object. SWEEP: free every unmarked object. It handles cycles correctly — if A and B reference each other but nothing else references them, both are unmarked and both are collected.`,
+        'purple'
+      );
+    }, 4500);
+
+    setTimeout(() => {
+      teach('REFERENCE CYCLES',
+        `Here's the classic GC trap: object A references B, and B references A. Their refcounts are each 1, so pure reference counting (like Python's) would never collect them. This causes memory leaks. Solutions: mark-and-sweep, cycle detection, or weak references. Click CREATE CYCLE and NULL OUT A ROOT to see this in action.`,
+        'error'
+      );
+    }, 9000);
+
+    setTimeout(() => {
+      teach('TRY IT',
+        `Click ALLOCATE OBJECT to add new objects. Click LINK to create references between them. Click TRIGGER GC to run garbage collection — watch unreachable objects get marked red and swept. Then try CREATE REFERENCE CYCLE followed by TRIGGER GC — mark-and-sweep handles it, but reference counting wouldn't.`,
+        'ok'
+      );
+    }, 13500);
+
+    showToast('👋 Allocate, link, then trigger GC', 4500);
+  }, 500);
+}, 200);
+</script>
+</body>
+</html>

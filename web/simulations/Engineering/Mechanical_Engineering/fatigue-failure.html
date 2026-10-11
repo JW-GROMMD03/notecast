@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fatigue Failure & S-N Curves — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>FATIGUE FAILURE</h1>
+    <span class="sub">S-N CURVES · ENDURANCE LIMIT · CRACK GROWTH</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Material</div>
+    <div class="control-group">
+      <label>Material</label>
+      <select id="matSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="steel">Carbon Steel (endurance limit)</option>
+        <option value="aluminum">Aluminum 7075 (no limit)</option>
+        <option value="titanium">Titanium Ti-6Al-4V</option>
+        <option value="copper">Copper (no limit)</option>
+      </select>
+    </div>
+
+    <div class="section-title">Cyclic Loading</div>
+    <div class="control-group">
+      <label>Stress Amplitude σₐ <span class="val" id="ampVal">200 MPa</span></label>
+      <input type="range" id="ampSlider" min="20" max="450" value="200" step="5">
+    </div>
+    <div class="control-group">
+      <label>Mean Stress σₘ <span class="val" id="meanVal">0 MPa</span></label>
+      <input type="range" id="meanSlider" min="0" max="300" value="0" step="5">
+    </div>
+    <div class="control-group">
+      <label>Frequency <span class="val" id="freqVal">10 Hz</span></label>
+      <input type="range" id="freqSlider" min="1" max="100" value="10" step="1">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ RUN CYCLES</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ 1000 CYCLES</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="overloadBtn">⚠ OVERLOAD ABOVE UTS</button>
+    <button class="btn warn" id="notchBtn">⚠ ADD STRESS CONCENTRATOR</button>
+    <button class="btn warn" id="corrosionBtn">⚠ CORROSION FATIGUE</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="infinite">Infinite Life Design</button>
+    <button class="btn" data-preset="finite">Finite Life (10⁵)</button>
+    <button class="btn" data-preset="failure">Rapid Failure</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      σₐ = (σ_max − σ_min)/2 &nbsp;|&nbsp; σₘ = (σ_max + σ_min)/2 &nbsp;|&nbsp; <span class="hl">Basquin: σₐ = σ_f' (2N)^b</span> &nbsp;|&nbsp; R = σ_min/σ_max
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mN">
+          <div class="mlabel">CYCLES N</div>
+          <div class="mvalue">0</div>
+        </div>
+        <div class="metric" id="mLife">
+          <div class="mlabel">PREDICTED LIFE</div>
+          <div class="mvalue">—</div>
+        </div>
+        <div class="metric" id="mRemain">
+          <div class="mlabel">REMAINING</div>
+          <div class="mvalue">100<span class="munit">%</span></div>
+        </div>
+        <div class="metric" id="mDamage">
+          <div class="mlabel">DAMAGE (Palmgren)</div>
+          <div class="mvalue">0.00</div>
+        </div>
+        <div class="metric" id="mSigma">
+          <div class="mlabel">σ_max / σ_min</div>
+          <div class="mvalue" style="font-size:11px;">—</div>
+        </div>
+        <div class="metric" id="mCrack">
+          <div class="mlabel">CRACK LENGTH</div>
+          <div class="mvalue">0<span class="munit">mm</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">σₐ = σ_f' (2N_f)^b &nbsp;(Basquin)</div>
+      <div class="eq">Miner: D = Σ nᵢ/Nᵢ ≥ 1 → failure</div>
+      <div class="def">
+        Fatigue is failure under repeated loads below yield. Each cycle 
+        accumulates tiny damage. Steel has an endurance limit (below 
+        which it lasts forever); aluminum does not — it will eventually 
+        fail at any stress amplitude.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── MATERIAL DATABASE ─────────────────────────────────────
+// S-N curve: σₐ = σ_f' (2N)^b, with endurance limit
+const MATERIALS = {
+  steel:    { name:'Carbon Steel', UTS:500e6, enduranceLimit:250e6, sigma_f:900e6, b:-0.095, limitCycles:1e6, color:'#60a5fa' },
+  aluminum: { name:'Aluminum 7075', UTS:570e6, enduranceLimit:null, sigma_f:1100e6, b:-0.115, limitCycles:1e8, color:'#a3e635' },
+  titanium: { name:'Ti-6Al-4V',     UTS:950e6, enduranceLimit:500e6, sigma_f:1800e6, b:-0.095, limitCycles:1e7, color:'#c4b5fd' },
+  copper:   { name:'Copper',        UTS:220e6, enduranceLimit:null, sigma_f:500e6,  b:-0.12,  limitCycles:1e8, color:'#fb923c' }
+};
+
+const S = {
+  material: 'steel',
+  amplitude: 200,     // MPa
+  mean: 0,            // MPa
+  frequency: 10,      // Hz
+  notch: false,
+  corrosion: false,
+  N: 0,               // cycles so far
+  Nfail: Infinity,    // predicted cycles to failure
+  damage: 0,
+  crackLength: 0,     // mm
+  failed: false,
+  running: false,
+  time: 0,
+  phase: 0,
+  history: []         // { N, sigmaA } markers
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const matSel = document.getElementById('matSelect');
+const ampSlider = document.getElementById('ampSlider');
+const meanSlider = document.getElementById('meanSlider');
+const freqSlider = document.getElementById('freqSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── FATIGUE PHYSICS ───────────────────────────────────────
+function getMat(){ return MATERIALS[S.material]; }
+
+// Effective stress amplitude with mean stress correction (Goodman)
+function effectiveAmplitude(){
+  const m = getMat();
+  const UTS = m.UTS / 1e6;
+  let sa = S.amplitude;
+  // Goodman correction: reduces allowable amplitude with mean stress
+  if(S.mean > 0){
+    sa = sa * (1 - S.mean / UTS);
+  }
+  // Notch factor
+  if(S.notch) sa *= 1.6;
+  // Corrosion fatigue reduces endurance
+  if(S.corrosion) sa *= 1.4;
+  return Math.max(0, sa);
+}
+
+// Predict fatigue life from S-N curve
+function predictLife(){
+  const m = getMat();
+  const sa = effectiveAmplitude() * 1e6; // Pa
+  if(sa <= 0) return Infinity;
+
+  // Endurance limit check
+  let limit = m.enduranceLimit;
+  if(S.corrosion && limit) limit *= 0.4;
+  if(limit && sa <= limit){
+    return Infinity; // infinite life
+  }
+
+  // Basquin: sa = sigma_f' (2N)^b → N = 0.5 * (sa/sigma_f')^(1/b)
+  const Nf = 0.5 * Math.pow(sa / m.sigma_f, 1 / m.b);
+  return Nf;
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawSNCurve(W, H);
+  drawCyclicWave(W, H);
+  drawSpecimen(W, H);
+  drawCrackGrowth(W, H);
+}
+
+function drawSNCurve(W, H){
+  const pad = { l:70, r:40, t:40, b:60 };
+  const gw = W * 0.55 - pad.l - pad.r;
+  const gh = H - pad.t - pad.b - 20;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('S-N CURVE (Wöhler Curve)', pad.l, pad.t - 12);
+
+  // axes
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t+gh);
+  ctx.lineTo(pad.l+gw, pad.t+gh);
+  ctx.stroke();
+
+  // grid
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  for(let i=0;i<=6;i++){
+    const y = pad.t + gh*i/6;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+gw, y); ctx.stroke();
+  }
+  for(let i=0;i<=6;i++){
+    const x = pad.l + gw*i/6;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t+gh); ctx.stroke();
+  }
+  ctx.restore();
+
+  // labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('10¹', pad.l + gw*1/6, pad.t+gh+14);
+  ctx.fillText('10²', pad.l + gw*2/6, pad.t+gh+14);
+  ctx.fillText('10³', pad.l + gw*3/6, pad.t+gh+14);
+  ctx.fillText('10⁴', pad.l + gw*4/6, pad.t+gh+14);
+  ctx.fillText('10⁵', pad.l + gw*5/6, pad.t+gh+14);
+  ctx.fillText('10⁶', pad.l + gw, pad.t+gh+14);
+  ctx.textAlign = 'left';
+  ctx.fillText('Cycles N', pad.l + gw/2 - 20, pad.t+gh+34);
+
+  // y-axis label
+  ctx.save();
+  ctx.translate(20, pad.t + gh/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign = 'center';
+  ctx.fillText('σₐ (MPa)', 0, 0);
+  ctx.restore();
+  ctx.textAlign = 'right';
+  const m = getMat();
+  const maxSigma = m.sigma_f / 1e6;
+  for(let i=0;i<=5;i++){
+    const v = maxSigma * i / 5;
+    const y = pad.t + gh - gh*(v/maxSigma);
+    ctx.fillText(v.toFixed(0), pad.l-6, y+3);
+  }
+  ctx.textAlign = 'left';
+
+  // S-N curve for current material
+  ctx.beginPath();
+  ctx.strokeStyle = m.color;
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = m.color;
+  ctx.shadowBlur = 8;
+
+  const N_pts = 100;
+  let started = false;
+  for(let i=0;i<=N_pts;i++){
+    const logN = i / N_pts * 8; // 10^0 to 10^8
+    const N = Math.pow(10, logN);
+    const sa = m.sigma_f * Math.pow(2*N, m.b) / 1e6; // MPa
+    if(sa > maxSigma) continue;
+    const x = pad.l + gw * logN / 8;
+    const y = pad.t + gh - gh * (sa / maxSigma);
+    if(!started){ ctx.moveTo(x, y); started = true; }
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Endurance limit line
+  if(m.enduranceLimit){
+    const lim = m.enduranceLimit / 1e6;
+    const limY = pad.t + gh - gh * (lim / maxSigma);
+    ctx.strokeStyle = '#4ade80';
+    ctx.setLineDash([5,4]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(pad.l, limY);
+    ctx.lineTo(pad.l+gw, limY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#4ade80';
+    ctx.font = '9px Consolas, monospace';
+    ctx.fillText('Endurance limit = ' + lim.toFixed(0) + ' MPa', pad.l + 8, limY - 4);
+  } else {
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = '9px Consolas, monospace';
+    ctx.fillText('NO endurance limit — will fail eventually', pad.l + 8, pad.t + 20);
+  }
+
+  // Current state marker
+  const sa = effectiveAmplitude();
+  const Nf = S.Nfail;
+  if(isFinite(Nf) && Nf > 0){
+    const logN = Math.log10(2*Nf);
+    if(logN >= 0 && logN <= 8){
+      const x = pad.l + gw * logN / 8;
+      const y = pad.t + gh - gh * (sa / maxSigma);
+      // Marker of predicted failure
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, Math.PI*2);
+      ctx.fillStyle = S.failed ? '#ef4444' : '#fbbf24';
+      ctx.shadowColor = ctx.fillStyle;
+      ctx.shadowBlur = 12;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 9px Consolas, monospace';
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillText('Nf ≈ ' + (Nf > 1e6 ? (Nf/1e6).toFixed(1) + 'M' : Nf > 1e3 ? (Nf/1e3).toFixed(0) + 'k' : Nf.toFixed(0)), x+8, y-6);
+    }
+  }
+
+  // Progress marker (current N)
+  if(S.N > 0){
+    const logN = Math.min(8, Math.log10(2*S.N));
+    const x = pad.l + gw * logN / 8;
+    const y = pad.t + gh - gh * (sa / maxSigma);
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI*2);
+    ctx.fillStyle = S.failed ? '#ef4444' : '#22d3ee';
+    ctx.fill();
+  }
+}
+
+function drawCyclicWave(W, H){
+  // Stress waveform display top right
+  const ox = W - 300, oy = 40;
+  const w = 260, h = 130;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('STRESS CYCLE', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  // zero line
+  ctx.strokeStyle = '#334155';
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  ctx.moveTo(ox, oy + h/2);
+  ctx.lineTo(ox+w, oy + h/2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const m = getMat();
+  const maxStress = m.UTS / 1e6;
+  const scale = h / 2 / maxStress * 0.9;
+
+  // mean line
+  const meanY = oy + h/2 - S.mean * scale;
+  if(S.mean > 0){
+    ctx.strokeStyle = '#a78bfa';
+    ctx.setLineDash([3,3]);
+    ctx.beginPath();
+    ctx.moveTo(ox, meanY);
+    ctx.lineTo(ox+w, meanY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = '9px Consolas, monospace';
+    ctx.fillText('σₘ', ox+w-14, meanY - 4);
+  }
+
+  // waveform
+  const cyclesShown = 4;
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#22d3ee';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){
+    const t = i/200;
+    const x = ox + t*w;
+    const ang = (t * cyclesShown + S.phase) * Math.PI * 2;
+    const sig = S.mean + S.amplitude * Math.sin(ang);
+    const y = oy + h/2 - sig * scale;
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // max/min lines
+  const maxY = oy + h/2 - (S.mean + S.amplitude) * scale;
+  const minY = oy + h/2 - (S.mean - S.amplitude) * scale;
+  ctx.strokeStyle = '#fbbf24';
+  ctx.setLineDash([2,3]);
+  ctx.beginPath();
+  ctx.moveTo(ox, maxY); ctx.lineTo(ox+w, maxY);
+  ctx.moveTo(ox, minY); ctx.lineTo(ox+w, minY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('σ_max = ' + (S.mean + S.amplitude).toFixed(0) + ' MPa', ox+4, maxY - 4);
+  ctx.fillText('σ_min = ' + (S.mean - S.amplitude).toFixed(0) + ' MPa', ox+4, minY + 12);
+}
+
+function drawSpecimen(W, H){
+  // A small specimen with a crack growing at center
+  const ox = W - 300, oy = H*0.5 + 40;
+  const w = 260, h = 100;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('SPECIMEN (crack growth)', ox, oy - 6);
+
+  // specimen body
+  const specW = w;
+  const specH = 40;
+  const specX = ox;
+  const specY = oy + 30;
+
+  // gradient for stress intensity
+  const stressRatio = Math.min(1, S.amplitude / (getMat().UTS/1e6));
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(specX, specY, specW, specH);
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(specX, specY, specW, specH);
+
+  // stress bands
+  ctx.save();
+  ctx.globalAlpha = 0.2 + 0.4 * stressRatio;
+  const grad = ctx.createLinearGradient(specX, 0, specX+specW, 0);
+  grad.addColorStop(0, '#22d3ee');
+  grad.addColorStop(0.5, '#fbbf24');
+  grad.addColorStop(1, '#22d3ee');
+  ctx.fillStyle = grad;
+  ctx.fillRect(specX, specY, specW, specH);
+  ctx.restore();
+
+  // crack (center, growing)
+  const crackPx = (S.crackLength / 20) * specW; // 0..full
+  if(S.crackLength > 0.1){
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 1.5 + Math.min(4, S.crackLength * 0.5);
+    ctx.shadowColor = '#ef4444';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(specX + specW/2 - crackPx/2, specY);
+    ctx.lineTo(specX + specW/2, specY + specH/2);
+    ctx.lineTo(specX + specW/2 + crackPx/2, specY);
+    ctx.stroke();
+    // branching at high crack length
+    if(S.crackLength > 3){
+      ctx.beginPath();
+      ctx.moveTo(specX + specW/2, specY + specH/2);
+      ctx.lineTo(specX + specW/2, specY + specH);
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('crack = ' + S.crackLength.toFixed(2) + ' mm', specX, specY + specH + 20);
+
+  // Failure stamp
+  if(S.failed){
+    ctx.fillStyle = '#ef4444';
+    ctx.font = 'bold 20px Consolas, monospace';
+    ctx.fillText('⚠ FAILED', specX + 60, specY + specH/2 + 8);
+  }
+}
+
+function drawCrackGrowth(W, H){
+  // da/dN curve (Paris law)
+  const ox = W * 0.02, oy = H - 160;
+  const w = W * 0.5, h = 120;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('CRACK GROWTH (Paris Law)', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  // log-log axes
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('da/dN', ox + 4, oy + 12);
+  ctx.fillText('ΔK', ox + w - 20, oy + h - 4);
+
+  // Paris line
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let i=0;i<=40;i++){
+    const logK = 0.5 + i / 40 * 1.5;
+    const logDa = -9 + 3 * (logK - 0.5);
+    const x = ox + 30 + (logK - 0.5) / 1.5 * (w - 50);
+    const y = oy + h - 20 - (logDa + 10) / 3 * (h - 30);
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // current state marker
+  if(S.crackLength > 0){
+    const logK = 0.5 + Math.min(1.5, S.crackLength / 5 * 1.5);
+    const logDa = -9 + 3 * (logK - 0.5);
+    const x = ox + 30 + (logK - 0.5) / 1.5 * (w - 50);
+    const y = oy + h - 20 - (logDa + 10) / 3 * (h - 30);
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI*2);
+    ctx.fillStyle = '#fbbf24';
+    ctx.shadowColor = '#fbbf24';
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const m = getMat();
+  const sa = effectiveAmplitude();
+  const Nf = predictLife();
+
+  document.querySelector('#mN .mvalue').textContent = S.N > 1e6 ? (S.N/1e6).toFixed(2)+'M' : S.N > 1e3 ? (S.N/1e3).toFixed(1)+'k' : S.N.toFixed(0);
+  document.querySelector('#mLife .mvalue').textContent = !isFinite(Nf) ? '∞' : (Nf > 1e6 ? (Nf/1e6).toFixed(1)+'M' : Nf > 1e3 ? (Nf/1e3).toFixed(0)+'k' : Nf.toFixed(0));
+  const remain = isFinite(Nf) ? Math.max(0, (1 - S.N/Nf) * 100) : 100;
+  document.querySelector('#mRemain .mvalue').innerHTML = remain.toFixed(0) + '<span class="munit">%</span>';
+  document.querySelector('#mDamage .mvalue').textContent = S.damage.toFixed(3);
+  document.querySelector('#mSigma .mvalue').textContent = (S.mean + S.amplitude).toFixed(0) + ' / ' + (S.mean - S.amplitude).toFixed(0);
+  document.querySelector('#mCrack .mvalue').innerHTML = S.crackLength.toFixed(2) + '<span class="munit">mm</span>';
+
+  document.getElementById('mRemain').className = 'metric' + (remain < 10 ? ' bad' : remain < 40 ? ' warn' : ' ok');
+  document.getElementById('mDamage').className = 'metric' + (S.damage >= 1 ? ' bad' : S.damage > 0.7 ? ' warn' : ' ok');
+  document.getElementById('mCrack').className = 'metric' + (S.crackLength > 3 ? ' bad' : S.crackLength > 1 ? ' warn' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+let lastTaughtCycle = 0;
+function loop(ts){
+  if(S.running && !S.failed){
+    // cycles per frame
+    const cyclesPerFrame = S.frequency / 60;
+    S.N += cyclesPerFrame;
+    S.phase += cyclesPerFrame * 0.01;
+
+    const Nf = predictLife();
+    S.Nfail = Nf;
+
+    // damage
+    if(isFinite(Nf)){
+      S.damage = S.N / Nf;
+
+      // crack growth (fast near end)
+      if(S.damage > 0.5){
+        S.crackLength = Math.min(20, 0.2 + Math.pow(S.damage, 4) * 15);
+      }
+
+      // threshold teaching
+      if(S.damage >= 1 && !S.failed){
+        S.failed = true;
+        S.running = false;
+        playBtn.textContent = '▶ RUN CYCLES';
+        teach('FAILURE', 'Fatigue failure at N = ' + Math.round(S.N).toLocaleString() + ' cycles. Stress amplitude σₐ = ' + sa.toFixed(0) + ' MPa. Repeated loading grew a microcrack to critical size. This is why aircraft are retired by flight hours, not just visual inspections.', 'error');
+        toast('⚠ Fatigue failure');
+      } else if(S.damage >= 0.9 && S.damage - cyclesPerFrame/Nf < 0.9){
+        teach('CRITICAL', 'Damage reached 90% of predicted life. Final fracture is imminent. Real inspection intervals are set to catch cracks at ~25-50% of predicted life.', 'warn');
+      } else if(S.damage >= 0.5 && S.damage - cyclesPerFrame/Nf < 0.5){
+        teach('CRACK', 'Half-life reached. A crack is likely now visible on the surface. Fracture mechanics uses Paris law: da/dN = C(ΔK)^m to predict remaining life.', 'warn');
+      }
+    } else {
+      S.damage = 0;
+    }
+  }
+
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+matSel.addEventListener('change', e => {
+  S.material = e.target.value;
+  const m = getMat();
+  S.N = 0; S.damage = 0; S.crackLength = 0; S.failed = false;
+  const lim = m.enduranceLimit ? (m.enduranceLimit/1e6).toFixed(0) + ' MPa' : 'NONE';
+  teach('MATERIAL', m.name + ': UTS = ' + (m.UTS/1e6).toFixed(0) + ' MPa, endurance limit = ' + lim + '. ' + (m.enduranceLimit ? 'Steel has a true endurance limit — design below it for infinite life.' : 'No endurance limit — aluminum and copper will fail at any amplitude if you wait long enough.'), 'concept');
+});
+
+ampSlider.addEventListener('input', e => {
+  S.amplitude = parseFloat(e.target.value);
+  document.getElementById('ampVal').textContent = S.amplitude + ' MPa';
+});
+
+meanSlider.addEventListener('input', e => {
+  S.mean = parseFloat(e.target.value);
+  document.getElementById('meanVal').textContent = S.mean + ' MPa';
+});
+
+freqSlider.addEventListener('input', e => {
+  S.frequency = parseFloat(e.target.value);
+  document.getElementById('freqVal').textContent = S.frequency + ' Hz';
+});
+
+playBtn.addEventListener('click', () => {
+  if(S.failed){ resetBtn.click(); return; }
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ RUN CYCLES';
+  if(S.running){
+    const Nf = predictLife();
+    const NfText = !isFinite(Nf) ? 'infinite (below endurance limit)' : Math.round(Nf).toLocaleString() + ' cycles';
+    teach('RUN', 'Cyclic loading started at ' + S.frequency + ' Hz, σₐ = ' + S.amplitude + ' MPa. Predicted life: ' + NfText + '. Each cycle adds a tiny amount of damage.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  const step = 1000;
+  S.N += step;
+  const Nf = predictLife();
+  S.Nfail = Nf;
+  if(isFinite(Nf)){
+    S.damage = S.N / Nf;
+    if(S.damage >= 1){
+      S.failed = true;
+      teach('FAILURE', 'Failed after ' + S.N + ' cycles (1000-cycle step). σₐ = ' + S.amplitude + ' MPa.', 'error');
+    } else {
+      S.crackLength = Math.min(20, S.damage * 8);
+      teach('STEP', 'Added ' + step + ' cycles. N = ' + S.N.toLocaleString() + ', damage = ' + (S.damage*100).toFixed(1) + '%.', 'info');
+    }
+  } else {
+    teach('STEP', 'Added ' + step + ' cycles. σₐ below endurance limit — no fatigue damage accumulating. N = ' + S.N.toLocaleString() + '.', 'ok');
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  S.N = 0; S.damage = 0; S.crackLength = 0; S.failed = false; S.running = false;
+  playBtn.textContent = '▶ RUN CYCLES';
+  teach('RESET', 'Fatigue test reset. All damage cleared.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('overloadBtn').addEventListener('click', () => {
+  S.amplitude = 320;
+  S.mean = 180;
+  ampSlider.value = 320;
+  meanSlider.value = 180;
+  document.getElementById('ampVal').textContent = '320 MPa';
+  document.getElementById('meanVal').textContent = '180 MPa';
+  const m = getMat();
+  const sigMax = (S.mean + S.amplitude);
+  if(sigMax > m.UTS/1e6){
+    teach('OVERLOAD', 'σ_max = ' + sigMax.toFixed(0) + ' MPa exceeds UTS (' + (m.UTS/1e6).toFixed(0) + ' MPa). This is no longer fatigue — the part fails on the first cycle. Fatigue occurs BELOW static strength.', 'error');
+  } else {
+    teach('LOAD', 'Amplitude + mean stress set to a low-cycle fatigue regime. Failure in fewer than 10⁴ cycles — plastic strain dominates, not stress.', 'warn');
+  }
+});
+
+document.getElementById('notchBtn').addEventListener('click', () => {
+  S.notch = !S.notch;
+  if(S.notch){
+    teach('NOTCH', 'Stress concentrator added — like a bolt hole or sharp corner. Notch raises local stress by Kt ≈ 1.6. Real fatigue failures almost always start at geometric discontinuities. That is why round fillets are designed into parts.', 'warn');
+    toast('⚠ Notch added');
+  } else {
+    teach('SMOOTH', 'Notch removed. Back to smooth specimen.', 'ok');
+  }
+});
+
+document.getElementById('corrosionBtn').addEventListener('click', () => {
+  S.corrosion = !S.corrosion;
+  if(S.corrosion){
+    teach('CORROSION', 'Corrosion fatigue enabled — a corrosive environment (sea water, acid) attacks the crack tip and reduces endurance by 50–70%. Offshore structures use cathodic protection for exactly this reason.', 'warn');
+    toast('⚠ Corrosion fatigue');
+  } else {
+    teach('DRY', 'Corrosion disabled.', 'ok');
+  }
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'infinite'){
+      S.material = 'steel'; S.amplitude = 150; S.mean = 0; S.notch = false; S.corrosion = false;
+      matSel.value = 'steel';
+      ampSlider.value = 150; meanSlider.value = 0;
+      document.getElementById('ampVal').textContent = '150 MPa';
+      document.getElementById('meanVal').textContent = '0 MPa';
+      teach('INFINITE', 'Infinite life design: σₐ = 150 MPa, well below the endurance limit (250 MPa). This part can be cycled forever without failing — that is how engine valve springs and crankshafts are specified.', 'concept');
+    } else if(p === 'finite'){
+      S.material = 'steel'; S.amplitude = 280; S.mean = 0; S.notch = false; S.corrosion = false;
+      matSel.value = 'steel';
+      ampSlider.value = 280; meanSlider.value = 0;
+      document.getElementById('ampVal').textContent = '280 MPa';
+      document.getElementById('meanVal').textContent = '0 MPa';
+      teach('FINITE', 'Finite life design: σₐ = 280 MPa, just above the endurance limit. Predicted life ~10⁵ cycles. Many aerospace parts are designed for a specific number of flights.', 'concept');
+    } else {
+      S.material = 'aluminum'; S.amplitude = 220; S.mean = 80; S.notch = true;
+      matSel.value = 'aluminum';
+      ampSlider.value = 220; meanSlider.value = 80;
+      document.getElementById('ampVal').textContent = '220 MPa';
+      document.getElementById('meanVal').textContent = '80 MPa';
+      teach('FAILURE', 'Rapid failure preset: aluminum (no endurance limit) + notch + mean stress. This combination fails at very low cycle count — this is why aluminum aircraft have strict inspection intervals.', 'concept');
+    }
+    S.N = 0; S.damage = 0; S.crackLength = 0; S.failed = false;
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Fatigue Failure. Fatigue is the most common cause of mechanical failure — up to 90% of service failures. It happens under repeated loads well below the yield strength.', 'concept');
+  teach('SN', 'The S-N curve shows how many cycles a material survives at each stress amplitude. Steel has an endurance limit — below it, life is infinite. Aluminum does not.', 'concept');
+  teach('HOWTO', 'Set stress amplitude, mean stress, and frequency. Press RUN CYCLES and watch damage accumulate. Try the fault buttons to add notches or corrosion.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

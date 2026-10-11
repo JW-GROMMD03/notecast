@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canary Release Traffic Shifting — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f59e0b, #f97316, #ec4899);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(245,158,11,0.15);
+    color: #fcd34d;
+    border-color: #f59e0b;
+  }
+  .teaching-toggle:hover { background: rgba(245,158,11,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f59e0b; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f59e0b; color: #2a1503; border-color: #f59e0b; }
+  .btn.primary:hover { background: #d97706; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fcd34d; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f59e0b; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(245,158,11,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* ROLLOUT PROGRESS BAR */
+  .rollout-bar {
+    background: #070a14;
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+    padding: 12px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: 0 0 25px rgba(245,158,11,0.15);
+    flex-shrink: 0;
+  }
+  .rollout-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: monospace;
+  }
+  .rollout-title {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    color: #fcd34d;
+    text-transform: uppercase;
+  }
+  .rollout-status {
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 1px;
+  }
+  .rollout-status.running { color: #fbbf24; }
+  .rollout-status.success { color: #6ee7b7; }
+  .rollout-status.aborted { color: #fca5a5; }
+  .rollout-status.paused { color: #94a3b8; }
+
+  .rollout-track {
+    height: 24px;
+    background: #02040a;
+    border-radius: 12px;
+    border: 1px solid #1e293b;
+    position: relative;
+    overflow: hidden;
+  }
+  .rollout-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #f59e0b, #ec4899);
+    transition: width 0.6s cubic-bezier(.4,0,.2,1);
+    box-shadow: 0 0 20px rgba(245,158,11,0.6);
+    position: relative;
+  }
+  .rollout-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    animation: shimmer 2s linear infinite;
+  }
+  @keyframes shimmer {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+  }
+  .rollout-markers {
+    display: flex;
+    justify-content: space-between;
+    font-family: monospace;
+    font-size: 0.55rem;
+    color: #64748b;
+    padding: 0 2px;
+  }
+  .rollout-pct {
+    font-size: 1.4rem;
+    font-weight: 900;
+    color: #fcd34d;
+    font-family: monospace;
+    text-shadow: 0 0 15px rgba(245,158,11,0.6);
+    text-align: center;
+    letter-spacing: 2px;
+  }
+
+  /* METRICS COMPARISON */
+  .metrics-compare {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(139,92,246,0.15);
+    min-height: 0;
+  }
+  .metrics-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .metrics-grid-compare {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  .metric-panel {
+    background: #02040a;
+    border: 1.5px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    transition: all 0.3s;
+  }
+  .metric-panel.baseline { border-color: #3b82f6; }
+  .metric-panel.canary {
+    border-color: #f59e0b;
+    box-shadow: 0 0 15px rgba(245,158,11,0.3);
+  }
+  .metric-panel.bad {
+    border-color: #ef4444;
+    box-shadow: 0 0 20px rgba(239,68,68,0.5);
+  }
+
+  .metric-panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #1e293b;
+  }
+  .metric-panel-name {
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    font-family: monospace;
+  }
+  .metric-panel.baseline .metric-panel-name { color: #93c5fd; }
+  .metric-panel.canary .metric-panel-name { color: #fcd34d; }
+  .metric-panel.bad .metric-panel-name { color: #fca5a5; }
+
+  .metric-panel-badge {
+    font-size: 0.5rem;
+    font-weight: 900;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .metric-panel.baseline .metric-panel-badge {
+    background: rgba(59,130,246,0.2);
+    color: #93c5fd;
+  }
+  .metric-panel.canary .metric-panel-badge {
+    background: rgba(245,158,11,0.2);
+    color: #fcd34d;
+  }
+
+  .metric-rows {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-family: monospace;
+    font-size: 0.58rem;
+  }
+  .metric-row-live {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 6px;
+    background: rgba(30,41,59,0.4);
+    border-radius: 4px;
+    align-items: center;
+    transition: all 0.3s;
+  }
+  .metric-row-live .lbl { color: #94a3b8; letter-spacing: 0.3px; }
+  .metric-row-live .val { font-weight: 900; color: #cbd5e1; }
+  .metric-panel.baseline .metric-row-live .val { color: #93c5fd; }
+  .metric-panel.canary .metric-row-live .val { color: #fcd34d; }
+  .metric-panel.bad .metric-row-live .val { color: #fca5a5; }
+  .metric-row-live.alarm {
+    background: rgba(239,68,68,0.15);
+    border-left: 3px solid #ef4444;
+    animation: alarmPulse 1s ease-in-out infinite alternate;
+  }
+  @keyframes alarmPulse {
+    0% { box-shadow: inset 0 0 5px rgba(239,68,68,0.3); }
+    100% { box-shadow: inset 0 0 15px rgba(239,68,68,0.8); }
+  }
+  .metric-row-live.alarm .lbl { color: #fca5a5; }
+  .metric-row-live.alarm .val { color: #f87171; }
+
+  /* CANARY FLEET */
+  .fleet-wrap {
+    background: #070a14;
+    border: 2px solid #10b981;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 20px rgba(16,185,129,0.15);
+    flex-shrink: 0;
+  }
+  .fleet-title {
+    font-size: 0.58rem;
+    letter-spacing: 2px;
+    color: #6ee7b7;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .fleet-grid {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .fleet-pod {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    font-size: 0.55rem;
+    font-weight: 900;
+    transition: all 0.5s;
+    border: 2px solid;
+    position: relative;
+  }
+  .fleet-pod.baseline {
+    border-color: #3b82f6;
+    background: linear-gradient(145deg, #1e3a8a, #0c1e4d);
+    color: #93c5fd;
+  }
+  .fleet-pod.canary {
+    border-color: #f59e0b;
+    background: linear-gradient(145deg, #78350f, #451a03);
+    color: #fcd34d;
+    box-shadow: 0 0 12px rgba(245,158,11,0.5);
+    animation: canaryPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes canaryPulse {
+    0%, 100% { box-shadow: 0 0 12px rgba(245,158,11,0.5); }
+    50% { box-shadow: 0 0 25px rgba(245,158,11,1); }
+  }
+  .fleet-pod.error {
+    border-color: #ef4444;
+    background: linear-gradient(145deg, #450a0a, #1c0606);
+    color: #fca5a5;
+    animation: errPulse 0.8s ease-in-out infinite;
+  }
+  @keyframes errPulse {
+    0%, 100% { box-shadow: 0 0 12px rgba(239,68,68,0.5); }
+    50% { box-shadow: 0 0 30px rgba(239,68,68,1); }
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(245,158,11,0.06);
+    border: 1px solid rgba(245,158,11,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fcd34d;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f59e0b;
+    background: rgba(245,158,11,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(245,158,11,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f59e0b;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(245,158,11,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #f59e0b;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fcd34d;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(245,158,11,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.success { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.abort { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>CANARY RELEASE TRAFFIC SHIFTING</h1>
+    <span class="sub">PROGRESSIVE ROLLOUT · OBSERVE · RAMP OR ROLLBACK</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Rollout Control</h3>
+      <button class="btn primary" id="btnRun">▶ Start Canary</button>
+      <button class="btn warn" id="btnPause">⏸ Pause</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Manual Ramp</h3>
+      <button class="btn" id="btnRamp1">→ 1% Canary</button>
+      <button class="btn" id="btnRamp5">→ 5% Canary</button>
+      <button class="btn" id="btnRamp25">→ 25% Canary</button>
+      <button class="btn" id="btnRamp50">→ 50% Canary</button>
+      <button class="btn success" id="btnRamp100">→ 100% Canary (Promote)</button>
+      <button class="btn danger" id="btnAbort">✗ Abort & Rollback</button>
+    </div>
+
+    <div class="panel">
+      <h3>Simulate Issue</h3>
+      <button class="btn danger" id="btnInjectBug">🐛 Inject Latency Spike</button>
+      <button class="btn danger" id="btnInjectErrors">💥 Inject 15% Error Rate</button>
+      <button class="btn success" id="btnClearIssue">✓ Clear Issue</button>
+    </div>
+
+    <div class="panel">
+      <h3>Ramp Schedule</h3>
+      <div class="slider-row"><span>Step interval</span><span class="value" id="stepVal">3s</span></div>
+      <input type="range" id="stepRange" min="1" max="8" value="3">
+      <div class="slider-row"><span>Auto-abort at</span><span class="value" id="abortVal">5% errors</span></div>
+      <input type="range" id="abortRange" min="1" max="20" value="5">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:3px;margin-right:6px;"></span>Baseline (v1)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:3px;margin-right:6px;"></span>Canary (v2)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:3px;margin-right:6px;"></span>Erroring pod</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">START SMALL · OBSERVE · RAMP UP OR ROLL BACK</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="rollout-bar">
+          <div class="rollout-top">
+            <span class="rollout-title">🎯 CANARY ROLLOUT — v2.0.0</span>
+            <span class="rollout-status" id="rolloutStatus">IDLE</span>
+          </div>
+          <div class="rollout-pct" id="rolloutPct">0%</div>
+          <div class="rollout-track">
+            <div class="rollout-fill" id="rolloutFill" style="width:0%"></div>
+          </div>
+          <div class="rollout-markers">
+            <span>0%</span>
+            <span>1%</span>
+            <span>5%</span>
+            <span>25%</span>
+            <span>50%</span>
+            <span>100%</span>
+          </div>
+        </div>
+
+        <div class="metrics-compare">
+          <div class="metrics-title">
+            <span>📊 LIVE METRICS COMPARISON</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="compareHint">— canary vs baseline —</span>
+          </div>
+          <div class="metrics-grid-compare">
+            <div class="metric-panel baseline" id="panelBaseline">
+              <div class="metric-panel-head">
+                <span class="metric-panel-name">BLUE (v1.0.0)</span>
+                <span class="metric-panel-badge">BASELINE</span>
+              </div>
+              <div class="metric-rows" id="rowsBaseline">
+                <div class="metric-row-live"><span class="lbl">Traffic</span><span class="val" id="blTraffic">100%</span></div>
+                <div class="metric-row-live"><span class="lbl">Requests/s</span><span class="val" id="blRps">900</span></div>
+                <div class="metric-row-live"><span class="lbl">p50 latency</span><span class="val" id="blP50">22 ms</span></div>
+                <div class="metric-row-live"><span class="lbl">p99 latency</span><span class="val" id="blP99">48 ms</span></div>
+                <div class="metric-row-live"><span class="lbl">Error rate</span><span class="val" id="blErr">0.02%</span></div>
+                <div class="metric-row-live"><span class="lbl">CPU</span><span class="val" id="blCpu">34%</span></div>
+                <div class="metric-row-live"><span class="lbl">Success 5xx</span><span class="val" id="bl5xx">0 / s</span></div>
+              </div>
+            </div>
+
+            <div class="metric-panel canary" id="panelCanary">
+              <div class="metric-panel-head">
+                <span class="metric-panel-name">CANARY (v2.0.0)</span>
+                <span class="metric-panel-badge">NEW</span>
+              </div>
+              <div class="metric-rows" id="rowsCanary">
+                <div class="metric-row-live"><span class="lbl">Traffic</span><span class="val" id="cnTraffic">0%</span></div>
+                <div class="metric-row-live"><span class="lbl">Requests/s</span><span class="val" id="cnRps">0</span></div>
+                <div class="metric-row-live"><span class="lbl">p50 latency</span><span class="val" id="cnP50">0 ms</span></div>
+                <div class="metric-row-live"><span class="lbl">p99 latency</span><span class="val" id="cnP99">0 ms</span></div>
+                <div class="metric-row-live"><span class="lbl">Error rate</span><span class="val" id="cnErr">0.00%</span></div>
+                <div class="metric-row-live"><span class="lbl">CPU</span><span class="val" id="cnCpu">0%</span></div>
+                <div class="metric-row-live"><span class="lbl">Success 5xx</span><span class="val" id="cn5xx">0 / s</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fleet-wrap">
+          <div class="fleet-title">
+            <span>🚢 POD FLEET</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="fleetHint">— 10 pods —</span>
+          </div>
+          <div class="fleet-grid" id="fleetGrid"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Canary Traffic</div>
+        <div class="metric-value warn" id="mCanary">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Canary Errors</div>
+        <div class="metric-value good" id="mErrors">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Latency Δ</div>
+        <div class="metric-value" id="mLatency">0 ms</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Status</div>
+        <div class="metric-value" id="mStatus">Idle</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Canary Release</div>
+      <div class="info-row"><span class="lbl">Start small</span><span class="val good">1% of traffic</span></div>
+      <div class="info-row"><span class="lbl">Watch</span><span class="val warn">Errors, latency, CPU</span></div>
+      <div class="info-row"><span class="lbl">Ramp</span><span class="val">5% → 25% → 50%</span></div>
+      <div class="info-row"><span class="lbl">Promote</span><span class="val good">100% = success</span></div>
+      <div class="info-row"><span class="lbl">Auto-abort</span><span class="val bad">On error spike</span></div>
+      <div class="info-row"><span class="lbl">Blast radius</span><span class="val good">Tiny</span></div>
+      <div class="info-row"><span class="lbl">Best for</span><span class="val">Risky changes</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  canaryPct: 0,
+  targetCanaryPct: 0,
+  totalRps: 900,
+  baselineErrorRate: 0.02,
+  canaryErrorRate: 0.0,
+  baselineLatency: 22,
+  canaryLatency: 22,
+  autoAbortThreshold: 5,
+  stepInterval: 3,
+  rolloutActive: false,
+  rolloutPaused: false,
+  rolloutSucceeded: false,
+  rolloutAborted: false,
+  rolloutTimer: null,
+  // Fleet
+  podCount: 10,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  rolloutStatus: document.getElementById('rolloutStatus'),
+  rolloutPct: document.getElementById('rolloutPct'),
+  rolloutFill: document.getElementById('rolloutFill'),
+  compareHint: document.getElementById('compareHint'),
+  // Baseline
+  blTraffic: document.getElementById('blTraffic'),
+  blRps: document.getElementById('blRps'),
+  blP50: document.getElementById('blP50'),
+  blP99: document.getElementById('blP99'),
+  blErr: document.getElementById('blErr'),
+  blCpu: document.getElementById('blCpu'),
+  bl5xx: document.getElementById('bl5xx'),
+  // Canary
+  cnTraffic: document.getElementById('cnTraffic'),
+  cnRps: document.getElementById('cnRps'),
+  cnP50: document.getElementById('cnP50'),
+  cnP99: document.getElementById('cnP99'),
+  cnErr: document.getElementById('cnErr'),
+  cnCpu: document.getElementById('cnCpu'),
+  cn5xx: document.getElementById('cn5xx'),
+  panelBaseline: document.getElementById('panelBaseline'),
+  panelCanary: document.getElementById('panelCanary'),
+  rowsCanary: document.getElementById('rowsCanary'),
+  // Fleet
+  fleetGrid: document.getElementById('fleetGrid'),
+  fleetHint: document.getElementById('fleetHint'),
+  // Controls
+  btnRun: document.getElementById('btnRun'),
+  btnPause: document.getElementById('btnPause'),
+  btnReset: document.getElementById('btnReset'),
+  btnRamp1: document.getElementById('btnRamp1'),
+  btnRamp5: document.getElementById('btnRamp5'),
+  btnRamp25: document.getElementById('btnRamp25'),
+  btnRamp50: document.getElementById('btnRamp50'),
+  btnRamp100: document.getElementById('btnRamp100'),
+  btnAbort: document.getElementById('btnAbort'),
+  btnInjectBug: document.getElementById('btnInjectBug'),
+  btnInjectErrors: document.getElementById('btnInjectErrors'),
+  btnClearIssue: document.getElementById('btnClearIssue'),
+  stepRange: document.getElementById('stepRange'),
+  stepVal: document.getElementById('stepVal'),
+  abortRange: document.getElementById('abortRange'),
+  abortVal: document.getElementById('abortVal'),
+  // Metrics
+  mCanary: document.getElementById('mCanary'),
+  mErrors: document.getElementById('mErrors'),
+  mLatency: document.getElementById('mLatency'),
+  mStatus: document.getElementById('mStatus'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2800);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining canary release traffic shifting.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   RENDER FLEET
+   ============================================================ */
+function renderFleet() {
+  DOM.fleetGrid.innerHTML = '';
+  const canaryCount = Math.round(STATE.podCount * STATE.canaryPct / 100);
+
+  for (let i = 0; i < STATE.podCount; i++) {
+    const pod = document.createElement('div');
+    pod.className = 'fleet-pod';
+
+    // First `canaryCount` pods are canary, rest are baseline
+    if (i < canaryCount) {
+      if (STATE.canaryErrorRate > STATE.autoAbortThreshold) {
+        pod.classList.add('error');
+      } else {
+        pod.classList.add('canary');
+      }
+      pod.textContent = 'v2';
+    } else {
+      pod.classList.add('baseline');
+      pod.textContent = 'v1';
+    }
+    DOM.fleetGrid.appendChild(pod);
+  }
+
+  DOM.fleetHint.textContent = `— ${canaryCount} canary · ${STATE.podCount - canaryCount} baseline —`;
+}
+
+/* ============================================================
+   UPDATE METRICS
+   ============================================================ */
+function updateMetrics() {
+  const canaryRps = Math.round(STATE.totalRps * STATE.canaryPct / 100);
+  const baselineRps = STATE.totalRps - canaryRps;
+  const canary5xx = Math.round(canaryRps * STATE.canaryErrorRate / 100);
+  const baseline5xx = Math.round(baselineRps * STATE.baselineErrorRate / 100);
+
+  // Baseline
+  DOM.blTraffic.textContent = (100 - STATE.canaryPct) + '%';
+  DOM.blRps.textContent = baselineRps;
+  DOM.blP50.textContent = STATE.baselineLatency + ' ms';
+  DOM.blP99.textContent = Math.round(STATE.baselineLatency * 2.2) + ' ms';
+  DOM.blErr.textContent = STATE.baselineErrorRate.toFixed(2) + '%';
+  DOM.blCpu.textContent = Math.round(20 + baselineRps / 30) + '%';
+  DOM.bl5xx.textContent = baseline5xx + ' / s';
+
+  // Canary
+  DOM.cnTraffic.textContent = STATE.canaryPct + '%';
+  DOM.cnRps.textContent = canaryRps;
+  DOM.cnP50.textContent = STATE.canaryPct > 0 ? STATE.canaryLatency + ' ms' : '0 ms';
+  DOM.cnP99.textContent = STATE.canaryPct > 0 ? Math.round(STATE.canaryLatency * 2.2) + ' ms' : '0 ms';
+  DOM.cnErr.textContent = STATE.canaryErrorRate.toFixed(2) + '%';
+  DOM.cnCpu.textContent = STATE.canaryPct > 0 ? Math.round(20 + canaryRps / 3) + '%' : '0%';
+  DOM.cn5xx.textContent = canary5xx + ' / s';
+
+  // Alarm state on canary panel
+  DOM.panelCanary.classList.toggle('bad', STATE.canaryErrorRate > STATE.autoAbortThreshold);
+
+  // Alarm rows
+  const errRow = DOM.cnErr.closest('.metric-row-live');
+  errRow.classList.toggle('alarm', STATE.canaryErrorRate > STATE.autoAbortThreshold);
+
+  // Metrics box
+  DOM.mCanary.textContent = STATE.canaryPct + '%';
+  DOM.mCanary.className = 'metric-value' + (STATE.canaryPct === 0 ? '' : STATE.canaryPct >= 100 ? 'good' : 'warn');
+
+  DOM.mErrors.textContent = STATE.canaryErrorRate.toFixed(1) + '%';
+  DOM.mErrors.className = 'metric-value ' + (STATE.canaryErrorRate > STATE.autoAbortThreshold ? 'bad' : STATE.canaryErrorRate > 1 ? 'warn' : 'good');
+
+  const latencyDelta = STATE.canaryLatency - STATE.baselineLatency;
+  DOM.mLatency.textContent = (latencyDelta >= 0 ? '+' : '') + latencyDelta.toFixed(0) + ' ms';
+  DOM.mLatency.className = 'metric-value ' + (latencyDelta > 20 ? 'bad' : latencyDelta > 10 ? 'warn' : '');
+
+  // Status
+  let status = 'Idle';
+  if (STATE.rolloutAborted) status = 'Aborted';
+  else if (STATE.rolloutSucceeded) status = 'Promoted';
+  else if (STATE.rolloutPaused) status = 'Paused';
+  else if (STATE.rolloutActive) status = 'Running';
+  DOM.mStatus.textContent = status;
+  DOM.mStatus.className = 'metric-value ' + (
+    STATE.rolloutSucceeded ? 'good' :
+    STATE.rolloutAborted ? 'bad' :
+    STATE.rolloutActive ? 'warn' : ''
+  );
+
+  // Rollout bar
+  DOM.rolloutPct.textContent = STATE.canaryPct + '%';
+  DOM.rolloutFill.style.width = STATE.canaryPct + '%';
+
+  let rolloutStatusText = 'IDLE';
+  let rolloutStatusClass = '';
+  if (STATE.rolloutAborted) { rolloutStatusText = 'ABORTED — ROLLING BACK'; rolloutStatusClass = 'aborted'; }
+  else if (STATE.rolloutSucceeded) { rolloutStatusText = 'PROMOTED TO 100%'; rolloutStatusClass = 'success'; }
+  else if (STATE.rolloutPaused) { rolloutStatusText = 'PAUSED'; rolloutStatusClass = 'paused'; }
+  else if (STATE.rolloutActive) { rolloutStatusText = 'RUNNING'; rolloutStatusClass = 'running'; }
+
+  DOM.rolloutStatus.textContent = rolloutStatusText;
+  DOM.rolloutStatus.className = 'rollout-status ' + rolloutStatusClass;
+
+  DOM.compareHint.textContent = `— canary ${STATE.canaryPct}% of ${STATE.totalRps} rps —`;
+}
+
+/* ============================================================
+   RAMP CONTROL
+   ============================================================ */
+function setCanaryPct(pct) {
+  const prev = STATE.canaryPct;
+  STATE.canaryPct = Math.max(0, Math.min(100, Math.round(pct)));
+  renderFleet();
+  updateMetrics();
+
+  if (STATE.canaryPct > prev) {
+    teach('RAMP UP',
+      `Canary traffic ramped from ${prev}% to ${STATE.canaryPct}%. At ${STATE.canaryPct}%, the canary handles ${Math.round(STATE.totalRps * STATE.canaryPct / 100)} requests/s. The blast radius if something breaks is now ${STATE.canaryPct}% of users — bounded and known.`,
+      STATE.canaryPct >= 100 ? 'ok' : 'warn',
+      false
+    );
+  } else if (STATE.canaryPct < prev) {
+    teach('RAMP DOWN',
+      `Canary traffic reduced from ${prev}% to ${STATE.canaryPct}%. Shrinking the blast radius is the primary defense when metrics look bad.`,
+      'warn', false
+    );
+  }
+
+  // Check for success
+  if (STATE.canaryPct >= 100 && STATE.rolloutActive && !STATE.rolloutSucceeded) {
+    STATE.rolloutSucceeded = true;
+    STATE.rolloutActive = false;
+    if (STATE.rolloutTimer) clearInterval(STATE.rolloutTimer);
+    showStatus('🎉 CANARY PROMOTED — v2.0.0 IS NOW 100%', 'success');
+    teach('PROMOTED',
+      `Canary reached 100%. v2.0.0 is now the production version. The rollout succeeded: we started at 1%, watched metrics, and ramped up gradually. Real canary rollouts take hours to days — this simulator compresses the timeline.`,
+      'ok'
+    );
+  }
+}
+
+function startCanary() {
+  if (STATE.rolloutSucceeded || STATE.rolloutAborted) resetAll();
+  STATE.rolloutActive = true;
+  STATE.rolloutPaused = false;
+  DOM.btnRun.textContent = '⏸ Running...';
+
+  setCanaryPct(1);
+  showStatus('🚀 CANARY RELEASE STARTED — 1% TRAFFIC');
+
+  teach('CANARY STARTED',
+    `Canary release started. Traffic to v2.0.0 begins at just 1% — about 9 requests per second. That's the whole point: start SO SMALL that even a total disaster affects almost no one. Watch the metrics on the right panel: if they stay healthy, we ramp up.`,
+    'cyan'
+  );
+
+  if (STATE.rolloutTimer) clearInterval(STATE.rolloutTimer);
+  STATE.rolloutTimer = setInterval(() => {
+    if (STATE.rolloutPaused || !STATE.rolloutActive) return;
+
+    // Auto-abort check
+    if (STATE.canaryErrorRate > STATE.autoAbortThreshold) {
+      abortCanary();
+      return;
+    }
+
+    // Auto-ramp
+    const rampSequence = [1, 5, 25, 50, 100];
+    const currentIdx = rampSequence.findIndex(v => v >= STATE.canaryPct);
+    if (currentIdx >= 0 && currentIdx < rampSequence.length - 1) {
+      setCanaryPct(rampSequence[currentIdx + 1]);
+    } else if (currentIdx === rampSequence.length - 1) {
+      clearInterval(STATE.rolloutTimer);
+    }
+  }, STATE.stepInterval * 1000);
+}
+
+function pauseCanary() {
+  STATE.rolloutPaused = !STATE.rolloutPaused;
+  DOM.btnPause.textContent = STATE.rolloutPaused ? '▶ Resume' : '⏸ Pause';
+  if (STATE.rolloutPaused) {
+    showStatus('⏸ CANARY PAUSED');
+    teach('PAUSED',
+      `Canary rollout paused at ${STATE.canaryPct}%. This is useful for manual verification — leave the canary running at the current percentage while you investigate logs, do customer outreach, or run additional tests.`,
+      'info'
+    );
+  } else {
+    showStatus('▶ CANARY RESUMED');
+  }
+}
+
+function abortCanary() {
+  STATE.rolloutAborted = true;
+  STATE.rolloutActive = false;
+  if (STATE.rolloutTimer) clearInterval(STATE.rolloutTimer);
+  STATE.canaryPct = 0;
+  renderFleet();
+  updateMetrics();
+
+  showStatus('🛑 CANARY ABORTED — ROLLED BACK TO 0%', 'abort');
+  teach('ABORTED',
+    `Canary rollout aborted. Traffic to v2.0.0 dropped back to 0% — the baseline handles everything. Only ~${Math.round(STATE.totalRps * STATE.canaryErrorRate / 100)} failed requests were served by the bad version. Without canary, ALL ${STATE.totalRps} requests would have hit the bug. This is the "small blast radius" principle paying off.`,
+    'error'
+  );
+
+  setTimeout(() => {
+    STATE.canaryErrorRate = 0;
+    STATE.canaryLatency = STATE.baselineLatency;
+    renderFleet();
+    updateMetrics();
+  }, 2000);
+}
+
+/* ============================================================
+   FAULT INJECTION
+   ============================================================ */
+function injectBug() {
+  STATE.canaryLatency = STATE.baselineLatency + 120;
+  updateMetrics();
+  teach('BUG INJECTED',
+    `Injected latency spike: canary latency jumped from ${STATE.baselineLatency}ms to ${STATE.canaryLatency}ms — 5x slower. Real canary systems watch p50/p99 latency. A 100ms+ jump is a red flag; at 50% traffic, that's 450 users per second getting a slow experience.`,
+    'error'
+  );
+}
+
+function injectErrors() {
+  STATE.canaryErrorRate = 15;
+  updateMetrics();
+  teach('ERRORS INJECTED',
+    `Injected 15% error rate in the canary. That's well above our abort threshold of ${STATE.autoAbortThreshold}%. Watch the auto-abort fire — this is exactly the situation canary releases are designed to catch. If we'd deployed directly to 100%, 15% of all production traffic would be failing.`,
+    'error'
+  );
+
+  setTimeout(() => {
+    if (STATE.canaryErrorRate > STATE.autoAbortThreshold && STATE.rolloutActive) {
+      abortCanary();
+    }
+  }, 1500);
+}
+
+function clearIssue() {
+  STATE.canaryErrorRate = 0;
+  STATE.canaryLatency = STATE.baselineLatency;
+  updateMetrics();
+  showToast('✓ Issue cleared');
+  teach('RECOVERED',
+    `Canary metrics back to healthy. In a real rollout, you'd now continue the ramp — or if you had already aborted, you'd fix the code, redeploy a new canary, and try again with a fresh version number.`,
+    'ok', false
+  );
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.rolloutTimer) clearInterval(STATE.rolloutTimer);
+  STATE.rolloutTimer = null;
+  STATE.canaryPct = 0;
+  STATE.targetCanaryPct = 0;
+  STATE.canaryErrorRate = 0;
+  STATE.canaryLatency = STATE.baselineLatency;
+  STATE.rolloutActive = false;
+  STATE.rolloutPaused = false;
+  STATE.rolloutSucceeded = false;
+  STATE.rolloutAborted = false;
+  DOM.btnRun.textContent = '▶ Start Canary';
+  DOM.btnPause.textContent = '⏸ Pause';
+  DOM.statusBanner.classList.remove('show');
+  renderFleet();
+  updateMetrics();
+  teach('RESET', 'Canary reset. Ready to start a new rollout.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRun.addEventListener('click', startCanary);
+DOM.btnPause.addEventListener('click', pauseCanary);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.btnRamp1.addEventListener('click', () => setCanaryPct(1));
+DOM.btnRamp5.addEventListener('click', () => setCanaryPct(5));
+DOM.btnRamp25.addEventListener('click', () => setCanaryPct(25));
+DOM.btnRamp50.addEventListener('click', () => setCanaryPct(50));
+DOM.btnRamp100.addEventListener('click', () => setCanaryPct(100));
+DOM.btnAbort.addEventListener('click', abortCanary);
+
+DOM.btnInjectBug.addEventListener('click', injectBug);
+DOM.btnInjectErrors.addEventListener('click', injectErrors);
+DOM.btnClearIssue.addEventListener('click', clearIssue);
+
+DOM.stepRange.addEventListener('input', e => {
+  STATE.stepInterval = parseInt(e.target.value);
+  DOM.stepVal.textContent = STATE.stepInterval + 's';
+  if (STATE.rolloutActive) {
+    // Restart timer
+    clearInterval(STATE.rolloutTimer);
+    STATE.rolloutTimer = setInterval(() => {
+      if (STATE.rolloutPaused || !STATE.rolloutActive) return;
+      if (STATE.canaryErrorRate > STATE.autoAbortThreshold) {
+        abortCanary();
+        return;
+      }
+      const rampSequence = [1, 5, 25, 50, 100];
+      const currentIdx = rampSequence.findIndex(v => v >= STATE.canaryPct);
+      if (currentIdx >= 0 && currentIdx < rampSequence.length - 1) {
+        setCanaryPct(rampSequence[currentIdx + 1]);
+      }
+    }, STATE.stepInterval * 1000);
+  }
+});
+
+DOM.abortRange.addEventListener('input', e => {
+  STATE.autoAbortThreshold = parseInt(e.target.value);
+  DOM.abortVal.textContent = STATE.autoAbortThreshold + '% errors';
+});
+
+window.addEventListener('resize', () => {});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+renderFleet();
+updateMetrics();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Canary Release Traffic Shifting. Canary releases send a small percentage of live production traffic to the new version, watch the metrics, and only ramp up if everything looks healthy. If something goes wrong, you abort — and only a tiny fraction of users ever saw the problem.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE NAME',
+      `The name comes from "canary in a coal mine" — coal miners carried canaries because the birds would die from toxic gases before the humans noticed. In software, the canary is the first slice of traffic that tells you something is wrong. If the canary dies, you stop the rollout before it hurts everyone.`,
+      'purple'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE RAMP',
+      `The rollout ramps: 1% → 5% → 25% → 50% → 100%. Each step is a checkpoint. Real systems usually hold each step for 10-60 minutes to observe real-world behavior, catch rare issues, and let metrics stabilize. Automated systems watch specific SLOs — error rate, latency p99, CPU, and business metrics — and either ramp, hold, or abort.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('BLAST RADIUS',
+      `Blast radius is the key metric. Direct deploy to 100%: a bad release hits 100% of users. Blue-green: hits 100% if the switch is bad. Canary at 1%: hits 1%. At 5%: hits 5%. The gradual ramp gives you time to detect and react — turning "the site is down" into "5% of users had a bad few minutes."`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Start the canary, then try injecting an error', 4500);
+}, 500);
+</script>
+</body>
+</html>

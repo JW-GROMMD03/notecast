@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Euler Buckling & Column Stability — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:14px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>EULER BUCKLING</h1>
+    <span class="sub">COLUMN STABILITY · SLENDERNESS · CRITICAL LOAD</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Column</div>
+    <div class="control-group">
+      <label>End Condition</label>
+      <select id="endCond" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="pinned-pinned">Pinned – Pinned (K=1.0)</option>
+        <option value="fixed-fixed">Fixed – Fixed (K=0.5)</option>
+        <option value="fixed-pinned">Fixed – Pinned (K=0.7)</option>
+        <option value="fixed-free">Fixed – Free (K=2.0)</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Length L <span class="val" id="lenVal">3.0 m</span></label>
+      <input type="range" id="lenSlider" min="0.5" max="8" value="3" step="0.1">
+    </div>
+    <div class="control-group">
+      <label>Width b <span class="val" id="widthVal">80 mm</span></label>
+      <input type="range" id="widthSlider" min="20" max="200" value="80" step="2">
+    </div>
+    <div class="control-group">
+      <label>Depth h <span class="val" id="heightVal">100 mm</span></label>
+      <input type="range" id="heightSlider" min="20" max="200" value="100" step="2">
+    </div>
+    <div class="control-group">
+      <label>Applied Load P <span class="val" id="loadVal">500 kN</span></label>
+      <input type="range" id="loadSlider" min="10" max="3000" value="500" step="10">
+    </div>
+    <div class="control-group">
+      <label>Material</label>
+      <select id="matSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="steel">Steel (E=200 GPa, σ_y=250 MPa)</option>
+        <option value="aluminum">Aluminum (E=69 GPa, σ_y=276 MPa)</option>
+        <option value="wood">Timber (E=11 GPa, σ_y=40 MPa)</option>
+        <option value="concrete">Concrete (E=30 GPa, σ_y=3 MPa)</option>
+      </select>
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ APPLY LOAD</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="buckleBtn">⚠ INDUCE BUCKLING</button>
+    <button class="btn warn" id="slenderBtn">📏 EXTREME SLENDERNESS</button>
+    <button class="btn warn" id="imperfectionBtn">↗ INITIAL IMPERFECTION</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="column">Building Column</button>
+    <button class="btn" data-preset="piston">Piston Rod</button>
+    <button class="btn" data-preset="strut">Truss Strut</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      P_cr = π²·E·I / (K·L)² &nbsp;|&nbsp; I = b·h³/12 &nbsp;|&nbsp; σ_cr = π²·E / (L/r)² &nbsp;|&nbsp; <span class="hl">r = √(I/A)</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mPcr">
+          <div class="mlabel">P_critical</div>
+          <div class="mvalue">0<span class="munit">kN</span></div>
+        </div>
+        <div class="metric" id="mRatio">
+          <div class="mlabel">P / P_cr</div>
+          <div class="mvalue">0.00</div>
+        </div>
+        <div class="metric" id="mSlender">
+          <div class="mlabel">SLENDERNESS L/r</div>
+          <div class="mvalue">0</div>
+        </div>
+        <div class="metric" id="mSigma">
+          <div class="mlabel">σ APPLIED</div>
+          <div class="mvalue">0<span class="munit">MPa</span></div>
+        </div>
+        <div class="metric" id="mI">
+          <div class="mlabel">INERTIA I</div>
+          <div class="mvalue">0<span class="munit">×10⁶ mm⁴</span></div>
+        </div>
+        <div class="metric" id="mSF">
+          <div class="mlabel">SAFETY FACTOR</div>
+          <div class="mvalue">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">P_cr = π²·E·I / (K·L)²</div>
+      <div class="eq">σ_cr = π²·E / (L/r)²</div>
+      <div class="def">
+        Buckling is a stability failure: the column suddenly deflects 
+        sideways under axial load, long before the material crushes. 
+        Longer, thinner columns buckle at lower loads. Euler's formula 
+        assumes small deflections and elastic behavior.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const MATERIALS = {
+  steel:    { name:'Steel',    E:200e9, sigmaYield:250e6, color:'#60a5fa' },
+  aluminum: { name:'Aluminum', E:69e9,  sigmaYield:276e6, color:'#a3e635' },
+  wood:     { name:'Timber',   E:11e9,  sigmaYield:40e6,  color:'#fb923c' },
+  concrete: { name:'Concrete', E:30e9,  sigmaYield:3e6,   color:'#94a3b8' }
+};
+
+const K_FACTORS = {
+  'pinned-pinned': 1.0,
+  'fixed-fixed':   0.5,
+  'fixed-pinned':  0.7,
+  'fixed-free':    2.0
+};
+
+const S = {
+  endCond: 'pinned-pinned',
+  L: 3,               // m
+  b: 80,              // mm
+  h: 100,             // mm
+  P: 500,             // kN
+  material: 'steel',
+  // animation
+  loadPhase: 0,       // 0..1 fraction of current applied load
+  deflected: false,
+  lateral: 0,         // lateral deflection in mm (visual)
+  imperfection: false,
+  time: 0,
+  oscillating: false,
+  bucklingInitiated: false
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const lenSlider = document.getElementById('lenSlider');
+const widthSlider = document.getElementById('widthSlider');
+const heightSlider = document.getElementById('heightSlider');
+const loadSlider = document.getElementById('loadSlider');
+const matSelect = document.getElementById('matSelect');
+const endCondSel = document.getElementById('endCond');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── BUCKLING PHYSICS ──────────────────────────────────────
+function computeBuckling(){
+  const mat = MATERIALS[S.material];
+  const b = S.b / 1000; // m
+  const h = S.h / 1000; // m
+  // Weak axis: buckling about the axis with smaller I
+  const Ix = b * h*h*h / 12;  // m⁴
+  const Iy = h * b*b*b / 12;
+  const Imin = Math.min(Ix, Iy);
+  const A = b * h;
+  const r = Math.sqrt(Imin / A); // radius of gyration
+  const K = K_FACTORS[S.endCond];
+  const Le = K * S.L; // effective length
+  const Pcr = Math.PI*Math.PI * mat.E * Imin / (Le*Le); // N
+  const sigmaCr = Pcr / A; // Pa
+  const sigmaApp = (S.P * 1000) / A; // Pa
+  const slenderness = Le / r;
+  const ratio = (S.P * 1000) / Pcr;
+  const sf = Pcr / Math.max(S.P * 1000, 1);
+  return { Imin, Ix, Iy, A, r, Pcr, sigmaCr, sigmaApp, slenderness, ratio, sf, K, Le, mat, bucklingAxis: Ix <= Iy ? 'x' : 'y' };
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  const p = computeBuckling();
+  drawColumn(W, H, p);
+  drawColumnCurve(W, H, p);
+  drawEndConditions(W, H, p);
+}
+
+function drawColumn(W, H, p){
+  const cx = W * 0.45;
+  const colTop = 90;
+  const colBot = H - 90;
+  const colH = colBot - colTop;
+
+  // ground line
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx - 200, colBot);
+  ctx.lineTo(cx + 200, colBot);
+  ctx.stroke();
+
+  // deflection shape (mode 1)
+  const ratio = p.ratio;
+  const buckleAmount = S.bucklingInitiated ? 
+    Math.min(90, 90 * Math.min(1, (ratio - 1) + S.lateral * 0.01)) : 
+    Math.min(15, S.lateral);
+  const lateral = buckleAmount + (S.imperfection ? 5 : 0);
+
+  // column shape
+  const N = 60;
+  const colWidth = Math.max(12, Math.min(30, S.b * 0.25));
+
+  // Draw deformed column
+  ctx.beginPath();
+  ctx.lineWidth = colWidth;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = ratio > 1 ? '#ef4444' : ratio > 0.7 ? '#f59e0b' : p.mat.color;
+  if(ratio > 1){
+    ctx.shadowColor = '#ef4444';
+    ctx.shadowBlur = 15;
+  }
+
+  for(let i=0;i<=N;i++){
+    const t = i/N;
+    const y = colTop + t * colH;
+    const yNorm = 1 - t;
+    let offsetX = 0;
+    // buckling mode shape depends on end condition
+    if(S.endCond === 'pinned-pinned'){
+      offsetX = lateral * Math.sin(Math.PI * t);
+    } else if(S.endCond === 'fixed-fixed'){
+      offsetX = lateral * 0.5 * (1 - Math.cos(2*Math.PI*t));
+    } else if(S.endCond === 'fixed-pinned'){
+      offsetX = lateral * Math.sin(Math.PI * t / 2 / 0.7) * 0.8;
+    } else {
+      offsetX = lateral * 0.5 * (1 - Math.cos(Math.PI * t / 2));
+    }
+    const x = cx + offsetX;
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // undeformed axis
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4,4]);
+  ctx.beginPath();
+  ctx.moveTo(cx, colTop);
+  ctx.lineTo(cx, colBot);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // End supports
+  drawSupports(cx, colTop, colBot, colWidth, lateral);
+
+  // Applied load arrows
+  drawLoadArrow(cx, colTop - 20, S.P, lateral);
+
+  // Stress indicator: cross-section mini-view
+  drawStressBadge(W, H, p);
+
+  // Buckling indicator annotation
+  if(S.bucklingInitiated){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 14px Consolas, monospace';
+    ctx.fillText('⚠ BUCKLING!', cx + lateral + 30, H/2);
+  }
+}
+
+function drawSupports(cx, colTop, colBot, colWidth, lateral){
+  const w = colWidth;
+  const offTop = S.endCond === 'pinned-pinned' || S.endCond === 'fixed-pinned' ? lateral * Math.sin(0) : 
+                 S.endCond === 'fixed-fixed' ? 0 : 0;
+  const topX = cx + (S.endCond === 'fixed-fixed' || S.endCond === 'pinned-pinned' ? 0 : 0);
+  const botX = cx + (S.endCond === 'pinned-pinned' ? 0 : 0);
+
+  ctx.strokeStyle = '#64748b';
+  ctx.fillStyle = '#64748b';
+
+  if(S.endCond === 'pinned-pinned'){
+    // triangle at top
+    ctx.beginPath();
+    ctx.moveTo(cx, colTop - 8);
+    ctx.lineTo(cx - 12, colTop - 22);
+    ctx.lineTo(cx + 12, colTop - 22);
+    ctx.closePath();
+    ctx.fill();
+    // triangle at bottom
+    ctx.beginPath();
+    ctx.moveTo(cx, colBot + 8);
+    ctx.lineTo(cx - 12, colBot + 22);
+    ctx.lineTo(cx + 12, colBot + 22);
+    ctx.closePath();
+    ctx.fill();
+  } else if(S.endCond === 'fixed-fixed'){
+    // wall hashes top
+    for(let i=0;i<7;i++){
+      const x = cx - 40 + i*13;
+      ctx.strokeStyle = '#475569';
+      ctx.beginPath();
+      ctx.moveTo(x, colTop - 12);
+      ctx.lineTo(x + 10, colTop - 22);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#64748b';
+    ctx.beginPath();
+    ctx.moveTo(cx - 45, colTop - 12);
+    ctx.lineTo(cx + 45, colTop - 12);
+    ctx.stroke();
+    // bottom
+    for(let i=0;i<7;i++){
+      const x = cx - 40 + i*13;
+      ctx.beginPath();
+      ctx.moveTo(x, colBot + 12);
+      ctx.lineTo(x + 10, colBot + 22);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(cx - 45, colBot + 12);
+    ctx.lineTo(cx + 45, colBot + 12);
+    ctx.stroke();
+  } else if(S.endCond === 'fixed-pinned'){
+    for(let i=0;i<7;i++){
+      const x = cx - 40 + i*13;
+      ctx.strokeStyle = '#475569';
+      ctx.beginPath();
+      ctx.moveTo(x, colTop - 12);
+      ctx.lineTo(x + 10, colTop - 22);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(cx, colBot + 8);
+    ctx.lineTo(cx - 12, colBot + 22);
+    ctx.lineTo(cx + 12, colBot + 22);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    // fixed-free: fixed at bottom, free at top
+    for(let i=0;i<7;i++){
+      const x = cx - 40 + i*13;
+      ctx.strokeStyle = '#475569';
+      ctx.beginPath();
+      ctx.moveTo(x, colBot + 12);
+      ctx.lineTo(x + 10, colBot + 22);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(cx - 45, colBot + 12);
+    ctx.lineTo(cx + 45, colBot + 12);
+    ctx.stroke();
+    // free top - just a small marker
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(cx + lateral, colTop - 10, 4, 0, Math.PI*2);
+    ctx.fill();
+    ctx.font = '10px Consolas, monospace';
+    ctx.fillText('FREE', cx + lateral + 10, colTop - 8);
+  }
+}
+
+function drawLoadArrow(cx, y, P, lateral){
+  const scl = Math.min(1, P / 3000);
+  const arrowLen = 20 + scl * 30;
+  const offset = lateral;
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx + offset, y - arrowLen);
+  ctx.lineTo(cx + offset, y - 10);
+  ctx.stroke();
+  // arrowhead
+  ctx.fillStyle = '#fbbf24';
+  ctx.beginPath();
+  ctx.moveTo(cx + offset, y);
+  ctx.lineTo(cx + offset - 8, y - 14);
+  ctx.lineTo(cx + offset + 8, y - 14);
+  ctx.closePath();
+  ctx.fill();
+  // label
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(P + ' kN', cx + offset, y - arrowLen - 8);
+  ctx.textAlign = 'left';
+}
+
+function drawStressBadge(W, H, p){
+  // small cross section at side
+  const x = W - 160, y = H - 100;
+  ctx.save();
+  ctx.translate(x, y);
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('CROSS-SECTION', 0, -6);
+
+  const ratio = Math.min(1.5, S.b / 200);
+  const bw = 30 + S.b * 0.3;
+  const bh = 30 + S.h * 0.3;
+
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(0, 0, bw, bh);
+
+  const stressRatio = p.sigmaApp / p.mat.sigmaYield;
+  const col = stressRatio > 1 ? '#ef4444' : stressRatio > 0.7 ? '#f59e0b' : '#22d3ee';
+  ctx.fillStyle = col + '44';
+  ctx.fillRect(0, 0, bw, bh);
+
+  // weak axis indicator
+  ctx.strokeStyle = '#fbbf24';
+  ctx.setLineDash([3,2]);
+  const weakIsX = p.Ix <= p.Iy;
+  if(weakIsX){
+    ctx.beginPath();
+    ctx.moveTo(-5, bh/2);
+    ctx.lineTo(bw+5, bh/2);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(bw/2, -5);
+    ctx.lineTo(bw/2, bh+5);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = '8px Consolas, monospace';
+  ctx.fillText('weak axis', 0, bh + 14);
+
+  ctx.restore();
+}
+
+function drawColumnCurve(W, H, p){
+  // P vs deflection curve at top right
+  const ox = W - 240, oy = 70;
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('P vs LATERAL DEFLECTION', 0, -6);
+
+  const w = 180, h = 120;
+
+  ctx.strokeStyle = '#1e293b';
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  ctx.lineTo(w, h);
+  ctx.moveTo(0, h);
+  ctx.lineTo(0, 0);
+  ctx.stroke();
+
+  // ideal Euler curve: horizontal line at Pcr
+  const pcrNorm = 1;
+  const pcrY = h - pcrNorm * h * 0.7;
+  ctx.strokeStyle = '#4ade80';
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  ctx.moveTo(0, pcrY);
+  ctx.lineTo(w, pcrY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('P_cr (Euler)', 4, pcrY - 4);
+
+  // Real curve (with imperfection): asymptotic to Pcr
+  const maxRatio = Math.min(1.15, p.ratio);
+  ctx.strokeStyle = maxRatio > 1 ? '#ef4444' : '#22d3ee';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let i=0;i<=60;i++){
+    const dNorm = i / 60;
+    const pNorm = maxRatio * 0.98 * (1 - Math.exp(-3 * dNorm));
+    const X = dNorm * w * 0.9;
+    const Y = h - pNorm * h * 0.7;
+    if(i===0) ctx.moveTo(X, Y);
+    else ctx.lineTo(X, Y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('P', -12, 8);
+  ctx.fillText('δ (lateral)', w - 50, h + 14);
+  ctx.restore();
+}
+
+function drawEndConditions(W, H, p){
+  // End condition info panel
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px Consolas, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('K = ' + p.K, 30, 40);
+  ctx.fillText('Le = ' + p.Le.toFixed(2) + ' m', 30, 56);
+  ctx.fillText('I_min = ' + (p.Imin * 1e12).toFixed(2) + ' ×10⁶ mm⁴', 30, 72);
+  ctx.fillText('r = ' + (p.r * 1000).toFixed(2) + ' mm', 30, 88);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const p = computeBuckling();
+  document.querySelector('#mPcr .mvalue').innerHTML = (p.Pcr/1000).toFixed(1) + '<span class="munit">kN</span>';
+  document.querySelector('#mRatio .mvalue').textContent = p.ratio.toFixed(2);
+  document.querySelector('#mSlender .mvalue').textContent = p.slenderness.toFixed(0);
+  document.querySelector('#mSigma .mvalue').innerHTML = (p.sigmaApp/1e6).toFixed(1) + '<span class="munit">MPa</span>';
+  document.querySelector('#mI .mvalue').innerHTML = (p.Imin*1e12).toFixed(2) + '<span class="munit">×10⁶</span>';
+  document.querySelector('#mSF .mvalue').textContent = p.sf > 100 ? '∞' : p.sf.toFixed(2);
+
+  document.getElementById('mPcr').className = 'metric' + (p.ratio > 1 ? ' bad' : p.ratio > 0.7 ? ' warn' : ' ok');
+  document.getElementById('mRatio').className = 'metric' + (p.ratio > 1 ? ' bad' : p.ratio > 0.7 ? ' warn' : ' ok');
+  document.getElementById('mSF').className = 'metric' + (p.sf < 1 ? ' bad' : p.sf < 2 ? ' warn' : ' ok');
+  document.getElementById('mSigma').className = 'metric' + (p.sigmaApp > p.mat.sigmaYield ? ' bad' : p.sigmaApp > p.mat.sigmaYield*0.7 ? ' warn' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  S.time += 1/60;
+
+  if(S.bucklingInitiated){
+    // Column continues to deflect after buckling (post-buckling oscillation)
+    const p = computeBuckling();
+    if(p.ratio > 1){
+      S.lateral += 0.4 * Math.min(1, p.ratio - 1);
+      S.lateral = Math.min(S.lateral, 200);
+    }
+  } else if(S.imperfection){
+    // Small residual lateral from initial imperfection
+    S.lateral = 3 + Math.sin(S.time * 2) * 1.5;
+  } else {
+    S.lateral *= 0.95;
+  }
+
+  // Auto-threshold teaching
+  if(Math.floor(S.time) !== Math.floor(S.time - 1/60)){
+    const p = computeBuckling();
+    if(p.ratio >= 1 && !S.bucklingInitiated && S.loadPhase > 0){
+      S.bucklingInitiated = true;
+      teach('BUCKLING', 'Critical load reached! P = ' + S.P + ' kN equals P_cr = ' + (p.Pcr/1000).toFixed(1) + ' kN. The column is now unstable — it will deflect sideways without any increase in load. This is a STABILITY failure, not a strength failure.', 'error');
+      toast('⚠ Buckling!');
+    }
+  }
+
+  render();
+  if(ts - lastMetrics > 80){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+endCondSel.addEventListener('change', e => {
+  S.endCond = e.target.value;
+  const K = K_FACTORS[S.endCond];
+  teach('SUPPORTS', 'End condition set: ' + e.target.options[e.target.selectedIndex].text + '. K = ' + K + ' — the effective length factor. Fixed ends resist rotation, forcing a shorter effective length and higher buckling load.', 'concept');
+});
+
+lenSlider.addEventListener('input', e => {
+  S.L = parseFloat(e.target.value);
+  document.getElementById('lenVal').textContent = S.L.toFixed(1) + ' m';
+});
+
+widthSlider.addEventListener('input', e => {
+  S.b = parseFloat(e.target.value);
+  document.getElementById('widthVal').textContent = S.b + ' mm';
+});
+
+heightSlider.addEventListener('input', e => {
+  S.h = parseFloat(e.target.value);
+  document.getElementById('heightVal').textContent = S.h + ' mm';
+});
+
+loadSlider.addEventListener('input', e => {
+  S.P = parseFloat(e.target.value);
+  document.getElementById('loadVal').textContent = S.P + ' kN';
+  if(S.P * 1000 > computeBuckling().Pcr){
+    // will trigger on next loop tick
+  } else {
+    S.bucklingInitiated = false;
+  }
+});
+
+matSelect.addEventListener('change', e => {
+  S.material = e.target.value;
+  const mat = MATERIALS[S.material];
+  teach('MATERIAL', 'Material: ' + mat.name + ' with E = ' + (mat.E/1e9).toFixed(0) + ' GPa. The higher E, the stiffer the column and the higher the buckling load. P_cr is proportional to E.', 'concept');
+});
+
+playBtn.addEventListener('click', () => {
+  S.loadPhase = S.loadPhase > 0 ? 0 : 1;
+  if(S.loadPhase === 1){
+    S.bucklingInitiated = false;
+    const p = computeBuckling();
+    teach('LOAD', 'Applying P = ' + S.P + ' kN. Critical load is ' + (p.Pcr/1000).toFixed(1) + ' kN. Ratio P/P_cr = ' + p.ratio.toFixed(2) + '. ' + (p.ratio >= 1 ? 'WARNING: load exceeds critical!' : 'Safe margin available.'), p.ratio >= 1 ? 'error' : 'info');
+    if(p.ratio >= 1) S.bucklingInitiated = true;
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  const p = computeBuckling();
+  if(p.ratio >= 1 && !S.bucklingInitiated){
+    S.bucklingInitiated = true;
+    teach('STEP', 'Step triggered buckling! Lateral deflection growing. Check the P-δ curve — past P_cr the deflection becomes unbounded for the ideal column.', 'error');
+  } else {
+    S.lateral += 5;
+    teach('STEP', 'Applied lateral nudge. P/P_cr = ' + p.ratio.toFixed(2) + '. Column response: ' + (p.ratio >= 1 ? 'unstable — deflection grows' : 'stable — returns to straight'), 'info');
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  S.L = 3; S.b = 80; S.h = 100; S.P = 500;
+  S.material = 'steel'; S.endCond = 'pinned-pinned';
+  S.lateral = 0; S.bucklingInitiated = false; S.imperfection = false;
+  S.loadPhase = 0;
+  lenSlider.value = 3; widthSlider.value = 80; heightSlider.value = 100; loadSlider.value = 500;
+  matSelect.value = 'steel'; endCondSel.value = 'pinned-pinned';
+  document.getElementById('lenVal').textContent = '3.0 m';
+  document.getElementById('widthVal').textContent = '80 mm';
+  document.getElementById('heightVal').textContent = '100 mm';
+  document.getElementById('loadVal').textContent = '500 kN';
+  teach('RESET', 'Reset to default: pinned-pinned steel column, 3 m long, 80×100 mm section. P_cr = ' + (computeBuckling().Pcr/1000).toFixed(0) + ' kN.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('buckleBtn').addEventListener('click', () => {
+  const p = computeBuckling();
+  S.P = Math.ceil(p.Pcr / 1000 * 1.05);
+  loadSlider.value = S.P;
+  document.getElementById('loadVal').textContent = S.P + ' kN';
+  S.bucklingInitiated = true;
+  teach('BUCKLE', 'Load set to 105% of critical: ' + S.P + ' kN. Buckling is now inevitable. In real structures this means collapse — the classic failure mode of slender columns in bridges and buildings.', 'error');
+  toast('⚠ Buckling triggered');
+});
+
+document.getElementById('slenderBtn').addEventListener('click', () => {
+  S.L = 8; S.b = 20; S.h = 20;
+  lenSlider.value = 8; widthSlider.value = 20; heightSlider.value = 20;
+  document.getElementById('lenVal').textContent = '8.0 m';
+  document.getElementById('widthVal').textContent = '20 mm';
+  document.getElementById('heightVal').textContent = '20 mm';
+  const p = computeBuckling();
+  teach('SLENDER', 'Extreme slenderness: L/r = ' + p.slenderness.toFixed(0) + '. Critical stress σ_cr = ' + (p.sigmaCr/1e6).toFixed(1) + ' MPa. Euler formula valid only for slenderness above ~100. Below that, inelastic buckling formulas (Johnson parabola) apply.', 'warn');
+});
+
+document.getElementById('imperfectionBtn').addEventListener('click', () => {
+  S.imperfection = !S.imperfection;
+  if(S.imperfection){
+    teach('IMPERFECTION', 'Added small initial lateral imperfection. Real columns are never perfectly straight — this shifts the load-deflection curve. The column deflects from the start, and buckling is reached asymptotically, never sharply.', 'warn');
+  } else {
+    teach('PERFECT', 'Removed imperfection. Ideal Euler column restored.', 'ok');
+  }
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'column'){
+      S.L = 3; S.b = 300; S.h = 300; S.P = 1500; S.material = 'concrete'; S.endCond = 'pinned-pinned';
+      matSelect.value = 'concrete'; endCondSel.value = 'pinned-pinned';
+      teach('COLUMN', 'Building column: 300×300 mm concrete, 3 m story height. P_cr = ' + (computeBuckling().Pcr/1000).toFixed(0) + ' kN. Real building columns are also checked against slenderness effects.', 'concept');
+    } else if(p === 'piston'){
+      S.L = 1.2; S.b = 30; S.h = 30; S.P = 60; S.material = 'steel'; S.endCond = 'fixed-free';
+      matSelect.value = 'steel'; endCondSel.value = 'fixed-free';
+      teach('PISTON', 'Piston rod: fixed at piston, free at crosshead. K = 2.0 is the worst case. Rods are made from high-strength steel and kept short to avoid buckling under compression strokes.', 'concept');
+    } else if(p === 'strut'){
+      S.L = 2; S.b = 50; S.h = 50; S.P = 100; S.material = 'aluminum'; S.endCond = 'fixed-pinned';
+      matSelect.value = 'aluminum'; endCondSel.value = 'fixed-pinned';
+      teach('STRUT', 'Truss strut: fixed at one end, pinned at other. K = 0.7. Aluminum is chosen for weight — aircraft trusses use exactly this configuration.', 'concept');
+    }
+    lenSlider.value = S.L; widthSlider.value = S.b; heightSlider.value = S.h; loadSlider.value = S.P;
+    document.getElementById('lenVal').textContent = S.L.toFixed(1) + ' m';
+    document.getElementById('widthVal').textContent = S.b + ' mm';
+    document.getElementById('heightVal').textContent = S.h + ' mm';
+    document.getElementById('loadVal').textContent = S.P + ' kN';
+    S.bucklingInitiated = false;
+    S.lateral = 0;
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Euler Buckling. Buckling is a stability failure — a slender column under axial compression suddenly bows sideways, long before the material crushes.', 'concept');
+  teach('EULER', 'Euler\'s formula: P_cr = π²·E·I / (K·L)². Doubling the length quarters the buckling load. Using a larger moment of inertia (I) helps enormously — that is why columns are shaped, not solid.', 'concept');
+  teach('HOWTO', 'Set end conditions, dimensions and load. Press APPLY LOAD and use the presets or fault buttons. Watch how P/P_cr crossing 1.0 initiates the buckling response.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

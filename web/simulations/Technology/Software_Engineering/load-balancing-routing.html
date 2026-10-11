@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Load Balancing &amp; Traffic Routing — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(59,130,246,0.15);
+    color: #93c5fd;
+    border-color: #3b82f6;
+  }
+  .teaching-toggle:hover { background: rgba(59,130,246,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #93c5fd;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #3b82f6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .btn.primary:hover { background: #2563eb; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #93c5fd; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #3b82f6; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(59,130,246,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* ALGORITHM HEADER */
+  .algo-header {
+    background: #070a14;
+    border: 2px solid #3b82f6;
+    border-radius: 12px;
+    padding: 12px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 0 25px rgba(59,130,246,0.15);
+    flex-shrink: 0;
+  }
+  .algo-title {
+    font-family: monospace;
+    font-size: 0.85rem;
+    font-weight: 900;
+    letter-spacing: 2px;
+    color: #93c5fd;
+    text-transform: uppercase;
+  }
+  .algo-desc {
+    font-family: monospace;
+    font-size: 0.6rem;
+    color: #64748b;
+    letter-spacing: 0.5px;
+    margin-top: 3px;
+  }
+
+  .stats-inline {
+    display: flex;
+    gap: 20px;
+    font-family: monospace;
+    font-size: 0.62rem;
+  }
+  .stat-inline .stat-item {
+    color: #64748b;
+    letter-spacing: 0.5px;
+  }
+  .stat-inline .stat-item .val {
+    color: #93c5fd;
+    font-weight: 900;
+    font-size: 0.85rem;
+    display: block;
+    margin-top: 2px;
+  }
+
+  /* MAIN CANVAS */
+  .lb-canvas-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(139,92,246,0.15);
+    min-height: 0;
+  }
+  .lb-canvas-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #lbCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+  }
+
+  /* SERVER STATS */
+  .servers-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .server-card {
+    background: #070a14;
+    border: 2px solid #10b981;
+    border-radius: 10px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: all 0.3s;
+    box-shadow: 0 0 15px rgba(16,185,129,0.15);
+    min-height: 0;
+  }
+  .server-card.degraded {
+    border-color: #f59e0b;
+    box-shadow: 0 0 15px rgba(245,158,11,0.3);
+  }
+  .server-card.down {
+    border-color: #ef4444;
+    box-shadow: 0 0 15px rgba(239,68,68,0.4);
+    opacity: 0.6;
+  }
+
+  .server-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .server-name {
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 1.2px;
+    font-family: monospace;
+    color: #6ee7b7;
+  }
+  .server-card.degraded .server-name { color: #fcd34d; }
+  .server-card.down .server-name { color: #fca5a5; }
+
+  .server-badge {
+    font-size: 0.5rem;
+    font-weight: 900;
+    padding: 1px 5px;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+    font-family: monospace;
+    background: rgba(16,185,129,0.2);
+    color: #6ee7b7;
+  }
+  .server-card.degraded .server-badge {
+    background: rgba(245,158,11,0.2);
+    color: #fcd34d;
+  }
+  .server-card.down .server-badge {
+    background: rgba(239,68,68,0.2);
+    color: #fca5a5;
+  }
+
+  .server-stat-row {
+    display: flex;
+    justify-content: space-between;
+    font-family: monospace;
+    font-size: 0.55rem;
+    color: #64748b;
+    letter-spacing: 0.3px;
+  }
+  .server-stat-row .val { color: #cbd5e1; font-weight: 900; }
+  .server-card .load-bar {
+    height: 6px;
+    background: #02040a;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 2px;
+    border: 1px solid #1e293b;
+  }
+  .server-card .load-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #3b82f6);
+    transition: width 0.4s;
+    box-shadow: 0 0 6px rgba(59,130,246,0.5);
+  }
+  .server-card.degraded .load-fill {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(59,130,246,0.06);
+    border: 1px solid rgba(59,130,246,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #93c5fd;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #3b82f6;
+    background: rgba(59,130,246,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(59,130,246,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(59,130,246,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #93c5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #3b82f6;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(59,130,246,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #3b82f6;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #93c5fd;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(59,130,246,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>LOAD BALANCING &amp; TRAFFIC ROUTING</h1>
+    <span class="sub">ALGORITHMS · HEALTH CHECKS · STICKY SESSIONS</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Traffic Control</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 100 Requests</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset Stats</button>
+    </div>
+
+    <div class="panel">
+      <h3>Algorithm</h3>
+      <select id="algoSelect" style="width:100%; padding:8px; background:#02040a; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="roundrobin" selected>🔄 Round Robin</option>
+        <option value="weighted">⚖️ Weighted Round Robin</option>
+        <option value="leastconn">📊 Least Connections</option>
+        <option value="iphash">🔑 IP Hash (sticky)</option>
+        <option value="random">🎲 Random</option>
+        <option value="p2c">⚡ Power of 2 Choices</option>
+      </select>
+    </div>
+
+    <div class="panel">
+      <h3>Server Faults</h3>
+      <button class="btn warn" id="btnDegrade">🐌 Degrade a Server</button>
+      <button class="btn danger" id="btnKill">💀 Kill a Server</button>
+      <button class="btn success" id="btnHeal">🔄 Heal All</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Shape</h3>
+      <div class="slider-row"><span>Requests / sec</span><span class="value" id="rpsVal">8</span></div>
+      <input type="range" id="rpsRange" min="1" max="40" value="8">
+      <div class="slider-row"><span>Server count</span><span class="value" id="srvVal">4</span></div>
+      <input type="range" id="srvRange" min="2" max="6" value="4">
+      <div class="slider-row"><span>Session affinity</span><span class="value" id="sessVal">OFF</span></div>
+      <input type="range" id="sessRange" min="0" max="1" value="0">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #10b981;border-radius:50%;margin-right:6px;"></span>Healthy</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #f59e0b;border-radius:50%;margin-right:6px;"></span>Degraded</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #ef4444;border-radius:50%;margin-right:6px;"></span>Down</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #3b82f6;border-radius:50%;margin-right:6px;"></span>Load Balancer</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">CLIENT → LOAD BALANCER → SERVER POOL</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="algo-header">
+          <div>
+            <div class="algo-title" id="algoTitle">ROUND ROBIN</div>
+            <div class="algo-desc" id="algoDesc">Cycles through servers in order</div>
+          </div>
+          <div class="stats-inline">
+            <div class="stat-item">Total<span class="val" id="statTotal">0</span></div>
+            <div class="stat-item">Rate<span class="val" id="statRate">0/s</span></div>
+            <div class="stat-item">Errors<span class="val" id="statErrors">0</span></div>
+          </div>
+        </div>
+
+        <div class="lb-canvas-wrap">
+          <div class="lb-canvas-title">
+            <span>⚖️ LIVE TRAFFIC FLOW</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="lbHint">— round robin —</span>
+          </div>
+          <canvas id="lbCanvas"></canvas>
+        </div>
+
+        <div class="servers-grid" id="serversGrid"></div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Total Requests</div>
+        <div class="metric-value" id="mTotal">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Throughput</div>
+        <div class="metric-value good" id="mThroughput">0/s</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Load Skew</div>
+        <div class="metric-value" id="mSkew">0.0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Errors</div>
+        <div class="metric-value bad" id="mErrors">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 LB Algorithms</div>
+      <div class="info-row"><span class="lbl">Round Robin</span><span class="val good">Simple, even</span></div>
+      <div class="info-row"><span class="lbl">Weighted RR</span><span class="val">Powerful ≠ capacity</span></div>
+      <div class="info-row"><span class="lbl">Least Conn</span><span class="val good">Best for slow calls</span></div>
+      <div class="info-row"><span class="lbl">IP Hash</span><span class="val warn">Sticky sessions</span></div>
+      <div class="info-row"><span class="lbl">P2C</span><span class="val">Great at scale</span></div>
+      <div class="info-row"><span class="lbl">Health checks</span><span class="val">Remove dead</span></div>
+      <div class="info-row"><span class="lbl">Layer 4 vs 7</span><span class="val">TCP vs HTTP</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  algorithm: 'roundrobin',
+  rps: 8,
+  serverCount: 4,
+  sessionAffinity: 0,
+  running: false,
+  totalRequests: 0,
+  errors: 0,
+  // Servers
+  servers: [],
+  // Round robin index
+  rrIndex: 0,
+  // Particles
+  particles: [],
+  // Timers
+  tickTimer: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  // Rate tracking
+  rateWindow: [],
+  lastRateCalc: Date.now()
+};
+
+const DOM = {
+  lbCanvas: document.getElementById('lbCanvas'),
+  lbHint: document.getElementById('lbHint'),
+  serversGrid: document.getElementById('serversGrid'),
+  algoTitle: document.getElementById('algoTitle'),
+  algoDesc: document.getElementById('algoDesc'),
+  statTotal: document.getElementById('statTotal'),
+  statRate: document.getElementById('statRate'),
+  statErrors: document.getElementById('statErrors'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Controls
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnReset: document.getElementById('btnReset'),
+  btnDegrade: document.getElementById('btnDegrade'),
+  btnKill: document.getElementById('btnKill'),
+  btnHeal: document.getElementById('btnHeal'),
+  algoSelect: document.getElementById('algoSelect'),
+  rpsRange: document.getElementById('rpsRange'),
+  rpsVal: document.getElementById('rpsVal'),
+  srvRange: document.getElementById('srvRange'),
+  srvVal: document.getElementById('srvVal'),
+  sessRange: document.getElementById('sessRange'),
+  sessVal: document.getElementById('sessVal'),
+  // Metrics
+  mTotal: document.getElementById('mTotal'),
+  mThroughput: document.getElementById('mThroughput'),
+  mSkew: document.getElementById('mSkew'),
+  mErrors: document.getElementById('mErrors'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg) {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.classList.add('show');
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2400);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining load balancing and traffic routing.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(text);
+}
+
+/* ============================================================
+   SERVERS
+   ============================================================ */
+function buildServers() {
+  STATE.servers = [];
+  for (let i = 0; i < STATE.serverCount; i++) {
+    STATE.servers.push({
+      id: i,
+      name: 'Server-' + (i + 1),
+      state: 'healthy',  // healthy | degraded | down
+      weight: 1,         // for weighted RR
+      activeConns: 0,
+      totalReqs: 0,
+      load: 0,           // 0..1
+      color: ['#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#06b6d4'][i]
+    });
+  }
+  // Assign weights for weighted RR
+  if (STATE.servers[0]) STATE.servers[0].weight = 3;
+  if (STATE.servers[1]) STATE.servers[1].weight = 2;
+  if (STATE.servers[2]) STATE.servers[2].weight = 2;
+  if (STATE.servers[3]) STATE.servers[3].weight = 1;
+  renderServers();
+}
+
+function renderServers() {
+  DOM.serversGrid.innerHTML = '';
+  for (const s of STATE.servers) {
+    const card = document.createElement('div');
+    card.className = `server-card ${s.state === 'degraded' ? 'degraded' : s.state === 'down' ? 'down' : ''}`;
+    card.innerHTML = `
+      <div class="server-head">
+        <span class="server-name">${s.name}</span>
+        <span class="server-badge">${s.state === 'healthy' ? 'UP' : s.state === 'degraded' ? 'SLOW' : 'DOWN'}</span>
+      </div>
+      <div class="server-stat-row"><span>Requests</span><span class="val">${s.totalReqs}</span></div>
+      <div class="server-stat-row"><span>Active</span><span class="val">${s.activeConns}</span></div>
+      <div class="load-bar"><div class="load-fill" style="width:${s.load * 100}%"></div></div>
+    `;
+    DOM.serversGrid.appendChild(card);
+  }
+}
+
+/* ============================================================
+   LOAD BALANCING ALGORITHMS
+   ============================================================ */
+function pickServer() {
+  const healthy = STATE.servers.filter(s => s.state !== 'down');
+  if (healthy.length === 0) return null;
+
+  switch (STATE.algorithm) {
+    case 'roundrobin': {
+      const idx = STATE.rrIndex % healthy.length;
+      STATE.rrIndex++;
+      return healthy[idx];
+    }
+    case 'weighted': {
+      // Build weighted list, pick round-robin through it
+      const weightedList = [];
+      for (const s of healthy) {
+        for (let i = 0; i < s.weight; i++) weightedList.push(s);
+      }
+      const idx = STATE.rrIndex % weightedList.length;
+      STATE.rrIndex++;
+      return weightedList[idx];
+    }
+    case 'leastconn': {
+      return healthy.reduce((min, s) => s.activeConns < min.activeConns ? s : min, healthy[0]);
+    }
+    case 'iphash': {
+      // Simulate sticky sessions: use a rotating "client ip" hash
+      const fakeIp = Math.floor(Math.random() * 1000);
+      return healthy[fakeIp % healthy.length];
+    }
+    case 'random': {
+      return healthy[Math.floor(Math.random() * healthy.length)];
+    }
+    case 'p2c': {
+      // Pick 2 random, choose the one with less load
+      if (healthy.length === 1) return healthy[0];
+      const a = healthy[Math.floor(Math.random() * healthy.length)];
+      let b = healthy[Math.floor(Math.random() * healthy.length)];
+      while (b === a && healthy.length > 1) {
+        b = healthy[Math.floor(Math.random() * healthy.length)];
+      }
+      return a.load < b.load ? a : b;
+    }
+  }
+  return healthy[0];
+}
+
+/* ============================================================
+   ROUTE REQUEST
+   ============================================================ */
+function routeRequest() {
+  const server = pickServer();
+  if (!server) {
+    STATE.errors++;
+    DOM.statErrors.textContent = STATE.errors;
+    return;
+  }
+
+  STATE.totalRequests++;
+  server.totalReqs++;
+  server.activeConns++;
+
+  if (server.state === 'degraded') {
+    // Slower: stays connected longer
+    server.load = Math.min(1, server.load + 0.15);
+    setTimeout(() => {
+      server.activeConns = Math.max(0, server.activeConns - 1);
+      server.load = Math.max(0, server.load - 0.1);
+      renderServers();
+    }, 1500);
+  } else {
+    server.load = Math.min(1, server.load + 0.08);
+    setTimeout(() => {
+      server.activeConns = Math.max(0, server.activeConns - 1);
+      server.load = Math.max(0, server.load - 0.05);
+      renderServers();
+    }, 300);
+  }
+
+  // Track rate
+  STATE.rateWindow.push(Date.now());
+
+  // Spawn particle
+  spawnParticle(server);
+
+  // Update stats
+  DOM.statTotal.textContent = STATE.totalRequests;
+  DOM.mTotal.textContent = STATE.totalRequests;
+  renderServers();
+  updateMetrics();
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  // Compute rate: count in last second
+  const cutoff = Date.now() - 1000;
+  STATE.rateWindow = STATE.rateWindow.filter(t => t > cutoff);
+  const rate = STATE.rateWindow.length;
+  DOM.statRate.textContent = rate + '/s';
+  DOM.mThroughput.textContent = rate + '/s';
+
+  // Load skew: stddev of loads
+  const loads = STATE.servers.filter(s => s.state !== 'down').map(s => s.load);
+  const avg = loads.length ? loads.reduce((a, b) => a + b, 0) / loads.length : 0;
+  const variance = loads.length ? loads.reduce((a, l) => a + Math.pow(l - avg, 2), 0) / loads.length : 0;
+  const stddev = Math.sqrt(variance);
+  DOM.mSkew.textContent = stddev.toFixed(2);
+  DOM.mSkew.className = 'metric-value ' + (stddev > 0.15 ? 'bad' : stddev > 0.08 ? 'warn' : 'good');
+
+  DOM.mErrors.textContent = STATE.errors;
+  DOM.mErrors.className = 'metric-value ' + (STATE.errors === 0 ? 'good' : STATE.errors < 5 ? 'warn' : 'bad');
+}
+
+/* ============================================================
+   CANVAS — main visualization
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.lbCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function spawnParticle(server) {
+  const canvas = DOM.lbCanvas;
+  if (!canvas._w) return;
+
+  const W = canvas._w;
+  const H = canvas._h;
+  const lbX = W * 0.5;
+  const lbY = H * 0.15;
+
+  const serverPositions = getServerPositions();
+  const target = serverPositions[STATE.servers.indexOf(server)];
+  if (!target) return;
+
+  STATE.particles.push({
+    x: lbX,
+    y: lbY,
+    startX: lbX,
+    startY: lbY,
+    targetX: target.x,
+    targetY: target.y,
+    progress: 0,
+    speed: 0.06,
+    color: server.color,
+    serverId: server.id
+  });
+}
+
+function getServerPositions() {
+  const canvas = DOM.lbCanvas;
+  if (!canvas._w) return [];
+  const W = canvas._w;
+  const H = canvas._h;
+  const count = STATE.servers.length;
+  const positions = [];
+
+  for (let i = 0; i < count; i++) {
+    const x = W * (i + 1) / (count + 1);
+    const y = H * 0.75;
+    positions.push({ x, y });
+  }
+  return positions;
+}
+
+function drawCanvas() {
+  const canvas = DOM.lbCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw clients on left
+  const clientX = 30;
+  const clientYs = [H * 0.3, H * 0.5, H * 0.7];
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(clientX, clientYs[i], 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('👤', clientX, clientYs[i] + 4);
+  }
+
+  // Draw load balancer in center-top
+  const lbX = W * 0.5;
+  const lbY = H * 0.15;
+  const lbR = 30;
+  ctx.fillStyle = '#0f172a';
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(lbX, lbY, lbR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = '16px monospace';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('⚖️', lbX, lbY + 6);
+  ctx.font = 'bold 9px monospace';
+  ctx.fillStyle = '#93c5fd';
+  ctx.fillText('LOAD BALANCER', lbX, lbY + lbR + 14);
+  ctx.font = 'bold 8px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(STATE.algorithm.toUpperCase(), lbX, lbY + lbR + 26);
+
+  // Edges: clients → LB
+  for (const cy of clientYs) {
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(clientX + 14, cy);
+    ctx.quadraticCurveTo(clientX + 100, cy, lbX - 30, lbY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Edges: LB → servers
+  const serverPositions = getServerPositions();
+  for (let i = 0; i < STATE.servers.length; i++) {
+    const s = STATE.servers[i];
+    const pos = serverPositions[i];
+    if (!pos) continue;
+
+    const isDead = s.state === 'down';
+    ctx.strokeStyle = isDead ? '#7f1d1d' : s.color;
+    ctx.lineWidth = isDead ? 1 : 1.5;
+    ctx.setLineDash(isDead ? [2, 4] : [5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(lbX + 30, lbY);
+    ctx.quadraticCurveTo((lbX + pos.x) / 2, (lbY + pos.y) / 2, pos.x, pos.y - 24);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Draw servers
+  for (let i = 0; i < STATE.servers.length; i++) {
+    const s = STATE.servers[i];
+    const pos = serverPositions[i];
+    if (!pos) continue;
+
+    const r = 24 + s.load * 8;
+
+    // Glow based on load
+    if (s.load > 0.5) {
+      ctx.shadowColor = s.color;
+      ctx.shadowBlur = 20;
+    }
+
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = s.state === 'down' ? '#ef4444' : s.state === 'degraded' ? '#f59e0b' : s.color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Load arc
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r + 5, -Math.PI / 2, -Math.PI / 2 + s.load * Math.PI * 2);
+    ctx.stroke();
+
+    ctx.font = '14px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText(s.state === 'down' ? '💀' : s.state === 'degraded' ? '🐌' : '⚙️', pos.x, pos.y + 5);
+
+    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = s.state === 'down' ? '#fca5a5' : s.state === 'degraded' ? '#fcd34d' : s.color;
+    ctx.fillText(s.name, pos.x, pos.y + r + 15);
+    ctx.font = '8px monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText(`${s.activeConns} active`, pos.x, pos.y + r + 26);
+  }
+
+  // Draw particles
+  for (const p of STATE.particles) {
+    ctx.beginPath();
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 10;
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+function updateParticles() {
+  for (let i = STATE.particles.length - 1; i >= 0; i--) {
+    const p = STATE.particles[i];
+    p.progress += p.speed;
+    if (p.progress >= 1) {
+      STATE.particles.splice(i, 1);
+      continue;
+    }
+    const t = p.progress;
+    const mt = 1 - t;
+    // Add slight curve for visual interest
+    const cx = (p.startX + p.targetX) / 2;
+    const cy = (p.startY + p.targetY) / 2 - 30;
+    p.x = mt * mt * p.startX + 2 * mt * t * cx + t * t * p.targetX;
+    p.y = mt * mt * p.startY + 2 * mt * t * cy + t * t * p.targetY;
+  }
+}
+
+function animate() {
+  updateParticles();
+  drawCanvas();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   FAULT INJECTION
+   ============================================================ */
+function degradeServer() {
+  const healthy = STATE.servers.filter(s => s.state === 'healthy');
+  if (healthy.length === 0) return;
+  const victim = healthy[Math.floor(Math.random() * healthy.length)];
+  victim.state = 'degraded';
+
+  showStatus(`🐌 ${victim.name} is degraded`);
+  teach('DEGRADED SERVER',
+    `${victim.name} is now slow. Watch how the algorithm handles it: Round Robin still sends equal traffic — bad. Least Connections and P2C will route fewer new connections to it because its activeConns grows. This is why health checks + smart algorithms matter.`,
+    'warn'
+  );
+  renderServers();
+}
+
+function killServer() {
+  const alive = STATE.servers.filter(s => s.state !== 'down');
+  if (alive.length <= 1) {
+    showToast('⚠ Cannot kill last server');
+    return;
+  }
+  const victim = alive[Math.floor(Math.random() * alive.length)];
+  victim.state = 'down';
+  victim.load = 0;
+  victim.activeConns = 0;
+
+  showStatus(`💀 ${victim.name} is DOWN`);
+  teach('SERVER DOWN',
+    `${victim.name} crashed. Health checks detect this within seconds and remove it from the pool. The remaining ${alive.length - 1} servers now handle ALL traffic — load increases on each. Real systems often overprovision so that losing one server doesn't push the rest past capacity.`,
+    'error'
+  );
+  renderServers();
+}
+
+function healServers() {
+  for (const s of STATE.servers) {
+    s.state = 'healthy';
+    s.load = 0;
+    s.activeConns = 0;
+  }
+  showToast('🔄 All servers healed');
+  teach('HEALED',
+    `All servers healthy. Load rebalances evenly across the pool. In real systems, this happens automatically — crashed pods restart, health checks pass again, and the LB adds them back to rotation.`,
+    'ok'
+  );
+  renderServers();
+}
+
+/* ============================================================
+   TRAFFIC CONTROL
+   ============================================================ */
+function startTraffic() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.tickTimer);
+    DOM.btnToggle.textContent = '▶ Start Traffic';
+    DOM.btnToggle.classList.remove('danger');
+    DOM.btnToggle.classList.add('primary');
+    showToast('⏸ Traffic stopped');
+    return;
+  }
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+
+  const interval = 1000 / STATE.rps;
+  STATE.tickTimer = setInterval(routeRequest, interval);
+  showToast('▶ Traffic started');
+  teach('TRAFFIC STARTED',
+    `Traffic started at ${STATE.rps} req/s. Algorithm: ${STATE.algorithm.toUpperCase()}. Watch the particles flow from the load balancer to servers. The load bars show each server's relative utilization — good algorithms keep them even.`,
+    'cyan'
+  );
+}
+
+function burst() {
+  for (let i = 0; i < 100; i++) {
+    setTimeout(routeRequest, i * 15);
+  }
+  showToast('⚡ 100-request burst dispatched');
+  teach('BURST',
+    `100 requests dispatched in 1.5 seconds. Bursts test the algorithm's responsiveness — do loads stay even during a spike? Round Robin handles it predictably; IP Hash may create hotspots if many clients share a hash; P2C adapts quickly.`,
+    'warn'
+  );
+}
+
+function resetStats() {
+  STATE.totalRequests = 0;
+  STATE.errors = 0;
+  STATE.rateWindow = [];
+  STATE.rrIndex = 0;
+  STATE.particles = [];
+  for (const s of STATE.servers) {
+    s.totalReqs = 0;
+    s.activeConns = 0;
+    s.load = 0;
+    s.state = 'healthy';
+  }
+  DOM.statTotal.textContent = '0';
+  DOM.statErrors.textContent = '0';
+  DOM.mTotal.textContent = '0';
+  DOM.mErrors.textContent = '0';
+  renderServers();
+  updateMetrics();
+  teach('RESET', 'Stats reset. Servers healed.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnToggle.addEventListener('click', startTraffic);
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnReset.addEventListener('click', resetStats);
+DOM.btnDegrade.addEventListener('click', degradeServer);
+DOM.btnKill.addEventListener('click', killServer);
+DOM.btnHeal.addEventListener('click', healServers);
+
+DOM.algoSelect.addEventListener('change', e => {
+  STATE.algorithm = e.target.value;
+  STATE.rrIndex = 0;
+  const descs = {
+    roundrobin: 'Round Robin: cycles through servers in order. Simple, even distribution — but doesn\'t account for server capacity or current load.',
+    weighted: 'Weighted Round Robin: each server gets a proportion of traffic based on its weight. Useful for heterogeneous hardware (some servers are beefier than others).',
+    leastconn: 'Least Connections: routes to the server with the fewest active connections. Great for long-lived or variable-duration requests — automatically avoids slow servers.',
+    iphash: 'IP Hash: same client IP always goes to the same server. Provides sticky sessions (useful for stateful services) at the cost of uneven distribution.',
+    random: 'Random: picks a server at random. Surprisingly effective at scale, and simple. Not great for small pools.',
+    p2c: 'Power of 2 Choices: pick 2 random servers, route to the one with less load. Great combination of simplicity and adaptability — used by Envoy and NGINX.'
+  };
+  teach('ALGORITHM', descs[STATE.algorithm], 'purple');
+  updateAlgoDisplay();
+});
+
+DOM.rpsRange.addEventListener('input', e => {
+  STATE.rps = parseInt(e.target.value);
+  DOM.rpsVal.textContent = STATE.rps;
+  if (STATE.running) {
+    clearInterval(STATE.tickTimer);
+    STATE.tickTimer = setInterval(routeRequest, 1000 / STATE.rps);
+  }
+});
+
+DOM.srvRange.addEventListener('input', e => {
+  STATE.serverCount = parseInt(e.target.value);
+  DOM.srvVal.textContent = STATE.serverCount;
+  buildServers();
+  STATE.rrIndex = 0;
+});
+
+DOM.sessRange.addEventListener('input', e => {
+  STATE.sessionAffinity = parseInt(e.target.value);
+  DOM.sessVal.textContent = STATE.sessionAffinity ? 'ON' : 'OFF';
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+function updateAlgoDisplay() {
+  const descriptions = {
+    roundrobin: 'Cycles through servers in order',
+    weighted: 'Traffic proportional to server weight',
+    leastconn: 'Pick server with fewest active connections',
+    iphash: 'Same client IP always lands on same server',
+    random: 'Picks server at random',
+    p2c: 'Two random picks, choose less loaded'
+  };
+  DOM.algoTitle.textContent = STATE.algorithm.toUpperCase();
+  DOM.algoDesc.textContent = descriptions[STATE.algorithm];
+  DOM.lbHint.textContent = `— ${STATE.algorithm} —`;
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+buildServers();
+updateAlgoDisplay();
+updateMetrics();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Load Balancing & Traffic Routing. A load balancer sits between clients and servers, distributing incoming requests across the server pool. The goal: maximize throughput, minimize latency, avoid hotspots, and stay resilient to failures.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE ALGORITHMS',
+      `Different algorithms suit different workloads. Round Robin is simple and even but blind to server state. Least Connections adapts to slow servers. IP Hash provides sticky sessions. P2C (power of two choices) is the modern favorite — a good balance of simplicity and adaptivity, used by Envoy and NGINX.`,
+      'ok'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('HEALTH CHECKS',
+      `The LB continuously probes each server (HTTP GET /health, TCP connect, etc.). If a server fails N consecutive checks, it's removed from rotation. When it recovers, it's added back. This is how systems self-heal from crashes without human intervention.`,
+      'purple'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('LAYER 4 vs LAYER 7',
+      `Layer 4 (transport) LBs route by IP+TCP. Fast, protocol-agnostic, no content inspection. Layer 7 (application) LBs parse HTTP, route by path/header/cookie. Slower but more powerful — enables canary, A/B testing, and microservice routing. NGINX, Envoy, and HAProxy support both modes.`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Start traffic, then try degrading a server', 4500);
+}, 500);
+</script>
+</body>
+</html>

@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stress-Strain Curve — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14;
+    border-bottom:1px solid #1e293b;
+  }
+  header h1 {
+    font-size:16px; color:#22d3ee; letter-spacing:1.5px;
+    font-weight:600;
+  }
+  header .sub {
+    font-size:10px; color:#64748b; letter-spacing:1px;
+    font-family:'Consolas',monospace; margin-left:12px;
+  }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px;
+    transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+
+  .layout {
+    display:flex; height:calc(100vh - 53px);
+  }
+  .controls-pane {
+    width:300px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane {
+    flex:1; position:relative; background:#05070d;
+  }
+  canvas { display:block; width:100%; height:100%; }
+
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px;
+    border-bottom:1px solid #1e293b;
+  }
+
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace;
+    font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer;
+    box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px;
+    transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+
+  .metrics-grid {
+    display:grid; grid-template-columns:1fr 1fr; gap:8px;
+  }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px;
+    font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:15px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px;
+    border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none;
+    z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>STRESS–STRAIN CURVE</h1>
+    <span class="sub">MATERIAL BEHAVIOR · YIELD · ULTIMATE · FRACTURE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Material Selection</div>
+    <div class="control-group">
+      <label>Material</label>
+      <select id="matSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="steel">Structural Steel</option>
+        <option value="aluminum">Aluminum 6061</option>
+        <option value="copper">Copper</option>
+        <option value="concrete">Concrete</option>
+        <option value="nylon">Nylon Polymer</option>
+      </select>
+    </div>
+
+    <div class="section-title">Test Parameters</div>
+    <div class="control-group">
+      <label>Cross-Section Area <span class="val" id="areaVal">100 mm²</span></label>
+      <input type="range" id="areaSlider" min="20" max="500" value="100" step="10">
+    </div>
+    <div class="control-group">
+      <label>Applied Load Rate <span class="val" id="rateVal">1.0×</span></label>
+      <input type="range" id="rateSlider" min="0.2" max="3" value="1" step="0.1">
+    </div>
+    <div class="control-group">
+      <label>Temperature <span class="val" id="tempVal">20 °C</span></label>
+      <input type="range" id="tempSlider" min="-50" max="400" value="20" step="5">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ START TEST</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="overloadBtn">⚠ OVERLOAD (Brittle)</button>
+    <button class="btn warn" id="overheatBtn">🔥 OVERHEAT</button>
+    <button class="btn warn" id="fatigueBtn">🔁 FATIGUE PRE-LOAD</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="ductile">Ductile Metal</button>
+    <button class="btn" data-preset="brittle">Brittle Ceramic</button>
+    <button class="btn" data-preset="elastic">Perfectly Elastic</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      σ = F / A &nbsp;|&nbsp; ε = ΔL / L₀ &nbsp;|&nbsp; E = σ / ε &nbsp;|&nbsp; <span class="hl">Toughness = ∫σ dε</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mStress">
+          <div class="mlabel">STRESS σ</div>
+          <div class="mvalue">0<span class="munit">MPa</span></div>
+        </div>
+        <div class="metric" id="mStrain">
+          <div class="mlabel">STRAIN ε</div>
+          <div class="mvalue">0<span class="munit">%</span></div>
+        </div>
+        <div class="metric" id="mModulus">
+          <div class="mlabel">MODULUS E</div>
+          <div class="mvalue">—<span class="munit">GPa</span></div>
+        </div>
+        <div class="metric" id="mSF">
+          <div class="mlabel">SAFETY FACTOR</div>
+          <div class="mvalue">—</div>
+        </div>
+        <div class="metric" id="mTough">
+          <div class="mlabel">TOUGHNESS</div>
+          <div class="mvalue">0<span class="munit">MJ/m³</span></div>
+        </div>
+        <div class="metric" id="mPhase">
+          <div class="mlabel">PHASE</div>
+          <div class="mvalue" style="font-size:11px;">ELASTIC</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">σ = F/A &nbsp;·&nbsp; ε = ΔL/L₀</div>
+      <div class="eq">E = σ/ε &nbsp;(Hooke's Law)</div>
+      <div class="def">
+        Elastic region: atomic bonds stretch. Yield: dislocations move 
+        permanently. Ultimate: necking begins. Fracture: separation.
+        Ductile materials warn before failure — brittle ones don't.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+// ─── MATERIAL DATABASE ─────────────────────────────────────
+const MATERIALS = {
+  steel:    { name:'Structural Steel', E:200, yield:250, ultimate:400, fracture:0.25, ductility:0.25, color:'#60a5fa', brittle:false },
+  aluminum: { name:'Aluminum 6061',    E:69,  yield:276, ultimate:310, fracture:0.12, ductility:0.12, color:'#a3e635', brittle:false },
+  copper:   { name:'Copper',           E:117, yield:70,  ultimate:220, fracture:0.45, ductility:0.45, color:'#fb923c', brittle:false },
+  concrete: { name:'Concrete',         E:30,  yield:3,   ultimate:3.5, fracture:0.004,ductility:0.004,color:'#94a3b8', brittle:true  },
+  nylon:    { name:'Nylon Polymer',    E:3,   yield:45,  ultimate:75,  fracture:0.5,  ductility:0.5,  color:'#f472b6', brittle:false }
+};
+
+// ─── STATE ─────────────────────────────────────────────────
+const S = {
+  material: 'steel',
+  area: 100,          // mm²
+  rate: 1.0,
+  temp: 20,           // °C
+  running: false,
+  strain: 0,          // absolute
+  stress: 0,          // MPa
+  time: 0,
+  fractured: false,
+  yielding: false,
+  ultimateReached: false,
+  overheat: false,
+  fatiguePreload: false,
+  dataPoints: [],     // {strain, stress}
+  toughness: 0,
+  preset: null,
+  lastPhase: 'ELASTIC'
+};
+
+// ─── DOM ───────────────────────────────────────────────────
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const matSelect = document.getElementById('matSelect');
+const areaSlider = document.getElementById('areaSlider');
+const rateSlider = document.getElementById('rateSlider');
+const tempSlider = document.getElementById('tempSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+// ─── VOICE ENGINE ──────────────────────────────────────────
+const Voice = {
+  enabled: false,
+  queue: [],
+  speaking: false,
+  lastText: '',
+  lastTime: 0,
+  synth: window.speechSynthesis,
+  voices: [],
+  init(){
+    if(this.synth){
+      this.voices = this.synth.getVoices();
+      this.synth.onvoiceschanged = () => { this.voices = this.synth.getVoices(); };
+    }
+  },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text;
+    this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+// ─── TEACHING FEED ─────────────────────────────────────────
+let feedCount = 0;
+function teach(tag, text, level){
+  level = level || 'info';
+  if(feedCount > 0 && document.querySelectorAll('.feed-entry').length === 0){
+    // feed was cleared
+  }
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  feedCount++;
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── MATERIAL PROPS (temperature-adjusted) ─────────────────
+function mat(){
+  const base = MATERIALS[S.material];
+  // Temperature reduces yield/ultimate (thermal softening)
+  let yf = 1, uf = 1, ef = 1;
+  if(S.temp > 20){
+    const dt = (S.temp - 20) / 380;
+    yf = Math.max(0.25, 1 - dt * 0.75);
+    uf = Math.max(0.3, 1 - dt * 0.7);
+    ef = 1 + dt * 0.4;
+  } else if(S.temp < 20){
+    const dt = (20 - S.temp) / 70;
+    yf = 1 + dt * 0.35;
+    uf = 1 + dt * 0.3;
+    ef = Math.max(0.3, 1 - dt * 0.4);
+  }
+  if(S.overheat){ yf *= 0.35; uf *= 0.4; ef *= 1.8; }
+  if(S.fatiguePreload){ yf *= 0.6; uf *= 0.65; }
+  return {
+    ...base,
+    yield: base.yield * yf,
+    ultimate: base.ultimate * uf,
+    fracture: base.fracture * ef
+  };
+}
+
+// ─── SIMULATION TICK ───────────────────────────────────────
+const DT = 1/60;
+function tick(){
+  if(S.running && !S.fractured){
+    const m = mat();
+    // strain rate depends on load rate, area (smaller area = faster stress)
+    const dStrain = 0.0035 * S.rate * (100 / S.area) * DT * 60;
+    S.strain += dStrain;
+    S.time += DT;
+
+    // stress calculation with realistic curve shape
+    S.stress = computeStress(S.strain, m);
+
+    // check phase transitions
+    checkPhase(m);
+
+    // record data point
+    if(S.dataPoints.length === 0 || S.strain - S.dataPoints[S.dataPoints.length-1].strain > 0.002){
+      S.dataPoints.push({ strain: S.strain, stress: S.stress });
+      if(S.dataPoints.length > 2000) S.dataPoints.shift();
+    }
+
+    // update toughness (area under curve)
+    if(S.dataPoints.length > 1){
+      const a = S.dataPoints[S.dataPoints.length-2];
+      const b = S.dataPoints[S.dataPoints.length-1];
+      S.toughness += 0.5 * (a.stress + b.stress) * (b.strain - a.strain) / 1000; // MJ/m³
+    }
+
+    // fracture check
+    if(S.strain >= m.fracture && !S.fractured){
+      S.fractured = true;
+      S.running = false;
+      teach('FRACTURE', 'Strain reached ' + (S.strain*100).toFixed(1) + '% — the ' + m.name + ' has fractured at ' + S.stress.toFixed(0) + ' MPa. Necking concentrated stress until atomic bonds broke. Real bridges fail this way if overloaded.', 'error');
+      toast('⚠ FRACTURE');
+    }
+  }
+  render();
+}
+
+function computeStress(strain, m){
+  const E = m.E * 1000; // MPa
+  const ey = m.yield / E;
+  const eu = m.ultimate / E;
+  const ef = m.fracture;
+
+  if(strain <= ey){
+    // linear elastic
+    return E * strain;
+  } else if(strain <= eu){
+    // strain hardening (power law)
+    const t = (strain - ey) / (eu - ey);
+    return m.yield + (m.ultimate - m.yield) * (1 - Math.pow(1 - t, 2));
+  } else if(strain <= ef){
+    // necking region - stress drops
+    const t = (strain - eu) / (ef - eu);
+    return m.ultimate * (1 - t * 0.55);
+  } else {
+    return 0;
+  }
+}
+
+function checkPhase(m){
+  let phase = 'ELASTIC';
+  if(S.fractured) phase = 'FRACTURED';
+  else if(S.strain >= m.ultimate / (m.E * 1000)) phase = 'NECKING';
+  else if(S.strain >= m.yield / (m.E * 1000)) phase = 'PLASTIC';
+
+  if(phase !== S.lastPhase){
+    if(phase === 'PLASTIC' && !S.yielding){
+      S.yielding = true;
+      teach('YIELD', 'Stress reached ' + S.stress.toFixed(0) + ' MPa — the yield point of ' + m.name + '. Beyond this, dislocations move and the material deforms permanently. This is why engineers design with a safety factor — you want to stay in the elastic region.', 'warn');
+      toast('⚠ YIELD POINT');
+    }
+    if(phase === 'NECKING'){
+      teach('ULTIMATE', 'Reached ultimate tensile strength: ' + S.stress.toFixed(0) + ' MPa. The specimen is now necking — a localized reduction in area. Further strain will concentrate here until fracture. Aircraft skins are designed below this point.', 'warn');
+      toast('⚠ ULTIMATE STRENGTH');
+    }
+    S.lastPhase = phase;
+  }
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  const m = mat();
+  drawAxes(W,H,m);
+  drawCurve(W,H,m);
+  drawMarker(W,H,m);
+  drawPhaseBands(W,H,m);
+  drawAtomicModel(W,H,m);
+}
+
+function drawAxes(W,H,m){
+  const pad = { l:60, r:40, t:30, b:50 };
+  const gw = W - pad.l - pad.r;
+  const gh = H - pad.t - pad.b - 120;
+
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1;
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillStyle = '#64748b';
+
+  // grid
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  for(let i=0;i<=5;i++){
+    const y = pad.t + gh * i / 5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+gw, y); ctx.stroke();
+  }
+  for(let i=0;i<=8;i++){
+    const x = pad.l + gw * i / 8;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t+gh); ctx.stroke();
+  }
+  ctx.restore();
+
+  // main axes
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t+gh);
+  ctx.lineTo(pad.l+gw, pad.t+gh);
+  ctx.stroke();
+
+  // labels
+  ctx.fillStyle = '#64748b';
+  ctx.font = '11px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('STRAIN ε (%)', pad.l + gw/2, pad.t+gh+38);
+  ctx.save();
+  ctx.translate(18, pad.t+gh/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillText('STRESS σ (MPa)', 0, 0);
+  ctx.restore();
+
+  // tick labels
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillStyle = '#475569';
+  const maxStrain = Math.max(0.3, m.fracture * 1.1);
+  for(let i=0;i<=8;i++){
+    const v = (maxStrain * i / 8 * 100).toFixed(0);
+    ctx.fillText(v, pad.l + gw*i/8, pad.t+gh+16);
+  }
+  const maxStress = m.ultimate * 1.3;
+  for(let i=0;i<=5;i++){
+    const v = (maxStress * i / 5).toFixed(0);
+    ctx.textAlign = 'right';
+    ctx.fillText(v, pad.l-6, pad.t+gh - gh*i/5 + 3);
+  }
+  ctx.textAlign = 'left';
+
+  // store for other draws
+  canvas._pad = pad; canvas._gw = gw; canvas._gh = gh;
+  canvas._maxStrain = maxStrain; canvas._maxStress = maxStress;
+}
+
+function drawPhaseBands(W,H,m){
+  const {l,r,t,b} = canvas._pad;
+  const gw = canvas._gw, gh = canvas._gh;
+  const E = m.E * 1000;
+  const ey = m.yield / E;
+  const eu = m.ultimate / E;
+
+  const xOf = s => l + gw * (s / canvas._maxStrain);
+  const yOf = s => t + gh - gh * (s / canvas._maxStress);
+
+  // elastic band
+  ctx.save();
+  ctx.globalAlpha = 0.06;
+  ctx.fillStyle = '#22c55e';
+  ctx.fillRect(l, t, xOf(ey) - l, gh);
+  ctx.fillStyle = '#f59e0b';
+  ctx.fillRect(xOf(ey), t, xOf(eu) - xOf(ey), gh);
+  ctx.fillStyle = '#ef4444';
+  ctx.fillRect(xOf(eu), t, xOf(m.fracture) - xOf(eu), gh);
+  ctx.restore();
+
+  // band labels
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillStyle = '#22c55e';
+  ctx.fillText('ELASTIC', l+8, t+14);
+  ctx.fillStyle = '#f59e0b';
+  ctx.fillText('PLASTIC', xOf(ey)+8, t+14);
+  ctx.fillStyle = '#ef4444';
+  ctx.fillText('NECKING', xOf(eu)+8, t+14);
+}
+
+function drawCurve(W,H,m){
+  const {l,t} = canvas._pad;
+  const gw = canvas._gw, gh = canvas._gh;
+
+  const xOf = s => l + gw * (s / canvas._maxStrain);
+  const yOf = s => t + gh - gh * (s / canvas._maxStress);
+
+  // theoretical full curve (dashed)
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(100,116,139,0.35)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4,4]);
+  const N = 300;
+  for(let i=0;i<=N;i++){
+    const s = m.fracture * i / N;
+    const st = computeStress(s, m);
+    const X = xOf(s), Y = yOf(st);
+    if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // actual traced curve
+  if(S.dataPoints.length > 1){
+    ctx.beginPath();
+    ctx.strokeStyle = m.color;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = m.color;
+    ctx.shadowBlur = 8;
+    for(let i=0;i<S.dataPoints.length;i++){
+      const p = S.dataPoints[i];
+      const X = xOf(p.strain), Y = yOf(p.stress);
+      if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+}
+
+function drawMarker(W,H,m){
+  if(S.dataPoints.length === 0) return;
+  const {l,t} = canvas._pad;
+  const gw = canvas._gw, gh = canvas._gh;
+  const xOf = s => l + gw * (s / canvas._maxStrain);
+  const yOf = s => t + gh - gh * (s / canvas._maxStress);
+
+  const X = xOf(S.strain);
+  const Y = yOf(S.stress);
+
+  // glow
+  ctx.beginPath();
+  ctx.arc(X,Y,10,0,Math.PI*2);
+  ctx.fillStyle = m.color + '33';
+  ctx.fill();
+
+  // marker
+  ctx.beginPath();
+  ctx.arc(X,Y,5,0,Math.PI*2);
+  ctx.fillStyle = S.fractured ? '#ef4444' : m.color;
+  ctx.shadowColor = S.fractured ? '#ef4444' : m.color;
+  ctx.shadowBlur = 12;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // dashed guides
+  ctx.strokeStyle = '#334155';
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  ctx.moveTo(X, Y); ctx.lineTo(X, canvas._pad.t + gh);
+  ctx.moveTo(X, Y); ctx.lineTo(l, Y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawAtomicModel(W,H,m){
+  // show a simplified atomic bond visualization at bottom
+  const cx = W/2;
+  const cy = H - 75;
+  const spread = 40 + S.strain * 400;
+
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillStyle = '#475569';
+  ctx.textAlign = 'center';
+  ctx.fillText('ATOMIC BOND MODEL (exaggerated)', cx, cy - 32);
+
+  // left atom cluster
+  const atomsL = [{x:-30,y:0},{x:-15,y:-12},{x:-15,y:12},{x:0,y:0}];
+  const atomsR = [{x:30,y:0},{x:15,y:-12},{x:15,y:12},{x:0,y:0}];
+
+  const drawAtom = (x,y,color) => {
+    ctx.beginPath();
+    ctx.arc(x,y,6,0,Math.PI*2);
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  };
+
+  const ox = spread/2;
+  atomsL.forEach(a => drawAtom(cx - ox + a.x, cy + a.y, '#3b82f6'));
+  atomsR.forEach(a => drawAtom(cx + ox + a.x, cy + a.y, '#22d3ee'));
+
+  // bonds
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1;
+  for(let i=0;i<atomsL.length;i++){
+    for(let j=0;j<atomsR.length;j++){
+      const a = atomsL[i], b = atomsR[j];
+      const d = Math.hypot(b.x-a.x, b.y-a.y);
+      if(d < 50){
+        ctx.beginPath();
+        ctx.moveTo(cx-ox+a.x, cy+a.y);
+        ctx.lineTo(cx+ox+b.x, cy+b.y);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // strain color feedback
+  const strainPct = S.strain*100;
+  ctx.fillStyle = S.fractured ? '#f87171' : (strainPct > m.fracture*100*0.8 ? '#fbbf24' : '#4ade80');
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('ε = ' + strainPct.toFixed(2) + '%  |  bonds ' + (S.fractured ? 'BROKEN' : 'stretched'), cx, cy + 40);
+  ctx.textAlign = 'left';
+}
+
+// ─── METRICS UPDATE ────────────────────────────────────────
+function updateMetrics(){
+  const m = mat();
+  const E = m.E * 1000;
+  const ey = m.yield / E;
+
+  const mStress = document.getElementById('mStress');
+  mStress.querySelector('.mvalue').innerHTML = S.stress.toFixed(1) + '<span class="munit">MPa</span>';
+  mStress.className = 'metric' + (S.stress > m.ultimate ? ' bad' : S.stress > m.yield ? ' warn' : '');
+
+  const mStrain = document.getElementById('mStrain');
+  mStrain.querySelector('.mvalue').innerHTML = (S.strain*100).toFixed(2) + '<span class="munit">%</span>';
+  mStrain.className = 'metric' + (S.strain > m.fracture*0.8 ? ' bad' : S.strain > ey*0.8 ? ' warn' : '');
+
+  const mModulus = document.getElementById('mModulus');
+  if(S.strain < ey && S.strain > 0.0001){
+    const Ecalc = (S.stress / S.strain) / 1000;
+    mModulus.querySelector('.mvalue').innerHTML = Ecalc.toFixed(0) + '<span class="munit">GPa</span>';
+  } else {
+    mModulus.querySelector('.mvalue').innerHTML = m.E + '<span class="munit">GPa</span>';
+  }
+
+  const mSF = document.getElementById('mSF');
+  let sf = m.yield / Math.max(S.stress, 0.01);
+  if(S.stress < 0.1) sf = Infinity;
+  mSF.querySelector('.mvalue').textContent = (sf === Infinity) ? '∞' : sf.toFixed(2);
+  mSF.className = 'metric' + (sf < 1 ? ' bad' : sf < 1.5 ? ' warn' : ' ok');
+
+  const mTough = document.getElementById('mTough');
+  mTough.querySelector('.mvalue').innerHTML = S.toughness.toFixed(1) + '<span class="munit">MJ/m³</span>';
+
+  const mPhase = document.getElementById('mPhase');
+  mPhase.querySelector('.mvalue').textContent = S.lastPhase;
+  mPhase.className = 'metric' + (S.lastPhase === 'FRACTURED' ? ' bad' : S.lastPhase === 'NECKING' ? ' warn' : ' ok');
+}
+
+// ─── MAIN LOOP ─────────────────────────────────────────────
+let lastMetricUpdate = 0;
+function loop(ts){
+  tick();
+  if(ts - lastMetricUpdate > 60){
+    updateMetrics();
+    lastMetricUpdate = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+playBtn.addEventListener('click', () => {
+  if(S.fractured){
+    teach('INFO', 'The specimen has fractured. Press RESET to test again. Each test teaches you the material behavior — that\'s why we destroy samples in the lab.', 'info');
+    return;
+  }
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE TEST' : '▶ START TEST';
+  const m = mat();
+  if(S.running){
+    teach('START', 'Tensile test started on ' + m.name + '. We are pulling the specimen at ' + S.rate.toFixed(1) + '× rate. The curve will show elastic → yield → ultimate → fracture.', 'info');
+  } else {
+    teach('PAUSE', 'Test paused at ε = ' + (S.strain*100).toFixed(2) + '%. Strain history is preserved so you can resume.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  if(S.fractured) return;
+  const m = mat();
+  const dStrain = 0.008 * S.rate * (100 / S.area);
+  S.strain += dStrain;
+  S.stress = computeStress(S.strain, m);
+  checkPhase(m);
+  S.dataPoints.push({strain:S.strain, stress:S.stress});
+  if(S.strain >= m.fracture){
+    S.fractured = true;
+    S.running = false;
+    playBtn.textContent = '▶ START TEST';
+    teach('FRACTURE', 'Single step reached fracture at ε = ' + (S.strain*100).toFixed(1) + '%. The ' + m.name + ' separated at ' + S.stress.toFixed(0) + ' MPa.', 'error');
+  } else {
+    teach('STEP', 'Advanced one increment: σ = ' + S.stress.toFixed(1) + ' MPa, ε = ' + (S.strain*100).toFixed(2) + '%. Phase: ' + S.lastPhase + '.', 'info');
+  }
+  updateMetrics();
+});
+
+resetBtn.addEventListener('click', () => {
+  S.strain = 0; S.stress = 0; S.time = 0;
+  S.fractured = false; S.yielding = false;
+  S.running = false; S.dataPoints = []; S.toughness = 0;
+  S.overheat = false; S.fatiguePreload = false;
+  S.lastPhase = 'ELASTIC';
+  playBtn.textContent = '▶ START TEST';
+  feedEl.innerHTML = '';
+  teach('RESET', 'Specimen reset to zero strain. The material has no memory of previous loading — fresh test ready.', 'info');
+  updateMetrics();
+  toast('↺ Reset');
+});
+
+matSelect.addEventListener('change', (e) => {
+  S.material = e.target.value;
+  resetBtn.click();
+  const m = MATERIALS[S.material];
+  teach('MATERIAL', 'Switched to ' + m.name + ': E = ' + m.E + ' GPa, yield = ' + m.yield + ' MPa, ultimate = ' + m.ultimate + ' MPa. ' + (m.brittle ? 'Brittle material — fractures with little warning.' : 'Ductile material — yields before fracture, giving warning.'), 'concept');
+});
+
+areaSlider.addEventListener('input', (e) => {
+  S.area = parseFloat(e.target.value);
+  document.getElementById('areaVal').textContent = S.area + ' mm²';
+});
+
+rateSlider.addEventListener('input', (e) => {
+  S.rate = parseFloat(e.target.value);
+  document.getElementById('rateVal').textContent = S.rate.toFixed(1) + '×';
+});
+
+tempSlider.addEventListener('input', (e) => {
+  S.temp = parseFloat(e.target.value);
+  document.getElementById('tempVal').textContent = S.temp + ' °C';
+});
+
+document.getElementById('overloadBtn').addEventListener('click', () => {
+  S.overheat = false;
+  const m = mat();
+  S.stress = m.ultimate * 1.2;
+  S.strain = m.fracture * 1.05;
+  S.fractured = true;
+  S.running = false;
+  playBtn.textContent = '▶ START TEST';
+  teach('FAILURE', 'Overload injected: stress jumped to ' + S.stress.toFixed(0) + ' MPa, exceeding ultimate. The specimen fractured instantly — brittle materials do this without necking. Think of glass or ceramic failure.', 'error');
+  toast('⚠ Brittle failure');
+});
+
+document.getElementById('overheatBtn').addEventListener('click', () => {
+  S.overheat = !S.overheat;
+  if(S.overheat){
+    S.temp = 350;
+    tempSlider.value = 350;
+    document.getElementById('tempVal').textContent = '350 °C';
+    teach('OVERHEAT', 'Temperature raised to 350 °C. The material softens — yield and ultimate strengths drop dramatically. This is why jet engine turbine blades are made from nickel superalloys with thermal barrier coatings.', 'warn');
+    toast('🔥 Overheated');
+  } else {
+    S.temp = 20;
+    tempSlider.value = 20;
+    document.getElementById('tempVal').textContent = '20 °C';
+    teach('COOL', 'Temperature returned to ambient. Strengths recover to room-temperature values.', 'ok');
+  }
+});
+
+document.getElementById('fatigueBtn').addEventListener('click', () => {
+  S.fatiguePreload = !S.fatiguePreload;
+  if(S.fatiguePreload){
+    teach('FATIGUE', 'Pre-loading applied: the material has been cyclically loaded 1 million times before this test. Its yield and ultimate strengths drop by ~40%. Real machine parts accumulate fatigue damage over their life.', 'warn');
+    toast('🔁 Fatigue damage');
+  } else {
+    teach('RECOVER', 'Fatigue pre-load removed. Fresh material again.', 'ok');
+  }
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'ductile'){ S.material = 'steel'; }
+    else if(p === 'brittle'){ S.material = 'concrete'; }
+    else if(p === 'elastic'){ S.material = 'nylon'; }
+    matSelect.value = S.material;
+    resetBtn.click();
+    teach('PRESET', 'Preset loaded: ' + btn.textContent + '. Each preset demonstrates a different failure mode — compare them by running each test.', 'concept');
+  });
+});
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to the Stress-Strain Curve simulator. This single curve describes how every metal, plastic, and ceramic behaves under load — from bridges to soda cans.', 'concept');
+  teach('HOOKE', 'The straight elastic line obeys Hooke\'s Law: σ = E·ε. The slope E is Young\'s Modulus — a measure of stiffness. Steel is ~200 GPa, rubber is 0.01 GPa.', 'concept');
+  teach('HOWTO', 'Press START TEST to run a tensile test. Watch the curve trace itself and the atomic bonds stretch. Try the fault buttons to see how temperature, fatigue, and overload affect material strength.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

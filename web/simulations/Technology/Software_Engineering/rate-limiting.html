@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rate Limiting: Token Bucket &amp; Leaky Bucket — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #06b6d4, #14b8a6, #10b981);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(6,182,212,0.15);
+    color: #67e8f9;
+    border-color: #06b6d4;
+  }
+  .teaching-toggle:hover { background: rgba(6,182,212,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #06b6d4; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #06b6d4; color: #032028; border-color: #06b6d4; }
+  .btn.primary:hover { background: #0891b2; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #67e8f9; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #06b6d4; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(6,182,212,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* ALGO HEADER */
+  .algo-header {
+    background: #070a14;
+    border: 2px solid #06b6d4;
+    border-radius: 12px;
+    padding: 12px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 0 25px rgba(6,182,212,0.15);
+    flex-shrink: 0;
+  }
+  .algo-title {
+    font-family: monospace;
+    font-size: 0.85rem;
+    font-weight: 900;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    text-transform: uppercase;
+  }
+  .algo-desc {
+    font-family: monospace;
+    font-size: 0.6rem;
+    color: #64748b;
+    letter-spacing: 0.5px;
+    margin-top: 3px;
+  }
+  .algo-stats-inline {
+    display: flex;
+    gap: 20px;
+    font-family: monospace;
+    font-size: 0.62rem;
+  }
+  .algo-stats-inline .stat-item {
+    color: #64748b;
+    letter-spacing: 0.5px;
+  }
+  .algo-stats-inline .stat-item .val {
+    color: #67e8f9;
+    font-weight: 900;
+    font-size: 0.85rem;
+    display: block;
+    margin-top: 2px;
+  }
+  .algo-stats-inline .stat-item .val.good { color: #6ee7b7; }
+  .algo-stats-inline .stat-item .val.bad { color: #fca5a5; }
+
+  /* BUCKET VISUALIZATION */
+  .bucket-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #14b8a6;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(20,184,166,0.15);
+    min-height: 0;
+  }
+  .bucket-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #5eead4;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #bucketCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(6,182,212,0.06);
+    border: 1px solid rgba(6,182,212,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #67e8f9;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #06b6d4;
+    background: rgba(6,182,212,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(6,182,212,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(6,182,212,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #06b6d4;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(6,182,212,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #06b6d4;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #67e8f9;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(6,182,212,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>RATE LIMITING ALGORITHMS</h1>
+    <span class="sub">TOKEN BUCKET · LEAKY BUCKET · SLIDING WINDOW</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Traffic Control</h3>
+      <button class="btn primary" id="btnToggle">▶ Start Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 30 Requests</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Algorithm</h3>
+      <select id="algoSelect" style="width:100%; padding:8px; background:#02040a; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="token" selected>🪙 Token Bucket</option>
+        <option value="leaky">💧 Leaky Bucket</option>
+        <option value="fixed">📅 Fixed Window</option>
+        <option value="sliding">🎯 Sliding Window</option>
+      </select>
+    </div>
+
+    <div class="panel">
+      <h3>Config</h3>
+      <div class="slider-row"><span>Rate limit</span><span class="value" id="rateVal">10</span></div>
+      <input type="range" id="rateRange" min="2" max="30" value="10">
+      <div class="slider-row"><span>Burst capacity</span><span class="value" id="burstVal">15</span></div>
+      <input type="range" id="burstRange" min="5" max="40" value="15">
+      <div class="slider-row"><span>Request rate</span><span class="value" id="rrVal">5/s</span></div>
+      <input type="range" id="rrRange" min="1" max="30" value="5">
+    </div>
+
+    <div class="panel">
+      <h3>Failure Handling</h3>
+      <button class="btn warn" id="btn429">🚫 Simulate 429 responses</button>
+      <button class="btn" id="btnDelay">⏱ Add Retry-After</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:50%;margin-right:6px;"></span>Allowed request</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:50%;margin-right:6px;"></span>Rate-limited (429)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#fbbf24;border-radius:50%;margin-right:6px;"></span>Bucket level</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">TOKEN BUCKET VS LEAKY BUCKET VS SLIDING WINDOW</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="algo-header">
+          <div>
+            <div class="algo-title" id="algoTitle">TOKEN BUCKET</div>
+            <div class="algo-desc" id="algoDesc">Tokens refill at fixed rate; requests consume tokens</div>
+          </div>
+          <div class="algo-stats-inline">
+            <div class="stat-item">Allowed<span class="val good" id="statAllowed">0</span></div>
+            <div class="stat-item">Rejected<span class="val bad" id="statRejected">0</span></div>
+            <div class="stat-item">Bucket<span class="val" id="statBucket">15/15</span></div>
+          </div>
+        </div>
+
+        <div class="bucket-wrap">
+          <div class="bucket-title">
+            <span>🔬 BUCKET VISUALIZATION</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="bucketHint">— tokens available —</span>
+          </div>
+          <canvas id="bucketCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Allowed</div>
+        <div class="metric-value good" id="mAllowed">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Rejected</div>
+        <div class="metric-value bad" id="mRejected">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Current Rate</div>
+        <div class="metric-value warn" id="mRate">0/s</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Bucket Level</div>
+        <div class="metric-value" id="mBucket">15</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Rate Limit Algorithms</div>
+      <div class="info-row"><span class="lbl">Token Bucket</span><span class="val good">Allows bursts</span></div>
+      <div class="info-row"><span class="lbl">Leaky Bucket</span><span class="val">Smooth output</span></div>
+      <div class="info-row"><span class="lbl">Fixed Window</span><span class="val warn">Edge bursts</span></div>
+      <div class="info-row"><span class="lbl">Sliding Window</span><span class="val good">Smooth + accurate</span></div>
+      <div class="info-row"><span class="lbl">Response</span><span class="val">HTTP 429 + Retry-After</span></div>
+      <div class="info-row"><span class="lbl">Systems</span><span class="val">Nginx, Envoy, Kong, API GW</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  algorithm: 'token',
+  rateLimit: 10,        // tokens per second (or requests per window)
+  burstCapacity: 15,
+  requestRate: 5,       // requests per second
+  running: false,
+  // Token bucket state
+  tokens: 15,           // current tokens
+  lastRefill: performance.now(),
+  // Leaky bucket state
+  bucketLevel: 0,       // current level (0..capacity)
+  // Sliding window state (5 windows of 200ms each)
+  windowHistory: [0, 0, 0, 0, 0],
+  currentWindowIdx: 0,
+  // Stats
+  allowed: 0,
+  rejected: 0,
+  // Animation
+  particles: [],
+  raf: null,
+  // Timers
+  reqTimer: null,
+  refillTimer: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  // Visual flash counters
+  flashAllow: 0,
+  flashReject: 0
+};
+
+const DOM = {
+  bucketCanvas: document.getElementById('bucketCanvas'),
+  bucketHint: document.getElementById('bucketHint'),
+  algoTitle: document.getElementById('algoTitle'),
+  algoDesc: document.getElementById('algoDesc'),
+  statAllowed: document.getElementById('statAllowed'),
+  statRejected: document.getElementById('statRejected'),
+  statBucket: document.getElementById('statBucket'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Controls
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnReset: document.getElementById('btnReset'),
+  btn429: document.getElementById('btn429'),
+  btnDelay: document.getElementById('btnDelay'),
+  algoSelect: document.getElementById('algoSelect'),
+  rateRange: document.getElementById('rateRange'),
+  rateVal: document.getElementById('rateVal'),
+  burstRange: document.getElementById('burstRange'),
+  burstVal: document.getElementById('burstVal'),
+  rrRange: document.getElementById('rrRange'),
+  rrVal: document.getElementById('rrVal'),
+  // Metrics
+  mAllowed: document.getElementById('mAllowed'),
+  mRejected: document.getElementById('mRejected'),
+  mRate: document.getElementById('mRate'),
+  mBucket: document.getElementById('mBucket'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg) {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.classList.add('show');
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining rate limiting algorithms.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   ALGORITHM LOGIC
+   ============================================================ */
+function tryRequest() {
+  let allowed = false;
+  let reason = '';
+
+  switch (STATE.algorithm) {
+    case 'token': {
+      // Refill based on elapsed time
+      const now = performance.now();
+      const elapsed = (now - STATE.lastRefill) / 1000;
+      STATE.tokens = Math.min(STATE.burstCapacity, STATE.tokens + STATE.rateLimit * elapsed);
+      STATE.lastRefill = now;
+      
+      if (STATE.tokens >= 1) {
+        STATE.tokens -= 1;
+        allowed = true;
+      } else {
+        reason = 'no tokens available';
+      }
+      break;
+    }
+    case 'leaky': {
+      // Bucket drains at fixed rate; requests leak OUT
+      const now = performance.now();
+      const elapsed = (now - STATE.lastRefill) / 1000;
+      STATE.bucketLevel = Math.max(0, STATE.bucketLevel - STATE.rateLimit * elapsed);
+      STATE.lastRefill = now;
+
+      if (STATE.bucketLevel < STATE.burstCapacity) {
+        STATE.bucketLevel += 1;
+        allowed = true;
+      } else {
+        reason = 'bucket full';
+      }
+      break;
+    }
+    case 'fixed': {
+      // Each 1-second window allows `rateLimit` requests
+      const now = Math.floor(performance.now() / 1000);
+      if (!STATE.fixedWindowStart || STATE.fixedWindowStart !== now) {
+        STATE.fixedWindowStart = now;
+        STATE.fixedWindowCount = 0;
+      }
+      if (STATE.fixedWindowCount < STATE.rateLimit) {
+        STATE.fixedWindowCount = (STATE.fixedWindowCount || 0) + 1;
+        allowed = true;
+      } else {
+        reason = 'window exhausted';
+      }
+      break;
+    }
+    case 'sliding': {
+      // 5 sub-windows of 200ms each
+      const now = performance.now();
+      const subWindowDuration = 200;
+      const currentIdx = Math.floor(now / subWindowDuration) % 5;
+      if (currentIdx !== STATE.currentWindowIdx) {
+        STATE.currentWindowIdx = currentIdx;
+        STATE.windowHistory[currentIdx] = 0;
+      }
+      const totalInWindow = STATE.windowHistory.reduce((a, b) => a + b, 0);
+      if (totalInWindow < STATE.rateLimit) {
+        STATE.windowHistory[currentIdx]++;
+        allowed = true;
+      } else {
+        reason = 'sliding window full';
+      }
+      break;
+    }
+  }
+
+  if (allowed) {
+    STATE.allowed++;
+    STATE.flashAllow = performance.now();
+    spawnParticle(true);
+  } else {
+    STATE.rejected++;
+    STATE.flashReject = performance.now();
+    spawnParticle(false);
+    // Show 429
+    showStatus(`🚫 429 Too Many Requests — ${reason}`);
+  }
+
+  updateMetrics();
+  updateAlgoStats();
+}
+
+/* ============================================================
+   PARTICLES
+   ============================================================ */
+function spawnParticle(allowed) {
+  const canvas = DOM.bucketCanvas;
+  if (!canvas._w) return;
+  // Spawn from left
+  STATE.particles.push({
+    x: 0,
+    y: canvas._h / 2,
+    startX: 0,
+    startY: canvas._h / 2,
+    targetX: canvas._w * 0.5,
+    targetY: canvas._h / 2,
+    progress: 0,
+    speed: 0.04,
+    allowed
+  });
+}
+
+/* ============================================================
+   CANVAS
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.bucketCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawCanvas() {
+  const canvas = DOM.bucketCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw incoming request stream (left side)
+  for (let i = 0; i < 5; i++) {
+    const y = H * 0.15 + i * (H * 0.7) / 4;
+    ctx.fillStyle = 'rgba(100,116,139,0.3)';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('req →', 8, y + 3);
+  }
+
+  // Draw bucket (center)
+  const bucketX = W * 0.5;
+  const bucketY = H * 0.15;
+  const bucketW = 130;
+  const bucketH = H * 0.65;
+
+  // Bucket outline
+  ctx.strokeStyle = '#06b6d4';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.rect(bucketX - bucketW / 2, bucketY, bucketW, bucketH);
+  ctx.stroke();
+
+  // Compute fill level
+  let fillPct = 0;
+  let fillColor = '#06b6d4';
+  if (STATE.algorithm === 'token') {
+    fillPct = STATE.tokens / STATE.burstCapacity;
+    fillColor = STATE.tokens > STATE.burstCapacity * 0.3 ? '#10b981' : STATE.tokens > STATE.burstCapacity * 0.1 ? '#f59e0b' : '#ef4444';
+  } else if (STATE.algorithm === 'leaky') {
+    fillPct = STATE.bucketLevel / STATE.burstCapacity;
+    fillColor = STATE.bucketLevel > STATE.burstCapacity * 0.7 ? '#ef4444' : STATE.bucketLevel > STATE.burstCapacity * 0.4 ? '#f59e0b' : '#10b981';
+  } else if (STATE.algorithm === 'fixed') {
+    fillPct = (STATE.fixedWindowCount || 0) / STATE.rateLimit;
+    fillColor = fillPct > 0.8 ? '#ef4444' : fillPct > 0.5 ? '#f59e0b' : '#10b981';
+  } else if (STATE.algorithm === 'sliding') {
+    const total = STATE.windowHistory.reduce((a, b) => a + b, 0);
+    fillPct = total / STATE.rateLimit;
+    fillColor = fillPct > 0.8 ? '#ef4444' : fillPct > 0.5 ? '#f59e0b' : '#10b981';
+  }
+
+  // Bucket fill
+  const fillH = bucketH * fillPct;
+  ctx.fillStyle = fillColor;
+  ctx.globalAlpha = 0.5;
+  ctx.fillRect(bucketX - bucketW / 2 + 3, bucketY + bucketH - fillH, bucketW - 6, fillH);
+  ctx.globalAlpha = 1;
+
+  // Bucket fill glow
+  ctx.shadowColor = fillColor;
+  ctx.shadowBlur = 15;
+  ctx.fillRect(bucketX - bucketW / 2 + 3, bucketY + bucketH - fillH, bucketW - 6, fillH);
+  ctx.shadowBlur = 0;
+
+  // Label
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#67e8f9';
+  ctx.fillText('BUCKET', bucketX, bucketY - 8);
+
+  // Fill level text
+  ctx.font = 'bold 14px monospace';
+  ctx.fillStyle = fillColor;
+  const level = STATE.algorithm === 'token' ? Math.floor(STATE.tokens) :
+                STATE.algorithm === 'leaky' ? Math.floor(STATE.bucketLevel) :
+                STATE.algorithm === 'fixed' ? (STATE.fixedWindowCount || 0) :
+                STATE.windowHistory.reduce((a, b) => a + b, 0);
+  const capacity = STATE.algorithm === 'token' || STATE.algorithm === 'leaky' ? STATE.burstCapacity : STATE.rateLimit;
+  ctx.fillText(`${level} / ${capacity}`, bucketX, bucketY + bucketH + 24);
+
+  // Draw output stream (right side)
+  ctx.fillStyle = 'rgba(100,116,139,0.3)';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'right';
+  for (let i = 0; i < 3; i++) {
+    const y = H * 0.3 + i * (H * 0.4) / 2;
+    ctx.fillText('→ service', W - 8, y + 3);
+  }
+
+  // Draw particles
+  for (const p of STATE.particles) {
+    ctx.beginPath();
+    ctx.fillStyle = p.allowed ? '#10b981' : '#ef4444';
+    ctx.shadowColor = p.allowed ? '#10b981' : '#ef4444';
+    ctx.shadowBlur = 10;
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Flash effect
+  const now = performance.now();
+  if (now - STATE.flashAllow < 200) {
+    ctx.fillStyle = 'rgba(16,185,129,0.15)';
+    ctx.fillRect(0, 0, W, H);
+  }
+  if (now - STATE.flashReject < 200) {
+    ctx.fillStyle = 'rgba(239,68,68,0.15)';
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+function updateParticles() {
+  for (let i = STATE.particles.length - 1; i >= 0; i--) {
+    const p = STATE.particles[i];
+    p.progress += p.speed;
+    if (p.progress >= 1) {
+      STATE.particles.splice(i, 1);
+      continue;
+    }
+    p.x = p.startX + (p.targetX - p.startX) * p.progress;
+  }
+}
+
+function animate() {
+  updateParticles();
+  drawCanvas();
+  STATE.raf = requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.mAllowed.textContent = STATE.allowed;
+  DOM.mRejected.textContent = STATE.rejected;
+
+  const total = STATE.allowed + STATE.rejected;
+  const rejectRate = total > 0 ? Math.round((STATE.rejected / total) * 100) : 0;
+  DOM.mRate.textContent = rejectRate + '%';
+  DOM.mRate.className = 'metric-value ' + (rejectRate > 50 ? 'bad' : rejectRate > 20 ? 'warn' : 'good');
+
+  let bucketVal = 0;
+  if (STATE.algorithm === 'token') bucketVal = Math.floor(STATE.tokens);
+  else if (STATE.algorithm === 'leaky') bucketVal = Math.floor(STATE.bucketLevel);
+  else if (STATE.algorithm === 'fixed') bucketVal = STATE.fixedWindowCount || 0;
+  else if (STATE.algorithm === 'sliding') bucketVal = STATE.windowHistory.reduce((a, b) => a + b, 0);
+  DOM.mBucket.textContent = bucketVal;
+}
+
+function updateAlgoStats() {
+  DOM.statAllowed.textContent = STATE.allowed;
+  DOM.statRejected.textContent = STATE.rejected;
+  let bucketVal = 0;
+  let cap = STATE.burstCapacity;
+  if (STATE.algorithm === 'token') bucketVal = Math.floor(STATE.tokens);
+  else if (STATE.algorithm === 'leaky') bucketVal = Math.floor(STATE.bucketLevel);
+  else if (STATE.algorithm === 'fixed') { bucketVal = STATE.fixedWindowCount || 0; cap = STATE.rateLimit; }
+  else if (STATE.algorithm === 'sliding') { bucketVal = STATE.windowHistory.reduce((a, b) => a + b, 0); cap = STATE.rateLimit; }
+  DOM.statBucket.textContent = `${bucketVal}/${cap}`;
+}
+
+/* ============================================================
+   TRAFFIC CONTROL
+   ============================================================ */
+function startTraffic() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.reqTimer);
+    clearInterval(STATE.refillTimer);
+    DOM.btnToggle.textContent = '▶ Start Traffic';
+    DOM.btnToggle.classList.remove('danger');
+    DOM.btnToggle.classList.add('primary');
+    showToast('⏸ Traffic stopped');
+    return;
+  }
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+
+  STATE.lastRefill = performance.now();
+  STATE.reqTimer = setInterval(tryRequest, 1000 / STATE.requestRate);
+  STATE.refillTimer = setInterval(() => {
+    // Refill happens in tryRequest based on elapsed time
+  }, 100);
+  showToast('▶ Traffic started');
+  teach('TRAFFIC STARTED',
+    `Traffic started at ${STATE.requestRate} requests/second, with a limit of ${STATE.rateLimit} tokens/second. Algorithm: ${STATE.algorithm.toUpperCase()}. Watch the bucket fill and drain. When the bucket runs out, requests get 429-rejected.`,
+    'cyan'
+  );
+}
+
+function burst() {
+  for (let i = 0; i < 30; i++) setTimeout(tryRequest, i * 20);
+  showToast('⚡ 30-request burst');
+  teach('BURST',
+    `30 requests fired in 600ms. Watch how the algorithm handles the spike. Token Bucket: allows bursts up to capacity, then rejects. Leaky Bucket: smooths the burst, but drops excess. Fixed Window: exhausts quickly. Sliding Window: handles it more gracefully.`,
+    'warn'
+  );
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.reqTimer) clearInterval(STATE.reqTimer);
+  if (STATE.refillTimer) clearInterval(STATE.refillTimer);
+  STATE.reqTimer = null;
+  STATE.refillTimer = null;
+  STATE.running = false;
+  STATE.tokens = STATE.burstCapacity;
+  STATE.bucketLevel = 0;
+  STATE.windowHistory = [0, 0, 0, 0, 0];
+  STATE.currentWindowIdx = 0;
+  STATE.fixedWindowStart = 0;
+  STATE.fixedWindowCount = 0;
+  STATE.allowed = 0;
+  STATE.rejected = 0;
+  STATE.particles = [];
+  STATE.lastRefill = performance.now();
+  DOM.btnToggle.textContent = '▶ Start Traffic';
+  DOM.btnToggle.classList.remove('danger');
+  DOM.btnToggle.classList.add('primary');
+  DOM.statusBanner.classList.remove('show');
+  updateMetrics();
+  updateAlgoStats();
+  teach('RESET', 'All counters reset, bucket refilled.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnToggle.addEventListener('click', startTraffic);
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btn429.addEventListener('click', () => {
+  showStatus('🚫 Simulating 429 Too Many Requests');
+  teach('429 RESPONSE',
+    `HTTP 429 "Too Many Requests" is the standard response when a rate limit is exceeded. Clients should respect the Retry-After header to know when to retry. Well-behaved clients back off exponentially — bad clients keep hammering and get blocked entirely.`,
+    'error'
+  );
+});
+DOM.btnDelay.addEventListener('click', () => {
+  teach('RETRY-AFTER',
+    `The Retry-After header tells the client how long to wait before retrying. It can be a number of seconds or an HTTP date. Combined with exponential backoff on the client, this prevents thundering herds — where thousands of clients retry simultaneously and re-trigger the rate limit.`,
+    'info'
+  );
+});
+
+DOM.algoSelect.addEventListener('change', e => {
+  STATE.algorithm = e.target.value;
+  resetAll();
+  const descs = {
+    token: 'Token Bucket: refills tokens at a fixed rate, up to capacity. Each request consumes a token. Allows bursts up to capacity. Most common algorithm. Used by AWS API Gateway, Stripe, Cloudflare.',
+    leaky: 'Leaky Bucket: bucket drains at a fixed rate. Requests fill the bucket; if it overflows, requests are dropped. Produces smooth, constant output rate. Used in network traffic shaping.',
+    fixed: 'Fixed Window: each time window (e.g., 1 second) allows N requests. Simple but has "edge bursts" — a client can make N requests at the end of window 1 and N at the start of window 2, effectively doubling the rate.',
+    sliding: 'Sliding Window: smooths the fixed-window problem by keeping sub-window counters. More accurate but uses more memory. Used by Redis rate limiters, Envoy.'
+  };
+  teach('ALGORITHM', descs[STATE.algorithm], 'purple');
+  updateAlgoDisplay();
+});
+
+DOM.rateRange.addEventListener('input', e => {
+  STATE.rateLimit = parseInt(e.target.value);
+  DOM.rateVal.textContent = STATE.rateLimit;
+});
+
+DOM.burstRange.addEventListener('input', e => {
+  STATE.burstCapacity = parseInt(e.target.value);
+  DOM.burstVal.textContent = STATE.burstCapacity;
+  if (STATE.algorithm === 'token') STATE.tokens = STATE.burstCapacity;
+});
+
+DOM.rrRange.addEventListener('input', e => {
+  STATE.requestRate = parseInt(e.target.value);
+  DOM.rrVal.textContent = STATE.requestRate + '/s';
+  if (STATE.running) {
+    clearInterval(STATE.reqTimer);
+    STATE.reqTimer = setInterval(tryRequest, 1000 / STATE.requestRate);
+  }
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+function updateAlgoDisplay() {
+  const titles = {
+    token: 'TOKEN BUCKET',
+    leaky: 'LEAKY BUCKET',
+    fixed: 'FIXED WINDOW',
+    sliding: 'SLIDING WINDOW'
+  };
+  const descs = {
+    token: 'Tokens refill at fixed rate; requests consume tokens',
+    leaky: 'Bucket drains at fixed rate; overflow requests dropped',
+    fixed: 'N requests per fixed time window',
+    sliding: 'Sub-window counters sum over trailing interval'
+  };
+  DOM.algoTitle.textContent = titles[STATE.algorithm];
+  DOM.algoDesc.textContent = descs[STATE.algorithm];
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+updateAlgoDisplay();
+updateMetrics();
+updateAlgoStats();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Rate Limiting Algorithms. Rate limiting protects your service from being overwhelmed — whether by attackers, misbehaving clients, or just normal traffic spikes. The goal: allow reasonable traffic, block excessive traffic, and be fair.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('TOKEN BUCKET',
+      `Token Bucket is the most common algorithm. Imagine a bucket with tokens. Tokens refill at rate R (e.g., 10/sec). Each request consumes 1 token. If the bucket has tokens, the request passes. If empty, the request gets 429-rejected. The bucket has a max capacity — this is the burst size.`,
+      'ok'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('LEAKY BUCKET',
+      `Leaky Bucket is the mirror image. Requests fill the bucket. The bucket leaks at a fixed rate — which is the output rate. If the bucket overflows, requests are dropped. This produces a perfectly smooth output rate, which is useful for network traffic shaping.`,
+      'purple'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('WINDOW ALGORITHMS',
+      `Fixed Window is simplest: N requests per second. Sliding Window fixes the "edge burst" problem by keeping sub-window counters — more accurate, at the cost of memory. Try each algorithm and watch the buckets behave differently.`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Start traffic, then try a burst', 4500);
+}, 500);
+</script>
+</body>
+</html>

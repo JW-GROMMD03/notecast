@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consensus Protocols (Raft &amp; Paxos) — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #a855f7, #ec4899, #f59e0b);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(168,85,247,0.15);
+    color: #c4b5fd;
+    border-color: #a855f7;
+  }
+  .teaching-toggle:hover { background: rgba(168,85,247,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #a855f7; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #a855f7; color: #fff; border-color: #a855f7; }
+  .btn.primary:hover { background: #9333ea; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #c4b5fd; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #a855f7; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(168,85,247,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* ALGO HEADER */
+  .algo-header {
+    background: #070a14;
+    border: 2px solid #a855f7;
+    border-radius: 12px;
+    padding: 12px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 0 25px rgba(168,85,247,0.15);
+    flex-shrink: 0;
+  }
+  .algo-title {
+    font-family: monospace;
+    font-size: 0.85rem;
+    font-weight: 900;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    text-transform: uppercase;
+  }
+  .algo-desc {
+    font-family: monospace;
+    font-size: 0.6rem;
+    color: #64748b;
+    letter-spacing: 0.5px;
+    margin-top: 3px;
+  }
+
+  .term-badge {
+    font-family: monospace;
+    font-size: 0.7rem;
+    font-weight: 900;
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: rgba(168,85,247,0.2);
+    color: #c4b5fd;
+    letter-spacing: 1px;
+    border: 2px solid #a855f7;
+  }
+
+  /* CLUSTER VIEW */
+  .cluster-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #ec4899;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(236,72,153,0.15);
+    min-height: 0;
+  }
+  .cluster-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #f9a8d4;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #clusterSvg {
+    flex: 1;
+    width: 100%;
+    display: block;
+  }
+
+  /* SVG elements */
+  .node circle {
+    fill: #0f172a;
+    stroke: #475569;
+    stroke-width: 2;
+    transition: all 0.4s;
+  }
+  .node text {
+    font-family: monospace;
+    font-size: 9px;
+    font-weight: 800;
+    fill: #cbd5e1;
+    text-anchor: middle;
+    pointer-events: none;
+  }
+  .node.follower circle { stroke: #3b82f6; }
+  .node.candidate circle {
+    stroke: #f59e0b;
+    fill: #2a1e0f;
+    animation: candidatePulse 1s ease-in-out infinite alternate;
+  }
+  @keyframes candidatePulse {
+    0% { filter: drop-shadow(0 0 0 rgba(245,158,11,0)); }
+    100% { filter: drop-shadow(0 0 15px rgba(245,158,11,1)); }
+  }
+  .node.leader circle {
+    stroke: #22c55e;
+    fill: #0f2a1e;
+    stroke-width: 3;
+    animation: leaderPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes leaderPulse {
+    0%, 100% { filter: drop-shadow(0 0 8px rgba(34,197,94,0.6)); }
+    50% { filter: drop-shadow(0 0 20px rgba(34,197,94,1)); }
+  }
+  .node.dead circle {
+    stroke: #ef4444;
+    fill: #2a0f0f;
+    opacity: 0.5;
+  }
+
+  .rpc-line {
+    stroke: #475569;
+    stroke-width: 1.5;
+    fill: none;
+    stroke-dasharray: 4 4;
+  }
+  .rpc-line.active {
+    stroke: #fcd34d;
+    stroke-width: 2.5;
+    stroke-dasharray: 6 3;
+    animation: rpcFlow 0.6s linear infinite;
+    filter: drop-shadow(0 0 6px rgba(252,211,77,0.8));
+  }
+  @keyframes rpcFlow {
+    to { stroke-dashoffset: -18; }
+  }
+
+  /* LOG VIEW */
+  .log-wrap {
+    background: #070a14;
+    border: 2px solid #10b981;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    box-shadow: 0 0 20px rgba(16,185,129,0.15);
+    max-height: 200px;
+  }
+  .log-title {
+    font-size: 0.58rem;
+    letter-spacing: 2px;
+    color: #6ee7b7;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .log-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+    min-height: 0;
+  }
+  .log-node {
+    background: #02040a;
+    border: 1.5px solid #1e293b;
+    border-radius: 6px;
+    padding: 6px;
+    font-family: monospace;
+    font-size: 0.5rem;
+    min-height: 0;
+    overflow-y: auto;
+    transition: all 0.3s;
+  }
+  .log-node.leader { border-color: #22c55e; }
+  .log-node.candidate { border-color: #f59e0b; }
+  .log-node.dead { border-color: #7f1d1d; opacity: 0.5; }
+
+  .log-node-title {
+    font-size: 0.55rem;
+    font-weight: 900;
+    color: #cbd5e1;
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    letter-spacing: 0.5px;
+  }
+  .log-node.leader .log-node-title { color: #86efac; }
+  .log-node.candidate .log-node-title { color: #fcd34d; }
+  .log-node.dead .log-node-title { color: #fca5a5; }
+
+  .log-entry {
+    background: rgba(30,41,59,0.6);
+    border-radius: 3px;
+    padding: 2px 4px;
+    margin-bottom: 2px;
+    color: #94a3b8;
+    display: flex;
+    gap: 4px;
+    animation: logIn 0.3s ease;
+  }
+  @keyframes logIn {
+    from { transform: translateX(-4px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .log-entry.committed { background: rgba(16,185,129,0.2); color: #86efac; font-weight: 700; }
+  .log-entry.pending { background: rgba(245,158,11,0.15); color: #fcd34d; }
+  .log-entry .term { color: #f9a8d4; font-weight: 700; }
+  .log-entry .val { color: #cbd5e1; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(168,85,247,0.06);
+    border: 1px solid rgba(168,85,247,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #c4b5fd;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #a855f7;
+    background: rgba(168,85,247,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(168,85,247,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(168,85,247,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #a855f7;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(168,85,247,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #a855f7;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #c4b5fd;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(168,85,247,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.election { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+  .status-banner.committed { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>CONSENSUS: RAFT &amp; PAXOS</h1>
+    <span class="sub">LEADER ELECTION · LOG REPLICATION · MAJORITY QUORUM</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Raft Operations</h3>
+      <button class="btn primary" id="btnElection">🗳️ Trigger Election</button>
+      <button class="btn" id="btnClient">📝 Client Write</button>
+      <button class="btn success" id="btnAppend">➡️ Append Entry</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset Cluster</button>
+    </div>
+
+    <div class="panel">
+      <h3>Fault Injection</h3>
+      <button class="btn danger" id="btnKillLeader">💀 Kill Leader</button>
+      <button class="btn warn" id="btnPartition">🔌 Network Partition</button>
+      <button class="btn warn" id="btnSlowFollower">🐌 Slow Follower</button>
+      <button class="btn success" id="btnHeal">✓ Heal All</button>
+    </div>
+
+    <div class="panel">
+      <h3>Cluster Config</h3>
+      <div class="slider-row"><span>Nodes</span><span class="value" id="nodesVal">5</span></div>
+      <input type="range" id="nodesRange" min="3" max="7" step="2" value="5">
+      <div class="slider-row"><span>Election timeout</span><span class="value" id="timeoutVal">3s</span></div>
+      <input type="range" id="timeoutRange" min="1" max="8" value="3">
+    </div>
+
+    <div class="panel">
+      <h3>Protocol</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.7rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="proto" value="raft" checked style="accent-color:#a855f7;">
+          Raft (understandable)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="proto" value="paxos" style="accent-color:#a855f7;">
+          Paxos (classic)
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #22c55e;background:#0f2a1e;margin-right:6px;border-radius:50%;"></span>Leader</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #3b82f6;background:#0f172a;margin-right:6px;border-radius:50%;"></span>Follower</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #f59e0b;background:#2a1e0f;margin-right:6px;border-radius:50%;"></span>Candidate</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #ef4444;background:#2a0f0f;margin-right:6px;border-radius:50%;"></span>Dead</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">RAFT: LEADER ELECTION · LOG REPLICATION · QUORUM</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="algo-header">
+          <div>
+            <div class="algo-title" id="algoTitle">RAFT</div>
+            <div class="algo-desc" id="algoDesc">Understandable consensus — leader-based, log replication, strong leader</div>
+          </div>
+          <div class="term-badge" id="termBadge">TERM 0</div>
+        </div>
+
+        <div class="cluster-wrap">
+          <div class="cluster-title">
+            <span>🌐 CLUSTER TOPOLOGY</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="clusterHint">— 5 nodes · 1 leader —</span>
+          </div>
+          <svg id="clusterSvg" viewBox="0 0 700 340" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+
+        <div class="log-wrap">
+          <div class="log-title">
+            <span>📋 REPLICATED LOG (per node)</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="logHint">— committed entries in green —</span>
+          </div>
+          <div class="log-grid" id="logGrid"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Leader</div>
+        <div class="metric-value good" id="mLeader">N1</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Term</div>
+        <div class="metric-value" id="mTerm">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Quorum</div>
+        <div class="metric-value" id="mQuorum">3 / 5</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Committed</div>
+        <div class="metric-value good" id="mCommitted">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Raft States</div>
+      <div class="info-row"><span class="lbl">Follower</span><span class="val">Passive, waits for heartbeat</span></div>
+      <div class="info-row"><span class="lbl">Candidate</span><span class="val warn">Requests votes</span></div>
+      <div class="info-row"><span class="lbl">Leader</span><span class="val good">Handles all writes</span></div>
+      <div class="info-row"><span class="lbl">Term</span><span class="val">Logical clock, +1 per election</span></div>
+      <div class="info-row"><span class="lbl">Quorum</span><span class="val">⌊n/2⌋ + 1</span></div>
+      <div class="info-row"><span class="lbl">Election</span><span class="val">Randomized timeout</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">etcd, Consul, TiKV, CockroachDB</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  nodeCount: 5,
+  protocol: 'raft',
+  nodes: [],          // { id, state: 'follower'|'candidate'|'leader'|'dead', term, log: [] }
+  term: 0,
+  leaderId: null,
+  electionTimeout: 3,
+  // Election
+  electionTimer: null,
+  heartbeatTimer: null,
+  // Sim state
+  partition: false,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  clusterSvg: document.getElementById('clusterSvg'),
+  clusterHint: document.getElementById('clusterHint'),
+  logGrid: document.getElementById('logGrid'),
+  logHint: document.getElementById('logHint'),
+  algoTitle: document.getElementById('algoTitle'),
+  algoDesc: document.getElementById('algoDesc'),
+  termBadge: document.getElementById('termBadge'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Buttons
+  btnElection: document.getElementById('btnElection'),
+  btnClient: document.getElementById('btnClient'),
+  btnAppend: document.getElementById('btnAppend'),
+  btnReset: document.getElementById('btnReset'),
+  btnKillLeader: document.getElementById('btnKillLeader'),
+  btnPartition: document.getElementById('btnPartition'),
+  btnSlowFollower: document.getElementById('btnSlowFollower'),
+  btnHeal: document.getElementById('btnHeal'),
+  nodesRange: document.getElementById('nodesRange'),
+  nodesVal: document.getElementById('nodesVal'),
+  timeoutRange: document.getElementById('timeoutRange'),
+  timeoutVal: document.getElementById('timeoutVal'),
+  // Metrics
+  mLeader: document.getElementById('mLeader'),
+  mTerm: document.getElementById('mTerm'),
+  mQuorum: document.getElementById('mQuorum'),
+  mCommitted: document.getElementById('mCommitted'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2400);
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining consensus protocols: Raft and Paxos.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   CLUSTER MANAGEMENT
+   ============================================================ */
+function initCluster() {
+  STATE.nodes = [];
+  STATE.term = 0;
+  STATE.leaderId = null;
+  for (let i = 0; i < STATE.nodeCount; i++) {
+    STATE.nodes.push({
+      id: 'N' + (i + 1),
+      state: 'follower',
+      term: 0,
+      log: [],
+      votedFor: null,
+      dead: false,
+      partitioned: false,
+      slow: false
+    });
+  }
+  // Start with N1 as leader for demo
+  STATE.nodes[0].state = 'leader';
+  STATE.leaderId = 'N1';
+  renderCluster();
+  renderLogs();
+  updateMetrics();
+  resetElectionTimer();
+}
+
+function getLeader() {
+  return STATE.nodes.find(n => n.state === 'leader' && !n.dead);
+}
+
+function getQuorum() {
+  return Math.floor(STATE.nodes.filter(n => !n.dead).length / 2) + 1;
+}
+
+function getAliveCount() {
+  return STATE.nodes.filter(n => !n.dead).length;
+}
+
+/* ============================================================
+   ELECTION
+   ============================================================ */
+function triggerElection(candidateId) {
+  const candidate = candidateId
+    ? STATE.nodes.find(n => n.id === candidateId)
+    : STATE.nodes.find(n => n.state !== 'leader' && !n.dead);
+
+  if (!candidate || candidate.dead) {
+    showToast('⚠ No candidate available');
+    return;
+  }
+
+  STATE.term++;
+  candidate.state = 'candidate';
+  candidate.term = STATE.term;
+  candidate.votedFor = candidate.id;
+
+  showStatus(`🗳️ ${candidate.id} starting election for term ${STATE.term}`, 'election');
+  teach('ELECTION STARTED',
+    `${candidate.id} timed out waiting for the leader's heartbeat, so it became a candidate. It increments the term to ${STATE.term} (a logical clock — higher term always wins) and requests votes from all other nodes. Each node votes only once per term, and only if the candidate's log is at least as up-to-date as its own.`,
+    'warn'
+  );
+
+  // Gather votes
+  setTimeout(() => {
+    const alive = STATE.nodes.filter(n => !n.dead && !n.partitioned);
+    let votes = 1;  // candidate votes for itself
+    const voters = [];
+
+    for (const node of alive) {
+      if (node.id === candidate.id) continue;
+      // Node votes if term <= candidate's term and hasn't voted
+      if (node.term <= candidate.term) {
+        node.term = candidate.term;
+        node.votedFor = candidate.id;
+        votes++;
+        voters.push(node.id);
+      }
+    }
+
+    const quorum = Math.floor(alive.length / 2) + 1;
+
+    if (votes >= quorum) {
+      // Elected!
+      STATE.nodes.forEach(n => { if (n.state === 'leader') n.state = 'follower'; });
+      candidate.state = 'leader';
+      STATE.leaderId = candidate.id;
+
+      showStatus(`✅ ${candidate.id} ELECTED LEADER (term ${STATE.term})`, 'committed');
+      teach('LEADER ELECTED',
+        `${candidate.id} won the election with ${votes} votes (quorum: ${quorum}). It's now the leader for term ${STATE.term}. It will immediately send heartbeats every ${STATE.electionTimeout}s to prevent new elections. Only a leader can accept client writes — it's the single source of truth for the log.`,
+        'ok'
+      );
+
+      renderCluster();
+      updateMetrics();
+      resetElectionTimer();
+    } else {
+      showStatus(`❌ ${candidate.id} failed election (${votes}/${quorum})`, '');
+      teach('ELECTION FAILED',
+        `${candidate.id} only got ${votes} votes, needed ${quorum}. This can happen with network partitions or concurrent candidates. It will retry after a randomized timeout — the randomization is what prevents split votes (two candidates always tying).`,
+        'error'
+      );
+      candidate.state = 'follower';
+      renderCluster();
+      resetElectionTimer();
+    }
+  }, 800);
+}
+
+/* ============================================================
+   ELECTION TIMER (randomized per node)
+   ============================================================ */
+function resetElectionTimer() {
+  if (STATE.electionTimer) clearTimeout(STATE.electionTimer);
+  const baseTimeout = STATE.electionTimeout * 1000;
+  const jitter = baseTimeout * (0.5 + Math.random() * 0.5);
+  STATE.electionTimer = setTimeout(() => {
+    const leader = getLeader();
+    if (!leader) {
+      // No leader — elect one
+      const candidate = STATE.nodes.find(n => !n.dead && !n.partitioned);
+      if (candidate) triggerElection(candidate.id);
+    } else {
+      // Leader exists, check heartbeat — for demo, just reset
+      resetElectionTimer();
+    }
+  }, baseTimeout + jitter);
+}
+
+/* ============================================================
+   CLIENT WRITE / APPEND
+   ============================================================ */
+async function clientWrite() {
+  const leader = getLeader();
+  if (!leader) {
+    showStatus('❌ No leader — cannot write');
+    teach('NO LEADER',
+      `Client write rejected: no leader is currently elected. The cluster is in a transient state (election in progress). Real systems surface this as a 503 or timeout — clients should retry with backoff.`,
+      'error'
+    );
+    return;
+  }
+
+  showStatus(`📝 Client write → ${leader.id}`);
+  teach('CLIENT WRITE',
+    `Client sent a write to ${leader.id}. In Raft, only the leader accepts writes — followers will redirect the client (usually via an HTTP redirect or the client already knows the leader via service discovery). The leader appends the entry to its local log, then replicates.`,
+    'cyan'
+  );
+
+  await sleep(400);
+
+  const entry = {
+    term: STATE.term,
+    value: `v${leader.log.length + 1}`,
+    committed: false
+  };
+  leader.log.push({ ...entry });
+  renderLogs();
+  renderCluster();
+
+  teach('LOG APPENDED',
+    `Entry appended to ${leader.id}'s log (term ${entry.term}, value "${entry.value}"). At this moment the entry is UNCOMMITTED — it exists only on the leader. Now the leader sends AppendEntries RPCs to all followers.`,
+    'purple'
+  );
+
+  await sleep(600);
+  await replicateEntry(entry, leader);
+}
+
+async function appendEntry() {
+  const leader = getLeader();
+  if (!leader) {
+    triggerElection();
+    return;
+  }
+  const entry = {
+    term: STATE.term,
+    value: `v${leader.log.length + 1}`,
+    committed: false
+  };
+  leader.log.push({ ...entry });
+  renderLogs();
+  await replicateEntry(entry, leader);
+}
+
+async function replicateEntry(entry, leader) {
+  const followers = STATE.nodes.filter(n => n.id !== leader.id && !n.dead && !n.partitioned);
+  const quorumNeeded = Math.floor(getAliveCount() / 2) + 1;
+  let acks = 1;  // leader acks its own entry
+
+  // Animate RPCs
+  for (const follower of followers) {
+    animateRPC(leader.id, follower.id);
+    await sleep(150);
+
+    if (follower.slow) {
+      teach('SLOW FOLLOWER',
+        `${follower.id} is slow — it takes longer to ack. In Raft, the leader doesn't wait for ALL followers, just a majority. Slow followers catch up later via log reconciliation.`,
+        'warn', false
+      );
+      await sleep(800);
+    }
+
+    // Append to follower log
+    follower.log.push({ ...entry });
+    follower.term = Math.max(follower.term, entry.term);
+    acks++;
+  }
+
+  renderLogs();
+
+  if (acks >= quorumNeeded) {
+    // Commit
+    entry.committed = true;
+    for (const n of STATE.nodes) {
+      const e = n.log.find(x => x.term === entry.term && x.value === entry.value);
+      if (e) e.committed = true;
+    }
+    renderLogs();
+    showStatus(`✅ Entry "${entry.value}" committed (${acks}/${quorumNeeded} acks)`, 'committed');
+    teach('ENTRY COMMITTED',
+      `Entry "${entry.value}" is now COMMITTED. The leader got ${acks} acknowledgments (needed ${quorumNeeded}). Once a quorum has the entry, it's durable — even if the leader crashes, the next leader must have the entry to win election. This is the core of Raft's safety guarantee.`,
+      'ok'
+    );
+  } else {
+    showStatus(`⚠ Entry uncommitted (${acks}/${quorumNeeded} acks)`, 'election');
+    teach('NO QUORUM',
+      `Only ${acks} nodes have the entry — need ${quorumNeeded}. The entry stays UNCOMMITTED. This can happen during network partitions or when too many nodes are down. The cluster can't make progress until quorum is restored.`,
+      'error'
+    );
+  }
+}
+
+/* ============================================================
+   RENDER CLUSTER
+   ============================================================ */
+function renderCluster() {
+  const svg = DOM.clusterSvg;
+  const W = 700, H = 340;
+  const cx = W / 2, cy = H / 2;
+  const radius = 120;
+
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  let html = '';
+
+  // Position nodes in a circle
+  const positions = [];
+  for (let i = 0; i < STATE.nodes.length; i++) {
+    const angle = (i / STATE.nodes.length) * Math.PI * 2 - Math.PI / 2;
+    positions.push({
+      x: cx + Math.cos(angle) * radius,
+      y: cy + Math.sin(angle) * radius
+    });
+  }
+
+  // Draw RPC lines from leader
+  const leader = getLeader();
+  if (leader) {
+    const leaderIdx = STATE.nodes.findIndex(n => n.id === leader.id);
+    const lp = positions[leaderIdx];
+    for (let i = 0; i < STATE.nodes.length; i++) {
+      if (i === leaderIdx) continue;
+      const node = STATE.nodes[i];
+      if (node.dead) continue;
+      const np = positions[i];
+      const isActive = node._rpcActive;
+      html += `<line class="rpc-line ${isActive ? 'active' : ''}" x1="${lp.x}" y1="${lp.y}" x2="${np.x}" y2="${np.y}"/>`;
+    }
+  }
+
+  // Draw nodes
+  STATE.nodes.forEach((node, i) => {
+    const p = positions[i];
+    const cls = node.dead ? 'dead' : node.state;
+    const r = 28;
+
+    html += `<g class="node ${cls}" data-node-id="${node.id}">`;
+    html += `<circle cx="${p.x}" cy="${p.y}" r="${r}"/>`;
+    html += `<text x="${p.x}" y="${p.y + 3}">${node.id}</text>`;
+    html += `<text x="${p.x}" y="${p.y + r + 14}" style="font-size:8px;fill:#64748b;">term ${node.term}</text>`;
+    html += `<text x="${p.x}" y="${p.y - r - 8}" style="font-size:9px;font-weight:800;">${node.state.toUpperCase()}</text>`;
+    html += `</g>`;
+  });
+
+  // Title
+  html += `<text x="${cx}" y="20" text-anchor="middle" font-family="monospace" font-size="11" font-weight="800" fill="#c4b5fd">${STATE.protocol.toUpperCase()} CLUSTER · ${STATE.nodes.length} NODES</text>`;
+  html += `<text x="${cx}" y="${H - 10}" text-anchor="middle" font-family="monospace" font-size="10" fill="#64748b">Term: ${STATE.term} · Leader: ${leader ? leader.id : 'none'}</text>`;
+
+  svg.innerHTML = html;
+  DOM.clusterHint.textContent = `— ${STATE.nodes.length} nodes · ${getAliveCount()} alive —`;
+}
+
+function animateRPC(fromId, toId) {
+  const fromNode = STATE.nodes.find(n => n.id === fromId);
+  const toNode = STATE.nodes.find(n => n.id === toId);
+  if (!fromNode || !toNode) return;
+  toNode._rpcActive = true;
+  renderCluster();
+  setTimeout(() => {
+    toNode._rpcActive = false;
+    renderCluster();
+  }, 400);
+}
+
+/* ============================================================
+   RENDER LOGS
+   ============================================================ */
+function renderLogs() {
+  DOM.logGrid.innerHTML = '';
+  for (const node of STATE.nodes) {
+    const el = document.createElement('div');
+    el.className = `log-node ${node.state}`;
+    el.innerHTML = `
+      <div class="log-node-title">
+        <span>${node.id}</span>
+        <span>${node.state.charAt(0).toUpperCase()}</span>
+      </div>
+      ${node.log.length === 0 ? '<div style="color:#475569;text-align:center;padding:4px;">empty</div>' :
+        node.log.slice(-5).map(e => `
+          <div class="log-entry ${e.committed ? 'committed' : 'pending'}">
+            <span class="term">t${e.term}</span>
+            <span class="val">${e.value}</span>
+          </div>
+        `).join('')
+      }
+    `;
+    DOM.logGrid.appendChild(el);
+  }
+  DOM.logHint.textContent = `— ${getLeader()?.log.length || 0} entries on leader —`;
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  const leader = getLeader();
+  DOM.mLeader.textContent = leader ? leader.id : '—';
+  DOM.mLeader.className = 'metric-value ' + (leader ? 'good' : 'bad');
+  DOM.mTerm.textContent = STATE.term;
+  DOM.termBadge.textContent = 'TERM ' + STATE.term;
+  DOM.mQuorum.textContent = `${getQuorum()} / ${getAliveCount()}`;
+  DOM.mCommitted.textContent = leader ? leader.log.filter(e => e.committed).length : 0;
+}
+
+/* ============================================================
+   FAULT INJECTION
+   ============================================================ */
+function killLeader() {
+  const leader = getLeader();
+  if (!leader) {
+    showToast('⚠ No leader to kill');
+    return;
+  }
+  leader.dead = true;
+  leader.state = 'follower';
+  STATE.leaderId = null;
+
+  showStatus(`💀 ${leader.id} killed`, 'election');
+  teach('LEADER KILLED',
+    `${leader.id} (the leader) has died. No heartbeat will arrive — followers will time out after their randomized election timeout (${STATE.electionTimeout}s ± jitter) and one will start an election. This is Raft's self-healing property: the cluster automatically elects a new leader without external coordination.`,
+    'error'
+  );
+
+  renderCluster();
+  updateMetrics();
+
+  // Trigger election after short delay
+  setTimeout(() => {
+    if (!getLeader()) {
+      const candidate = STATE.nodes.find(n => !n.dead);
+      if (candidate) triggerElection(candidate.id);
+    }
+  }, 1500);
+}
+
+function partitionNetwork() {
+  STATE.partition = !STATE.partition;
+  const alive = STATE.nodes.filter(n => !n.dead);
+  // Partition the last half
+  if (STATE.partition) {
+    const splitAt = Math.ceil(alive.length / 2);
+    alive.slice(splitAt).forEach(n => { n.partitioned = true; });
+    showStatus('🔌 Network partitioned');
+    teach('NETWORK PARTITION',
+      `Network split! The cluster is now divided into two groups. The side WITH the leader (and more nodes) can still form quorum and make progress. The isolated side cannot elect a leader — it doesn't have enough votes. This is how Raft ensures safety: only one side can ever have quorum.`,
+      'error'
+    );
+  } else {
+    STATE.nodes.forEach(n => { n.partitioned = false; });
+    showStatus('✓ Partition healed');
+    teach('PARTITION HEALED',
+      `Network restored. All nodes can communicate again. The minority side that was isolated will see a higher term from the majority leader and become followers. Any uncommitted entries on the minority side are overwritten — this is why "committed" means quorum.`,
+      'ok'
+    );
+  }
+  renderCluster();
+}
+
+function slowFollower() {
+  const followers = STATE.nodes.filter(n => n.state === 'follower' && !n.dead && !n.slow);
+  if (followers.length === 0) {
+    showToast('⚠ No followers to slow');
+    return;
+  }
+  const victim = followers[0];
+  victim.slow = true;
+  teach('SLOW FOLLOWER',
+    `${victim.id} is now slow. During replication, the leader will still succeed as long as a quorum acks quickly. Slow followers fall behind and catch up later. In production, this happens due to disk I/O, GC pauses, or network hiccups.`,
+    'warn'
+  );
+}
+
+function healAll() {
+  STATE.nodes.forEach(n => {
+    n.dead = false;
+    n.partitioned = false;
+    n.slow = false;
+  });
+  // Ensure a leader exists
+  if (!getLeader()) {
+    STATE.nodes[0].state = 'leader';
+    STATE.leaderId = STATE.nodes[0].id;
+  }
+  showToast('✓ Cluster healed');
+  teach('HEALED',
+    `All nodes restored to healthy state. Cluster will operate normally — leader sends heartbeats, followers ack, writes commit via quorum.`,
+    'ok'
+  );
+  renderCluster();
+  updateMetrics();
+  resetElectionTimer();
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.electionTimer) clearTimeout(STATE.electionTimer);
+  initCluster();
+  showStatus('⟲ Cluster reset');
+  teach('RESET', 'Cluster reset to a fresh state with N1 as initial leader.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnElection.addEventListener('click', () => triggerElection());
+DOM.btnClient.addEventListener('click', clientWrite);
+DOM.btnAppend.addEventListener('click', appendEntry);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnKillLeader.addEventListener('click', killLeader);
+DOM.btnPartition.addEventListener('click', partitionNetwork);
+DOM.btnSlowFollower.addEventListener('click', slowFollower);
+DOM.btnHeal.addEventListener('click', healAll);
+
+DOM.nodesRange.addEventListener('input', e => {
+  STATE.nodeCount = parseInt(e.target.value);
+  DOM.nodesVal.textContent = STATE.nodeCount;
+  resetAll();
+});
+DOM.timeoutRange.addEventListener('input', e => {
+  STATE.electionTimeout = parseInt(e.target.value);
+  DOM.timeoutVal.textContent = STATE.electionTimeout + 's';
+});
+
+document.querySelectorAll('input[name="proto"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.protocol = e.target.value;
+    DOM.algoTitle.textContent = e.target.value.toUpperCase();
+    DOM.algoDesc.textContent = e.target.value === 'raft'
+      ? 'Understandable consensus — leader-based, log replication, strong leader'
+      : 'Classic consensus — proposers/acceptors/learners, no distinguished leader';
+    const msg = e.target.value === 'raft'
+      ? 'Raft was designed to be understandable. It uses a strong leader, log replication, and randomized election timeouts. Used by etcd, Consul, TiKV, CockroachDB.'
+      : 'Paxos is the classic consensus algorithm — theoretically elegant but notoriously hard to implement. It has three roles: proposers, acceptors, learners. No distinguished leader; any proposer can propose a value.';
+    teach('PROTOCOL: ' + e.target.value.toUpperCase(), msg, 'purple');
+  });
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+initCluster();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Consensus Protocols: Raft and Paxos. Consensus answers the fundamental question: "How do multiple unreliable computers agree on a single value?" This is the core problem behind every distributed database, coordination service, and blockchain. Raft and Paxos are the two most important practical algorithms.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE PROBLEM',
+      `Two nodes can fail, networks can partition, messages can arrive out of order. Yet we need all nodes to agree on: (1) who is the leader, (2) what is the current value of a key, (3) what order events happened in. Consensus protocols solve this with quorums and terms (logical clocks).`,
+      'purple'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('RAFT: THREE STATES',
+      `Raft is the more understandable of the two. Every node is in one of three states: FOLLOWER (passive), CANDIDATE (requesting votes), LEADER (handles all writes). Followers time out if no heartbeat → become candidates → request votes. Whoever gets quorum wins. All writes go through the leader, which replicates to followers.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('SAFETY & LIVENESS',
+      `Safety: two leaders can never be elected in the same term (quorum math guarantees this). Liveness: as long as a majority of nodes are alive, the cluster makes progress. This is why consensus clusters are usually 3, 5, or 7 nodes — they tolerate 1, 2, or 3 failures respectively. Try killing the leader and watch the auto-election!`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Try KILL LEADER or CLIENT WRITE', 4500);
+}, 500);
+</script>
+</body>
+</html>

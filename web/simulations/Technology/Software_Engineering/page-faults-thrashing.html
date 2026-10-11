@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page Faults &amp; Thrashing — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(239,68,68,0.15); color: #fca5a5; border-color: #ef4444; }
+  .teaching-toggle:hover { background: rgba(239,68,68,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #fca5a5;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #ef4444; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #ef4444; color: #fff; border-color: #ef4444; }
+  .btn.primary:hover { background: #dc2626; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fca5a5; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #ef4444; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(239,68,68,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .pf-wrap {
+    flex: 1; background: #070a14; border: 2px solid #ef4444; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(239,68,68,0.15); min-height: 0;
+  }
+  .pf-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #fca5a5; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #pfCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .working-set-strip {
+    background: #070a14; border: 2px solid #f59e0b; border-radius: 12px;
+    padding: 10px 14px; display: flex; gap: 10px; overflow-x: auto;
+    flex-shrink: 0; align-items: center; min-height: 100px;
+    box-shadow: 0 0 20px rgba(245,158,11,0.15);
+  }
+  .ws-label {
+    font-family: monospace; font-size: 0.55rem; color: #64748b;
+    font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;
+    padding-right: 10px; border-right: 1px solid #1e293b; flex-shrink: 0;
+  }
+  .ws-page {
+    padding: 6px 12px; border-radius: 6px; font-family: monospace;
+    font-size: 0.7rem; font-weight: 900; background: #1e293b;
+    color: #64748b; border: 2px solid #334155; flex-shrink: 0;
+    transition: all 0.3s;
+  }
+  .ws-page.in-ws {
+    background: rgba(245,158,11,0.2); border-color: #f59e0b;
+    color: #fcd34d; box-shadow: 0 0 10px rgba(245,158,11,0.4);
+  }
+  .ws-page.in-frames {
+    background: rgba(16,185,129,0.2); border-color: #10b981;
+    color: #86efac; box-shadow: 0 0 10px rgba(16,185,129,0.4);
+  }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #fca5a5; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #ef4444;
+    background: rgba(239,68,68,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(239,68,68,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(239,68,68,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #fca5a5;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #ef4444; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(239,68,68,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #ef4444; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #fca5a5; z-index: 12;
+    box-shadow: 0 0 20px rgba(239,68,68,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.ok { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.critical { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 30px rgba(239,68,68,0.7); animation: criticalPulse 0.8s ease-in-out infinite alternate; }
+  @keyframes criticalPulse {
+    0% { box-shadow: 0 0 20px rgba(239,68,68,0.5); }
+    100% { box-shadow: 0 0 40px rgba(239,68,68,1); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>PAGE FAULTS &amp; THRASHING</h1>
+    <span class="sub">WORKING SET · RESIDENT SET · CPU UTILIZATION</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Simulation</h3>
+      <button class="btn primary" id="btnRun">▶ Run</button>
+      <button class="btn" id="btnStep">⏭ Step</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Process Control</h3>
+      <button class="btn" id="btnAddProcess">➕ Add Process</button>
+      <button class="btn danger" id="btnAddMany">💥 Add 5 Processes</button>
+      <button class="btn warn" id="btnIncrease">📈 Increase Working Set</button>
+    </div>
+
+    <div class="panel">
+      <h3>Frame Allocation</h3>
+      <div class="slider-row"><span>Total frames</span><span class="value" id="framesVal">12</span></div>
+      <input type="range" id="framesRange" min="6" max="30" value="12">
+      <div class="slider-row"><span>Working set</span><span class="value" id="wsVal">4</span></div>
+      <input type="range" id="wsRange" min="1" max="12" value="4">
+      <div class="slider-row"><span>Page fault cost</span><span class="value" id="costVal">20μs</span></div>
+      <input type="range" id="costRange" min="5" max="50" value="20">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:6px;"></span>Page resident</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:2px;margin-right:6px;"></span>Page in working set</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:2px;margin-right:6px;"></span>Page fault / evicted</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">CPU UTILIZATION VS MULTIPROGRAMMING DEGREE</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="pf-wrap">
+          <div class="pf-title">
+            <span>📊 CPU UTILIZATION &amp; PAGE FAULT RATE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="pfHint">— click RUN —</span>
+          </div>
+          <canvas id="pfCanvas"></canvas>
+        </div>
+        <div class="working-set-strip">
+          <span class="ws-label">WORKING SET</span>
+          <div id="wsPages" style="display:flex; gap:6px;"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Processes</div>
+        <div class="metric-value" id="mProcesses">1</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">CPU Util</div>
+        <div class="metric-value good" id="mCPU">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Fault Rate</div>
+        <div class="metric-value warn" id="mFaults">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Status</div>
+        <div class="metric-value good" id="mStatus" style="font-size:0.7rem;">OK</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Thrashing Explained</div>
+      <div class="info-row"><span class="lbl">Working set</span><span class="val">Pages a process uses now</span></div>
+      <div class="info-row"><span class="lbl">Resident set</span><span class="val good">Pages actually in RAM</span></div>
+      <div class="info-row"><span class="lbl">Thrashing</span><span class="val bad">Faults > useful work</span></div>
+      <div class="info-row"><span class="lbl">Cause</span><span class="val">Too many processes</span></div>
+      <div class="info-row"><span class="lbl">Fix</span><span class="val good">Reduce multiprogramming</span></div>
+      <div class="info-row"><span class="lbl">Also</span><span class="val">Working set model</span></div>
+      <div class="info-row"><span class="lbl">Systems</span><span class="val">Any time-shared OS</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  processes: [],
+  nextPid: 1,
+  totalFrames: 12,
+  workingSetSize: 4,
+  faultCost: 20,
+  simTime: 0,
+  running: false,
+  timer: null,
+  history: [],     // {processes, cpuUtil, faultRate}
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  pfCanvas: document.getElementById('pfCanvas'),
+  pfHint: document.getElementById('pfHint'),
+  wsPages: document.getElementById('wsPages'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnAddProcess: document.getElementById('btnAddProcess'),
+  btnAddMany: document.getElementById('btnAddMany'),
+  btnIncrease: document.getElementById('btnIncrease'),
+  framesRange: document.getElementById('framesRange'),
+  framesVal: document.getElementById('framesVal'),
+  wsRange: document.getElementById('wsRange'),
+  wsVal: document.getElementById('wsVal'),
+  costRange: document.getElementById('costRange'),
+  costVal: document.getElementById('costVal'),
+  mProcesses: document.getElementById('mProcesses'),
+  mCPU: document.getElementById('mCPU'),
+  mFaults: document.getElementById('mFaults'),
+  mStatus: document.getElementById('mStatus'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining page faults and thrashing.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+function addProcess() {
+  const p = {
+    pid: `P${STATE.nextPid++}`,
+    workingSet: STATE.workingSetSize,
+    residentPages: [],
+    faults: 0,
+    cpuTime: 0,
+    color: `hsl(${(STATE.nextPid * 67) % 360}, 65%, 55%)`,
+    pageFaultTicks: 0
+  };
+  // Assign resident pages
+  const avail = STATE.totalFrames - STATE.processes.reduce((s, x) => s + x.residentPages.length, 0);
+  const allocate = Math.min(p.workingSet, Math.max(0, avail));
+  for (let i = 0; i < allocate; i++) {
+    p.residentPages.push(`p${p.pid}_${i}`);
+  }
+  STATE.processes.push(p);
+  updateUI();
+  return p;
+}
+
+function addMany() {
+  for (let i = 0; i < 5; i++) setTimeout(addProcess, i * 100);
+  showToast('💥 5 processes added');
+  teach('MORE PROCESSES',
+    `Added 5 processes. Watch the frame pool: each process wants ${STATE.workingSetSize} frames for its working set, but total is only ${STATE.totalFrames}. Once sum of working sets exceeds total frames, we enter the danger zone — page faults will skyrocket and CPU utilization will collapse.`,
+    'warn'
+  );
+}
+
+function increaseWorkingSet() {
+  for (const p of STATE.processes) {
+    p.workingSet = Math.min(12, p.workingSet + 2);
+  }
+  showToast('📈 Working set increased');
+  teach('WORKING SET GROWTH',
+    `Each process's working set grew. Real programs expand their working set as they touch new data (loops over larger arrays, memory-mapped files, etc.). If the OS can't keep up, some pages of the working set end up on disk — every access to them becomes a page fault.`,
+    'warn'
+  );
+}
+
+function tick() {
+  STATE.simTime++;
+
+  // Recompute resident pages — kernel gives each process frames proportional to need,
+  // but if sum > total frames, everyone suffers.
+  const totalNeed = STATE.processes.reduce((s, p) => s + p.workingSet, 0);
+  const overcommitRatio = totalNeed / STATE.totalFrames;
+  const globallyStarved = overcommitRatio > 1;
+
+  // Assign frames: each process gets max(min(workingSet, totalFrames/numProcs), 1)
+  const framesPerProcess = Math.max(1, Math.floor(STATE.totalFrames / Math.max(1, STATE.processes.length)));
+
+  for (const p of STATE.processes) {
+    // Update resident pages
+    const target = Math.min(p.workingSet, framesPerProcess);
+    // Grow
+    while (p.residentPages.length < target) {
+      p.residentPages.push(`p${p.pid}_${p.residentPages.length}`);
+    }
+    // Shrink (pages evicted)
+    while (p.residentPages.length > target) {
+      p.residentPages.pop();
+    }
+
+    // Simulate fault rate: 
+    // - If resident >= workingSet, low faults (steady state)
+    // - Otherwise, thrashing: each miss causes another page to evict, causing more faults
+    let faultRate;
+    if (p.residentPages.length >= p.workingSet) {
+      faultRate = 0.02 + Math.random() * 0.03;  // 2-5% normal
+    } else {
+      const deficit = p.workingSet - p.residentPages.length;
+      faultRate = Math.min(1.0, 0.3 + deficit * 0.15);
+    }
+
+    // If globally starved, add extra pressure
+    if (globallyStarved) faultRate = Math.min(1.0, faultRate * 1.4);
+
+    if (Math.random() < faultRate) {
+      p.faults++;
+      p.pageFaultTicks++;
+      p.cpuTime -= 0.5;  // Fault costs time
+    } else {
+      p.cpuTime++;
+      if (p.pageFaultTicks > 0) p.pageFaultTicks--;
+    }
+  }
+
+  const totalFaults = STATE.processes.reduce((s, p) => s + p.pageFaultTicks, 0);
+  const cpuUtil = computeCPUUtil();
+  const faultRate = computeFaultRate();
+
+  STATE.history.push({
+    processes: STATE.processes.length,
+    cpuUtil,
+    faultRate,
+    residentTotal: STATE.processes.reduce((s, p) => s + p.residentPages.length, 0),
+    neededTotal: totalNeed,
+  });
+  if (STATE.history.length > 60) STATE.history.shift();
+
+  // Thrashing detection
+  if (faultRate > 60 && STATE.processes.length > 0) {
+    showStatus(`🚨 THRASHING! fault rate ${Math.round(faultRate)}%`, 'critical');
+  } else if (faultRate > 30) {
+    showStatus(`⚠️ High fault rate: ${Math.round(faultRate)}%`, '');
+  }
+
+  // Educational prompts at thresholds
+  const prevLen = STATE.processes.length;
+  if (faultRate > 60 && !STATE.thrashingWarned) {
+    STATE.thrashingWarned = true;
+    teach('THRASHING!',
+      `The system is now THRASHING. Page fault rate is ${Math.round(faultRate)}% and CPU utilization has dropped. The system is spending more time moving pages between RAM and disk than executing your code. The only way out: reduce the number of active processes (swap some out) or increase physical memory.`,
+      'error'
+    );
+  } else if (faultRate < 10 && STATE.thrashingWarned) {
+    STATE.thrashingWarned = false;
+    teach('RECOVERED',
+      `Fault rate is back to ${Math.round(faultRate)}%. The system is no longer thrashing — CPU utilization has recovered. This usually means the working sets now fit in RAM.`,
+      'ok'
+    );
+  }
+
+  updateUI();
+  drawChart();
+}
+
+function computeCPUUtil() {
+  if (STATE.processes.length === 0) return 0;
+  // CPU util = fraction of time spent executing (not waiting on disk)
+  const totalFaultTicks = STATE.processes.reduce((s, p) => s + p.pageFaultTicks, 0);
+  const totalWork = STATE.processes.reduce((s, p) => s + Math.max(0, p.cpuTime), 0);
+  const totalTicks = totalFaultTicks + totalWork;
+  if (totalTicks === 0) return 0;
+  let util = (totalWork / totalTicks) * 100;
+  // Cap at 100
+  return Math.min(100, Math.round(util));
+}
+
+function computeFaultRate() {
+  if (STATE.processes.length === 0) return 0;
+  const totalFaultTicks = STATE.processes.reduce((s, p) => s + p.pageFaultTicks, 0);
+  const totalTicks = STATE.simTime * STATE.processes.length;
+  if (totalTicks === 0) return 0;
+  return Math.min(100, Math.round((totalFaultTicks / totalTicks) * 100));
+}
+
+function resizeCanvas() {
+  const canvas = DOM.pfCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawChart() {
+  const canvas = DOM.pfCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 50, padR = 30, padT = 30, padB = 30;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+
+  // Grid lines
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + (i / 4) * chartH;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(W - padR, y);
+    ctx.stroke();
+  }
+
+  // Y axis labels
+  ctx.font = '9px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('100%', padL - 6, padT);
+  ctx.fillText('50%', padL - 6, padT + chartH / 2);
+  ctx.fillText('0%', padL - 6, padT + chartH);
+
+  if (STATE.history.length < 2) {
+    ctx.font = '11px monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Click RUN to see CPU utilization and page fault rate', W / 2, H / 2);
+    DOM.pfHint.textContent = `— click RUN —`;
+    return;
+  }
+
+  const maxLen = Math.max(STATE.history.length, 20);
+
+  // Draw CPU util line (green)
+  ctx.strokeStyle = '#10b981';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i < STATE.history.length; i++) {
+    const x = padL + (i / maxLen) * chartW;
+    const y = padT + (1 - STATE.history[i].cpuUtil / 100) * chartH;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Draw fault rate line (red)
+  ctx.strokeStyle = '#ef4444';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i < STATE.history.length; i++) {
+    const x = padL + (i / maxLen) * chartW;
+    const y = padT + (1 - STATE.history[i].faultRate / 100) * chartH;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Legend
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#10b981';
+  ctx.fillText('■ CPU Util', padL, 8);
+  ctx.fillStyle = '#ef4444';
+  ctx.fillText('■ Fault Rate', padL + 90, 8);
+
+  // Current values
+  const last = STATE.history[STATE.history.length - 1];
+  ctx.fillStyle = '#cbd5e1';
+  ctx.textAlign = 'right';
+  ctx.fillText(`CPU ${Math.round(last.cpuUtil)}% · Fault ${Math.round(last.faultRate)}%`, W - 10, 8);
+
+  DOM.pfHint.textContent = `— ${STATE.processes.length} procs · ${last.residentTotal}/${STATE.totalFrames} frames used —`;
+}
+
+function animate() {
+  drawChart();
+  requestAnimationFrame(animate);
+}
+
+function updateUI() {
+  // Working set strip
+  DOM.wsPages.innerHTML = '';
+  if (STATE.processes.length > 0) {
+    const p = STATE.processes[0];
+    for (let i = 0; i < p.workingSet; i++) {
+      const el = document.createElement('div');
+      el.className = 'ws-page';
+      if (i < p.residentPages.length) el.classList.add('in-frames');
+      el.classList.add('in-ws');
+      el.textContent = `${p.pid}_${i}`;
+      DOM.wsPages.appendChild(el);
+    }
+    if (STATE.processes.length > 1) {
+      const more = document.createElement('span');
+      more.style.cssText = 'color:#64748b;font-size:0.6rem;font-family:monospace;align-self:center;';
+      more.textContent = `+ ${STATE.processes.length - 1} more process(es)`;
+      DOM.wsPages.appendChild(more);
+    }
+  } else {
+    DOM.wsPages.innerHTML = '<span style="color:#475569;font-size:0.6rem;font-family:monospace;">— no processes —</span>';
+  }
+
+  DOM.mProcesses.textContent = STATE.processes.length;
+  const cpu = computeCPUUtil();
+  DOM.mCPU.textContent = cpu + '%';
+  DOM.mCPU.className = 'metric-value ' + (cpu > 70 ? 'good' : cpu > 30 ? 'warn' : 'bad');
+
+  const faults = computeFaultRate();
+  DOM.mFaults.textContent = faults + '%';
+  DOM.mFaults.className = 'metric-value ' + (faults > 60 ? 'bad' : faults > 30 ? 'warn' : 'good');
+
+  let status = 'OK';
+  let cls = 'good';
+  if (faults > 60) { status = 'THRASHING'; cls = 'bad'; }
+  else if (faults > 30) { status = 'DEGRADED'; cls = 'warn'; }
+  DOM.mStatus.textContent = status;
+  DOM.mStatus.className = 'metric-value ' + cls;
+}
+
+function runSimulation() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.timer);
+    STATE.timer = null;
+    DOM.btnRun.textContent = '▶ Run';
+    return;
+  }
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+  showStatus('▶ Simulating');
+  STATE.timer = setInterval(tick, 400);
+}
+
+function resetAll() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.timer = null;
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Run';
+  STATE.processes = [];
+  STATE.nextPid = 1;
+  STATE.simTime = 0;
+  STATE.history = [];
+  STATE.thrashingWarned = false;
+  DOM.statusBanner.classList.remove('show');
+  updateUI();
+  drawChart();
+  teach('RESET', 'Simulation reset.', 'info', false);
+}
+
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRun.addEventListener('click', runSimulation);
+DOM.btnStep.addEventListener('click', tick);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnAddProcess.addEventListener('click', addProcess);
+DOM.btnAddMany.addEventListener('click', addMany);
+DOM.btnIncrease.addEventListener('click', increaseWorkingSet);
+
+DOM.framesRange.addEventListener('input', e => {
+  STATE.totalFrames = parseInt(e.target.value);
+  DOM.framesVal.textContent = STATE.totalFrames;
+});
+DOM.wsRange.addEventListener('input', e => {
+  STATE.workingSetSize = parseInt(e.target.value);
+  DOM.wsVal.textContent = STATE.workingSetSize;
+});
+DOM.costRange.addEventListener('input', e => {
+  STATE.faultCost = parseInt(e.target.value);
+  DOM.costVal.textContent = STATE.faultCost + 'μs';
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+    return this;
+  };
+}
+
+resizeCanvas();
+animate();
+updateUI();
+drawChart();
+
+// Seed
+setTimeout(() => {
+  addProcess();
+  addProcess();
+}, 500);
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Page Faults and Thrashing. A page fault happens when a process accesses a page that isn't in physical memory — the OS must fetch it from disk, a million times slower than RAM. Normally, faults are rare (2-5% of accesses). But when they spike, you enter a death spiral called thrashing.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE DEATH SPIRAL',
+      `Thrashing happens when the sum of all processes' working sets exceeds physical RAM. The OS gives each process fewer frames than it needs. Every access becomes a fault. The OS tries to fetch a page, evicts another, which faults next. CPU utilization collapses — the CPU sits idle while the disk churns.`,
+      'error'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('THE WORKING SET MODEL',
+      `Peter Denning's 1968 solution: track each process's WORKING SET — the set of pages it's actively using. Only run processes whose total working sets fit in RAM. When memory is tight, the OS swaps out a whole process instead of thrashing. This is the foundation of memory-aware scheduling.`,
+      'purple'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Add a few processes, then keep adding until the sum of working sets exceeds total frames. You'll see fault rate climb and CPU utilization collapse — classic thrashing. Then increase total frames or reduce working set to recover.`,
+      'ok'
+    );
+  }, 13000);
+  showToast('👋 Add processes until fault rate spikes', 4500);
+}, 500);
+</script>
+</body>
+</html>
