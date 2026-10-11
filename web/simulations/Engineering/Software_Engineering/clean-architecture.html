@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clean Architecture &amp; Layered Dependencies — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #ec4899, #a855f7, #6366f1);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(236,72,153,0.15);
+    color: #f9a8d4;
+    border-color: #ec4899;
+  }
+  .teaching-toggle:hover { background: rgba(236,72,153,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #f9a8d4;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #ec4899; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #ec4899; color: #fff; border-color: #ec4899; }
+  .btn.primary:hover { background: #db2777; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #f9a8d4; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #ec4899; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(236,72,153,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* LAYERS VIEW */
+  .layers-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #ec4899;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(236,72,153,0.15);
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .layers-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #f9a8d4;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 5;
+  }
+  .layers-canvas {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 4px;
+    overflow-y: auto;
+    position: relative;
+    min-height: 0;
+  }
+
+  /* Layer ring */
+  .layer {
+    border: 2px solid;
+    border-radius: 10px;
+    padding: 8px 12px;
+    position: relative;
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    cursor: pointer;
+    background: rgba(15,23,42,0.5);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .layer:hover {
+    transform: translateX(2px);
+  }
+  .layer.highlight {
+    transform: scale(1.01);
+    box-shadow: 0 0 30px currentColor;
+    z-index: 10;
+  }
+
+  /* The rings */
+  .layer.entities { border-color: #fbbf24; background: linear-gradient(145deg, rgba(251,191,36,0.12), rgba(120,53,15,0.1)); }
+  .layer.usecases { border-color: #f97316; background: linear-gradient(145deg, rgba(249,115,22,0.1), rgba(124,45,18,0.08)); }
+  .layer.adapters { border-color: #ec4899; background: linear-gradient(145deg, rgba(236,72,153,0.1), rgba(131,24,67,0.08)); }
+  .layer.frameworks { border-color: #8b5cf6; background: linear-gradient(145deg, rgba(139,92,246,0.1), rgba(76,29,149,0.08)); }
+
+  .layer-icon {
+    font-size: 1.3rem;
+    flex-shrink: 0;
+    width: 32px;
+    text-align: center;
+  }
+  .layer-content {
+    flex: 1;
+    min-width: 0;
+  }
+  .layer-name {
+    font-size: 0.75rem;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 3px;
+  }
+  .layer.entities .layer-name { color: #fbbf24; }
+  .layer.usecases .layer-name { color: #f97316; }
+  .layer.adapters .layer-name { color: #f9a8d4; }
+  .layer.frameworks .layer-name { color: #c4b5fd; }
+
+  .layer-desc {
+    font-size: 0.55rem;
+    color: #94a3b8;
+    letter-spacing: 0.3px;
+    font-family: monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .layer-badge {
+    font-size: 0.5rem;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 1px;
+    font-family: monospace;
+    flex-shrink: 0;
+  }
+  .layer.entities .layer-badge { background: rgba(251,191,36,0.2); color: #fbbf24; }
+  .layer.usecases .layer-badge { background: rgba(249,115,22,0.2); color: #fb923c; }
+  .layer.adapters .layer-badge { background: rgba(236,72,153,0.2); color: #f9a8d4; }
+  .layer.frameworks .layer-badge { background: rgba(139,92,246,0.2); color: #c4b5fd; }
+
+  /* Arrow between layers */
+  .arrow-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 16px;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .arrow {
+    font-size: 0.9rem;
+    color: #334155;
+    transition: all 0.3s;
+    position: relative;
+  }
+  .arrow.active {
+    color: #fbbf24;
+    text-shadow: 0 0 10px #fbbf24;
+    animation: arrowPulse 0.6s ease-in-out infinite alternate;
+  }
+  .arrow.violation {
+    color: #ef4444;
+    text-shadow: 0 0 15px #ef4444;
+    animation: arrowShake 0.4s ease-in-out infinite;
+  }
+  @keyframes arrowPulse {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(3px); }
+  }
+  @keyframes arrowShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    75% { transform: translateX(3px); }
+  }
+
+  /* Dependency flow overlay */
+  .dep-indicator {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    font-family: monospace;
+    font-size: 0.55rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    writing-mode: vertical-rl;
+    z-index: 4;
+  }
+  .dep-indicator .dotline {
+    width: 2px;
+    height: 60px;
+    background: repeating-linear-gradient(180deg, #fbbf24 0px, #fbbf24 8px, transparent 8px, transparent 16px);
+    box-shadow: 0 0 8px #fbbf24;
+  }
+
+  /* BOTTOM: DEPENDENCY TRACER */
+  .tracer-wrap {
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15);
+    flex-shrink: 0;
+    min-height: 180px;
+  }
+  .tracer-title {
+    font-size: 0.58rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tracer-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    padding: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.58rem;
+    line-height: 1.5;
+    min-height: 0;
+  }
+  .tracer-line {
+    padding: 2px 4px;
+    border-radius: 3px;
+    animation: lineIn 0.3s ease;
+    border-left: 2px solid transparent;
+    display: flex;
+    gap: 6px;
+  }
+  @keyframes lineIn {
+    from { transform: translateX(-6px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .tracer-line.ok { border-left-color: #10b981; color: #a7f3d0; }
+  .tracer-line.violation { border-left-color: #ef4444; color: #fecaca; font-weight: 700; }
+  .tracer-line.info { border-left-color: #475569; color: #cbd5e1; }
+  .tracer-line.arrow { border-left-color: #fbbf24; color: #fde047; font-weight: 700; }
+  .tracer-line .ts { color: #475569; font-size: 0.5rem; min-width: 30px; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(236,72,153,0.06);
+    border: 1px solid rgba(236,72,153,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #f9a8d4;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #ec4899;
+    background: rgba(236,72,153,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(236,72,153,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(236,72,153,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #f9a8d4;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #ec4899;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(236,72,153,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #ec4899;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #f9a8d4;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(236,72,153,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.ok { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.error { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>CLEAN ARCHITECTURE</h1>
+    <span class="sub">DEPENDENCY INVERSION · LAYERED · TESTABLE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Simulation</h3>
+      <button class="btn primary" id="btnRun">▶ Run Use Case Flow</button>
+      <button class="btn" id="btnStep">⏭ Step Layer</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Add Dependencies</h3>
+      <button class="btn success" id="btnLegalDep">✅ Proper: Use Case → Entity</button>
+      <button class="btn danger" id="btnViolate">❌ Violation: Entity → Framework</button>
+      <button class="btn warn" id="btnLeak">⚠️ Leak: Adapter calls Adapter</button>
+    </div>
+
+    <div class="panel">
+      <h3>Swap Implementation</h3>
+      <button class="btn" id="btnSwapDb">🔄 Swap DB: Postgres → Mongo</button>
+      <button class="btn" id="btnSwapUi">🔄 Swap UI: React → Vue</button>
+      <button class="btn" id="btnSwapMail">🔄 Swap Email: SMTP → SendGrid</button>
+    </div>
+
+    <div class="panel">
+      <h3>Interactive</h3>
+      <button class="btn info" id="btnTrace">🔍 Trace Dependency Graph</button>
+      <button class="btn" id="btnTest">🧪 Run Unit Test</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#fbbf24;margin-right:6px;"></span>Entities (innermost)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f97316;margin-right:6px;"></span>Use Cases</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ec4899;margin-right:6px;"></span>Adapters</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#8b5cf6;margin-right:6px;"></span>Frameworks/DB</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">DEPENDENCIES POINT INWARD · ENTITIES KNOW NOTHING</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="layers-wrap">
+          <div class="layers-title">
+            <span>🏛️ LAYERED DEPENDENCIES</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="layersHint">— click a layer to inspect —</span>
+          </div>
+          <div class="layers-canvas" id="layersCanvas">
+            <!-- Layers injected by JS -->
+          </div>
+          <div class="dep-indicator">
+            <div class="dotline"></div>
+            <span>DEPS →</span>
+          </div>
+        </div>
+
+        <div class="tracer-wrap">
+          <div class="tracer-title">
+            <span>📡 DEPENDENCY TRACER</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="tracerHint">— 0 events —</span>
+          </div>
+          <div class="tracer-body" id="tracerBody"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Layers</div>
+        <div class="metric-value" id="mLayerCount">4</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Violations</div>
+        <div class="metric-value bad" id="mViolations">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Testability</div>
+        <div class="metric-value good" id="mTestability">100%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Coupling</div>
+        <div class="metric-value" id="mCoupling">Low</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 The Dependency Rule</div>
+      <div class="info-row"><span class="lbl">Direction</span><span class="val good">Inward only</span></div>
+      <div class="info-row"><span class="lbl">Entities</span><span class="val good">Pure business rules</span></div>
+      <div class="info-row"><span class="lbl">Use Cases</span><span class="val">Application logic</span></div>
+      <div class="info-row"><span class="lbl">Adapters</span><span class="val">Ports & interfaces</span></div>
+      <div class="info-row"><span class="lbl">Frameworks</span><span class="val warn">Replaceable details</span></div>
+      <div class="info-row"><span class="lbl">Key idea</span><span class="val good">Dependency Inversion</span></div>
+      <div class="info-row"><span class="lbl">Author</span><span class="val">Robert C. Martin</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  violations: 0,
+  testability: 100,
+  activeLayer: null,
+  // Layers config
+  layers: [
+    {
+      id: 'entities',
+      name: 'Entities',
+      icon: '🧬',
+      badge: 'innermost',
+      desc: 'Enterprise-wide business rules — pure, framework-free',
+      examples: ['Order', 'Customer', 'Money', 'OrderStatus']
+    },
+    {
+      id: 'usecases',
+      name: 'Use Cases',
+      icon: '🎯',
+      badge: 'application',
+      desc: 'Application-specific business rules orchestrating entities',
+      examples: ['PlaceOrder', 'CancelOrder', 'RefundOrder']
+    },
+    {
+      id: 'adapters',
+      name: 'Adapters',
+      icon: '🔌',
+      badge: 'interface',
+      desc: 'Convert data between use cases and external formats',
+      examples: ['OrderController', 'OrderRepository', 'OrderPresenter']
+    },
+    {
+      id: 'frameworks',
+      name: 'Frameworks & Drivers',
+      icon: '⚙️',
+      badge: 'outermost',
+      desc: 'Web, DB, UI, external services — replaceable details',
+      examples: ['Express.js', 'PostgreSQL', 'React', 'SendGrid']
+    }
+  ],
+  // Runtime
+  dbImpl: 'PostgreSQL',
+  uiImpl: 'React',
+  mailImpl: 'SMTP',
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  layersCanvas: document.getElementById('layersCanvas'),
+  layersHint: document.getElementById('layersHint'),
+  tracerBody: document.getElementById('tracerBody'),
+  tracerHint: document.getElementById('tracerHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Controls
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnLegalDep: document.getElementById('btnLegalDep'),
+  btnViolate: document.getElementById('btnViolate'),
+  btnLeak: document.getElementById('btnLeak'),
+  btnSwapDb: document.getElementById('btnSwapDb'),
+  btnSwapUi: document.getElementById('btnSwapUi'),
+  btnSwapMail: document.getElementById('btnSwapMail'),
+  btnTrace: document.getElementById('btnTrace'),
+  btnTest: document.getElementById('btnTest'),
+  // Metrics
+  mLayerCount: document.getElementById('mLayerCount'),
+  mViolations: document.getElementById('mViolations'),
+  mTestability: document.getElementById('mTestability'),
+  mCoupling: document.getElementById('mCoupling'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2800);
+}
+
+let TRACE_TS = 0;
+function trace(cls, msg) {
+  TRACE_TS++;
+  const el = document.createElement('div');
+  el.className = `tracer-line ${cls}`;
+  el.innerHTML = `<span class="ts">[${String(TRACE_TS).padStart(3, '0')}]</span><span>${msg}</span>`;
+  DOM.tracerBody.prepend(el);
+  while (DOM.tracerBody.children.length > 30) DOM.tracerBody.lastChild.remove();
+  DOM.tracerHint.textContent = `${TRACE_TS} events`;
+}
+
+function clearTrace() {
+  TRACE_TS = 0;
+  DOM.tracerBody.innerHTML = '';
+  DOM.tracerHint.textContent = '0 events';
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining clean architecture and layered dependencies.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   RENDER LAYERS
+   ============================================================ */
+function renderLayers() {
+  DOM.layersCanvas.innerHTML = '';
+
+  STATE.layers.forEach((layer, idx) => {
+    const el = document.createElement('div');
+    el.className = `layer ${layer.id}`;
+    el.dataset.layerId = layer.id;
+    el.style.marginLeft = (idx * 20) + 'px';
+    el.style.marginRight = ((3 - idx) * 20) + 'px';
+
+    el.innerHTML = `
+      <div class="layer-icon">${layer.icon}</div>
+      <div class="layer-content">
+        <div class="layer-name">${layer.name}</div>
+        <div class="layer-desc">${layer.desc}</div>
+      </div>
+      <span class="layer-badge">${layer.badge}</span>
+    `;
+
+    el.addEventListener('click', () => inspectLayer(layer.id));
+    DOM.layersCanvas.appendChild(el);
+
+    // Arrow between layers
+    if (idx < STATE.layers.length - 1) {
+      const arrowContainer = document.createElement('div');
+      arrowContainer.className = 'arrow-container';
+      arrowContainer.innerHTML = `<div class="arrow" data-arrow-idx="${idx}">↓</div>`;
+      DOM.layersCanvas.appendChild(arrowContainer);
+    }
+  });
+
+  DOM.layersHint.textContent = `— ${STATE.layers.length} layers —`;
+}
+
+function inspectLayer(layerId) {
+  const layer = STATE.layers.find(l => l.id === layerId);
+  if (!layer) return;
+
+  STATE.activeLayer = layerId;
+
+  document.querySelectorAll('.layer').forEach(el => {
+    el.classList.toggle('highlight', el.dataset.layerId === layerId);
+  });
+
+  trace('info', `Inspecting layer: ${layer.name}`);
+  teach('LAYER: ' + layer.name.toUpperCase(),
+    `${layer.desc}. Examples: ${layer.examples.join(', ')}. ${getLayerPrinciple(layer.id)}`,
+    layer.id === 'entities' ? 'warn' : layer.id === 'frameworks' ? 'purple' : 'cyan'
+  );
+}
+
+function getLayerPrinciple(id) {
+  const principles = {
+    entities: 'Entities are the innermost layer. They know NOTHING about databases, web frameworks, or any external detail. Change your web framework → entities do not change.',
+    usecases: 'Use Cases orchestrate the flow of data to and from entities. They contain application-specific business rules. They depend only on entities.',
+    adapters: 'Adapters convert between the format convenient for use cases and the format needed by external systems. They depend inward only.',
+    frameworks: 'Frameworks and drivers are the outermost layer. They are details — databases, web frameworks, UI. They can be swapped without touching inner layers.'
+  };
+  return principles[id] || '';
+}
+
+/* ============================================================
+   USE CASE FLOW
+   ============================================================ */
+async function runFlow() {
+  clearTrace();
+  showStatus('▶ Use case flow started');
+
+  trace('info', 'Client sends HTTP POST /orders');
+  await sleep(400);
+
+  // Step 1: Framework
+  document.querySelector('[data-layer-id="frameworks"]').classList.add('highlight');
+  trace('info', `${STATE.uiImpl} → ${STATE.uiImpl} component receives request`);
+  trace('arrow', `Framework → Adapter (allowed: outward → inward)`);
+  await sleep(600);
+  document.querySelector('[data-layer-id="frameworks"]').classList.remove('highlight');
+
+  // Step 2: Adapter
+  document.querySelector('[data-layer-id="adapters"]').classList.add('highlight');
+  trace('info', `OrderController parses JSON → PlaceOrderCommand DTO`);
+  trace('arrow', `Adapter → Use Case (allowed: inward)`);
+  teach('ADAPTERS',
+    `The controller (an adapter) converts the incoming HTTP request into a use case-specific input DTO. It doesn't know about business rules. It just translates formats. This is the interface layer — how the outside world talks to the application.`,
+    'cyan', false
+  );
+  await sleep(700);
+  document.querySelector('[data-layer-id="adapters"]').classList.remove('highlight');
+
+  // Step 3: Use Case
+  document.querySelector('[data-layer-id="usecases"]').classList.add('highlight');
+  trace('info', `PlaceOrder use case begins`);
+  trace('info', `  ↪ validates order via Order entity`);
+  trace('arrow', `Use Case → Entity (allowed: innermost)`);
+  teach('USE CASES',
+    `The PlaceOrder use case orchestrates the flow: validate the order, calculate totals, reserve inventory, persist. It depends ONLY on entities and port interfaces — not on any specific database or framework.`,
+    'ok', false
+  );
+  await sleep(800);
+  document.querySelector('[data-layer-id="usecases"]').classList.remove('highlight');
+
+  // Step 4: Entity
+  document.querySelector('[data-layer-id="entities"]').classList.add('highlight');
+  trace('info', `Order entity: validates invariants (total > 0, items not empty)`);
+  trace('info', `  ↪ business rules applied — no I/O, no framework calls`);
+  await sleep(700);
+  document.querySelector('[data-layer-id="entities"]').classList.remove('highlight');
+  document.getElementById('organ-entities')?.classList.remove('highlight');
+
+  // Back to use case
+  document.querySelector('[data-layer-id="usecases"]').classList.add('highlight');
+  trace('info', `PlaceOrder → calls OrderRepository.save(order)`);
+  trace('arrow', `Use Case → Port interface (declared in use case, implemented in adapter)`);
+  teach('DEPENDENCY INVERSION',
+    `Here's the key insight: the use case declares an interface it NEEDS (OrderRepository). The use case doesn't know that a Postgres implementation exists. The Postgres adapter implements this interface. This is Dependency Inversion — the use case owns the interface, not the framework.`,
+    'purple'
+  );
+  await sleep(900);
+
+  // Adapter implements
+  document.querySelector('[data-layer-id="adapters"]').classList.add('highlight');
+  trace('info', `PostgresOrderRepository (adapter) receives save() call`);
+  trace('arrow', `Adapter → Framework (allowed: adapter depends on framework detail)`);
+  await sleep(600);
+  document.querySelector('[data-layer-id="adapters"]').classList.remove('highlight');
+
+  // Framework layer — actual DB
+  document.querySelector('[data-layer-id="frameworks"]').classList.add('highlight');
+  trace('info', `${STATE.dbImpl} executes INSERT INTO orders ...`);
+  await sleep(500);
+
+  // Success propagation back up
+  trace('ok', `${STATE.dbImpl} → returns new order id`);
+  await sleep(300);
+  document.querySelector('[data-layer-id="frameworks"]').classList.remove('highlight');
+
+  document.querySelector('[data-layer-id="adapters"]').classList.add('highlight');
+  trace('ok', `Repository → returns Order domain object to use case`);
+  await sleep(300);
+  document.querySelector('[data-layer-id="adapters"]').classList.remove('highlight');
+
+  document.querySelector('[data-layer-id="usecases"]').classList.add('highlight');
+  trace('ok', `PlaceOrder → returns PlaceOrderResult`);
+  await sleep(300);
+  document.querySelector('[data-layer-id="usecases"]').classList.remove('highlight');
+
+  document.querySelector('[data-layer-id="adapters"]').classList.add('highlight');
+  trace('ok', `Controller → HTTP 201 Created (order JSON)`);
+  await sleep(300);
+  document.querySelector('[data-layer-id="adapters"]').classList.remove('highlight');
+
+  showStatus('✅ Use case flow complete', 'ok');
+  teach('FLOW COMPLETE',
+    `The request flowed from framework → adapter → use case → entity → back. Notice: the entity layer never knew about the database. The use case never imported a web framework. Every dependency pointed INWARD. That's the dependency rule.`,
+    'ok'
+  );
+}
+
+/* ============================================================
+   DEPENDENCY DEMOS
+   ============================================================ */
+function addLegalDependency() {
+  trace('ok', `✓ UseCase PlaceOrder → Entity Order (inward)`);
+  trace('ok', `✓ Adapter OrderController → UseCase PlaceOrder (inward)`);
+  trace('ok', `✓ Framework Express → Adapter OrderController (inward)`);
+  showStatus('✅ Legal dependency chain', 'ok');
+  teach('LEGAL DEPENDENCY',
+    `This is a proper dependency chain. Every arrow points inward toward the entities. The entities are the most stable layer — they change only when business rules change. The outer layers are volatile — they change when we swap frameworks.`,
+    'ok', false
+  );
+}
+
+function violateDependency() {
+  STATE.violations++;
+  STATE.testability = Math.max(0, STATE.testability - 25);
+  updateMetrics();
+
+  trace('violation', `❌ VIOLATION: Entity Order → imports pg (PostgreSQL library)`);
+  trace('violation', `   ↪ Now Order cannot be tested without a DB`);
+
+  const arrow = document.querySelector('[data-arrow-idx="0"]');
+  if (arrow) {
+    arrow.classList.add('violation');
+    setTimeout(() => arrow.classList.remove('violation'), 3000);
+  }
+
+  showStatus('❌ DEPENDENCY VIOLATION', 'error');
+  teach('VIOLATION',
+    `The Order entity now imports the PostgreSQL driver. This breaks everything: (1) You can't unit-test Order without a database. (2) If you migrate to MongoDB, you must change the entity. (3) The business rules are now coupled to infrastructure. This is the exact anti-pattern Clean Architecture prevents.`,
+    'error'
+  );
+}
+
+function leakDependency() {
+  STATE.violations++;
+  STATE.testability = Math.max(0, STATE.testability - 15);
+  updateMetrics();
+
+  trace('violation', `⚠️ LEAK: Adapter OrderRepository → Adapter EmailAdapter (sibling)`);
+  trace('info', `   ↪ Cross-adapter coupling — hard to swap one without the other`);
+
+  showStatus('⚠️ ADAPTER LEAK', '');
+  teach('ADAPTER LEAK',
+    `Adapters should never call each other directly. If OrderRepository needs to send an email, it should call a PORT interface (SendEmailPort) declared by the use case. This keeps adapters decoupled — you can swap the email implementation without touching the repository.`,
+    'warn'
+  );
+}
+
+/* ============================================================
+   IMPLEMENTATION SWAPS
+   ============================================================ */
+function swapDb() {
+  const old = STATE.dbImpl;
+  STATE.dbImpl = old === 'PostgreSQL' ? 'MongoDB' : 'PostgreSQL';
+  trace('ok', `🔄 Swapped DB: ${old} → ${STATE.dbImpl}`);
+  trace('info', `  ↪ Use case code: unchanged`);
+  trace('info', `  ↪ Entity code: unchanged`);
+  trace('info', `  ↪ Only the adapter changed`);
+  showStatus(`🔄 DB swapped: ${old} → ${STATE.dbImpl}`, 'ok');
+  teach('SWAP DB',
+    `Database swapped. Only the adapter layer changed — a single file. The use case and entity layers are completely untouched because they never knew which DB was being used. This is the power of dependency inversion: infrastructure is a detail.`,
+    'ok'
+  );
+}
+
+function swapUi() {
+  const old = STATE.uiImpl;
+  STATE.uiImpl = old === 'React' ? 'Vue' : 'React';
+  trace('ok', `🔄 Swapped UI: ${old} → ${STATE.uiImpl}`);
+  trace('info', `  ↪ Adapter layer: 1 controller file updated`);
+  trace('info', `  ↪ Use case + Entity: unchanged`);
+  showStatus(`🔄 UI swapped: ${old} → ${STATE.uiImpl}`, 'ok');
+  teach('SWAP UI',
+    `UI framework swapped. This is why Clean Architecture is often paired with "framework independence." Your business logic doesn't know if it's serving a React SPA, a Vue app, or a mobile client.`,
+    'ok'
+  );
+}
+
+function swapMail() {
+  const old = STATE.mailImpl;
+  STATE.mailImpl = old === 'SMTP' ? 'SendGrid' : 'SMTP';
+  trace('ok', `🔄 Swapped Email: ${old} → ${STATE.mailImpl}`);
+  showStatus(`🔄 Email swapped: ${old} → ${STATE.mailImpl}`, 'ok');
+  teach('SWAP EMAIL',
+    `Email provider swapped. Same pattern: use cases define a "SendEmailPort" interface. The SendGridAdapter and the SMTPAdapter both implement it. Change providers by writing one new adapter file.`,
+    'ok'
+  );
+}
+
+/* ============================================================
+   TRACE + TEST
+   ============================================================ */
+function traceGraph() {
+  trace('info', '─── Dependency Graph ───');
+  trace('info', 'Frameworks → Adapters → Use Cases → Entities');
+  trace('info', 'Adapters → Use Cases (via port interfaces)');
+  trace('info', 'Use Cases → Entities');
+  trace('ok', 'All arrows inward. No violations found.');
+  teach('GRAPH',
+    `The full dependency graph: every arrow points inward. There are no outward dependencies from inner layers. This is the invariant that Clean Architecture enforces.`,
+    'ok', false
+  );
+}
+
+function runTest() {
+  trace('info', `🧪 Running unit test: PlaceOrder should reject empty order`);
+  setTimeout(() => trace('ok', `  ✓ Test passed (2ms) — no DB needed`), 400);
+  setTimeout(() => trace('info', `🧪 Running: PlaceOrder should save valid order`), 700);
+  setTimeout(() => trace('ok', `  ✓ Test passed (1ms) — using fake repository`), 1100);
+  setTimeout(() => {
+    trace('ok', `✓ All tests passed in 3ms`);
+    showStatus('✅ All unit tests passed in 3ms', 'ok');
+  }, 1400);
+  teach('TESTABILITY',
+    `Business rules tested in 3ms — no database, no HTTP server, no Docker. This is only possible because the inner layers don't depend on infrastructure. If you'd violated the dependency rule, these tests would need a real Postgres running. That's the "testability" superpower of Clean Architecture.`,
+    'ok'
+  );
+}
+
+/* ============================================================
+   STEP THROUGH LAYERS
+   ============================================================ */
+function stepThroughLayer() {
+  const order = ['frameworks', 'adapters', 'usecases', 'entities'];
+  const currentIdx = order.indexOf(STATE.activeLayer);
+  const nextIdx = (currentIdx + 1) % order.length;
+  inspectLayer(order[nextIdx]);
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.mViolations.textContent = STATE.violations;
+  DOM.mViolations.className = 'metric-value ' + (STATE.violations === 0 ? 'good' : STATE.violations < 3 ? 'warn' : 'bad');
+  DOM.mTestability.textContent = STATE.testability + '%';
+  DOM.mTestability.className = 'metric-value ' + (STATE.testability > 70 ? 'good' : STATE.testability > 40 ? 'warn' : 'bad');
+  DOM.mCoupling.textContent = STATE.violations === 0 ? 'Low' : STATE.violations < 3 ? 'Medium' : 'High';
+  DOM.mCoupling.className = 'metric-value ' + (STATE.violations === 0 ? 'good' : STATE.violations < 3 ? 'warn' : 'bad');
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.violations = 0;
+  STATE.testability = 100;
+  STATE.activeLayer = null;
+  clearTrace();
+  DOM.statusBanner.classList.remove('show');
+  document.querySelectorAll('.layer').forEach(el => el.classList.remove('highlight', 'violation'));
+  updateMetrics();
+  teach('RESET', 'System reset. All counters cleared.', 'info', false);
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRun.addEventListener('click', runFlow);
+DOM.btnStep.addEventListener('click', stepThroughLayer);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnLegalDep.addEventListener('click', addLegalDependency);
+DOM.btnViolate.addEventListener('click', violateDependency);
+DOM.btnLeak.addEventListener('click', leakDependency);
+DOM.btnSwapDb.addEventListener('click', swapDb);
+DOM.btnSwapUi.addEventListener('click', swapUi);
+DOM.btnSwapMail.addEventListener('click', swapMail);
+DOM.btnTrace.addEventListener('click', traceGraph);
+DOM.btnTest.addEventListener('click', runTest);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+renderLayers();
+updateMetrics();
+trace('info', 'System ready — 4 layers loaded');
+trace('ok', 'Dependency rule: all arrows point inward');
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Clean Architecture. The core idea, articulated by Robert C. Martin: business rules should NOT depend on infrastructure. Databases, web frameworks, and UIs are DETAILS — they can and should be swappable. The dependency rule: source code dependencies must always point INWARD, toward higher-level policies.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE FOUR LAYERS',
+      `Clean Architecture has four concentric layers. Entities (innermost) hold pure business rules — think "Order must have positive total". Use Cases orchestrate entities for application-specific workflows. Adapters translate between use cases and the outside world. Frameworks/Drivers are the outermost — Express, Postgres, React. The inner layers never import outer ones.`,
+      'purple'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE TRICK: DEPENDENCY INVERSION',
+      `Naive layering says "layer 3 can call layer 4." Clean Architecture says the OPPOSITE for infrastructure: use cases declare an interface (a "port") that they need, and the framework implements that interface. The arrow still points inward — from the framework to the use case — even though the runtime call goes outward. This is the Dependency Inversion Principle.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('WHY IT MATTERS',
+      `You can now swap PostgreSQL for MongoDB by changing ONE file — the repository adapter. You can unit test business logic in milliseconds without spinning up a DB. You can swap from REST to gRPC without touching business rules. The cost: more interfaces, more indirection. The benefit: infrastructure becomes a detail.`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Run the flow, then try the violation buttons', 4500);
+}, 500);
+</script>
+</body>
+</html>

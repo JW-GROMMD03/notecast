@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kanban Board Bottlenecks — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f59e0b, #ec4899, #8b5cf6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(245,158,11,0.15);
+    color: #fcd34d;
+    border-color: #f59e0b;
+  }
+  .teaching-toggle:hover { background: rgba(245,158,11,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f59e0b; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f59e0b; color: #2a1503; border-color: #f59e0b; }
+  .btn.primary:hover { background: #d97706; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fcd34d; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f59e0b; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(245,158,11,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* FLOW STATS BAR */
+  .flow-stats {
+    background: #070a14;
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+    padding: 10px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 0 25px rgba(245,158,11,0.15);
+    flex-shrink: 0;
+  }
+  .flow-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-family: monospace;
+  }
+  .flow-item .lbl {
+    font-size: 0.5rem;
+    color: #64748b;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .flow-item .val {
+    font-size: 1.05rem;
+    font-weight: 900;
+    color: #fcd34d;
+  }
+  .flow-item .val.good { color: #6ee7b7; }
+  .flow-item .val.warn { color: #fbbf24; }
+  .flow-item .val.bad { color: #f87171; }
+
+  /* BOARD */
+  .board-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(139,92,246,0.15);
+    min-height: 0;
+  }
+  .board-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .board-columns {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    min-height: 0;
+  }
+
+  .column {
+    background: #02040a;
+    border: 1.5px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    transition: all 0.3s;
+    position: relative;
+  }
+  .column.at-wip-limit {
+    border-color: #f59e0b;
+    box-shadow: 0 0 15px rgba(245,158,11,0.4);
+  }
+  .column.over-wip {
+    border-color: #ef4444;
+    box-shadow: 0 0 25px rgba(239,68,68,0.6);
+    animation: overWipPulse 1s ease-in-out infinite alternate;
+  }
+  @keyframes overWipPulse {
+    0% { box-shadow: 0 0 20px rgba(239,68,68,0.5); }
+    100% { box-shadow: 0 0 40px rgba(239,68,68,1); }
+  }
+  .column.bottleneck::before {
+    content: '⚠️ BOTTLENECK';
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ef4444;
+    color: #fff;
+    font-size: 0.5rem;
+    font-weight: 900;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 1px;
+    z-index: 5;
+  }
+
+  .column-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #1e293b;
+    margin-bottom: 6px;
+    flex-shrink: 0;
+  }
+  .column-name {
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: #cbd5e1;
+    font-family: monospace;
+  }
+  .column-count {
+    font-size: 0.5rem;
+    font-weight: 900;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(245,158,11,0.2);
+    color: #fcd34d;
+    font-family: monospace;
+  }
+  .column.at-wip-limit .column-count {
+    background: rgba(245,158,11,0.3);
+    color: #fde047;
+  }
+  .column.over-wip .column-count {
+    background: rgba(239,68,68,0.3);
+    color: #fca5a5;
+  }
+
+  .column-body {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 0;
+  }
+
+  /* Card */
+  .card {
+    background: linear-gradient(145deg, #0d1220, #070a14);
+    border: 1.5px solid #334155;
+    border-left: 4px solid #06b6d4;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-family: monospace;
+    font-size: 0.55rem;
+    transition: all 0.4s cubic-bezier(.4,0,.2,1);
+    position: relative;
+    animation: cardIn 0.4s ease;
+    cursor: pointer;
+  }
+  @keyframes cardIn {
+    from { transform: translateY(-10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .card:hover { border-color: #f59e0b; transform: translateY(-2px); }
+  .card.priority-high { border-left-color: #ef4444; }
+  .card.priority-med { border-left-color: #f59e0b; }
+  .card.priority-low { border-left-color: #10b981; }
+  .card.aged-1 { filter: brightness(1.1); }
+  .card.aged-2 { filter: brightness(1.2); }
+  .card.aged-3 { filter: brightness(1.3); box-shadow: 0 0 8px rgba(239,68,68,0.3); }
+  .card.blocked {
+    border-left-color: #ef4444 !important;
+    background: linear-gradient(145deg, #450a0a, #1c0606);
+  }
+
+  .card-title {
+    font-weight: 800;
+    color: #cbd5e1;
+    margin-bottom: 3px;
+    letter-spacing: 0.3px;
+  }
+  .card-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.48rem;
+    color: #64748b;
+    letter-spacing: 0.3px;
+  }
+  .card-priority {
+    padding: 0px 4px;
+    border-radius: 3px;
+    font-weight: 800;
+  }
+  .priority-high .card-priority { background: rgba(239,68,68,0.2); color: #fca5a5; }
+  .priority-med .card-priority { background: rgba(245,158,11,0.2); color: #fcd34d; }
+  .priority-low .card-priority { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+  .card-age {
+    color: #67e8f9;
+    font-weight: 700;
+  }
+
+  /* CUMULATIVE FLOW DIAGRAM */
+  .cfd-wrap {
+    background: #070a14;
+    border: 2px solid #10b981;
+    border-radius: 12px;
+    padding: 10px 12px;
+    height: 170px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 20px rgba(16,185,129,0.15);
+    flex-shrink: 0;
+  }
+  .cfd-title {
+    font-size: 0.58rem;
+    letter-spacing: 2px;
+    color: #6ee7b7;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #cfdCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(245,158,11,0.06);
+    border: 1px solid rgba(245,158,11,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fcd34d;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f59e0b;
+    background: rgba(245,158,11,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(245,158,11,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f59e0b;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(245,158,11,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #f59e0b;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fcd34d;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(245,158,11,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.danger { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+  .status-banner.success { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>KANBAN BOARD BOTTLENECKS</h1>
+    <span class="sub">FLOW · WIP LIMITS · LITTLE'S LAW · THEORY OF CONSTRAINTS</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Simulation</h3>
+      <button class="btn primary" id="btnRun">▶ Start Flow</button>
+      <button class="btn" id="btnTick">⏭ Next Tick</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset Board</button>
+    </div>
+
+    <div class="panel">
+      <h3>Interventions</h3>
+      <button class="btn warn" id="btnInject">📥 Inject Work Burst</button>
+      <button class="btn danger" id="btnSlow">🐌 Slow a Stage</button>
+      <button class="btn success" id="btnUnblock">🔓 Unblock Everything</button>
+      <button class="btn success" id="btnSwarm">👥 Swarm on Bottleneck</button>
+    </div>
+
+    <div class="panel">
+      <h3>WIP Limits</h3>
+      <div class="slider-row"><span>Design</span><span class="value" id="wipDesign">3</span></div>
+      <input type="range" id="wipDesignRange" min="1" max="8" value="3">
+      <div class="slider-row"><span>Develop</span><span class="value" id="wipDev">4</span></div>
+      <input type="range" id="wipDevRange" min="1" max="8" value="4">
+      <div class="slider-row"><span>Test</span><span class="value" id="wipTest">2</span></div>
+      <input type="range" id="wipTestRange" min="1" max="8" value="2">
+      <div class="slider-row"><span>Deploy</span><span class="value" id="wipDeploy">2</span></div>
+      <input type="range" id="wipDeployRange" min="1" max="8" value="2">
+    </div>
+
+    <div class="panel">
+      <h3>Stage Throughput</h3>
+      <div class="slider-row"><span>Design speed</span><span class="value" id="spDesign">100%</span></div>
+      <input type="range" id="spDesignRange" min="20" max="150" value="100">
+      <div class="slider-row"><span>Develop speed</span><span class="value" id="spDev">100%</span></div>
+      <input type="range" id="spDevRange" min="20" max="150" value="100">
+      <div class="slider-row"><span>Test speed</span><span class="value" id="spTest">100%</span></div>
+      <input type="range" id="spTestRange" min="20" max="150" value="100">
+      <div class="slider-row"><span>Deploy speed</span><span class="value" id="spDeploy">100%</span></div>
+      <input type="range" id="spDeployRange" min="20" max="150" value="100">
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">KANBAN · VISUALIZE WORK · LIMIT WIP · MANAGE FLOW</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="flow-stats">
+          <div class="flow-item">
+            <span class="lbl">THROUGHPUT</span>
+            <span class="val good" id="fsThroughput">0 / tick</span>
+          </div>
+          <div class="flow-item">
+            <span class="lbl">CYCLE TIME (avg)</span>
+            <span class="val" id="fsCycle">0 ticks</span>
+          </div>
+          <div class="flow-item">
+            <span class="lbl">WIP TOTAL</span>
+            <span class="val warn" id="fsWip">0</span>
+          </div>
+          <div class="flow-item">
+            <span class="lbl">LITTLE'S LAW CHECK</span>
+            <span class="val good" id="fsLittles">WIP = Throughput × Cycle Time</span>
+          </div>
+          <div class="flow-item">
+            <span class="lbl">FLOW EFFICIENCY</span>
+            <span class="val" id="fsEfficiency">—</span>
+          </div>
+        </div>
+
+        <div class="board-wrap">
+          <div class="board-title">
+            <span>KANBAN BOARD</span>
+            <span class="hint" id="boardHint">— click a card for details —</span>
+          </div>
+          <div class="board-columns" id="boardColumns">
+            <div class="column" data-col="design">
+              <div class="column-header">
+                <span class="column-name">🎨 Design</span>
+                <span class="column-count"><span id="cnt-design">0</span>/<span id="lim-design">3</span></span>
+              </div>
+              <div class="column-body" id="col-design"></div>
+            </div>
+            <div class="column" data-col="develop">
+              <div class="column-header">
+                <span class="column-name">💻 Develop</span>
+                <span class="column-count"><span id="cnt-develop">0</span>/<span id="lim-develop">4</span></span>
+              </div>
+              <div class="column-body" id="col-develop"></div>
+            </div>
+            <div class="column" data-col="test">
+              <div class="column-header">
+                <span class="column-name">🧪 Test</span>
+                <span class="column-count"><span id="cnt-test">0</span>/<span id="lim-test">2</span></span>
+              </div>
+              <div class="column-body" id="col-test"></div>
+            </div>
+            <div class="column" data-col="deploy">
+              <div class="column-header">
+                <span class="column-name">🚀 Deploy</span>
+                <span class="column-count"><span id="cnt-deploy">0</span>/<span id="lim-deploy">2</span></span>
+              </div>
+              <div class="column-body" id="col-deploy"></div>
+            </div>
+            <div class="column" data-col="done">
+              <div class="column-header">
+                <span class="column-name">✅ Done</span>
+                <span class="column-count" id="cnt-done">0</span>
+              </div>
+              <div class="column-body" id="col-done"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cfd-wrap">
+          <div class="cfd-title">
+            <span>📊 CUMULATIVE FLOW DIAGRAM</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="cfdHint">stacked work-in-progress over time</span>
+          </div>
+          <canvas id="cfdCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Throughput</div>
+        <div class="metric-value good" id="mThroughput">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Avg Cycle Time</div>
+        <div class="metric-value" id="mCycle">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Total WIP</div>
+        <div class="metric-value warn" id="mWip">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Blockers</div>
+        <div class="metric-value bad" id="mBlockers">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Kanban Principles</div>
+      <div class="info-row"><span class="lbl">Visualize work</span><span class="val good">Board layout</span></div>
+      <div class="info-row"><span class="lbl">Limit WIP</span><span class="val warn">Prevent overload</span></div>
+      <div class="info-row"><span class="lbl">Manage flow</span><span class="val">Optimize cycle time</span></div>
+      <div class="info-row"><span class="lbl">Make policies explicit</span><span class="val">DoR / DoD</span></div>
+      <div class="info-row"><span class="lbl">Little's Law</span><span class="val">WIP = T × CT</span></div>
+      <div class="info-row"><span class="lbl">Theory of Constraints</span><span class="val bad">Fix the bottleneck</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  running: false,
+  tick: 0,
+  // Cards
+  cards: [],
+  nextCardId: 1,
+  // WIP limits
+  wipLimits: { design: 3, develop: 4, test: 2, deploy: 2 },
+  // Stage speeds (multiplier 0.2 - 1.5)
+  stageSpeeds: { design: 1.0, develop: 1.0, test: 1.0, deploy: 1.0 },
+  // Stage progress: each card advances by stageSpeed * random
+  stageProgress: { design: 0, develop: 0, test: 0, deploy: 0 },
+  // Stats
+  completedCount: 0,
+  completions: [],    // { cardId, completedAtTick, cycleTime }
+  cfdHistory: [],     // per-tick snapshot of column counts
+  // Bottleneck detection
+  bottleneckStage: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  stage: document.getElementById('stage'),
+  boardHint: document.getElementById('boardHint'),
+  cfdCanvas: document.getElementById('cfdCanvas'),
+  cfdHint: document.getElementById('cfdHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Flow stats
+  fsThroughput: document.getElementById('fsThroughput'),
+  fsCycle: document.getElementById('fsCycle'),
+  fsWip: document.getElementById('fsWip'),
+  fsLittles: document.getElementById('fsLittles'),
+  fsEfficiency: document.getElementById('fsEfficiency'),
+  // Controls
+  btnRun: document.getElementById('btnRun'),
+  btnTick: document.getElementById('btnTick'),
+  btnReset: document.getElementById('btnReset'),
+  btnInject: document.getElementById('btnInject'),
+  btnSlow: document.getElementById('btnSlow'),
+  btnUnblock: document.getElementById('btnUnblock'),
+  btnSwarm: document.getElementById('btnSwarm'),
+  // WIP sliders
+  wipDesignRange: document.getElementById('wipDesignRange'),
+  wipDesign: document.getElementById('wipDesign'),
+  wipDevRange: document.getElementById('wipDevRange'),
+  wipDev: document.getElementById('wipDev'),
+  wipTestRange: document.getElementById('wipTestRange'),
+  wipTest: document.getElementById('wipTest'),
+  wipDeployRange: document.getElementById('wipDeployRange'),
+  wipDeploy: document.getElementById('wipDeploy'),
+  // Speed sliders
+  spDesignRange: document.getElementById('spDesignRange'),
+  spDesign: document.getElementById('spDesign'),
+  spDevRange: document.getElementById('spDevRange'),
+  spDev: document.getElementById('spDev'),
+  spTestRange: document.getElementById('spTestRange'),
+  spTest: document.getElementById('spTest'),
+  spDeployRange: document.getElementById('spDeployRange'),
+  spDeploy: document.getElementById('spDeploy'),
+  // Metrics
+  mThroughput: document.getElementById('mThroughput'),
+  mCycle: document.getElementById('mCycle'),
+  mWip: document.getElementById('mWip'),
+  mBlockers: document.getElementById('mBlockers'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle'),
+  // Column contents
+  colDesign: document.getElementById('col-design'),
+  colDevelop: document.getElementById('col-develop'),
+  colTest: document.getElementById('col-test'),
+  colDeploy: document.getElementById('col-deploy'),
+  colDone: document.getElementById('col-done')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2400);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining Kanban board bottlenecks.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   CARD GENERATION
+   ============================================================ */
+const CARD_TITLES = [
+  'API endpoint for /orders',
+  'User auth token refresh',
+  'Search index rebuild',
+  'Payment gateway retry',
+  'Dashboard chart widget',
+  'Email digest template',
+  'Image upload optimization',
+  'Notification preferences',
+  'Accessibility keyboard nav',
+  'Multi-language support',
+  'Session timeout handling',
+  'Recommendation engine v2',
+  'Analytics event tracking',
+  'Bulk import CSV',
+  'Data export PDF',
+  'Rate limiter middleware',
+  'Feature flag rollout',
+  'A/B testing framework'
+];
+
+const PRIORITIES = ['high', 'med', 'low'];
+
+function createCard() {
+  return {
+    id: STATE.nextCardId++,
+    title: CARD_TITLES[Math.floor(Math.random() * CARD_TITLES.length)],
+    priority: PRIORITIES[Math.floor(Math.random() * PRIORITIES.length)],
+    status: 'design',
+    createdAtTick: STATE.tick,
+    stageProgress: 0,
+    daysInStage: 0,
+    blocked: false,
+    // Backlog queue
+    queuedAtTick: STATE.tick
+  };
+}
+
+/* ============================================================
+   STAGE FLOW
+   ============================================================ */
+const STAGES = ['design', 'develop', 'test', 'deploy', 'done'];
+
+function stageIndex(stage) {
+  return STAGES.indexOf(stage);
+}
+
+function canAcceptWork(stage) {
+  if (stage === 'done') return true;
+  const inStage = STATE.cards.filter(c => c.status === stage).length;
+  return inStage < STATE.wipLimits[stage];
+}
+
+function tick() {
+  STATE.tick++;
+
+  // 1. Try to pull a new card from the "queue" (we always have queue — simulate pull)
+  //    In Kanban, downstream stages pull work when they have capacity.
+  //    We iterate from Done backwards to Design, pulling from upstream.
+
+  // Actually process in reverse: highest stages first, to pull from lower ones.
+  for (let i = STAGES.length - 1; i >= 1; i--) {
+    const stage = STAGES[i];
+    const upstream = STAGES[i - 1];
+
+    // Move cards from upstream to this stage if this stage has capacity
+    const upstreamCards = STATE.cards.filter(c => c.status === upstream && c.stageProgress >= 100);
+    for (const card of upstreamCards) {
+      if (!canAcceptWork(stage)) break;
+      card.status = stage;
+      card.stageProgress = 0;
+      card.daysInStage = 0;
+
+      if (stage === 'done') {
+        card.completedAtTick = STATE.tick;
+        STATE.completedCount++;
+        STATE.completions.push({
+          cardId: card.id,
+          completedAtTick: STATE.tick,
+          cycleTime: STATE.tick - card.createdAtTick
+        });
+      }
+    }
+  }
+
+  // 2. Pull new work into "design" if capacity allows
+  if (canAcceptWork('design') && Math.random() < 0.7) {
+    STATE.cards.push(createCard());
+  }
+
+  // 3. Advance each in-flight card's progress based on stage speed
+  for (const card of STATE.cards) {
+    if (card.status === 'done') continue;
+    card.daysInStage++;
+
+    // Progress per tick = speed * random (10-25)
+    const speed = STATE.stageSpeeds[card.status] || 1.0;
+    const jitter = 0.7 + Math.random() * 0.6;
+    const progress = speed * 15 * jitter;
+
+    // Blocked cards: no progress if blocked
+    if (card.blocked) {
+      continue;
+    }
+
+    card.stageProgress = Math.min(100, card.stageProgress + progress);
+  }
+
+  // 4. Snapshot for CFD
+  STATE.cfdHistory.push({
+    tick: STATE.tick,
+    design: STATE.cards.filter(c => c.status === 'design').length,
+    develop: STATE.cards.filter(c => c.status === 'develop').length,
+    test: STATE.cards.filter(c => c.status === 'test').length,
+    deploy: STATE.cards.filter(c => c.status === 'deploy').length,
+    done: STATE.completedCount
+  });
+  if (STATE.cfdHistory.length > 100) STATE.cfdHistory.shift();
+
+  // 5. Detect bottleneck (biggest WIP relative to limit)
+  detectBottleneck();
+
+  renderAll();
+  drawCFD();
+  updateStats();
+}
+
+function detectBottleneck() {
+  let worst = null;
+  let worstRatio = 0;
+  for (const stage of ['design', 'develop', 'test', 'deploy']) {
+    const inStage = STATE.cards.filter(c => c.status === stage).length;
+    const limit = STATE.wipLimits[stage];
+    const ratio = inStage / limit;
+    if (ratio >= 1 && ratio > worstRatio) {
+      worst = stage;
+      worstRatio = ratio;
+    }
+  }
+
+  if (worst !== STATE.bottleneckStage) {
+    const prev = STATE.bottleneckStage;
+    STATE.bottleneckStage = worst;
+
+    if (worst && !prev) {
+      const stageName = { design: 'Design', develop: 'Develop', test: 'Test', deploy: 'Deploy' }[worst];
+      teach('BOTTLENECK',
+        `🎯 BOTTLENECK DETECTED at the "${stageName}" stage. WIP is at capacity (${STATE.cards.filter(c => c.status === worst).length}/${STATE.wipLimits[worst]}). Downstream stages can't pull new work because upstream can't deliver. This is the Theory of Constraints in action — throughput is limited by the slowest stage.`,
+        'error'
+      );
+    } else if (!worst && prev) {
+      teach('FLOW RESTORED',
+        `Bottleneck cleared. All stages are below their WIP limits. Work is flowing again.`,
+        'ok'
+      );
+    }
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderAll() {
+  // Group cards by status
+  const byStatus = {
+    design: STATE.cards.filter(c => c.status === 'design'),
+    develop: STATE.cards.filter(c => c.status === 'develop'),
+    test: STATE.cards.filter(c => c.status === 'test'),
+    deploy: STATE.cards.filter(c => c.status === 'deploy'),
+    done: STATE.cards.filter(c => c.status === 'done').slice(-10)  // show last 10 done
+  };
+
+  const containers = {
+    design: DOM.colDesign,
+    develop: DOM.colDevelop,
+    test: DOM.colTest,
+    deploy: DOM.colDeploy,
+    done: DOM.colDone
+  };
+
+  for (const stage of STAGES) {
+    const el = containers[stage];
+    el.innerHTML = '';
+    for (const card of byStatus[stage]) {
+      el.appendChild(buildCard(card));
+    }
+  }
+
+  // Update counts and column states
+  for (const stage of STAGES) {
+    const count = byStatus[stage].length;
+    if (stage !== 'done') {
+      document.getElementById('cnt-' + stage).textContent = count;
+      document.getElementById('lim-' + stage).textContent = STATE.wipLimits[stage];
+      const col = document.querySelector(`[data-col="${stage}"]`);
+      col.classList.remove('at-wip-limit', 'over-wip', 'bottleneck');
+      if (count > STATE.wipLimits[stage]) col.classList.add('over-wip');
+      else if (count === STATE.wipLimits[stage]) col.classList.add('at-wip-limit');
+      if (STATE.bottleneckStage === stage) col.classList.add('bottleneck');
+    } else {
+      document.getElementById('cnt-done').textContent = STATE.completedCount;
+    }
+  }
+
+  DOM.boardHint.textContent = `— ${STATE.cards.length} cards · ${STATE.completedCount} done · tick ${STATE.tick} —`;
+}
+
+function buildCard(card) {
+  const el = document.createElement('div');
+  el.className = `card priority-${card.priority}`;
+  if (card.blocked) el.classList.add('blocked');
+  if (card.daysInStage >= 3) el.classList.add('aged-3');
+  else if (card.daysInStage >= 2) el.classList.add('aged-2');
+  else if (card.daysInStage >= 1) el.classList.add('aged-1');
+
+  el.innerHTML = `
+    <div class="card-title">${card.title}</div>
+    <div class="card-meta">
+      <span class="card-priority">${card.priority.toUpperCase()}</span>
+      <span class="card-age">${Math.round(card.stageProgress)}% · d${card.daysInStage}</span>
+    </div>
+    ${card.blocked ? '<div style="font-size:0.5rem; color:#fca5a5; margin-top:3px; font-weight:800;">🚧 BLOCKED</div>' : ''}
+  `;
+
+  el.addEventListener('click', () => {
+    teach('CARD DETAIL',
+      `"${card.title}" — priority: ${card.priority}. Current stage: ${card.status}. Progress: ${Math.round(card.stageProgress)}%. Days in stage: ${card.daysInStage}. Created at tick ${card.createdAtTick}. Total age: ${STATE.tick - card.createdAtTick} ticks.`,
+      'cyan', false
+    );
+  });
+
+  return el;
+}
+
+/* ============================================================
+   STATS
+   ============================================================ */
+function updateStats() {
+  // Throughput = completions in last 20 ticks
+  const recentCompletions = STATE.completions.filter(c => c.completedAtTick > STATE.tick - 20).length;
+  const throughput = (recentCompletions / 20).toFixed(2);
+
+  // Average cycle time
+  const avgCycle = STATE.completions.length > 0
+    ? (STATE.completions.reduce((a, c) => a + c.cycleTime, 0) / STATE.completions.length).toFixed(1)
+    : '0';
+
+  const totalWip = STATE.cards.filter(c => c.status !== 'done').length;
+  const blockers = STATE.cards.filter(c => c.blocked).length;
+
+  DOM.fsThroughput.textContent = throughput + ' / tick';
+  DOM.fsCycle.textContent = avgCycle + ' ticks';
+  DOM.fsWip.textContent = totalWip;
+  DOM.fsLittles.textContent = `WIP ${totalWip} = ${throughput} × ${avgCycle}`;
+
+  DOM.mThroughput.textContent = throughput;
+  DOM.mCycle.textContent = avgCycle;
+  DOM.mWip.textContent = totalWip;
+  DOM.mBlockers.textContent = blockers;
+
+  DOM.mWip.className = 'metric-value' + (totalWip > 12 ? ' bad' : totalWip > 8 ? ' warn' : ' good');
+  DOM.mBlockers.className = 'metric-value' + (blockers > 0 ? ' bad' : '');
+
+  // Flow efficiency (rough: completions / (completions + blockers))
+  const total = STATE.completions.length + blockers;
+  const eff = total > 0 ? Math.round((STATE.completions.length / total) * 100) : 100;
+  DOM.fsEfficiency.textContent = eff + '%';
+  DOM.fsEfficiency.className = 'val ' + (eff > 80 ? 'good' : eff > 50 ? 'warn' : 'bad');
+}
+
+/* ============================================================
+   CFD (Cumulative Flow Diagram)
+   ============================================================ */
+function drawCFD() {
+  const canvas = DOM.cfdCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const W = rect.width;
+  const H = rect.height;
+  const padL = 25;
+  const padR = 10;
+  const padT = 10;
+  const padB = 16;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (STATE.cfdHistory.length < 2) {
+    ctx.fillStyle = '#475569';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Start flow to see CFD', W / 2, H / 2);
+    return;
+  }
+
+  const maxTick = STATE.cfdHistory[STATE.cfdHistory.length - 1].tick;
+  const minTick = STATE.cfdHistory[0].tick;
+  const tickRange = Math.max(1, maxTick - minTick);
+
+  const maxY = Math.max(...STATE.cfdHistory.map(h => h.design + h.develop + h.test + h.deploy + h.done));
+
+  // Stacked areas (from bottom: done, deploy, test, develop, design)
+  const stages = [
+    { key: 'done', color: 'rgba(16,185,129,0.7)' },
+    { key: 'deploy', color: 'rgba(236,72,153,0.7)' },
+    { key: 'test', color: 'rgba(245,158,11,0.7)' },
+    { key: 'develop', color: 'rgba(139,92,246,0.7)' },
+    { key: 'design', color: 'rgba(6,182,212,0.7)' }
+  ];
+
+  // Compute cumulative stacks per tick
+  const stacks = STATE.cfdHistory.map(h => {
+    let acc = 0;
+    const result = {};
+    for (const stage of stages) {
+      acc += h[stage.key] || 0;
+      result[stage.key] = acc;
+    }
+    return { tick: h.tick, ...result };
+  });
+
+  // Draw each stage from top to bottom
+  for (let s = 0; s < stages.length; s++) {
+    const stage = stages[s];
+    ctx.beginPath();
+    let firstX, firstY;
+    for (let i = 0; i < stacks.length; i++) {
+      const x = padL + chartW * (stacks[i].tick - minTick) / tickRange;
+      const y = padT + chartH * (1 - stacks[i][stage.key] / maxY);
+      if (i === 0) { ctx.moveTo(x, y); firstX = x; firstY = y; }
+      else ctx.lineTo(x, y);
+    }
+    // Close path along the bottom (or the previous stage)
+    const prevStage = s > 0 ? stages[s - 1] : null;
+    for (let i = stacks.length - 1; i >= 0; i--) {
+      const x = padL + chartW * (stacks[i].tick - minTick) / tickRange;
+      const y = prevStage
+        ? padT + chartH * (1 - stacks[i][prevStage.key] / maxY)
+        : padT + chartH;
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = stage.color;
+    ctx.fill();
+
+    ctx.strokeStyle = stage.color.replace('0.7', '1');
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // Legend
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'left';
+  let lx = padL + 4;
+  for (const stage of stages) {
+    ctx.fillStyle = stage.color.replace('0.7', '1');
+    ctx.fillRect(lx, padT + 2, 6, 6);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(stage.key, lx + 9, padT + 8);
+    lx += 55;
+  }
+
+  DOM.cfdHint.textContent = `${STATE.completedCount} done · total ${STATE.cards.length}`;
+}
+
+/* ============================================================
+   INTERVENTIONS
+   ============================================================ */
+function injectBurst() {
+  showToast('📥 Work burst injected');
+  teach('PULL vs PUSH',
+    `Injecting a burst of 5 cards into the queue. Notice: cards don't go directly into Design — they wait until Design has capacity. This is the PULL system: downstream stages pull new work when they have room. Pushing work prematurely just creates WIP without increasing throughput.`,
+    'warn'
+  );
+
+  // Simulate: force-create cards, they'll be pulled in over the next ticks
+  for (let i = 0; i < 5; i++) {
+    STATE.cards.push(createCard());
+  }
+  renderAll();
+}
+
+function slowStage() {
+  const stage = ['design', 'develop', 'test', 'deploy'][Math.floor(Math.random() * 4)];
+  STATE.stageSpeeds[stage] = 0.3;
+
+  const stageName = { design: 'Design', develop: 'Develop', test: 'Test', deploy: 'Deploy' }[stage];
+  teach('SLOW STAGE',
+    `The "${stageName}" stage just got 3x slower (30% speed). Watch how the cards pile up in that column. Little's Law predicts: if throughput stays the same but cycle time increases, WIP must increase. And the bottleneck will pull the whole system's throughput down.`,
+    'error'
+  );
+
+  // Reset speed after 15 ticks
+  setTimeout(() => {
+    STATE.stageSpeeds[stage] = 1.0;
+    teach('STAGE RECOVERED',
+      `The "${stageName}" stage is back to normal speed. Flow resumes.`,
+      'ok', false
+    );
+  }, 15000);
+}
+
+function unblockAll() {
+  let count = 0;
+  for (const c of STATE.cards) {
+    if (c.blocked) { c.blocked = false; count++; }
+  }
+  if (count === 0) {
+    showToast('⚠ No blocked cards');
+    return;
+  }
+  showToast(`🔓 Unblocked ${count} cards`);
+  teach('UNBLOCKED',
+    `${count} blocked cards cleared. Removing blockers is the single most impactful thing you can do to improve flow — blocked cards accumulate cycle time without creating value.`,
+    'ok'
+  );
+  renderAll();
+}
+
+function swarmOnBottleneck() {
+  if (!STATE.bottleneckStage) {
+    showToast('⚠ No active bottleneck');
+    return;
+  }
+  const stage = STATE.bottleneckStage;
+  STATE.stageSpeeds[stage] = 1.8;
+
+  teach('SWARM',
+    `Team swarmed on the "${stage}" stage — temporarily 80% faster. This is the Theory of Constraints: don't optimize everywhere, optimize the BOTTLENECK. Any improvement elsewhere just piles up work in front of the constraint.`,
+    'ok'
+  );
+
+  setTimeout(() => {
+    STATE.stageSpeeds[stage] = 1.0;
+  }, 8000);
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  STATE.autoTimer = null;
+  STATE.running = false;
+  STATE.tick = 0;
+  STATE.cards = [];
+  STATE.nextCardId = 1;
+  STATE.completedCount = 0;
+  STATE.completions = [];
+  STATE.cfdHistory = [];
+  STATE.bottleneckStage = null;
+  STATE.stageSpeeds = { design: 1, develop: 1, test: 1, deploy: 1 };
+
+  // Seed with a few cards
+  for (let i = 0; i < 3; i++) {
+    STATE.cards.push(createCard());
+  }
+
+  DOM.btnRun.textContent = '▶ Start Flow';
+  renderAll();
+  drawCFD();
+  updateStats();
+  teach('RESET', 'Board reset. Fresh cards in Design.', 'info', false);
+}
+
+/* ============================================================
+   SIMULATION LOOP
+   ============================================================ */
+function startFlow() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.autoTimer);
+    STATE.autoTimer = null;
+    DOM.btnRun.textContent = '▶ Start Flow';
+    return;
+  }
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+  STATE.autoTimer = setInterval(tick, 1200);
+  teach('FLOW STARTED',
+    `Simulation running. Every tick: (1) downstream stages pull from upstream if they have capacity, (2) new work enters Design if there's room, (3) each card advances by its stage's speed, (4) the CFD snapshot updates. Watch the columns, the WIP limits, and the bottleneck indicators.`,
+    'cyan'
+  );
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRun.addEventListener('click', startFlow);
+DOM.btnTick.addEventListener('click', tick);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnInject.addEventListener('click', injectBurst);
+DOM.btnSlow.addEventListener('click', slowStage);
+DOM.btnUnblock.addEventListener('click', unblockAll);
+DOM.btnSwarm.addEventListener('click', swarmOnBottleneck);
+
+DOM.wipDesignRange.addEventListener('input', e => {
+  STATE.wipLimits.design = parseInt(e.target.value);
+  DOM.wipDesign.textContent = STATE.wipLimits.design;
+  renderAll();
+});
+DOM.wipDevRange.addEventListener('input', e => {
+  STATE.wipLimits.develop = parseInt(e.target.value);
+  DOM.wipDev.textContent = STATE.wipLimits.develop;
+  renderAll();
+});
+DOM.wipTestRange.addEventListener('input', e => {
+  STATE.wipLimits.test = parseInt(e.target.value);
+  DOM.wipTest.textContent = STATE.wipLimits.test;
+  renderAll();
+});
+DOM.wipDeployRange.addEventListener('input', e => {
+  STATE.wipLimits.deploy = parseInt(e.target.value);
+  DOM.wipDeploy.textContent = STATE.wipLimits.deploy;
+  renderAll();
+});
+
+DOM.spDesignRange.addEventListener('input', e => {
+  STATE.stageSpeeds.design = parseInt(e.target.value) / 100;
+  DOM.spDesign.textContent = e.target.value + '%';
+});
+DOM.spDevRange.addEventListener('input', e => {
+  STATE.stageSpeeds.develop = parseInt(e.target.value) / 100;
+  DOM.spDev.textContent = e.target.value + '%';
+});
+DOM.spTestRange.addEventListener('input', e => {
+  STATE.stageSpeeds.test = parseInt(e.target.value) / 100;
+  DOM.spTest.textContent = e.target.value + '%';
+});
+DOM.spDeployRange.addEventListener('input', e => {
+  STATE.stageSpeeds.deploy = parseInt(e.target.value) / 100;
+  DOM.spDeploy.textContent = e.target.value + '%';
+});
+
+window.addEventListener('resize', drawCFD);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Kanban Board Bottlenecks. Kanban is a pull-based flow system: work moves through stages only when the downstream stage has capacity. WIP limits prevent overload, expose bottlenecks, and improve cycle time.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('LITTLE\'S LAW',
+      `Little's Law: WIP = Throughput × Cycle Time. If you know two, you can calculate the third. It's the fundamental equation of flow. If your throughput is 5 cards/day and you want a cycle time of 3 days, WIP must be 15. More WIP doesn't increase throughput — it just increases cycle time.`,
+      'purple'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THEORY OF CONSTRAINTS',
+      `Every system has exactly one bottleneck at any moment. The bottleneck determines the throughput of the entire system. Improving anything except the bottleneck does nothing — it just makes the pile in front of the bottleneck bigger. Find the bottleneck, fix it, then find the next one.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click START FLOW to watch cards move through the board. Notice how WIP limits force pull-based behavior. Try SLOW A STAGE and watch the bottleneck form. Try INJECT WORK BURST to see how pushing work just creates WIP without increasing throughput.`,
+      'cyan'
+    );
+  }, 13000);
+
+  showToast('👋 Click START FLOW, then watch the bottleneck', 4500);
+}, 500);
+</script>
+</body>
+</html>

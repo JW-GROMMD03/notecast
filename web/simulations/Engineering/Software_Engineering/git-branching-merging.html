@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Git Branching & Merging Workflows — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f97316, #ec4899, #8b5cf6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(249,115,22,0.15);
+    color: #fdba74;
+    border-color: #f97316;
+  }
+  .teaching-toggle:hover { background: rgba(249,115,22,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f97316; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f97316; color: #fff; border-color: #f97316; }
+  .btn.primary:hover { background: #ea580c; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fdba74; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f97316; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(249,115,22,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* GRAPH VIEW */
+  .graph-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #f97316;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(249,115,22,0.15);
+    min-height: 0;
+  }
+  .graph-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .graph-title .hint {
+    font-size: 0.5rem;
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .graph-canvas {
+    flex: 1;
+    position: relative;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    overflow: auto;
+    min-height: 0;
+  }
+
+  #gitSvg {
+    display: block;
+    min-width: 100%;
+    min-height: 100%;
+  }
+
+  /* Git node types */
+  .commit-circle {
+    fill: #1e293b;
+    stroke-width: 2;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  .commit-circle:hover {
+    stroke-width: 3;
+    filter: drop-shadow(0 0 8px currentColor);
+  }
+  .commit-circle.main { stroke: #10b981; }
+  .commit-circle.feature { stroke: #06b6d4; }
+  .commit-circle.hotfix { stroke: #ef4444; }
+  .commit-circle.release { stroke: #a855f7; }
+  .commit-circle.develop { stroke: #f59e0b; }
+  .commit-circle.merge {
+    fill: #0f172a;
+    stroke-width: 3;
+  }
+  .commit-label {
+    font-size: 8px;
+    font-family: monospace;
+    font-weight: 700;
+    fill: #94a3b8;
+    text-anchor: middle;
+    pointer-events: none;
+  }
+  .commit-hash {
+    font-size: 7px;
+    font-family: monospace;
+    fill: #64748b;
+    text-anchor: middle;
+    pointer-events: none;
+  }
+  .branch-label {
+    font-size: 10px;
+    font-family: monospace;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+  }
+  .edge-line {
+    stroke-width: 2;
+    fill: none;
+    transition: all 0.3s;
+  }
+  .edge-line.main { stroke: #10b981; }
+  .edge-line.feature { stroke: #06b6d4; }
+  .edge-line.hotfix { stroke: #ef4444; }
+  .edge-line.release { stroke: #a855f7; }
+  .edge-line.develop { stroke: #f59e0b; }
+  .edge-line.merge {
+    stroke: #8b5cf6;
+    stroke-dasharray: 3 3;
+  }
+
+  /* BRANCH LEGEND */
+  .branch-legend {
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    flex-shrink: 0;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15);
+  }
+  .branch-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    font-weight: 800;
+  }
+  .branch-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2.5px solid;
+    background: #0f172a;
+  }
+  .branch-dot.main { border-color: #10b981; }
+  .branch-dot.feature { border-color: #06b6d4; }
+  .branch-dot.hotfix { border-color: #ef4444; }
+  .branch-dot.release { border-color: #a855f7; }
+  .branch-dot.develop { border-color: #f59e0b; }
+
+  .branch-stats {
+    display: flex;
+    gap: 16px;
+    font-family: monospace;
+    font-size: 0.55rem;
+    color: #64748b;
+    margin-left: auto;
+  }
+  .branch-stats .stat-item {
+    color: #94a3b8;
+  }
+  .branch-stats .stat-item .val {
+    color: #fdba74;
+    font-weight: 900;
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(249,115,22,0.06);
+    border: 1px solid rgba(249,115,22,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fdba74;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f97316;
+    background: rgba(249,115,22,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(249,115,22,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(249,115,22,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f97316;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(249,115,22,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #f97316;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fdba74;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(249,115,22,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.merge { border-color: #8b5cf6; color: #c4b5fd; box-shadow: 0 0 25px rgba(139,92,246,0.6); }
+  .status-banner.conflict { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>GIT BRANCHING &amp; MERGING</h1>
+    <span class="sub">COMMITS · BRANCHES · MERGES · CONFLICTS</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Workflow</h3>
+      <select id="workflowSelect" style="width:100%; padding:8px; background:#0b0f19; border:1px solid #334155; color:#cbd5e1; border-radius:6px; font-family:inherit; font-size:0.72rem; margin-bottom:6px;">
+        <option value="feature" selected>🌿 Feature Branch Workflow</option>
+        <option value="gitflow">🌊 Git Flow (develop/release/hotfix)</option>
+        <option value="trunk">🌳 Trunk-Based Development</option>
+        <option value="rebase">⏪ Rebase vs Merge</option>
+      </select>
+      <button class="btn primary" id="btnRun">▶ Run Workflow</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Git Operations</h3>
+      <button class="btn" id="btnCommit">📝 Commit on Current Branch</button>
+      <button class="btn info" id="btnBranch">🌿 Create Feature Branch</button>
+      <button class="btn" id="btnCheckout">🔀 Checkout Branch</button>
+      <button class="btn success" id="btnMerge">🔗 Merge to Main</button>
+      <button class="btn warn" id="btnRebase">⏪ Rebase onto Main</button>
+      <button class="btn danger" id="btnConflict">💥 Create Conflict</button>
+    </div>
+
+    <div class="panel">
+      <h3>Merge Strategy</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.7rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strategy" value="merge" checked style="accent-color:#f97316;">
+          Merge commit (--no-ff)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strategy" value="ff" style="accent-color:#f97316;">
+          Fast-forward
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="strategy" value="squash" style="accent-color:#f97316;">
+          Squash merge
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Simulation Speed</h3>
+      <div class="slider-row"><span>Auto-commit every</span><span class="value" id="speedVal">2s</span></div>
+      <input type="range" id="speedRange" min="1" max="6" value="2">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;border:2.5px solid #10b981;margin-right:6px;vertical-align:middle;"></span>main branch</div>
+        <div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;border:2.5px solid #06b6d4;margin-right:6px;vertical-align:middle;"></span>feature branch</div>
+        <div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;border:2.5px solid #a855f7;margin-right:6px;vertical-align:middle;"></span>release branch</div>
+        <div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;border:2.5px solid #ef4444;margin-right:6px;vertical-align:middle;"></span>hotfix branch</div>
+        <div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;border:3px solid #8b5cf6;background:#0f172a;margin-right:6px;vertical-align:middle;"></span>merge commit</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">COMMIT GRAPH · BRANCHES · MERGE POINTS · CONFLICTS</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="graph-wrap">
+          <div class="graph-title">
+            <span>🌳 COMMIT GRAPH</span>
+            <span class="hint" id="graphHint">— 0 commits · 0 branches —</span>
+          </div>
+          <div class="graph-canvas" id="graphCanvas">
+            <svg id="gitSvg" width="100%" height="100%"></svg>
+          </div>
+        </div>
+
+        <div class="branch-legend" id="branchLegend">
+          <div class="branch-item">
+            <div class="branch-dot main"></div>
+            <span style="color:#86efac;">main</span>
+          </div>
+          <div class="branch-item" id="legendFeature">
+            <div class="branch-dot feature"></div>
+            <span style="color:#67e8f9;">feature/login</span>
+          </div>
+          <div class="branch-stats">
+            <span class="stat-item">commits: <span class="val" id="statCommits">0</span></span>
+            <span class="stat-item">branches: <span class="val" id="statBranches">1</span></span>
+            <span class="stat-item">merges: <span class="val" id="statMerges">0</span></span>
+            <span class="stat-item">conflicts: <span class="val" id="statConflicts">0</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Commits</div>
+        <div class="metric-value" id="mCommits">1</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Branches</div>
+        <div class="metric-value" id="mBranches">1</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Merges</div>
+        <div class="metric-value" id="mMerges">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Conflicts</div>
+        <div class="metric-value" id="mConflicts">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Git Workflows</div>
+      <div class="info-row"><span class="lbl">Feature Branch</span><span class="val good">Simple · recommended</span></div>
+      <div class="info-row"><span class="lbl">Git Flow</span><span class="val warn">Complex · releases</span></div>
+      <div class="info-row"><span class="lbl">Trunk-Based</span><span class="val good">CI/CD friendly</span></div>
+      <div class="info-row"><span class="lbl">Rebase</span><span class="val">Linear history</span></div>
+      <div class="info-row"><span class="lbl">Merge</span><span class="val">Preserves context</span></div>
+      <div class="info-row"><span class="lbl">Squash</span><span class="val warn">One commit per PR</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  workflow: 'feature',
+  strategy: 'merge',
+  speed: 2,
+  commits: [],          // { id, hash, message, branch, x, y, parentIds, type }
+  branches: {
+    main: { name: 'main', headId: null, color: '#10b981', lane: 0, type: 'main' }
+  },
+  nextCommitId: 1,
+  nextHashNum: 1,
+  mergeCount: 0,
+  conflictCount: 0,
+  currentBranch: 'main',
+  running: false,
+  autoTimer: null,
+  // Layout
+  laneY: { main: 60 },
+  nextLane: 1,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  gitSvg: document.getElementById('gitSvg'),
+  graphCanvas: document.getElementById('graphCanvas'),
+  graphHint: document.getElementById('graphHint'),
+  branchLegend: document.getElementById('branchLegend'),
+  statCommits: document.getElementById('statCommits'),
+  statBranches: document.getElementById('statBranches'),
+  statMerges: document.getElementById('statMerges'),
+  statConflicts: document.getElementById('statConflicts'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Controls
+  btnRun: document.getElementById('btnRun'),
+  btnReset: document.getElementById('btnReset'),
+  btnCommit: document.getElementById('btnCommit'),
+  btnBranch: document.getElementById('btnBranch'),
+  btnCheckout: document.getElementById('btnCheckout'),
+  btnMerge: document.getElementById('btnMerge'),
+  btnRebase: document.getElementById('btnRebase'),
+  btnConflict: document.getElementById('btnConflict'),
+  workflowSelect: document.getElementById('workflowSelect'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  // Metrics
+  mCommits: document.getElementById('mCommits'),
+  mBranches: document.getElementById('mBranches'),
+  mMerges: document.getElementById('mMerges'),
+  mConflicts: document.getElementById('mConflicts'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2400);
+}
+
+function randHash() {
+  const hex = 'abcdef0123456789';
+  let s = '';
+  for (let i = 0; i < 7; i++) s += hex[Math.floor(Math.random() * hex.length)];
+  return s;
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining Git branching and merging workflows.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   COMMITS
+   ============================================================ */
+function createCommit(message, branchName) {
+  const branch = STATE.branches[branchName];
+  const id = STATE.nextCommitId++;
+
+  // Compute X position: after the last commit on any branch
+  const maxX = STATE.commits.reduce((m, c) => Math.max(m, c.x), 0);
+  const x = maxX + 80;
+
+  const commit = {
+    id,
+    hash: randHash(),
+    message,
+    branch: branchName,
+    x,
+    y: branch.lane,
+    parentIds: branch.headId ? [branch.headId] : [],
+    type: branch.type
+  };
+
+  STATE.commits.push(commit);
+  branch.headId = commit.id;
+
+  return commit;
+}
+
+function createMergeCommit(message, sourceBranch, targetBranch) {
+  const target = STATE.branches[targetBranch];
+  const source = STATE.branches[sourceBranch];
+  const id = STATE.nextCommitId++;
+
+  const maxX = STATE.commits.reduce((m, c) => Math.max(m, c.x), 0);
+  const x = maxX + 80;
+
+  const commit = {
+    id,
+    hash: randHash(),
+    message,
+    branch: targetBranch,
+    x,
+    y: target.lane,
+    parentIds: [target.headId, source.headId].filter(Boolean),
+    type: 'merge'
+  };
+
+  STATE.commits.push(commit);
+  target.headId = commit.id;
+  STATE.mergeCount++;
+
+  return commit;
+}
+
+/* ============================================================
+   RENDER GIT GRAPH
+   ============================================================ */
+function renderGraph() {
+  const svg = DOM.gitSvg;
+  const canvas = DOM.graphCanvas;
+
+  // Compute required dimensions
+  const maxX = STATE.commits.reduce((m, c) => Math.max(m, c.x), 0) + 100;
+  const maxY = Math.max(...Object.values(STATE.branches).map(b => b.lane)) + 100;
+  const W = Math.max(canvas.clientWidth, maxX);
+  const H = Math.max(canvas.clientHeight, maxY + 60);
+
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', H);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  let html = '';
+
+  // Draw edges between commits
+  for (const commit of STATE.commits) {
+    const branch = STATE.branches[commit.branch];
+    for (const parentId of commit.parentIds) {
+      const parent = STATE.commits.find(c => c.id === parentId);
+      if (!parent) continue;
+
+      // Color by branch
+      const parentBranch = STATE.branches[parent.branch];
+      let colorClass = 'main';
+      if (commit.type === 'merge') colorClass = 'merge';
+      else colorClass = parentBranch ? parentBranch.type : 'main';
+
+      // Bezier curve if crossing lanes
+      if (parent.y !== commit.y) {
+        const midX = (parent.x + commit.x) / 2;
+        html += `<path class="edge-line ${colorClass}" d="M ${parent.x} ${parent.y} C ${midX} ${parent.y}, ${midX} ${commit.y}, ${commit.x} ${commit.y}"/>`;
+      } else {
+        html += `<line class="edge-line ${colorClass}" x1="${parent.x}" y1="${parent.y}" x2="${commit.x}" y2="${commit.y}"/>`;
+      }
+    }
+  }
+
+  // Draw commits
+  for (const commit of STATE.commits) {
+    const branch = STATE.branches[commit.branch];
+    const colorClass = commit.type === 'merge' ? 'merge' : (branch ? branch.type : 'main');
+
+    const r = commit.type === 'merge' ? 11 : 9;
+    html += `<circle class="commit-circle ${colorClass}" cx="${commit.x}" cy="${commit.y}" r="${r}" style="color: ${
+      colorClass === 'main' ? '#10b981' :
+      colorClass === 'feature' ? '#06b6d4' :
+      colorClass === 'release' ? '#a855f7' :
+      colorClass === 'hotfix' ? '#ef4444' :
+      colorClass === 'develop' ? '#f59e0b' :
+      '#8b5cf6'
+    };" data-commit-id="${commit.id}"/>`;
+
+    // Hash label
+    html += `<text class="commit-hash" x="${commit.x}" y="${commit.y + r + 12}">${commit.hash}</text>`;
+
+    // Message label (abbreviated)
+    const msg = commit.message.length > 12 ? commit.message.slice(0, 12) + '…' : commit.message;
+    html += `<text class="commit-label" x="${commit.x}" y="${commit.y - r - 6}">${msg}</text>`;
+  }
+
+  // Draw branch labels (at the head of each branch)
+  for (const [branchName, branch] of Object.entries(STATE.branches)) {
+    if (branch.headId === null) continue;
+    const head = STATE.commits.find(c => c.id === branch.headId);
+    if (!head) continue;
+
+    const labelX = head.x;
+    const labelY = head.y - 40;
+
+    const color = branch.type === 'main' ? '#10b981' :
+                  branch.type === 'feature' ? '#06b6d4' :
+                  branch.type === 'release' ? '#a855f7' :
+                  branch.type === 'hotfix' ? '#ef4444' :
+                  branch.type === 'develop' ? '#f59e0b' :
+                  '#8b5cf6';
+
+    html += `
+      <rect x="${labelX - 30}" y="${labelY - 10}" width="60" height="16" rx="8" fill="${color}" opacity="0.2" stroke="${color}"/>
+      <text class="branch-label" x="${labelX}" y="${labelY + 1}" fill="${color}" text-anchor="middle">${branchName}</text>
+    `;
+
+    // Draw a small indicator line from the label to the head
+    html += `<line x1="${labelX}" y1="${labelY + 6}" x2="${head.x}" y2="${head.y - 12}" stroke="${color}" stroke-width="1" opacity="0.5" stroke-dasharray="2,2"/>`;
+  }
+
+  svg.innerHTML = html;
+
+  // Bind click handlers
+  svg.querySelectorAll('.commit-circle').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = parseInt(el.dataset.commitId);
+      const commit = STATE.commits.find(c => c.id === id);
+      if (!commit) return;
+      teach('COMMIT',
+        `${commit.hash} — "${commit.message}" on branch "${commit.branch}". ${commit.parentIds.length === 0 ? 'Root commit.' : `Parent(s): ${commit.parentIds.map(pid => STATE.commits.find(c => c.id === pid)?.hash).join(', ')}.`}`,
+        'cyan', false
+      );
+    });
+  });
+
+  // Update graph hint
+  DOM.graphHint.textContent = `— ${STATE.commits.length} commits · ${Object.keys(STATE.branches).length} branches —`;
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.mCommits.textContent = STATE.commits.length;
+  DOM.mBranches.textContent = Object.keys(STATE.branches).length;
+  DOM.mMerges.textContent = STATE.mergeCount;
+  DOM.mConflicts.textContent = STATE.conflictCount;
+
+  DOM.statCommits.textContent = STATE.commits.length;
+  DOM.statBranches.textContent = Object.keys(STATE.branches).length;
+  DOM.statMerges.textContent = STATE.mergeCount;
+  DOM.statConflicts.textContent = STATE.conflictCount;
+}
+
+/* ============================================================
+   OPERATIONS
+   ============================================================ */
+function commit(message) {
+  const commit = createCommit(message, STATE.currentBranch);
+  renderGraph();
+  updateMetrics();
+
+  teach('COMMIT',
+    `New commit "${message}" (${commit.hash}) created on branch "${STATE.currentBranch}". Git commits are immutable snapshots — the hash is derived from the tree content, the parent hash, the author, and the timestamp.`,
+    'cyan'
+  );
+
+  return commit;
+}
+
+function createBranch(name, type = 'feature') {
+  if (STATE.branches[name]) {
+    showToast(`⚠ Branch "${name}" already exists`);
+    return;
+  }
+  const parent = STATE.branches[STATE.currentBranch];
+
+  STATE.branches[name] = {
+    name,
+    headId: parent.headId,
+    lane: 30 + STATE.nextLane * 60,
+    type
+  };
+  STATE.nextLane++;
+  STATE.currentBranch = name;
+
+  renderGraph();
+  updateMetrics();
+
+  teach('BRANCH CREATED',
+    `Created branch "${name}" from "${parent.name}". A branch in Git is just a pointer to a commit — cheap to create, cheap to delete. This branch and "${parent.name}" now share history up to the current commit; they'll diverge when you commit here.`,
+    'cyan'
+  );
+}
+
+function checkout(name) {
+  if (!STATE.branches[name]) return;
+  STATE.currentBranch = name;
+  teach('CHECKOUT',
+    `Switched to branch "${name}". HEAD now points to this branch. New commits will advance only this branch; the other branches remain at their current position.`,
+    'info', false
+  );
+}
+
+function mergeToMain() {
+  if (STATE.currentBranch === 'main') {
+    showToast('⚠ Already on main — switch to a branch first');
+    return;
+  }
+  const source = STATE.branches[STATE.currentBranch];
+  const target = STATE.branches.main;
+
+  if (source.headId === target.headId) {
+    showToast('⚠ Nothing to merge — branches point to same commit');
+    return;
+  }
+
+  showStatus(`🔗 MERGING ${STATE.currentBranch} → main`, 'merge');
+
+  if (STATE.strategy === 'ff') {
+    // Fast-forward: main just moves to source's head
+    target.headId = source.headId;
+    teach('FAST-FORWARD MERGE',
+      `Main was behind ${STATE.currentBranch} with no divergent commits — so Git just moved main's pointer forward to match. No new commit created. This is the simplest merge: linear history preserved.`,
+      'ok'
+    );
+  } else if (STATE.strategy === 'squash') {
+    // Squash: create one new commit on main
+    const squash = createCommit(`squash: ${STATE.currentBranch}`, 'main');
+    target.headId = squash.id;
+    STATE.mergeCount++;
+    teach('SQUASH MERGE',
+      `All commits from "${STATE.currentBranch}" were squashed into a single new commit on main. Clean history, but you lose the individual commit context of the branch.`,
+      'ok'
+    );
+  } else {
+    // --no-ff: create explicit merge commit
+    const merge = createMergeCommit(`Merge branch '${STATE.currentBranch}' into main`, STATE.currentBranch, 'main');
+    teach('MERGE COMMIT',
+      `Created merge commit ${merge.hash} with TWO parents: main's previous head and ${STATE.currentBranch}'s head. This preserves the full branch history in main. The graph now shows a diamond shape — the classic Git merge visual.`,
+      'ok'
+    );
+  }
+
+  STATE.currentBranch = 'main';
+  renderGraph();
+  updateMetrics();
+}
+
+function rebaseOntoMain() {
+  if (STATE.currentBranch === 'main') {
+    showToast('⚠ Already on main');
+    return;
+  }
+  showToast('⏪ Rebasing...');
+  teach('REBASE',
+    `Rebase moves the entire feature branch onto the tip of main by replaying each commit as a new commit. This produces LINEAR history — no merge commit. But the commits get new hashes because their parent changed. Rule: never rebase shared branches.`,
+    'warn'
+  );
+
+  // Simulate: rebase moves the branch to a new position
+  const mainHead = STATE.branches.main.headId;
+  const source = STATE.branches[STATE.currentBranch];
+  source.headId = mainHead;  // simplify: skip actual replay, just move pointer
+
+  renderGraph();
+}
+
+function createConflict() {
+  // Two branches modify the same file
+  const mainCommit = createCommit('edit: config.json', 'main');
+  // Now on feature — same file
+  if (STATE.branches.feature) {
+    STATE.currentBranch = 'feature';
+    const featureCommit = createCommit('edit: config.json', 'feature');
+    STATE.conflictCount++;
+    showStatus('💥 CONFLICT: config.json', 'conflict');
+    teach('MERGE CONFLICT',
+      `Both main and feature modified the same file (config.json) in different ways. When merging, Git can't automatically decide which change wins — it stops and asks the developer to resolve it. This is a semantic conflict, not a technical one. Fix: manually edit the file, keep the right lines, then commit the resolution.`,
+      'error'
+    );
+  }
+  renderGraph();
+  updateMetrics();
+}
+
+/* ============================================================
+   WORKFLOWS
+   ============================================================ */
+function runWorkflow() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.autoTimer);
+    STATE.autoTimer = null;
+    DOM.btnRun.textContent = '▶ Run Workflow';
+    return;
+  }
+
+  resetAll();
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+
+  const steps = [];
+  const wf = STATE.workflow;
+
+  if (wf === 'feature') {
+    steps.push(() => commit('initial: setup project'));
+    steps.push(() => commit('feat: add README'));
+    steps.push(() => createBranch('feature/login', 'feature'));
+    steps.push(() => commit('feat: login page'));
+    steps.push(() => commit('feat: login validation'));
+    steps.push(() => commit('fix: handle empty password'));
+    steps.push(() => mergeToMain());
+    steps.push(() => commit('chore: bump version'));
+  } else if (wf === 'gitflow') {
+    steps.push(() => commit('initial: setup project'));
+    steps.push(() => createBranch('develop', 'develop'));
+    steps.push(() => commit('feat: base architecture'));
+    steps.push(() => createBranch('feature/checkout', 'feature'));
+    steps.push(() => commit('feat: cart UI'));
+    steps.push(() => commit('feat: checkout flow'));
+    steps.push(() => {
+      STATE.currentBranch = 'develop';
+      STATE.branches.develop.headId = STATE.branches['feature/checkout'].headId;
+      teach('MERGE → DEVELOP',
+        `Feature merged into develop. In Git Flow, all features merge to develop, not main. Main only receives merge commits from release branches.`,
+        'purple'
+      );
+    });
+    steps.push(() => createBranch('release/1.0', 'release'));
+    steps.push(() => commit('release: 1.0 prep'));
+    steps.push(() => {
+      STATE.currentBranch = 'main';
+      STATE.branches.main.headId = STATE.branches['release/1.0'].headId;
+      STATE.mergeCount++;
+      teach('RELEASE → MAIN',
+        `Release branch merged to main. This is where production code lands. In Git Flow, main only ever receives merges from release or hotfix branches — guaranteeing that everything in main is a deliberate release.`,
+        'ok'
+      );
+    });
+    steps.push(() => {
+      STATE.currentBranch = 'main';
+      createBranch('hotfix/critical', 'hotfix');
+    });
+    steps.push(() => commit('fix: critical security patch'));
+    steps.push(() => {
+      STATE.branches.main.headId = STATE.branches['hotfix/critical'].headId;
+      STATE.mergeCount++;
+    });
+  } else if (wf === 'trunk') {
+    steps.push(() => commit('initial: setup'));
+    steps.push(() => commit('feat: partial login'));
+    steps.push(() => commit('feat: complete login'));
+    steps.push(() => commit('feat: logout'));
+    steps.push(() => commit('fix: session bug'));
+    steps.push(() => commit('chore: cleanup'));
+    steps.push(() => commit('release: v1.0'));
+  } else if (wf === 'rebase') {
+    steps.push(() => commit('initial: main setup'));
+    steps.push(() => createBranch('feature/ui', 'feature'));
+    steps.push(() => commit('feat: button component'));
+    steps.push(() => commit('feat: form component'));
+    steps.push(() => {
+      STATE.currentBranch = 'main';
+      commit('fix: main bug 1');
+      commit('fix: main bug 2');
+    });
+    steps.push(() => {
+      STATE.currentBranch = 'feature/ui';
+      rebaseOntoMain();
+    });
+    steps.push(() => mergeToMain());
+  }
+
+  let i = 0;
+  STATE.autoTimer = setInterval(() => {
+    if (i >= steps.length) {
+      clearInterval(STATE.autoTimer);
+      STATE.autoTimer = null;
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Run Workflow';
+      teach('WORKFLOW COMPLETE',
+        `Workflow "${wf}" complete. Notice the commit graph shape: ${wf === 'feature' ? 'linear with a merge diamond' : wf === 'gitflow' ? 'multiple parallel lanes (develop, feature, release, hotfix)' : wf === 'trunk' ? 'single straight line — trunk-based development keeps main always releasable' : 'linear after rebase — old branch commits were replayed onto main'}.`,
+        'ok'
+      );
+      return;
+    }
+    steps[i]();
+    i++;
+  }, STATE.speed * 1000);
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  STATE.autoTimer = null;
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Run Workflow';
+  STATE.commits = [];
+  STATE.branches = {
+    main: { name: 'main', headId: null, lane: 60, type: 'main' }
+  };
+  STATE.nextCommitId = 1;
+  STATE.mergeCount = 0;
+  STATE.conflictCount = 0;
+  STATE.currentBranch = 'main';
+  STATE.nextLane = 1;
+
+  // Initial commit
+  const initial = createCommit('initial commit', 'main');
+
+  renderGraph();
+  updateMetrics();
+  teach('RESET', 'Repository reset. main branch has an initial commit.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.workflowSelect.addEventListener('change', e => {
+  STATE.workflow = e.target.value;
+  resetAll();
+  const desc = {
+    feature: 'Feature Branch Workflow: main + short-lived feature branches. Simple, effective for most teams.',
+    gitflow: 'Git Flow: long-lived develop + release + hotfix branches. Great for versioned releases, but complex.',
+    trunk: 'Trunk-Based Development: everyone commits to main multiple times per day. Best for CI/CD.',
+    rebase: 'Rebase vs Merge: rebase produces linear history (new hashes); merge preserves branching context.'
+  };
+  teach('WORKFLOW', desc[STATE.workflow], 'cyan');
+});
+
+DOM.btnRun.addEventListener('click', runWorkflow);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnCommit.addEventListener('click', () => {
+  const messages = ['feat: add feature', 'fix: bug', 'docs: update', 'refactor: cleanup', 'test: add coverage', 'chore: bump deps'];
+  commit(messages[Math.floor(Math.random() * messages.length)]);
+});
+DOM.btnBranch.addEventListener('click', () => {
+  const names = ['feature/ui', 'feature/api', 'feature/auth', 'release/1.0', 'hotfix/patch'];
+  const name = names[Math.floor(Math.random() * names.length)];
+  const type = name.startsWith('release') ? 'release' : name.startsWith('hotfix') ? 'hotfix' : 'feature';
+  createBranch(name, type);
+});
+DOM.btnCheckout.addEventListener('click', () => {
+  const branches = Object.keys(STATE.branches);
+  const others = branches.filter(b => b !== STATE.currentBranch);
+  if (others.length === 0) { showToast('⚠ Only one branch'); return; }
+  checkout(others[Math.floor(Math.random() * others.length)]);
+});
+DOM.btnMerge.addEventListener('click', mergeToMain);
+DOM.btnRebase.addEventListener('click', rebaseOntoMain);
+DOM.btnConflict.addEventListener('click', createConflict);
+
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseInt(e.target.value);
+  DOM.speedVal.textContent = STATE.speed + 's';
+});
+
+document.querySelectorAll('input[name="strategy"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.strategy = e.target.value;
+    const desc = {
+      merge: 'Merge commit: always create an explicit merge commit. Preserves branch history — you can see exactly when the feature was merged.',
+      ff: 'Fast-forward: if no divergent commits, just move main forward. Linear history, no merge commit. If main has diverged, this becomes --no-ff.',
+      squash: 'Squash: combine all feature commits into a single commit on main. Clean main history, but you lose individual commit context.'
+    };
+    teach('MERGE STRATEGY', desc[e.target.value], 'purple');
+  });
+});
+
+window.addEventListener('resize', renderGraph);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Git Branching & Merging Workflows. Git models your project as a directed acyclic graph (DAG) of commits. Branches are just movable pointers to commits. Merges combine divergent histories. This simulator shows all the classic workflows in action.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('BRANCHES ARE POINTERS',
+      `A branch in Git is just a 41-byte file containing a commit hash. Creating a branch is instant — it's just writing a hash. Switching branches moves HEAD and updates your working directory. This is why Git branching is so cheap compared to older VCS like SVN.`,
+      'purple'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('MERGE vs REBASE',
+      `Merge creates a new commit with two parents — history becomes a DAG. Rebase replays your commits on top of another branch, producing linear history but new hashes. Rule of thumb: rebase local branches, merge shared branches. Never rebase main.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('TRY IT',
+      `Select a workflow from the dropdown and click RUN WORKFLOW to watch it unfold. Or use the manual buttons to commit, branch, and merge yourself. Try CREATE CONFLICT to see what happens when two branches modify the same file.`,
+      'cyan'
+    );
+  }, 13000);
+
+  showToast('👋 Pick a workflow and press RUN', 4500);
+}, 500);
+</script>
+</body>
+</html>

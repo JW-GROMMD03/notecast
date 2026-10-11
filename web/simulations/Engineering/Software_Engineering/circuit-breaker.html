@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Circuit Breaker Pattern State Transitions — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(239,68,68,0.15);
+    color: #fca5a5;
+    border-color: #ef4444;
+  }
+  .teaching-toggle:hover { background: rgba(239,68,68,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fca5a5;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #ef4444; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #ef4444; color: #fff; border-color: #ef4444; }
+  .btn.primary:hover { background: #dc2626; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fca5a5; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #ef4444; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(239,68,68,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* STATE MACHINE DIAGRAM */
+  .state-machine-wrap {
+    background: #070a14;
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+    padding: 12px;
+    height: 260px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(245,158,11,0.15);
+    flex-shrink: 0;
+  }
+  .sm-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #stateSvg {
+    flex: 1;
+    width: 100%;
+    display: block;
+  }
+
+  /* CIRCUIT STATE (below) */
+  .circuit-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  .circuit-diagram {
+    background: #070a14;
+    border: 2px solid #ef4444;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(239,68,68,0.15);
+    min-height: 0;
+  }
+
+  .circuit-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #fca5a5;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .circuit-body {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    min-height: 0;
+  }
+
+  /* The circuit visual: source ---[breaker]--- target */
+  .circuit-flow {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .circuit-node {
+    width: 90px;
+    height: 90px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    transition: all 0.4s;
+    border: 3px solid;
+    background: #0f172a;
+    flex-shrink: 0;
+  }
+  .circuit-node.client {
+    border-color: #06b6d4;
+    box-shadow: 0 0 15px rgba(6,182,212,0.3);
+  }
+  .circuit-node.service {
+    border-color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.3);
+  }
+  .circuit-node.service.failing {
+    border-color: #ef4444;
+    box-shadow: 0 0 25px rgba(239,68,68,0.7);
+    animation: failPulse 0.8s ease-in-out infinite alternate;
+  }
+  @keyframes failPulse {
+    0% { box-shadow: 0 0 20px rgba(239,68,68,0.5); }
+    100% { box-shadow: 0 0 40px rgba(239,68,68,1); }
+  }
+  .circuit-node-icon {
+    font-size: 1.6rem;
+    margin-bottom: 4px;
+  }
+  .circuit-node-name {
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .circuit-node.client .circuit-node-name { color: #67e8f9; }
+  .circuit-node.service .circuit-node-name { color: #6ee7b7; }
+  .circuit-node.service.failing .circuit-node-name { color: #fca5a5; }
+
+  /* The breaker itself */
+  .breaker {
+    width: 130px;
+    height: 100px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    transition: all 0.5s cubic-bezier(.68,-0.55,.27,1.55);
+    border: 3px solid;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .breaker.closed {
+    border-color: #10b981;
+    background: linear-gradient(145deg, #064e3b, #022c22);
+    box-shadow: 0 0 25px rgba(16,185,129,0.5);
+  }
+  .breaker.open {
+    border-color: #ef4444;
+    background: linear-gradient(145deg, #450a0a, #1c0606);
+    box-shadow: 0 0 30px rgba(239,68,68,0.7);
+    animation: breakerPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes breakerPulse {
+    0%, 100% { box-shadow: 0 0 30px rgba(239,68,68,0.7); }
+    50%      { box-shadow: 0 0 50px rgba(239,68,68,1); }
+  }
+  .breaker.halfopen {
+    border-color: #f59e0b;
+    background: linear-gradient(145deg, #78350f, #451a03);
+    box-shadow: 0 0 25px rgba(245,158,11,0.6);
+    animation: halfPulse 1s ease-in-out infinite;
+  }
+  @keyframes halfPulse {
+    0%, 100% { box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+    50%      { box-shadow: 0 0 40px rgba(245,158,11,1); }
+  }
+
+  .breaker-icon {
+    font-size: 1.8rem;
+    margin-bottom: 3px;
+    transition: all 0.3s;
+  }
+  .breaker-label {
+    font-size: 0.55rem;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+  .breaker.closed .breaker-label { color: #6ee7b7; }
+  .breaker.open .breaker-label { color: #fca5a5; }
+  .breaker.halfopen .breaker-label { color: #fcd34d; }
+
+  .breaker-state-count {
+    font-size: 0.5rem;
+    color: #94a3b8;
+    margin-top: 3px;
+    font-family: monospace;
+  }
+
+  /* Wire between nodes */
+  .wire {
+    flex: 1;
+    height: 4px;
+    background: #334155;
+    position: relative;
+    min-width: 40px;
+    max-width: 80px;
+  }
+  .wire.live {
+    background: linear-gradient(90deg, #06b6d4, #10b981);
+    box-shadow: 0 0 10px rgba(16,185,129,0.7);
+    animation: wireFlow 1s linear infinite;
+  }
+  @keyframes wireFlow {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 100% 50%; }
+  }
+  .wire.dead {
+    background: #7f1d1d;
+    opacity: 0.5;
+  }
+  .wire.throttled {
+    background: linear-gradient(90deg, #f59e0b, #78350f);
+    animation: throttlePulse 0.6s ease-in-out infinite alternate;
+  }
+  @keyframes throttlePulse {
+    0% { opacity: 0.5; }
+    100% { opacity: 1; }
+  }
+
+  /* REQUEST LOG */
+  .log-wrap {
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(139,92,246,0.15);
+    min-height: 0;
+  }
+
+  .log-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .log-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    padding: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.58rem;
+    line-height: 1.5;
+    min-height: 0;
+  }
+  .log-entry {
+    padding: 2px 4px;
+    border-radius: 3px;
+    animation: logIn 0.3s ease;
+    border-left: 2px solid transparent;
+    display: flex;
+    gap: 6px;
+  }
+  @keyframes logIn {
+    from { transform: translateX(-6px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .log-entry.success { border-left-color: #10b981; color: #a7f3d0; }
+  .log-entry.failure { border-left-color: #ef4444; color: #fecaca; }
+  .log-entry.rejected { border-left-color: #f59e0b; color: #fde68a; }
+  .log-entry.probe { border-left-color: #a855f7; color: #d8b4fe; font-weight: 700; }
+  .log-entry.transition { border-left-color: #06b6d4; color: #67e8f9; font-weight: 700; }
+  .log-entry .ts { color: #475569; font-size: 0.5rem; min-width: 40px; }
+  .log-entry .msg { color: #cbd5e1; flex: 1; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(239,68,68,0.06);
+    border: 1px solid rgba(239,68,68,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fca5a5;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #ef4444;
+    background: rgba(239,68,68,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(239,68,68,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fca5a5;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #ef4444;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(239,68,68,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #ef4444;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fca5a5;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(239,68,68,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.ok { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.warn { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>CIRCUIT BREAKER PATTERN</h1>
+    <span class="sub">CLOSED · OPEN · HALF-OPEN STATE MACHINE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Traffic Control</h3>
+      <button class="btn primary" id="btnToggle">▶ Send Traffic</button>
+      <button class="btn" id="btnBurst">⚡ Burst 20 Requests</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Service Faults</h3>
+      <button class="btn danger" id="btnFailService">💥 Service Down</button>
+      <button class="btn warn" id="btnFlakyService">🎲 Flaky Service</button>
+      <button class="btn success" id="btnHealService">✓ Service Recovered</button>
+    </div>
+
+    <div class="panel">
+      <h3>Breaker Config</h3>
+      <div class="slider-row"><span>Failure threshold</span><span class="value" id="threshVal">3</span></div>
+      <input type="range" id="threshRange" min="1" max="10" value="3">
+      <div class="slider-row"><span>Open timeout</span><span class="value" id="timeoutVal">5s</span></div>
+      <input type="range" id="timeoutRange" min="2" max="15" value="5">
+      <div class="slider-row"><span>Requests / sec</span><span class="value" id="rpsVal">2</span></div>
+      <input type="range" id="rpsRange" min="1" max="8" value="2">
+    </div>
+
+    <div class="panel">
+      <h3>Fallback</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.7rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="fallback" value="none" checked style="accent-color:#ef4444;">
+          No fallback (fail fast)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="fallback" value="cached" style="accent-color:#ef4444;">
+          Cached response
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="fallback" value="default" style="accent-color:#ef4444;">
+          Default value
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:3px;margin-right:6px;"></span>Closed (normal)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:3px;margin-right:6px;"></span>Open (failing)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:3px;margin-right:6px;"></span>Half-Open (probing)</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">FAIL FAST · PREVENT CASCADING FAILURES · RECOVER AUTOMATICALLY</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="state-machine-wrap">
+          <div class="sm-title">
+            <span>🔀 STATE MACHINE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="smHint">— current state: CLOSED —</span>
+          </div>
+          <svg id="stateSvg" viewBox="0 0 800 200" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+
+        <div class="circuit-grid">
+          <div class="circuit-diagram">
+            <div class="circuit-title">
+              <span>⚡ CIRCUIT FLOW</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="circuitHint">— traffic passing —</span>
+            </div>
+            <div class="circuit-body">
+              <div class="circuit-flow">
+                <div class="circuit-node client">
+                  <div class="circuit-node-icon">👤</div>
+                  <div class="circuit-node-name">Client</div>
+                </div>
+                <div class="wire live" id="wire1"></div>
+                <div class="breaker closed" id="breaker">
+                  <div class="breaker-icon" id="breakerIcon">✓</div>
+                  <div class="breaker-label" id="breakerLabel">Closed</div>
+                  <div class="breaker-state-count" id="breakerCount">0 fails</div>
+                </div>
+                <div class="wire live" id="wire2"></div>
+                <div class="circuit-node service" id="serviceNode">
+                  <div class="circuit-node-icon">⚙️</div>
+                  <div class="circuit-node-name">Service</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="log-wrap">
+            <div class="log-title">
+              <span>📋 REQUEST LOG</span>
+              <span style="font-size:0.5rem; color:#64748b;" id="logHint">— 0 events —</span>
+            </div>
+            <div class="log-body" id="logBody"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">State</div>
+        <div class="metric-value" id="mState">CLOSED</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Failures</div>
+        <div class="metric-value warn" id="mFails">0/3</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Success</div>
+        <div class="metric-value good" id="mSuccess">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Rejected</div>
+        <div class="metric-value bad" id="mRejected">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Three States</div>
+      <div class="info-row"><span class="lbl">CLOSED</span><span class="val good">Normal, requests pass</span></div>
+      <div class="info-row"><span class="lbl">OPEN</span><span class="val bad">Fail fast, no requests</span></div>
+      <div class="info-row"><span class="lbl">HALF-OPEN</span><span class="val warn">Probe with 1 request</span></div>
+      <div class="info-row"><span class="lbl">→ Open</span><span class="val">Threshold failures</span></div>
+      <div class="info-row"><span class="lbl">Open → Half</span><span class="val">Timeout expires</span></div>
+      <div class="info-row"><span class="lbl">Half → Closed</span><span class="val good">Probe succeeds</span></div>
+      <div class="info-row"><span class="lbl">Half → Open</span><span class="val bad">Probe fails</span></div>
+      <div class="info-row"><span class="lbl">Systems</span><span class="val">Hystrix, Resilience4j</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  breakerState: 'closed',   // closed | open | half-open
+  consecutiveFailures: 0,
+  failureThreshold: 3,
+  openTimeout: 5,           // seconds
+  requestsPerSec: 2,
+  serviceState: 'healthy',  // healthy | failing | flaky
+  fallbackMode: 'none',
+  // Counters
+  successCount: 0,
+  rejectionCount: 0,
+  // Timers
+  trafficTimer: null,
+  openTimer: null,
+  halfOpenTimer: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  running: false,
+  // Stats
+  totalRequests: 0
+};
+
+const DOM = {
+  stateSvg: document.getElementById('stateSvg'),
+  smHint: document.getElementById('smHint'),
+  circuitHint: document.getElementById('circuitHint'),
+  breaker: document.getElementById('breaker'),
+  breakerIcon: document.getElementById('breakerIcon'),
+  breakerLabel: document.getElementById('breakerLabel'),
+  breakerCount: document.getElementById('breakerCount'),
+  wire1: document.getElementById('wire1'),
+  wire2: document.getElementById('wire2'),
+  serviceNode: document.getElementById('serviceNode'),
+  logBody: document.getElementById('logBody'),
+  logHint: document.getElementById('logHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Controls
+  btnToggle: document.getElementById('btnToggle'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnReset: document.getElementById('btnReset'),
+  btnFailService: document.getElementById('btnFailService'),
+  btnFlakyService: document.getElementById('btnFlakyService'),
+  btnHealService: document.getElementById('btnHealService'),
+  threshRange: document.getElementById('threshRange'),
+  threshVal: document.getElementById('threshVal'),
+  timeoutRange: document.getElementById('timeoutRange'),
+  timeoutVal: document.getElementById('timeoutVal'),
+  rpsRange: document.getElementById('rpsRange'),
+  rpsVal: document.getElementById('rpsVal'),
+  // Metrics
+  mState: document.getElementById('mState'),
+  mFails: document.getElementById('mFails'),
+  mSuccess: document.getElementById('mSuccess'),
+  mRejected: document.getElementById('mRejected'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2400);
+}
+
+let LOG_TS = 0;
+function logEntry(cls, msg) {
+  LOG_TS++;
+  const el = document.createElement('div');
+  el.className = `log-entry ${cls}`;
+  el.innerHTML = `<span class="ts">[${String(LOG_TS).padStart(3, '0')}]</span><span class="msg">${msg}</span>`;
+  DOM.logBody.prepend(el);
+  while (DOM.logBody.children.length > 40) DOM.logBody.lastChild.remove();
+  DOM.logHint.textContent = `${LOG_TS} events`;
+}
+
+function clearLog() {
+  LOG_TS = 0;
+  DOM.logBody.innerHTML = '';
+  DOM.logHint.textContent = '0 events';
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining circuit breaker pattern state transitions.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   STATE MACHINE DIAGRAM
+   ============================================================ */
+function drawStateMachine() {
+  const svg = DOM.stateSvg;
+  const W = 800, H = 200;
+
+  // Three circles: Closed (left), Half-Open (middle), Open (right)
+  const closedX = 130, closedY = 100;
+  const halfX = 400, halfY = 100;
+  const openX = 670, openY = 100;
+  const r = 55;
+
+  let html = '';
+
+  // Arrows / transitions
+  // Closed → Open (top arc)
+  html += `<path d="M ${closedX + r} ${closedY - 10} Q ${(closedX + openX) / 2} 20, ${openX - r} ${openY - 10}" stroke="#ef4444" stroke-width="2" fill="none" marker-end="url(#arrowRed)" stroke-dasharray="6 3"/>`;
+  html += `<text x="${(closedX + openX) / 2}" y="35" text-anchor="middle" font-family="monospace" font-size="10" fill="#fca5a5">${STATE.failureThreshold} failures</text>`;
+
+  // Open → Half-Open (bottom arc)
+  html += `<path d="M ${openX - r} ${openY + 10} Q ${(openX + halfX) / 2} 180, ${halfX + r} ${halfY + 10}" stroke="#f59e0b" stroke-width="2" fill="none" marker-end="url(#arrowAmber)" stroke-dasharray="6 3"/>`;
+  html += `<text x="${(openX + halfX) / 2}" y="180" text-anchor="middle" font-family="monospace" font-size="10" fill="#fcd34d">${STATE.openTimeout}s timeout</text>`;
+
+  // Half-Open → Closed
+  html += `<path d="M ${halfX - r} ${halfY + 10} Q ${(halfX + closedX) / 2} 180, ${closedX + r} ${closedY + 10}" stroke="#10b981" stroke-width="2" fill="none" marker-end="url(#arrowGreen)" stroke-dasharray="6 3"/>`;
+  html += `<text x="${(halfX + closedX) / 2}" y="180" text-anchor="middle" font-family="monospace" font-size="10" fill="#6ee7b7">probe OK</text>`;
+
+  // Half-Open → Open (top arc)
+  html += `<path d="M ${halfX + r} ${halfY - 10} Q ${(halfX + openX) / 2} 20, ${openX - r} ${openY - 10}" stroke="#ef4444" stroke-width="2" fill="none" marker-end="url(#arrowRed)" stroke-dasharray="6 3"/>`;
+  html += `<text x="${(halfX + openX) / 2}" y="35" text-anchor="middle" font-family="monospace" font-size="10" fill="#fca5a5">probe fails</text>`;
+
+  // Arrowheads
+  html += `
+    <defs>
+      <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444"/>
+      </marker>
+      <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b"/>
+      </marker>
+      <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981"/>
+      </marker>
+    </defs>
+  `;
+
+  // Draw three state circles
+  const states = [
+    { id: 'closed', x: closedX, y: closedY, label: 'CLOSED', color: '#10b981', sublabel: 'normal operation' },
+    { id: 'half-open', x: halfX, y: halfY, label: 'HALF-OPEN', color: '#f59e0b', sublabel: 'probing' },
+    { id: 'open', x: openX, y: openY, label: 'OPEN', color: '#ef4444', sublabel: 'failing fast' }
+  ];
+
+  for (const s of states) {
+    const isActive = STATE.breakerState === s.id;
+    const radius = isActive ? r + 8 : r;
+
+    if (isActive) {
+      html += `<circle cx="${s.x}" cy="${s.y}" r="${radius + 8}" fill="${s.color}" opacity="0.15"/>`;
+    }
+
+    html += `<circle cx="${s.x}" cy="${s.y}" r="${radius}" fill="#0f172a" stroke="${s.color}" stroke-width="${isActive ? 4 : 2}"${isActive ? ` filter="drop-shadow(0 0 10px ${s.color})"` : ''}/>`;
+    html += `<text x="${s.x}" y="${s.y - 5}" text-anchor="middle" font-family="monospace" font-size="${isActive ? 13 : 12}" font-weight="900" fill="${s.color}">${s.label}</text>`;
+    html += `<text x="${s.x}" y="${s.y + 12}" text-anchor="middle" font-family="monospace" font-size="9" fill="#94a3b8">${s.sublabel}</text>`;
+  }
+
+  svg.innerHTML = html;
+
+  DOM.smHint.textContent = `— current state: ${STATE.breakerState.toUpperCase()} —`;
+}
+
+/* ============================================================
+   CIRCUIT VISUAL
+   ============================================================ */
+function updateCircuitVisual() {
+  const b = DOM.breaker;
+  const icon = DOM.breakerIcon;
+  const label = DOM.breakerLabel;
+  const count = DOM.breakerCount;
+
+  b.classList.remove('closed', 'open', 'halfopen');
+  DOM.wire1.classList.remove('live', 'dead', 'throttled');
+  DOM.wire2.classList.remove('live', 'dead', 'throttled');
+
+  if (STATE.breakerState === 'closed') {
+    b.classList.add('closed');
+    icon.textContent = '✓';
+    label.textContent = 'Closed';
+    DOM.wire1.classList.add('live');
+    DOM.wire2.classList.add('live');
+    count.textContent = `${STATE.consecutiveFailures}/${STATE.failureThreshold} fails`;
+  } else if (STATE.breakerState === 'open') {
+    b.classList.add('open');
+    icon.textContent = '✗';
+    label.textContent = 'Open';
+    DOM.wire1.classList.add('live');
+    DOM.wire2.classList.add('dead');
+    count.textContent = 'all rejected';
+  } else if (STATE.breakerState === 'half-open') {
+    b.classList.add('halfopen');
+    icon.textContent = '?';
+    label.textContent = 'Half-Open';
+    DOM.wire1.classList.add('live');
+    DOM.wire2.classList.add('throttled');
+    count.textContent = 'probing...';
+  }
+
+  DOM.serviceNode.classList.toggle('failing', STATE.serviceState === 'failing');
+  DOM.circuitHint.textContent = STATE.serviceState === 'failing' ? '— service failing —' : '— traffic passing —';
+}
+
+/* ============================================================
+   REQUEST FLOW
+   ============================================================ */
+function sendRequest() {
+  STATE.totalRequests++;
+
+  // If breaker is OPEN: reject immediately (fail fast)
+  if (STATE.breakerState === 'open') {
+    STATE.rejectionCount++;
+    logEntry('rejected', `REJECTED — circuit open (fail fast)`);
+    updateMetrics();
+    return;
+  }
+
+  // If breaker is HALF-OPEN: send one probe
+  if (STATE.breakerState === 'half-open') {
+    logEntry('probe', `PROBE request sent to service`);
+    setTimeout(() => {
+      const success = Math.random() < 0.7 && STATE.serviceState !== 'failing';
+      if (success) {
+        onProbeSuccess();
+      } else {
+        onProbeFail();
+      }
+    }, 400);
+    return;
+  }
+
+  // Breaker is CLOSED: normal request flow
+  setTimeout(() => {
+    const fails = STATE.serviceState === 'failing' || 
+                  (STATE.serviceState === 'flaky' && Math.random() < 0.6);
+    
+    if (fails) {
+      onRequestFailure();
+    } else {
+      onRequestSuccess();
+    }
+  }, 300);
+}
+
+function onRequestSuccess() {
+  STATE.successCount++;
+  STATE.consecutiveFailures = 0;
+  logEntry('success', `✓ Request succeeded — reset failure counter`);
+  updateMetrics();
+  updateCircuitVisual();
+  drawStateMachine();
+}
+
+function onRequestFailure() {
+  STATE.consecutiveFailures++;
+  logEntry('failure', `✗ Request failed (${STATE.consecutiveFailures}/${STATE.failureThreshold})`);
+  updateMetrics();
+
+  if (STATE.consecutiveFailures >= STATE.failureThreshold) {
+    transitionToOpen();
+  } else {
+    updateCircuitVisual();
+  }
+}
+
+function transitionToOpen() {
+  STATE.breakerState = 'open';
+  logEntry('transition', `⚡ CIRCUIT TRIPPED → OPEN (${STATE.consecutiveFailures} consecutive failures)`);
+  showStatus(`⚡ CIRCUIT OPEN — failing fast for ${STATE.openTimeout}s`, '');
+  teach('CIRCUIT OPEN',
+    `Circuit breaker TRIPPED after ${STATE.consecutiveFailures} consecutive failures. All subsequent requests will be rejected IMMEDIATELY — no waiting for the service to time out. This is "fail fast": the client gets an instant error instead of hanging, and the struggling service gets a break from incoming traffic. It's the same as an electrical circuit breaker.`,
+    'error'
+  );
+
+  updateCircuitVisual();
+  drawStateMachine();
+
+  // After timeout, go to half-open
+  if (STATE.openTimer) clearTimeout(STATE.openTimer);
+  STATE.openTimer = setTimeout(() => transitionToHalfOpen(), STATE.openTimeout * 1000);
+}
+
+function transitionToHalfOpen() {
+  STATE.breakerState = 'half-open';
+  logEntry('transition', `🔶 Timeout expired → HALF-OPEN (probing)`);
+  showStatus(`🔶 HALF-OPEN — sending single probe`, 'warn');
+  teach('HALF-OPEN',
+    `The open timeout expired. The breaker moves to HALF-OPEN: it will allow ONE probe request through to test if the service recovered. If the probe succeeds → close. If the probe fails → back to open, wait another ${STATE.openTimeout}s. This is how the circuit breaker self-heals — it tests the water without flooding the failing service.`,
+    'warn'
+  );
+
+  updateCircuitVisual();
+  drawStateMachine();
+}
+
+function onProbeSuccess() {
+  STATE.successCount++;
+  STATE.breakerState = 'closed';
+  STATE.consecutiveFailures = 0;
+  logEntry('success', `✓ Probe succeeded → CLOSED (service recovered)`);
+  showStatus(`✅ CIRCUIT CLOSED — service healthy`, 'ok');
+  teach('CIRCUIT CLOSED',
+    `Probe succeeded! The circuit returns to CLOSED — normal traffic resumes. The breaker has fully recovered. From the client's perspective, this is transparent: they saw a burst of failures, then a period of instant rejections, then everything went back to normal.`,
+    'ok'
+  );
+
+  updateCircuitVisual();
+  drawStateMachine();
+  updateMetrics();
+}
+
+function onProbeFail() {
+  STATE.breakerState = 'open';
+  logEntry('failure', `✗ Probe failed → OPEN (still broken)`);
+  showStatus(`✗ PROBE FAILED — still open`, '');
+  teach('PROBE FAILED',
+    `Probe failed — the service is still broken. The breaker returns to OPEN and waits another ${STATE.openTimeout}s before trying again. This is the "safe default": when in doubt, protect the caller from the failing service.`,
+    'error'
+  );
+
+  updateCircuitVisual();
+  drawStateMachine();
+
+  if (STATE.openTimer) clearTimeout(STATE.openTimer);
+  STATE.openTimer = setTimeout(() => transitionToHalfOpen(), STATE.openTimeout * 1000);
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.mState.textContent = STATE.breakerState.toUpperCase().replace('-', ' ');
+  DOM.mState.className = 'metric-value ' + (
+    STATE.breakerState === 'closed' ? 'good' :
+    STATE.breakerState === 'open' ? 'bad' : 'warn'
+  );
+
+  DOM.mFails.textContent = `${STATE.consecutiveFailures}/${STATE.failureThreshold}`;
+  DOM.mFails.className = 'metric-value ' + (STATE.consecutiveFailures >= STATE.failureThreshold ? 'bad' : STATE.consecutiveFailures > 0 ? 'warn' : '');
+
+  DOM.mSuccess.textContent = STATE.successCount;
+  DOM.mRejected.textContent = STATE.rejectionCount;
+}
+
+/* ============================================================
+   FAULT INJECTION
+   ============================================================ */
+function failService() {
+  STATE.serviceState = 'failing';
+  showToast('💥 Service is DOWN');
+  teach('SERVICE FAILING',
+    `The downstream service is now DOWN. Every request to it will fail. Watch the failure counter climb — when it hits ${STATE.failureThreshold}, the circuit will trip. This is exactly the situation circuit breakers are designed for: when a dependency is broken, don't hammer it with retries; fail fast instead.`,
+    'error'
+  );
+  updateCircuitVisual();
+}
+
+function flakyService() {
+  STATE.serviceState = 'flaky';
+  showToast('🎲 Service is flaky (60% failure)');
+  teach('FLAKY SERVICE',
+    `The service is FLAKY — 60% of requests fail. This is actually harder than a clean outage because the failures are intermittent. A naive client might keep retrying and occasionally succeed, wasting resources. The circuit breaker is more aggressive: it doesn't wait for 100% failure — a few consecutive failures are enough to trip.`,
+    'warn'
+  );
+  updateCircuitVisual();
+}
+
+function healService() {
+  STATE.serviceState = 'healthy';
+  showToast('✓ Service recovered');
+  teach('SERVICE HEALTHY',
+    `The service is back online. But the circuit breaker doesn't know that yet — if it's OPEN, it will wait for the timeout, then probe, then close. If it's CLOSED already, normal traffic resumes immediately.`,
+    'ok'
+  );
+  updateCircuitVisual();
+}
+
+/* ============================================================
+   TRAFFIC CONTROL
+   ============================================================ */
+function startTraffic() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.trafficTimer);
+    DOM.btnToggle.textContent = '▶ Send Traffic';
+    DOM.btnToggle.classList.remove('danger');
+    DOM.btnToggle.classList.add('primary');
+    showToast('⏸ Traffic stopped');
+    return;
+  }
+  STATE.running = true;
+  DOM.btnToggle.textContent = '⏸ Stop Traffic';
+  DOM.btnToggle.classList.remove('primary');
+  DOM.btnToggle.classList.add('danger');
+  STATE.trafficTimer = setInterval(sendRequest, 1000 / STATE.requestsPerSec);
+  showToast('▶ Traffic started');
+  teach('TRAFFIC STARTED',
+    `Traffic started at ${STATE.requestsPerSec} req/s. The circuit is CLOSED — every request goes to the service. Failures will be counted; ${STATE.failureThreshold} consecutive failures will trip the breaker. Try failing the service to see it in action.`,
+    'cyan'
+  );
+}
+
+function burst() {
+  for (let i = 0; i < 20; i++) setTimeout(sendRequest, i * 100);
+  showToast('⚡ 20 requests sent');
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.trafficTimer) clearInterval(STATE.trafficTimer);
+  if (STATE.openTimer) clearTimeout(STATE.openTimer);
+  STATE.trafficTimer = null;
+  STATE.openTimer = null;
+  STATE.running = false;
+  STATE.breakerState = 'closed';
+  STATE.consecutiveFailures = 0;
+  STATE.successCount = 0;
+  STATE.rejectionCount = 0;
+  STATE.totalRequests = 0;
+  STATE.serviceState = 'healthy';
+  DOM.btnToggle.textContent = '▶ Send Traffic';
+  DOM.btnToggle.classList.remove('danger');
+  DOM.btnToggle.classList.add('primary');
+  clearLog();
+  DOM.statusBanner.classList.remove('show');
+  updateCircuitVisual();
+  drawStateMachine();
+  updateMetrics();
+  logEntry('transition', `⟲ Reset — circuit CLOSED, service healthy`);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnToggle.addEventListener('click', startTraffic);
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnFailService.addEventListener('click', failService);
+DOM.btnFlakyService.addEventListener('click', flakyService);
+DOM.btnHealService.addEventListener('click', healService);
+
+DOM.threshRange.addEventListener('input', e => {
+  STATE.failureThreshold = parseInt(e.target.value);
+  DOM.threshVal.textContent = STATE.failureThreshold;
+  updateCircuitVisual();
+  drawStateMachine();
+  updateMetrics();
+});
+DOM.timeoutRange.addEventListener('input', e => {
+  STATE.openTimeout = parseInt(e.target.value);
+  DOM.timeoutVal.textContent = STATE.openTimeout + 's';
+  drawStateMachine();
+});
+DOM.rpsRange.addEventListener('input', e => {
+  STATE.requestsPerSec = parseInt(e.target.value);
+  DOM.rpsVal.textContent = STATE.requestsPerSec;
+  if (STATE.running) {
+    clearInterval(STATE.trafficTimer);
+    STATE.trafficTimer = setInterval(sendRequest, 1000 / STATE.requestsPerSec);
+  }
+});
+
+document.querySelectorAll('input[name="fallback"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.fallbackMode = e.target.value;
+    const desc = {
+      none: 'No fallback: rejected requests return an error to the client. The client must handle this — usually by showing "service unavailable" or retrying later. Simple but user-visible.',
+      cached: 'Cached response: when the circuit is open, serve a stale cached response instead of an error. User never sees the failure, but they might see stale data. Used by news sites, product catalogs.',
+      default: 'Default value: return a safe default (e.g., empty list, 0 score). User sees degraded but functional behavior. Used by recommendation engines, personalization.'
+    };
+    teach('FALLBACK', desc[e.target.value], 'purple');
+  });
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+updateCircuitVisual();
+drawStateMachine();
+updateMetrics();
+logEntry('transition', 'System ready — circuit CLOSED, service healthy');
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to the Circuit Breaker Pattern. Imagine calling a service that's down: without a circuit breaker, every request hangs for 30 seconds until it times out. Your threads pile up, your own service becomes slow, and eventually YOU go down too. This is called "cascading failure" — and the circuit breaker is the pattern that stops it.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE THREE STATES',
+      `The circuit breaker has three states. CLOSED: normal — all requests pass through. OPEN: tripped — all requests rejected immediately (fail fast). HALF-OPEN: probing — one test request passes; if it succeeds, back to CLOSED; if it fails, back to OPEN. This simple state machine prevents cascading failures while still allowing automatic recovery.`,
+      'purple'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('WHY IT MATTERS',
+      `In a microservices architecture, a single slow downstream service can bring down the entire system. Threads block on the slow call, memory fills up, the whole process dies. The circuit breaker breaks this chain: after N failures, stop calling the failing service entirely. The caller stays healthy, the failed service has room to recover, and the system degrades gracefully.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('REAL SYSTEMS',
+      `The pattern was popularized by Netflix Hystrix (now deprecated) and is now implemented in Resilience4j (Java), Polly (.NET), Envoy (service mesh), and Spring Cloud Circuit Breaker. Every service mesh has circuit breakers built in — it's table stakes for production microservices.`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Start traffic, then click FAIL SERVICE', 4500);
+}, 500);
+</script>
+</body>
+</html>

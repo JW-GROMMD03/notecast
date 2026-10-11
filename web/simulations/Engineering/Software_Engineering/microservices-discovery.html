@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Microservices Service Discovery &amp; Choreography — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #06b6d4, #3b82f6, #8b5cf6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(6,182,212,0.15);
+    color: #67e8f9;
+    border-color: #06b6d4;
+  }
+  .teaching-toggle:hover { background: rgba(6,182,212,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #06b6d4; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #06b6d4; color: #032028; border-color: #06b6d4; }
+  .btn.primary:hover { background: #0891b2; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #67e8f9; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #06b6d4; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(6,182,212,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* TOPOLOGY VIEW */
+  .topology-wrap {
+    flex: 1.5;
+    background: #070a14;
+    border: 2px solid #06b6d4;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(6,182,212,0.15);
+    min-height: 0;
+  }
+  .topology-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .topology-canvas {
+    flex: 1;
+    position: relative;
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  #topologySvg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Edges */
+  .topo-edge {
+    stroke: #334155;
+    stroke-width: 1.5;
+    fill: none;
+    transition: all 0.3s;
+  }
+  .topo-edge.active {
+    stroke: #facc15;
+    stroke-width: 2.5;
+    stroke-dasharray: 6 4;
+    animation: dashFlow 0.8s linear infinite;
+    filter: drop-shadow(0 0 6px rgba(250,204,21,0.9));
+  }
+  .topo-edge.heartbeat {
+    stroke: #06b6d4;
+    stroke-width: 1;
+    opacity: 0.4;
+  }
+  @keyframes dashFlow {
+    to { stroke-dashoffset: -20; }
+  }
+
+  /* Nodes */
+  .topo-node {
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  .topo-node:hover .topo-node-bg {
+    filter: drop-shadow(0 0 12px currentColor);
+  }
+  .topo-node-bg {
+    fill: #0f172a;
+    stroke-width: 2.5;
+    transition: all 0.3s;
+  }
+  .topo-node.service .topo-node-bg { stroke: #06b6d4; }
+  .topo-node.gateway .topo-node-bg { stroke: #a855f7; }
+  .topo-node.registry .topo-node-bg { stroke: #f59e0b; }
+  .topo-node.db .topo-node-bg { stroke: #10b981; }
+  .topo-node.pod .topo-node-bg { stroke: #3b82f6; }
+  .topo-node.healthy .topo-node-bg { fill: #0f2a1e; }
+  .topo-node.degraded .topo-node-bg {
+    stroke: #f59e0b;
+    fill: #2a1e0f;
+    animation: degradePulse 1.5s ease-in-out infinite alternate;
+  }
+  @keyframes degradePulse {
+    0% { filter: drop-shadow(0 0 0 rgba(245,158,11,0)); }
+    100% { filter: drop-shadow(0 0 12px rgba(245,158,11,0.8)); }
+  }
+  .topo-node.down .topo-node-bg {
+    stroke: #ef4444;
+    fill: #2a0f0f;
+    opacity: 0.6;
+  }
+  .topo-node.active .topo-node-bg {
+    stroke-width: 4;
+    filter: drop-shadow(0 0 20px currentColor);
+  }
+
+  .topo-label {
+    font-family: monospace;
+    font-size: 9px;
+    font-weight: 800;
+    fill: #cbd5e1;
+    text-anchor: middle;
+    pointer-events: none;
+    letter-spacing: 0.5px;
+  }
+  .topo-sub {
+    font-family: monospace;
+    font-size: 7px;
+    fill: #64748b;
+    text-anchor: middle;
+    pointer-events: none;
+  }
+
+  /* REGISTRY SIDE PANEL */
+  .registry-pane {
+    width: 340px;
+    background: #070a14;
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(245,158,11,0.15);
+    min-height: 0;
+    flex-shrink: 0;
+  }
+  .registry-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .registry-list {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    padding: 6px;
+    min-height: 0;
+  }
+
+  .reg-entry {
+    padding: 6px 8px;
+    background: rgba(30,41,59,0.4);
+    border-radius: 6px;
+    margin-bottom: 4px;
+    font-family: monospace;
+    font-size: 0.58rem;
+    border-left: 3px solid #06b6d4;
+    animation: entryIn 0.3s ease;
+    transition: all 0.3s;
+  }
+  @keyframes entryIn {
+    from { transform: translateX(-6px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .reg-entry.healthy { border-left-color: #10b981; }
+  .reg-entry.degraded { border-left-color: #f59e0b; }
+  .reg-entry.down { border-left-color: #ef4444; opacity: 0.6; }
+  .reg-entry .svc-name {
+    color: #67e8f9;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    font-size: 0.65rem;
+  }
+  .reg-entry.healthy .svc-name { color: #6ee7b7; }
+  .reg-entry.degraded .svc-name { color: #fcd34d; }
+  .reg-entry.down .svc-name { color: #fca5a5; }
+  .reg-entry .svc-meta {
+    display: flex;
+    justify-content: space-between;
+    color: #64748b;
+    font-size: 0.5rem;
+    margin-top: 3px;
+    letter-spacing: 0.3px;
+  }
+  .reg-entry .svc-meta .status-good { color: #6ee7b7; }
+  .reg-entry .svc-meta .status-warn { color: #fcd34d; }
+  .reg-entry .svc-meta .status-bad { color: #fca5a5; }
+
+  /* CALL LOG */
+  .call-log-wrap {
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15);
+    flex-shrink: 0;
+    max-height: 200px;
+  }
+  .call-log-title {
+    font-size: 0.58rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .call-log-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    padding: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.55rem;
+    line-height: 1.5;
+    min-height: 0;
+  }
+  .call-entry {
+    padding: 2px 4px;
+    border-radius: 3px;
+    animation: entryIn 0.3s ease;
+    border-left: 2px solid transparent;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .call-entry.info { border-left-color: #475569; color: #cbd5e1; }
+  .call-entry.success { border-left-color: #10b981; color: #a7f3d0; }
+  .call-entry.warn { border-left-color: #f59e0b; color: #fde68a; }
+  .call-entry.error { border-left-color: #ef4444; color: #fecaca; }
+  .call-entry .ts { color: #475569; font-size: 0.5rem; min-width: 40px; }
+  .call-entry .src { color: #67e8f9; font-weight: 700; min-width: 60px; }
+  .call-entry .arrow { color: #64748b; }
+  .call-entry .dst { color: #c4b5fd; font-weight: 700; min-width: 60px; }
+  .call-entry .msg { color: #94a3b8; flex: 1; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(6,182,212,0.06);
+    border: 1px solid rgba(6,182,212,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #67e8f9;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #06b6d4;
+    background: rgba(6,182,212,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(6,182,212,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(6,182,212,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #06b6d4;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(6,182,212,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #06b6d4;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #67e8f9;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(6,182,212,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.discover { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+  .status-banner.error { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>MICROSERVICES SERVICE DISCOVERY</h1>
+    <span class="sub">REGISTRY · HEALTH CHECKS · CHOREOGRAPHY</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Simulation</h3>
+      <button class="btn primary" id="btnSend">📨 Send Request</button>
+      <button class="btn" id="btnBurst">⚡ Burst 20 Requests</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Fault Injection</h3>
+      <button class="btn danger" id="btnKillService">💀 Kill a Service Instance</button>
+      <button class="btn warn" id="btnDegrade">🐌 Degrade a Service</button>
+      <button class="btn danger" id="btnKillRegistry">💥 Kill Registry</button>
+      <button class="btn success" id="btnHeal">🔄 Heal All</button>
+    </div>
+
+    <div class="panel">
+      <h3>Discovery Mode</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.7rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="discmode" value="client" checked style="accent-color:#06b6d4;">
+          Client-side discovery
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="discmode" value="server" style="accent-color:#06b6d4;">
+          Server-side discovery
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic</h3>
+      <div class="slider-row"><span>Requests / sec</span><span class="value" id="rpsVal">3</span></div>
+      <input type="range" id="rpsRange" min="1" max="20" value="3">
+      <div class="slider-row"><span>Health check interval</span><span class="value" id="hcVal">3s</span></div>
+      <input type="range" id="hcRange" min="1" max="10" value="3">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #a855f7;border-radius:50%;margin-right:6px;"></span>API Gateway</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #06b6d4;border-radius:50%;margin-right:6px;"></span>Service</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #f59e0b;border-radius:50%;margin-right:6px;"></span>Service Registry</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #10b981;border-radius:50%;margin-right:6px;"></span>Database</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">DECENTRALIZED DISCOVERY · HEALTH MONITORING · EVENT CHOREOGRAPHY</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="topology-wrap">
+          <div class="topology-title">
+            <span>🌐 MICROSERVICES TOPOLOGY</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="topoHint">— click a service —</span>
+          </div>
+          <div class="topology-canvas">
+            <svg id="topologySvg" width="100%" height="100%"></svg>
+          </div>
+        </div>
+
+        <div class="registry-pane">
+          <div class="registry-title">
+            <span>📋 SERVICE REGISTRY</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="regHint">— 5 services —</span>
+          </div>
+          <div class="registry-list" id="registryList"></div>
+        </div>
+
+        <div class="call-log-wrap">
+          <div class="call-log-title">
+            <span>📡 CALL LOG</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="callHint">— 0 calls —</span>
+          </div>
+          <div class="call-log-body" id="callLog"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Healthy</div>
+        <div class="metric-value good" id="mHealthy">5/5</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Registry TTL</div>
+        <div class="metric-value" id="mTtl">10s</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Requests</div>
+        <div class="metric-value" id="mRequests">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Errors</div>
+        <div class="metric-value bad" id="mErrors">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Service Discovery</div>
+      <div class="info-row"><span class="lbl">Registry</span><span class="val good">Service directory</span></div>
+      <div class="info-row"><span class="lbl">Health checks</span><span class="val">Heartbeat / HTTP probe</span></div>
+      <div class="info-row"><span class="lbl">Client-side</span><span class="val warn">Client queries registry</span></div>
+      <div class="info-row"><span class="lbl">Server-side</span><span class="val warn">LB queries registry</span></div>
+      <div class="info-row"><span class="lbl">Choreography</span><span class="val">Event-driven, no central conductor</span></div>
+      <div class="info-row"><span class="lbl">Orchestration</span><span class="val bad">Central coordinator</span></div>
+      <div class="info-row"><span class="lbl">Systems</span><span class="val">Consul, Eureka, etcd</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  discoveryMode: 'client',
+  requestsPerSec: 3,
+  healthCheckInterval: 3,
+  totalRequests: 0,
+  totalErrors: 0,
+  // Services
+  services: {},
+  serviceList: [],
+  // Animation
+  activeEdges: [],
+  requestTimer: null,
+  healthTimer: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+/* ============================================================
+   SERVICE DEFINITIONS
+   ============================================================ */
+const SERVICES = [
+  { id: 'gateway',  label: 'API Gateway',  type: 'gateway',  x: 0.5, y: 0.1,  instances: 2, healthy: true, degraded: false },
+  { id: 'auth',     label: 'Auth Service', type: 'service',  x: 0.2, y: 0.35, instances: 3, healthy: true, degraded: false },
+  { id: 'users',    label: 'User Service', type: 'service',  x: 0.5, y: 0.35, instances: 3, healthy: true, degraded: false },
+  { id: 'orders',   label: 'Order Svc',    type: 'service',  x: 0.8, y: 0.35, instances: 3, healthy: true, degraded: false },
+  { id: 'payments', label: 'Payment Svc',  type: 'service',  x: 0.35, y: 0.65, instances: 2, healthy: true, degraded: false },
+  { id: 'inventory',label: 'Inventory Svc',type: 'service',  x: 0.65, y: 0.65, instances: 2, healthy: true, degraded: false },
+  { id: 'db-users', label: 'Users DB',     type: 'db',       x: 0.35, y: 0.88, instances: 1, healthy: true, degraded: false },
+  { id: 'db-orders',label: 'Orders DB',    type: 'db',       x: 0.65, y: 0.88, instances: 1, healthy: true, degraded: false },
+  { id: 'registry', label: 'Registry',     type: 'registry', x: 0.88, y: 0.88, instances: 1, healthy: true, degraded: false }
+];
+
+const EDGES = [
+  { from: 'gateway', to: 'auth' },
+  { from: 'gateway', to: 'users' },
+  { from: 'gateway', to: 'orders' },
+  { from: 'orders', to: 'payments' },
+  { from: 'orders', to: 'inventory' },
+  { from: 'users', to: 'db-users' },
+  { from: 'orders', to: 'db-orders' },
+  { from: 'payments', to: 'db-orders' }
+];
+
+/* ============================================================
+   DOM
+   ============================================================ */
+const DOM = {
+  topologySvg: document.getElementById('topologySvg'),
+  topoHint: document.getElementById('topoHint'),
+  registryList: document.getElementById('registryList'),
+  regHint: document.getElementById('regHint'),
+  callLog: document.getElementById('callLog'),
+  callHint: document.getElementById('callHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Controls
+  btnSend: document.getElementById('btnSend'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnReset: document.getElementById('btnReset'),
+  btnKillService: document.getElementById('btnKillService'),
+  btnDegrade: document.getElementById('btnDegrade'),
+  btnKillRegistry: document.getElementById('btnKillRegistry'),
+  btnHeal: document.getElementById('btnHeal'),
+  rpsRange: document.getElementById('rpsRange'),
+  rpsVal: document.getElementById('rpsVal'),
+  hcRange: document.getElementById('hcRange'),
+  hcVal: document.getElementById('hcVal'),
+  // Metrics
+  mHealthy: document.getElementById('mHealthy'),
+  mTtl: document.getElementById('mTtl'),
+  mRequests: document.getElementById('mRequests'),
+  mErrors: document.getElementById('mErrors'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2400);
+}
+
+let CALL_TS = 0;
+function logCall(cls, src, dst, msg) {
+  CALL_TS++;
+  const el = document.createElement('div');
+  el.className = `call-entry ${cls}`;
+  el.innerHTML = `
+    <span class="ts">[${String(CALL_TS).padStart(3, '0')}]</span>
+    <span class="src">${src}</span>
+    <span class="arrow">→</span>
+    <span class="dst">${dst}</span>
+    <span class="msg">${msg}</span>
+  `;
+  DOM.callLog.prepend(el);
+  while (DOM.callLog.children.length > 30) DOM.callLog.lastChild.remove();
+  DOM.callHint.textContent = `${CALL_TS} calls`;
+}
+
+function clearLog() {
+  CALL_TS = 0;
+  DOM.callLog.innerHTML = '';
+  DOM.callHint.textContent = '0 calls';
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining microservices service discovery and choreography.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   RENDER TOPOLOGY
+   ============================================================ */
+function renderTopology() {
+  const svg = DOM.topologySvg;
+  const W = svg.clientWidth || 600;
+  const H = svg.clientHeight || 500;
+
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  let html = '';
+
+  // Draw edges
+  for (const edge of EDGES) {
+    const from = SERVICES.find(s => s.id === edge.from);
+    const to = SERVICES.find(s => s.id === edge.to);
+    if (!from || !to) continue;
+
+    const x1 = from.x * W;
+    const y1 = from.y * H;
+    const x2 = to.x * W;
+    const y2 = to.y * H;
+
+    const edgeId = `${edge.from}-${edge.to}`;
+    const isActive = STATE.activeEdges.includes(edgeId);
+
+    html += `<line class="topo-edge ${isActive ? 'active' : ''}" 
+      x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+      data-edge-id="${edgeId}"/>`;
+  }
+
+  // Draw nodes
+  for (const svc of SERVICES) {
+    const cx = svc.x * W;
+    const cy = svc.y * H;
+
+    let cls = `topo-node ${svc.type}`;
+    if (!svc.healthy) cls += ' down';
+    else if (svc.degraded) cls += ' degraded';
+    else cls += ' healthy';
+
+    const r = svc.type === 'registry' ? 34 : svc.type === 'gateway' ? 32 : svc.type === 'db' ? 28 : 30;
+
+    html += `<g class="${cls}" data-svc-id="${svc.id}">`;
+
+    // Background circle
+    html += `<circle class="topo-node-bg" cx="${cx}" cy="${cy}" r="${r}" style="color: ${
+      svc.type === 'gateway' ? '#a855f7' :
+      svc.type === 'registry' ? '#f59e0b' :
+      svc.type === 'db' ? '#10b981' : '#06b6d4'
+    };"/>`;
+
+    // Icon
+    const icon = svc.type === 'gateway' ? '🌐' :
+                 svc.type === 'registry' ? '📋' :
+                 svc.type === 'db' ? '💾' : '⚙️';
+    html += `<text x="${cx}" y="${cy + 5}" font-size="14" text-anchor="middle">${icon}</text>`;
+
+    // Label below
+    html += `<text class="topo-label" x="${cx}" y="${cy + r + 12}">${svc.label}</text>`;
+
+    // Instance count
+    const status = !svc.healthy ? '💀 down' :
+                   svc.degraded ? `🐌 ${svc.instances} instances · slow` :
+                   `✓ ${svc.instances} instances`;
+    html += `<text class="topo-sub" x="${cx}" y="${cy + r + 22}">${status}</text>`;
+
+    html += `</g>`;
+  }
+
+  svg.innerHTML = html;
+
+  // Bind click handlers
+  svg.querySelectorAll('.topo-node').forEach(el => {
+    el.addEventListener('click', () => {
+      const svcId = el.dataset.svcId;
+      const svc = SERVICES.find(s => s.id === svcId);
+      if (!svc) return;
+      const status = !svc.healthy ? 'DOWN' : svc.degraded ? 'degraded' : 'healthy';
+      teach('SERVICE',
+        `${svc.label} — ${svc.instances} instances, status: ${status}. ${svc.type === 'registry' ? 'The service registry is the phonebook of microservices — it holds the current addresses of every healthy service instance.' : svc.type === 'db' ? 'Backing database — usually one per service (polyglot persistence).' : 'Registered in the service registry with a heartbeat TTL.'}`,
+        'cyan', false
+      );
+    });
+  });
+
+  DOM.topoHint.textContent = `— ${SERVICES.length} services · ${EDGES.length} connections —`;
+}
+
+/* ============================================================
+   RENDER REGISTRY
+   ============================================================ */
+function renderRegistry() {
+  DOM.registryList.innerHTML = '';
+  for (const svc of SERVICES) {
+    if (svc.id === 'registry') continue;
+
+    const status = !svc.healthy ? 'down' : svc.degraded ? 'degraded' : 'healthy';
+    const statusIcon = status === 'healthy' ? '🟢' : status === 'degraded' ? '🟡' : '🔴';
+    const ttl = status === 'healthy' ? Math.floor(Math.random() * 8 + 2) : 0;
+
+    const el = document.createElement('div');
+    el.className = `reg-entry ${status}`;
+    el.innerHTML = `
+      <div class="svc-name">${statusIcon} ${svc.label}</div>
+      <div class="svc-meta">
+        <span>${svc.instances} instances</span>
+        <span class="status-${status === 'healthy' ? 'good' : status === 'degraded' ? 'warn' : 'bad'}">
+          ${status === 'healthy' ? `TTL ${ttl}s` : status === 'degraded' ? 'SLOW' : 'NOT REGISTERED'}
+        </span>
+      </div>
+    `;
+    DOM.registryList.appendChild(el);
+  }
+  DOM.regHint.textContent = `— ${SERVICES.length - 1} registered —`;
+}
+
+/* ============================================================
+   REQUEST FLOW
+   ============================================================ */
+async function sendRequest() {
+  if (!SERVICES.find(s => s.id === 'gateway').healthy) {
+    logCall('error', 'client', 'gateway', 'Gateway DOWN — connection refused');
+    STATE.totalErrors++;
+    updateMetrics();
+    return;
+  }
+
+  STATE.totalRequests++;
+  updateMetrics();
+
+  // Gateway receives request
+  logCall('info', 'client', 'gateway', `HTTP GET /api/v1/order`);
+  flashEdge('gateway', null, null);
+  await sleep(200);
+
+  // Decide route
+  const route = Math.random() < 0.5 ? 'auth' : 'users';
+  const authOk = await callService('gateway', 'auth');
+  await sleep(150);
+
+  if (route === 'users') {
+    await callService('gateway', 'users');
+    await sleep(150);
+  }
+
+  await callService('gateway', 'orders');
+  await sleep(150);
+
+  if (authOk) {
+    await callService('orders', 'payments');
+    await sleep(150);
+    await callService('orders', 'inventory');
+    await sleep(150);
+  }
+
+  await callService('users', 'db-users');
+  await sleep(100);
+  await callService('orders', 'db-orders');
+  await sleep(100);
+
+  logCall('success', 'gateway', 'client', '200 OK (142ms)');
+}
+
+async function callService(fromId, toId) {
+  const from = SERVICES.find(s => s.id === fromId);
+  const to = SERVICES.find(s => s.id === toId);
+
+  // Highlight edge
+  flashEdge(fromId, toId, 600);
+  await sleep(100);
+
+  if (!to.healthy) {
+    logCall('error', from.label, to.label, `service unavailable — circuit opened`);
+    STATE.totalErrors++;
+    updateMetrics();
+    teach('SERVICE DOWN',
+      `${to.label} is DOWN. In a real system, the caller would retry on another instance or trigger a circuit breaker (fail fast) to avoid cascading failures. This is why service discovery + health checks matter: bad instances are removed from the registry.`,
+      'error', false
+    );
+    return false;
+  }
+
+  if (to.degraded) {
+    logCall('warn', from.label, to.label, `slow response (${Math.floor(Math.random() * 500 + 500)}ms)`);
+    return true;
+  }
+
+  logCall('info', from.label, to.label, `200 OK`);
+  return true;
+}
+
+function flashEdge(fromId, toId, duration = 400) {
+  if (toId) {
+    const edgeId = `${fromId}-${toId}`;
+    if (!STATE.activeEdges.includes(edgeId)) STATE.activeEdges.push(edgeId);
+    renderTopology();
+    setTimeout(() => {
+      STATE.activeEdges = STATE.activeEdges.filter(e => e !== edgeId);
+      renderTopology();
+    }, duration);
+  }
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  const healthy = SERVICES.filter(s => s.healthy && !s.degraded).length;
+  const total = SERVICES.length;
+  DOM.mHealthy.textContent = `${healthy}/${total}`;
+  DOM.mHealthy.className = 'metric-value ' + (healthy === total ? 'good' : healthy >= total - 1 ? 'warn' : 'bad');
+
+  DOM.mTtl.textContent = `${STATE.healthCheckInterval * 2}s`;
+  DOM.mRequests.textContent = STATE.totalRequests;
+  DOM.mErrors.textContent = STATE.totalErrors;
+  DOM.mErrors.className = 'metric-value ' + (STATE.totalErrors === 0 ? 'good' : STATE.totalErrors < 5 ? 'warn' : 'bad');
+}
+
+/* ============================================================
+   FAULT INJECTION
+   ============================================================ */
+function killService() {
+  const candidates = SERVICES.filter(s => s.id !== 'gateway' && s.id !== 'registry' && s.healthy);
+  if (candidates.length === 0) {
+    showToast('⚠ No healthy services to kill');
+    return;
+  }
+  const victim = candidates[Math.floor(Math.random() * candidates.length)];
+  victim.healthy = false;
+
+  showStatus(`💀 ${victim.label} killed`, 'error');
+  logCall('error', 'registry', victim.label, `heartbeat missed — removing from registry`);
+  teach('SERVICE DOWN',
+    `${victim.label} crashed. Within a few seconds, its heartbeat TTL expires and the registry removes it. Clients querying for this service will now only get the remaining healthy instances. This is why health checks matter: bad endpoints are removed from routing automatically.`,
+    'error'
+  );
+
+  renderTopology();
+  renderRegistry();
+  updateMetrics();
+}
+
+function degradeService() {
+  const candidates = SERVICES.filter(s => !s.degraded && s.healthy && s.id !== 'registry');
+  if (candidates.length === 0) return;
+  const victim = candidates[Math.floor(Math.random() * candidates.length)];
+  victim.degraded = true;
+
+  showStatus(`🐌 ${victim.label} degraded`, 'discover');
+  teach('DEGRADED',
+    `${victim.label} is now slow (think: high CPU, network issues, bad deploy). It's still registered — it responds to health checks — but its response times are 5-10x higher. This is a sneakier failure mode than a crash: cascading latency instead of hard failures. Real systems watch p99 latency, not just HTTP status.`,
+    'warn'
+  );
+
+  renderTopology();
+  renderRegistry();
+  updateMetrics();
+}
+
+function killRegistry() {
+  const registry = SERVICES.find(s => s.id === 'registry');
+  registry.healthy = false;
+
+  showStatus('💥 REGISTRY DOWN', 'error');
+  teach('REGISTRY DOWN',
+    `The service registry is DOWN. This is a critical failure mode: without the registry, clients can't discover service addresses. New instances can't register. Existing connections might still work — but any client that needs to find a new instance will fail. Real systems mitigate this with: (1) client-side caching of the last known addresses, (2) multiple registry replicas, (3) gossip-based registries like Consul.`,
+    'error'
+  );
+
+  renderTopology();
+  updateMetrics();
+}
+
+function healAll() {
+  for (const svc of SERVICES) {
+    svc.healthy = true;
+    svc.degraded = false;
+  }
+  showToast('🔄 All services healed');
+  logCall('success', 'registry', 'all', 'all services re-registered');
+  teach('HEALED',
+    `All services are back online and re-registered with the registry. In real systems, healing is automatic: crashed pods restart, health checks pass again, and the registry re-adds them. Zero manual intervention needed — this is one of the core promises of microservices with orchestration (Kubernetes).`,
+    'ok'
+  );
+  renderTopology();
+  renderRegistry();
+  updateMetrics();
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.totalRequests = 0;
+  STATE.totalErrors = 0;
+  STATE.activeEdges = [];
+  for (const svc of SERVICES) {
+    svc.healthy = true;
+    svc.degraded = false;
+  }
+  clearLog();
+  DOM.statusBanner.classList.remove('show');
+  renderTopology();
+  renderRegistry();
+  updateMetrics();
+  teach('RESET', 'All services healthy. Registry populated. Ready to send requests.', 'info', false);
+}
+
+/* ============================================================
+   AUTOMATION LOOPS
+   ============================================================ */
+function startRequestLoop() {
+  if (STATE.requestTimer) clearInterval(STATE.requestTimer);
+  STATE.requestTimer = setInterval(() => {
+    if (Math.random() < 0.9) sendRequest();
+  }, 1000 / STATE.requestsPerSec);
+}
+
+function startHealthLoop() {
+  if (STATE.healthTimer) clearInterval(STATE.healthTimer);
+  STATE.healthTimer = setInterval(() => {
+    // Random chance to heal a degraded service
+    const degraded = SERVICES.filter(s => s.degraded && Math.random() < 0.3);
+    for (const svc of degraded) {
+      svc.degraded = false;
+      logCall('success', 'registry', svc.label, 'health check passed — restored');
+    }
+    renderTopology();
+    renderRegistry();
+    updateMetrics();
+  }, STATE.healthCheckInterval * 1000);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnSend.addEventListener('click', sendRequest);
+DOM.btnBurst.addEventListener('click', () => {
+  for (let i = 0; i < 20; i++) {
+    setTimeout(sendRequest, i * 60);
+  }
+  showToast('⚡ 20 requests dispatched');
+});
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnKillService.addEventListener('click', killService);
+DOM.btnDegrade.addEventListener('click', degradeService);
+DOM.btnKillRegistry.addEventListener('click', killRegistry);
+DOM.btnHeal.addEventListener('click', healAll);
+
+DOM.rpsRange.addEventListener('input', e => {
+  STATE.requestsPerSec = parseInt(e.target.value);
+  DOM.rpsVal.textContent = STATE.requestsPerSec;
+  startRequestLoop();
+});
+DOM.hcRange.addEventListener('input', e => {
+  STATE.healthCheckInterval = parseInt(e.target.value);
+  DOM.hcVal.textContent = STATE.healthCheckInterval + 's';
+  startHealthLoop();
+  updateMetrics();
+});
+
+document.querySelectorAll('input[name="discmode"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.discoveryMode = e.target.value;
+    const desc = e.target.value === 'client'
+      ? 'Client-side discovery: the CLIENT queries the registry directly and picks a healthy instance. Examples: Netflix Eureka + Ribbon. Pros: fewer hops. Cons: registry logic in every client, harder to update.'
+      : 'Server-side discovery: the client makes a request to a fixed load balancer, and the LB queries the registry and picks an instance. Examples: Kubernetes Service + kube-proxy, AWS ALB + ECS. Pros: clients stay simple. Cons: extra hop.';
+    teach('DISCOVERY MODE', desc, 'purple');
+  });
+});
+
+window.addEventListener('resize', renderTopology);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+renderTopology();
+renderRegistry();
+updateMetrics();
+startRequestLoop();
+startHealthLoop();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Microservices Service Discovery & Choreography. In a monolith, services call each other with in-process function calls — fast, reliable, always up. In microservices, they call each other over the network — but they need to FIND each other first. That's what the service registry does.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE REGISTRY',
+      `The service registry is the phonebook of microservices. When a service instance starts, it registers itself: "I am order-service, my IP is 10.0.2.15, I'm healthy." Every few seconds it sends a heartbeat. If it stops, the registry removes it after a TTL. Clients query the registry when they need to call a service.`,
+      'ok'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('HEALTH CHECKS',
+      `Health checks are the key to self-healing. A service instance that can't respond (crashed, out of memory, network partition) gets removed from the registry. New requests route to healthy instances only. When the crashed instance recovers, it re-registers automatically. No human operator needed.`,
+      'purple'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('CHOREOGRAPHY vs ORCHESTRATION',
+      `Choreography: each service reacts to events from other services — no central controller. Decentralized, but hard to trace. Orchestration: a central controller tells each service what to do — easier to trace, but a bottleneck. Modern systems often blend both. Try sending requests and watching the call graph light up.`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Watch the request flow, then try killing a service', 4500);
+}, 500);
+</script>
+</body>
+</html>
