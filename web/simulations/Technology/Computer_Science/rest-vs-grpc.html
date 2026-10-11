@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REST vs gRPC Network Payload Latency — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f97316, #ec4899, #8b5cf6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(249,115,22,0.15);
+    color: #fdba74;
+    border-color: #f97316;
+  }
+  .teaching-toggle:hover { background: rgba(249,115,22,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f97316; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f97316; color: #fff; border-color: #f97316; }
+  .btn.primary:hover { background: #ea580c; }
+  .btn.purple { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+  .btn.purple:hover { background: #7c3aed; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fdba74; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f97316; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(249,115,22,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* LANE VISUALIZER */
+  .lanes-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #f97316;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(249,115,22,0.15);
+    min-height: 0;
+  }
+  .lanes-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #lanesCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+  }
+
+  /* COMPARISON PANEL */
+  .compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    flex-shrink: 0;
+    height: 220px;
+  }
+  .protocol-panel {
+    background: #070a14;
+    border: 2px solid;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .protocol-panel.rest { border-color: #f97316; box-shadow: 0 0 20px rgba(249,115,22,0.15); }
+  .protocol-panel.grpc { border-color: #8b5cf6; box-shadow: 0 0 20px rgba(139,92,246,0.15); }
+
+  .protocol-title {
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .protocol-panel.rest .protocol-title { color: #fdba74; }
+  .protocol-panel.grpc .protocol-title { color: #c4b5fd; }
+
+  .protocol-badge {
+    font-size: 0.5rem;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 10px;
+    letter-spacing: 1px;
+  }
+  .protocol-panel.rest .protocol-badge { background: rgba(249,115,22,0.2); color: #fdba74; }
+  .protocol-panel.grpc .protocol-badge { background: rgba(139,92,246,0.2); color: #c4b5fd; }
+
+  .protocol-body {
+    display: flex;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .protocol-payload {
+    flex: 1;
+    background: #02040a;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    padding: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.55rem;
+    line-height: 1.5;
+    overflow-y: auto;
+    min-height: 0;
+  }
+  .protocol-panel.rest .protocol-payload { color: #fdba74; }
+  .protocol-panel.grpc .protocol-payload { color: #c4b5fd; }
+  .protocol-payload .key { color: #67e8f9; }
+  .protocol-payload .string { color: #86efac; }
+  .protocol-payload .number { color: #fcd34d; }
+  .protocol-payload .hex { color: #f9a8d4; }
+
+  .protocol-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-family: monospace;
+    font-size: 0.55rem;
+    min-width: 90px;
+  }
+  .stat-row {
+    background: rgba(30,41,59,0.4);
+    padding: 4px 6px;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .stat-row .lbl { color: #64748b; }
+  .stat-row .val { color: #cbd5e1; font-weight: 900; }
+  .protocol-panel.rest .stat-row .val { color: #fdba74; }
+  .protocol-panel.grpc .stat-row .val { color: #c4b5fd; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(249,115,22,0.06);
+    border: 1px solid rgba(249,115,22,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fdba74;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f97316;
+    background: rgba(249,115,22,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(249,115,22,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(249,115,22,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f97316;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(249,115,22,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #f97316;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fdba74;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(249,115,22,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>REST vs gRPC</h1>
+    <span class="sub">PAYLOAD SIZE · LATENCY · STREAMING · SCHEMA</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Comparison</h3>
+      <button class="btn primary" id="btnSend">📤 Send Request (Both)</button>
+      <button class="btn" id="btnBurst">⚡ Burst 50</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Payload Size</h3>
+      <div class="slider-row"><span>Record size (fields)</span><span class="value" id="fieldsVal">8</span></div>
+      <input type="range" id="fieldsRange" min="3" max="30" value="8">
+      <div class="slider-row"><span>Response records</span><span class="value" id="recordsVal">5</span></div>
+      <input type="range" id="recordsRange" min="1" max="50" value="5">
+    </div>
+
+    <div class="panel">
+      <h3>Network Conditions</h3>
+      <div class="slider-row"><span>Round-trip latency</span><span class="value" id="rttVal">20 ms</span></div>
+      <input type="range" id="rttRange" min="2" max="200" value="20">
+      <div class="slider-row"><span>Bandwidth</span><span class="value" id="bwVal">100 Mbps</span></div>
+      <input type="range" id="bwRange" min="1" max="1000" value="100">
+    </div>
+
+    <div class="panel">
+      <h3>Feature Demo</h3>
+      <button class="btn purple" id="btnStreaming">🌊 gRPC Streaming (demo)</button>
+      <button class="btn" id="btnProto">🔍 Show Protobuf</button>
+      <button class="btn" id="btnJson">🔍 Show JSON</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f97316;border-radius:3px;margin-right:6px;"></span>REST / JSON</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#8b5cf6;border-radius:3px;margin-right:6px;"></span>gRPC / Protobuf</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">SAME API · SAME DATA · TWO WIRE FORMATS</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="lanes-wrap">
+          <div class="lanes-title">
+            <span>🌐 LATENCY LANES</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="lanesHint">— click SEND REQUEST —</span>
+          </div>
+          <canvas id="lanesCanvas"></canvas>
+        </div>
+
+        <div class="compare-grid">
+          <div class="protocol-panel rest">
+            <div class="protocol-title">
+              <span>🟠 REST / JSON</span>
+              <span class="protocol-badge" id="restStatus">idle</span>
+            </div>
+            <div class="protocol-body">
+              <div class="protocol-payload" id="restPayload">
+                <span style="color:#64748b;">// click SEND to see payload</span>
+              </div>
+              <div class="protocol-stats">
+                <div class="stat-row"><span class="lbl">Bytes</span><span class="val" id="restBytes">0</span></div>
+                <div class="stat-row"><span class="lbl">Latency</span><span class="val" id="restLatency">0 ms</span></div>
+                <div class="stat-row"><span class="lbl">Requests</span><span class="val" id="restReqs">0</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="protocol-panel grpc">
+            <div class="protocol-title">
+              <span>🟣 gRPC / PROTOBUF</span>
+              <span class="protocol-badge" id="grpcStatus">idle</span>
+            </div>
+            <div class="protocol-body">
+              <div class="protocol-payload" id="grpcPayload">
+                <span style="color:#64748b;">// click SEND to see payload</span>
+              </div>
+              <div class="protocol-stats">
+                <div class="stat-row"><span class="lbl">Bytes</span><span class="val" id="grpcBytes">0</span></div>
+                <div class="stat-row"><span class="lbl">Latency</span><span class="val" id="grpcLatency">0 ms</span></div>
+                <div class="stat-row"><span class="lbl">Requests</span><span class="val" id="grpcReqs">0</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">REST Total Bytes</div>
+        <div class="metric-value warn" id="mRestBytes">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">gRPC Total Bytes</div>
+        <div class="metric-value" id="mGrpcBytes" style="color:#c4b5fd;text-shadow:0 0 10px rgba(196,181,253,0.5);">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Size Savings</div>
+        <div class="metric-value good" id="mSavings">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Latency Delta</div>
+        <div class="metric-value good" id="mLatencyDelta">0 ms</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 REST vs gRPC</div>
+      <div class="info-row"><span class="lbl">Protocol</span><span class="val">HTTP/1.1 vs HTTP/2</span></div>
+      <div class="info-row"><span class="lbl">Payload</span><span class="val">JSON (text) vs Protobuf (binary)</span></div>
+      <div class="info-row"><span class="lbl">Schema</span><span class="val">Optional vs required (.proto)</span></div>
+      <div class="info-row"><span class="lbl">Streaming</span><span class="val bad">Limited vs bidirectional</span></div>
+      <div class="info-row"><span class="lbl">Browser support</span><span class="val good">Native vs gRPC-Web</span></div>
+      <div class="info-row"><span class="lbl">Best for</span><span class="val">Public APIs vs internal RPC</span></div>
+      <div class="info-row"><span class="lbl">Systems</span><span class="val">Stripe, Twitter vs Google, Uber</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  fields: 8,
+  records: 5,
+  rttMs: 20,
+  bandwidthMbps: 100,
+  // Counters
+  restReqs: 0,
+  grpcReqs: 0,
+  restBytes: 0,
+  grpcBytes: 0,
+  restLatencySamples: [],
+  grpcLatencySamples: [],
+  // Animation
+  particles: [],
+  raf: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  lanesCanvas: document.getElementById('lanesCanvas'),
+  lanesHint: document.getElementById('lanesHint'),
+  restPayload: document.getElementById('restPayload'),
+  grpcPayload: document.getElementById('grpcPayload'),
+  restStatus: document.getElementById('restStatus'),
+  grpcStatus: document.getElementById('grpcStatus'),
+  restBytes: document.getElementById('restBytes'),
+  grpcBytes: document.getElementById('grpcBytes'),
+  restLatency: document.getElementById('restLatency'),
+  grpcLatency: document.getElementById('grpcLatency'),
+  restReqs: document.getElementById('restReqs'),
+  grpcReqs: document.getElementById('grpcReqs'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Controls
+  btnSend: document.getElementById('btnSend'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnReset: document.getElementById('btnReset'),
+  btnStreaming: document.getElementById('btnStreaming'),
+  btnProto: document.getElementById('btnProto'),
+  btnJson: document.getElementById('btnJson'),
+  fieldsRange: document.getElementById('fieldsRange'),
+  fieldsVal: document.getElementById('fieldsVal'),
+  recordsRange: document.getElementById('recordsRange'),
+  recordsVal: document.getElementById('recordsVal'),
+  rttRange: document.getElementById('rttRange'),
+  rttVal: document.getElementById('rttVal'),
+  bwRange: document.getElementById('bwRange'),
+  bwVal: document.getElementById('bwVal'),
+  // Metrics
+  mRestBytes: document.getElementById('mRestBytes'),
+  mGrpcBytes: document.getElementById('mGrpcBytes'),
+  mSavings: document.getElementById('mSavings'),
+  mLatencyDelta: document.getElementById('mLatencyDelta'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg) {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.classList.add('show');
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2000);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Comparing REST and gRPC.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   PAYLOAD BUILDERS
+   ============================================================ */
+function buildJsonPayload() {
+  const fieldNames = ['id', 'name', 'email', 'age', 'city', 'country', 'status', 'created_at', 'updated_at', 'score'];
+  const fields = fieldNames.slice(0, STATE.fields);
+  const records = [];
+  for (let i = 0; i < STATE.records; i++) {
+    const rec = {};
+    fields.forEach((f, idx) => {
+      if (f === 'id' || f === 'age' || f === 'score') rec[f] = Math.floor(Math.random() * 1000);
+      else if (f === 'created_at' || f === 'updated_at') rec[f] = new Date().toISOString();
+      else rec[f] = `value_${Math.random().toString(36).substring(2, 8)}`;
+    });
+    records.push(rec);
+  }
+  return records;
+}
+
+function renderJson(records) {
+  let html = '<span class="key">[</span><br>';
+  records.forEach((rec, i) => {
+    html += '  <span class="key">{</span>';
+    const entries = Object.entries(rec);
+    entries.forEach(([k, v], j) => {
+      const valClass = typeof v === 'number' ? 'number' : 'string';
+      const displayVal = typeof v === 'string' ? `"${v}"` : v;
+      html += `<br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"${k}"</span>: <span class="${valClass}">${displayVal}</span>`;
+      if (j < entries.length - 1) html += ',';
+    });
+    html += `<br>  <span class="key">}</span>`;
+    if (i < records.length - 1) html += ',';
+    html += '<br>';
+  });
+  html += '<span class="key">]</span>';
+  return html;
+}
+
+function renderProto(records) {
+  let html = '<span style="color:#64748b;">// protobuf wire format (hex)</span><br>';
+  records.slice(0, 3).forEach((rec, i) => {
+    html += `<span class="hex">${randomHex(32)}</span> `;
+    html += `<span class="hex">${randomHex(16)}</span> `;
+    html += `<span class="hex">${randomHex(8)}</span><br>`;
+  });
+  if (records.length > 3) {
+    html += `<span style="color:#64748b;">// + ${records.length - 3} more records (binary)</span>`;
+  }
+  return html;
+}
+
+function randomHex(len) {
+  const chars = '0123456789abcdef';
+  let s = '';
+  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+/* ============================================================
+   SIZE CALCULATIONS
+   ============================================================ */
+function computePayloadSize() {
+  // REST/JSON: verbose text format
+  // Average ~25 bytes per field for JSON (key name + value + punctuation)
+  // Plus overhead per record (braces, commas)
+  const restSizePerRecord = STATE.fields * 25 + 4;
+  const restSize = STATE.records * restSizePerRecord;
+
+  // gRPC/Protobuf: binary, field tags are ~2 bytes, no key names
+  // Values are typed (4 bytes for int, variable for strings)
+  // Average ~6 bytes per field, no key names
+  const grpcSizePerRecord = STATE.fields * 6 + 4;
+  const grpcSize = Math.round(STATE.records * grpcSizePerRecord * 0.35);
+
+  return { restSize, grpcSize };
+}
+
+function computeLatency(bytes, protocol) {
+  // Base RTT for both
+  const baseRtt = STATE.rttMs;
+
+  // Transfer time = bytes / (bandwidth in bytes/ms)
+  // Bandwidth: Mbps → MB/s → KB/ms → bytes/ms
+  const bytesPerMs = STATE.bandwidthMbps * 1000 * 1000 / 8 / 1000; // bytes per ms
+  const transferTime = bytes / bytesPerMs;
+
+  // Connection overhead: REST new TCP/TLS per request (HTTP/1.1)
+  // gRPC multiplexes over existing HTTP/2 connection
+  const connOverhead = protocol === 'rest' ? 15 : 2;
+
+  // Parsing overhead (JSON parsing is slower than protobuf binary decode)
+  const parseTime = protocol === 'rest' ? bytes / 500 : bytes / 2000;
+
+  // Small random jitter
+  const jitter = Math.random() * 2;
+
+  return baseRtt + transferTime + connOverhead + parseTime + jitter;
+}
+
+/* ============================================================
+   SEND REQUEST
+   ============================================================ */
+function sendRequest() {
+  const records = buildJsonPayload();
+  const { restSize, grpcSize } = computePayloadSize();
+
+  const restLatency = computeLatency(restSize, 'rest');
+  const grpcLatency = computeLatency(grpcSize, 'grpc');
+
+  STATE.restReqs++;
+  STATE.grpcReqs++;
+  STATE.restBytes += restSize;
+  STATE.grpcBytes += grpcSize;
+  STATE.restLatencySamples.push(restLatency);
+  STATE.grpcLatencySamples.push(grpcLatency);
+
+  // Update payload displays
+  DOM.restPayload.innerHTML = renderJson(records);
+  DOM.grpcPayload.innerHTML = renderProto(records);
+
+  DOM.restBytes.textContent = formatBytes(restSize);
+  DOM.grpcBytes.textContent = formatBytes(grpcSize);
+  DOM.restLatency.textContent = restLatency.toFixed(0) + ' ms';
+  DOM.grpcLatency.textContent = grpcLatency.toFixed(0) + ' ms';
+  DOM.restReqs.textContent = STATE.restReqs;
+  DOM.grpcReqs.textContent = STATE.grpcReqs;
+
+  DOM.restStatus.textContent = 'received';
+  DOM.grpcStatus.textContent = 'received';
+
+  // Spawn particles
+  spawnLaneParticles(restLatency, grpcLatency);
+
+  updateMetrics();
+}
+
+function formatBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function updateMetrics() {
+  DOM.mRestBytes.textContent = formatBytes(STATE.restBytes);
+  DOM.mGrpcBytes.textContent = formatBytes(STATE.grpcBytes);
+
+  const savings = STATE.restBytes > 0
+    ? Math.round((1 - STATE.grpcBytes / STATE.restBytes) * 100)
+    : 0;
+  DOM.mSavings.textContent = savings + '%';
+  DOM.mSavings.className = 'metric-value ' + (savings > 50 ? 'good' : savings > 30 ? 'warn' : '');
+
+  const avgRest = STATE.restLatencySamples.length
+    ? STATE.restLatencySamples.reduce((a, b) => a + b, 0) / STATE.restLatencySamples.length
+    : 0;
+  const avgGrpc = STATE.grpcLatencySamples.length
+    ? STATE.grpcLatencySamples.reduce((a, b) => a + b, 0) / STATE.grpcLatencySamples.length
+    : 0;
+  const delta = avgRest - avgGrpc;
+  DOM.mLatencyDelta.textContent = (delta >= 0 ? '-' : '+') + Math.abs(delta).toFixed(1) + ' ms';
+  DOM.mLatencyDelta.className = 'metric-value ' + (delta > 50 ? 'good' : delta > 20 ? 'warn' : '');
+}
+
+/* ============================================================
+   CANVAS — LATENCY LANES
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.lanesCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function spawnLaneParticles(restLatency, grpcLatency) {
+  const canvas = DOM.lanesCanvas;
+  if (!canvas._w) return;
+
+  const maxLatency = Math.max(restLatency, grpcLatency);
+
+  // REST lane (top)
+  STATE.particles.push({
+    lane: 'rest',
+    x: 0,
+    y: 0.25,
+    startX: 0,
+    targetX: 1,
+    progress: 0,
+    speed: 1 / (restLatency * 10),
+    color: '#f97316',
+    latency: restLatency
+  });
+  // gRPC lane (bottom)
+  STATE.particles.push({
+    lane: 'grpc',
+    x: 0,
+    y: 0.75,
+    startX: 0,
+    targetX: 1,
+    progress: 0,
+    speed: 1 / (grpcLatency * 10),
+    color: '#8b5cf6',
+    latency: grpcLatency
+  });
+}
+
+function drawCanvas() {
+  const canvas = DOM.lanesCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw lanes
+  const lanes = [
+    { name: 'REST', y: H * 0.25, color: '#f97316' },
+    { name: 'gRPC', y: H * 0.75, color: '#8b5cf6' }
+  ];
+
+  for (const lane of lanes) {
+    // Lane line
+    ctx.strokeStyle = lane.color;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(60, lane.y);
+    ctx.lineTo(W - 60, lane.y);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Lane label
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = lane.color;
+    ctx.textAlign = 'left';
+    ctx.fillText(lane.name, 15, lane.y + 4);
+
+    // Client and server nodes
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = lane.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(40, lane.y, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = '10px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText('📱', 40, lane.y + 3);
+
+    ctx.beginPath();
+    ctx.arc(W - 40, lane.y, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillText('☁️', W - 40, lane.y + 3);
+  }
+
+  // Draw particles
+  for (const p of STATE.particles) {
+    const x = 60 + (W - 120) * p.progress;
+    const y = p.y * H;
+
+    ctx.beginPath();
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 12;
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Latency label
+    if (p.progress > 0.1 && p.progress < 0.9) {
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = p.color;
+      ctx.textAlign = 'center';
+      ctx.fillText(p.latency.toFixed(0) + 'ms', x, y - 12);
+    }
+  }
+
+  // Draw lane legend at bottom
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(`RTT ${STATE.rttMs}ms · Bandwidth ${STATE.bandwidthMbps}Mbps · ${STATE.records} records · ${STATE.fields} fields`, W / 2, H - 10);
+}
+
+function updateParticles() {
+  for (let i = STATE.particles.length - 1; i >= 0; i--) {
+    const p = STATE.particles[i];
+    p.progress += p.speed;
+    if (p.progress >= 1) {
+      STATE.particles.splice(i, 1);
+    }
+  }
+}
+
+function animate() {
+  updateParticles();
+  drawCanvas();
+  STATE.raf = requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   BURST
+   ============================================================ */
+function burst() {
+  for (let i = 0; i < 50; i++) {
+    setTimeout(() => sendRequest(), i * 60);
+  }
+  showToast('⚡ 50 requests dispatched to both protocols');
+  teach('BURST',
+    `50 requests sent to both REST and gRPC endpoints in parallel. Watch the byte totals and average latency diverge: REST is accumulating bytes ~3x faster than gRPC. The latency delta also grows as more JSON must be parsed.`,
+    'warn'
+  );
+}
+
+/* ============================================================
+   DEMO BUTTONS
+   ============================================================ */
+function showStreamingDemo() {
+  showStatus('🌊 gRPC Streaming Demo');
+  teach('STREAMING',
+    `gRPC supports 4 streaming patterns that REST cannot easily do: (1) Server streaming — one request, many responses. (2) Client streaming — many requests, one response. (3) Bidirectional streaming — both directions simultaneously. (4) Unary — one request, one response (like REST). This is possible because HTTP/2 multiplexes frames over a single connection.`,
+    'purple'
+  );
+  showToast('🌊 gRPC supports bidirectional streaming');
+}
+
+function showProto() {
+  teach('PROTOBUF',
+    `Protobuf is a binary format. Field names are NOT transmitted — only small numeric tags. Values are typed (varint, fixed32, length-delimited). This makes payloads ~3-5x smaller than JSON for typical API responses. The trade-off: you need a .proto schema, and humans can't read the wire format easily.`,
+    'purple'
+  );
+  showToast('📦 Protobuf: binary, schema-driven, compact');
+}
+
+function showJson() {
+  teach('JSON',
+    `JSON is a text format. Field names ARE transmitted in every record — "email", "created_at" etc. All values are strings or numbers. This makes payloads larger, but readable and debuggable. Every browser can parse JSON natively.`,
+    'warn'
+  );
+  showToast('📄 JSON: text, self-describing, verbose');
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.restReqs = 0;
+  STATE.grpcReqs = 0;
+  STATE.restBytes = 0;
+  STATE.grpcBytes = 0;
+  STATE.restLatencySamples = [];
+  STATE.grpcLatencySamples = [];
+  STATE.particles = [];
+  DOM.restPayload.innerHTML = '<span style="color:#64748b;">// click SEND to see payload</span>';
+  DOM.grpcPayload.innerHTML = '<span style="color:#64748b;">// click SEND to see payload</span>';
+  DOM.restBytes.textContent = '0';
+  DOM.grpcBytes.textContent = '0';
+  DOM.restLatency.textContent = '0 ms';
+  DOM.grpcLatency.textContent = '0 ms';
+  DOM.restReqs.textContent = '0';
+  DOM.grpcReqs.textContent = '0';
+  DOM.restStatus.textContent = 'idle';
+  DOM.grpcStatus.textContent = 'idle';
+  updateMetrics();
+  showToast('⟲ Reset complete');
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnSend.addEventListener('click', sendRequest);
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnStreaming.addEventListener('click', showStreamingDemo);
+DOM.btnProto.addEventListener('click', showProto);
+DOM.btnJson.addEventListener('click', showJson);
+
+DOM.fieldsRange.addEventListener('input', e => {
+  STATE.fields = parseInt(e.target.value);
+  DOM.fieldsVal.textContent = STATE.fields;
+});
+DOM.recordsRange.addEventListener('input', e => {
+  STATE.records = parseInt(e.target.value);
+  DOM.recordsVal.textContent = STATE.records;
+});
+DOM.rttRange.addEventListener('input', e => {
+  STATE.rttMs = parseInt(e.target.value);
+  DOM.rttVal.textContent = STATE.rttMs + ' ms';
+});
+DOM.bwRange.addEventListener('input', e => {
+  STATE.bandwidthMbps = parseInt(e.target.value);
+  DOM.bwVal.textContent = STATE.bandwidthMbps + ' Mbps';
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+updateMetrics();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to REST vs gRPC. Both are ways to build APIs, but they make very different trade-offs. REST is text-based, human-readable, and works everywhere. gRPC is binary, schema-driven, and much more efficient. This simulator sends the SAME data through both formats and shows the difference.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE FORMATS',
+      `REST typically uses JSON — a text format where every record includes field names like "email" and "created_at". gRPC uses Protobuf — a binary format where field names are replaced with small numeric tags. The result: gRPC payloads are 3-5x smaller for the same logical data.`,
+      'purple'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE PROTOCOL',
+      `REST usually runs over HTTP/1.1, which has limited multiplexing and requires a new connection per request. gRPC runs over HTTP/2, which multiplexes many requests over ONE connection, uses header compression, and supports true bidirectional streaming. This cuts connection overhead dramatically.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('WHEN TO USE WHICH',
+      `REST: public APIs, browser clients, human debugging, cache-friendly GETs. gRPC: internal microservices, high-throughput RPC, streaming, polyglot systems where you control both ends. Most modern architectures use BOTH — REST at the edge, gRPC internally. Try adjusting the sliders to see how payload size and network latency change the story.`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Click SEND REQUEST to compare payloads', 4500);
+}, 500);
+</script>
+</body>
+</html>

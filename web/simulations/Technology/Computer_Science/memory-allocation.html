@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memory Allocation (First/Best/Worst Fit) — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #f59e0b, #ec4899, #8b5cf6);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(245,158,11,0.15); color: #fcd34d; border-color: #f59e0b; }
+  .teaching-toggle:hover { background: rgba(245,158,11,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #fcd34d;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f59e0b; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f59e0b; color: #2a1503; border-color: #f59e0b; }
+  .btn.primary:hover { background: #d97706; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #f59e0b; color: #2a1503; border-color: #f59e0b; }
+  .algo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .algo-btn {
+    padding: 7px 6px; background: #02040a; border: 1.5px solid #334155;
+    border-radius: 6px; font-family: monospace; font-size: 0.6rem;
+    font-weight: 800; color: #94a3b8; cursor: pointer;
+    letter-spacing: 0.5px; transition: all 0.2s;
+  }
+  .algo-btn:hover { border-color: #f59e0b; color: #fcd34d; }
+  .algo-btn.active {
+    background: rgba(245,158,11,0.2); border-color: #f59e0b;
+    color: #fcd34d; box-shadow: 0 0 10px rgba(245,158,11,0.4);
+  }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fcd34d; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f59e0b; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(245,158,11,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .mem-wrap {
+    flex: 1; background: #070a14; border: 2px solid #f59e0b; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(245,158,11,0.15); min-height: 0;
+  }
+  .mem-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #fcd34d; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #memCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .queue-strip {
+    background: #070a14; border: 2px solid #8b5cf6; border-radius: 12px;
+    padding: 10px 14px; display: flex; gap: 8px; align-items: center;
+    overflow-x: auto; flex-shrink: 0; min-height: 80px;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15);
+  }
+  .queue-label {
+    font-family: monospace; font-size: 0.55rem; color: #64748b;
+    font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;
+    padding-right: 10px; border-right: 1px solid #1e293b; flex-shrink: 0;
+  }
+  .req-chip {
+    padding: 6px 12px; border-radius: 6px; font-family: monospace;
+    font-size: 0.65rem; font-weight: 900; background: #1e293b; color: #cbd5e1;
+    border: 2px solid #334155; flex-shrink: 0; text-align: center;
+  }
+  .req-chip.pending { border-color: #f59e0b; color: #fcd34d; background: rgba(245,158,11,0.15); }
+  .req-chip.allocated { border-color: #10b981; color: #86efac; background: rgba(16,185,129,0.15); }
+  .req-chip.rejected { border-color: #ef4444; color: #fca5a5; background: rgba(239,68,68,0.15); text-decoration: line-through; }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(245,158,11,0.06); border: 1px solid rgba(245,158,11,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #fcd34d; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #f59e0b;
+    background: rgba(245,158,11,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(245,158,11,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(245,158,11,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #fcd34d;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #f59e0b; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(245,158,11,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #f59e0b; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #fcd34d; z-index: 12;
+    box-shadow: 0 0 20px rgba(245,158,11,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.ok { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.bad { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>MEMORY ALLOCATION</h1>
+    <span class="sub">FIRST FIT · BEST FIT · WORST FIT · NEXT FIT</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Algorithm</h3>
+      <div class="algo-grid" id="algoGrid">
+        <button class="algo-btn active" data-algo="first">FIRST FIT</button>
+        <button class="algo-btn" data-algo="best">BEST FIT</button>
+        <button class="algo-btn" data-algo="worst">WORST FIT</button>
+        <button class="algo-btn" data-algo="next">NEXT FIT</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Control</h3>
+      <button class="btn primary" id="btnAllocate">▶ Allocate Next</button>
+      <button class="btn" id="btnAllNext">▶▶ Allocate All</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Setup</h3>
+      <div class="slider-row"><span>Total memory</span><span class="value" id="memVal">200</span></div>
+      <input type="range" id="memRange" min="100" max="500" step="50" value="200">
+      <button class="btn" id="btnRandomHoles">🎲 Random Holes</button>
+      <button class="btn" id="btnTightFit">🎯 Tight Fit Scenario</button>
+    </div>
+
+    <div class="panel">
+      <h3>Compare</h3>
+      <button class="btn success" id="btnCompare">📊 Compare All 4 Algorithms</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:6px;"></span>Allocated</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#1e293b;border:1px solid #475569;border-radius:2px;margin-right:6px;"></span>Free (hole)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:2px;margin-right:6px;"></span>Selected hole</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">SCAN MEMORY FOR A HOLE BIG ENOUGH — WHICH HOLE?</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="mem-wrap">
+          <div class="mem-title">
+            <span>💾 PHYSICAL MEMORY (KB)</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="memHint">— 200 KB —</span>
+          </div>
+          <canvas id="memCanvas"></canvas>
+        </div>
+        <div class="queue-strip" id="queueStrip">
+          <span class="queue-label">REQUESTS</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Holes</div>
+        <div class="metric-value warn" id="mHoles">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Free Space</div>
+        <div class="metric-value" id="mFree">0 KB</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Allocated</div>
+        <div class="metric-value good" id="mAlloc">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Rejected</div>
+        <div class="metric-value bad" id="mRej">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Allocation Strategies</div>
+      <div class="info-row"><span class="lbl">First Fit</span><span class="val good">Fast · first hole that fits</span></div>
+      <div class="info-row"><span class="lbl">Best Fit</span><span class="val warn">Tight · smallest fitting hole</span></div>
+      <div class="info-row"><span class="lbl">Worst Fit</span><span class="val bad">Largest hole — leaves big remainder</span></div>
+      <div class="info-row"><span class="lbl">Next Fit</span><span class="val">Like first fit, from last position</span></div>
+      <div class="info-row"><span class="lbl">Best fit issue</span><span class="val bad">Tiny leftover fragments</span></div>
+      <div class="info-row"><span class="lbl">Worst fit issue</span><span class="val bad">Wastes large holes</span></div>
+      <div class="info-row"><span class="lbl">Real systems</span><span class="val">Often use segregated lists</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  totalMemory: 200,
+  blocks: [],       // {start, size, allocated, reqId}
+  requests: [],
+  nextReqId: 1,
+  algorithm: 'first',
+  nextFitPointer: 0,
+  allocated: 0,
+  rejected: 0,
+  selectedHoleIdx: -1,
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  memCanvas: document.getElementById('memCanvas'),
+  memHint: document.getElementById('memHint'),
+  queueStrip: document.getElementById('queueStrip'),
+  statusBanner: document.getElementById('statusBanner'),
+  algoGrid: document.getElementById('algoGrid'),
+  btnAllocate: document.getElementById('btnAllocate'),
+  btnAllNext: document.getElementById('btnAllNext'),
+  btnReset: document.getElementById('btnReset'),
+  btnRandomHoles: document.getElementById('btnRandomHoles'),
+  btnTightFit: document.getElementById('btnTightFit'),
+  btnCompare: document.getElementById('btnCompare'),
+  memRange: document.getElementById('memRange'),
+  memVal: document.getElementById('memVal'),
+  mHoles: document.getElementById('mHoles'),
+  mFree: document.getElementById('mFree'),
+  mAlloc: document.getElementById('mAlloc'),
+  mRej: document.getElementById('mRej'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2000);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining memory allocation strategies.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   MEMORY INIT
+   ============================================================ */
+function initMemory() {
+  STATE.blocks = [{ start: 0, size: STATE.totalMemory, allocated: false, reqId: null }];
+  STATE.requests = [];
+  STATE.nextReqId = 1;
+  STATE.allocated = 0;
+  STATE.rejected = 0;
+  STATE.nextFitPointer = 0;
+  STATE.selectedHoleIdx = -1;
+  renderQueue();
+  drawMemory();
+  updateMetrics();
+}
+
+function randomHoles() {
+  STATE.blocks = [];
+  let pos = 0;
+  while (pos < STATE.totalMemory) {
+    const size = Math.floor(Math.random() * 30) + 10;
+    const remaining = STATE.totalMemory - pos;
+    const actualSize = Math.min(size, remaining);
+    const isAlloc = Math.random() < 0.4;
+    STATE.blocks.push({
+      start: pos,
+      size: actualSize,
+      allocated: isAlloc,
+      reqId: isAlloc ? `R${STATE.nextReqId++}` : null
+    });
+    pos += actualSize;
+  }
+  STATE.allocated = STATE.blocks.filter(b => b.allocated).length;
+  STATE.rejected = 0;
+  STATE.selectedHoleIdx = -1;
+  drawMemory();
+  updateMetrics();
+  teach('RANDOM HOLES',
+    `Reset memory with random allocation pattern. Now there are scattered free holes of various sizes. Free memory is ${STATE.blocks.filter(b => !b.allocated).reduce((s, b) => s + b.size, 0)} KB but fragmented. Where will the next request go?`,
+    'cyan'
+  );
+}
+
+function tightFitScenario() {
+  STATE.blocks = [
+    { start: 0, size: 20, allocated: true, reqId: 'R1' },
+    { start: 20, size: 15, allocated: false, reqId: null },
+    { start: 35, size: 25, allocated: true, reqId: 'R2' },
+    { start: 60, size: 12, allocated: false, reqId: null },
+    { start: 72, size: 18, allocated: true, reqId: 'R3' },
+    { start: 90, size: 22, allocated: false, reqId: null },
+    { start: 112, size: 30, allocated: true, reqId: 'R4' },
+    { start: 142, size: 58, allocated: false, reqId: null }
+  ];
+  STATE.allocated = 4;
+  STATE.rejected = 0;
+  STATE.selectedHoleIdx = -1;
+  drawMemory();
+  updateMetrics();
+  teach('TIGHT FIT SCENARIO',
+    `Loaded a scenario with 4 free holes: 15, 12, 22, and 58 KB. Now send a 20 KB request and watch how FIRST FIT (grabs 22), BEST FIT (grabs 22), and WORST FIT (grabs 58) all behave differently. This is where the algorithms diverge.`,
+    'purple'
+  );
+}
+
+function generateRequest(size = null) {
+  const s = size || Math.floor(Math.random() * 20) + 8;
+  const req = {
+    id: `R${STATE.nextReqId++}`,
+    size: s,
+    status: 'pending'
+  };
+  STATE.requests.push(req);
+  renderQueue();
+  return req;
+}
+
+function allocateNext() {
+  // Find next pending request
+  const req = STATE.requests.find(r => r.status === 'pending');
+  if (!req) {
+    // Generate a new one
+    const newReq = generateRequest();
+    setTimeout(() => allocateNext(), 100);
+    return;
+  }
+
+  // Find fitting hole based on algorithm
+  const holes = STATE.blocks
+    .map((b, i) => ({ b, i }))
+    .filter(({ b }) => !b.allocated && b.size >= req.size);
+
+  if (holes.length === 0) {
+    req.status = 'rejected';
+    STATE.rejected++;
+    renderQueue();
+    showStatus(`❌ ${req.id} (${req.size} KB) — no hole fits`, 'bad');
+    teach('REJECTED',
+      `${req.id} needs ${req.size} KB but no free hole is large enough. Even though total free memory might be sufficient, it's fragmented into holes too small to satisfy this request. This is EXTERNAL FRAGMENTATION.`,
+      'error'
+    );
+    updateMetrics();
+    return;
+  }
+
+  let chosen;
+  let algorithmExplain;
+
+  if (STATE.algorithm === 'first') {
+    chosen = holes[0];
+    algorithmExplain = `First Fit: scanning from the start, ${req.id} first fits in the ${chosen.b.size} KB hole at offset ${chosen.b.start}. First Fit is fast — stops as soon as a fit is found.`;
+  } else if (STATE.algorithm === 'best') {
+    chosen = holes.reduce((min, h) => h.b.size < min.b.size ? h : min, holes[0]);
+    algorithmExplain = `Best Fit: among ${holes.length} holes, chose the smallest that fits — ${chosen.b.size} KB at offset ${chosen.b.start}. Leaves a remainder of ${chosen.b.size - req.size} KB. Best Fit minimizes waste, but produces tiny unusable holes.`;
+  } else if (STATE.algorithm === 'worst') {
+    chosen = holes.reduce((max, h) => h.b.size > max.b.size ? h : max, holes[0]);
+    algorithmExplain = `Worst Fit: chose the LARGEST hole — ${chosen.b.size} KB at offset ${chosen.b.start}. Leaves a remainder of ${chosen.b.size - req.size} KB. Worst Fit tries to keep remainders large enough to be reusable.`;
+  } else if (STATE.algorithm === 'next') {
+    // Find first hole at or after nextFitPointer
+    let found = holes.find(h => h.b.start >= STATE.nextFitPointer);
+    if (!found) found = holes[0];
+    chosen = found;
+    STATE.nextFitPointer = chosen.b.start + req.size;
+    algorithmExplain = `Next Fit: continuing from pointer at ${STATE.nextFitPointer - req.size}, chose hole at offset ${chosen.b.start} (${chosen.b.size} KB). Next Fit is like First Fit but remembers where the last allocation ended, spreading allocations more evenly.`;
+  }
+
+  STATE.selectedHoleIdx = chosen.i;
+
+  // Split block: allocated part + free remainder
+  const remainder = chosen.b.size - req.size;
+  const newBlocks = [];
+  for (let i = 0; i < STATE.blocks.length; i++) {
+    if (i === chosen.i) {
+      newBlocks.push({
+        start: chosen.b.start,
+        size: req.size,
+        allocated: true,
+        reqId: req.id
+      });
+      if (remainder > 0) {
+        newBlocks.push({
+          start: chosen.b.start + req.size,
+          size: remainder,
+          allocated: false,
+          reqId: null
+        });
+      }
+    } else {
+      newBlocks.push(STATE.blocks[i]);
+    }
+  }
+  STATE.blocks = newBlocks;
+  req.status = 'allocated';
+  STATE.allocated++;
+
+  renderQueue();
+  drawMemory();
+  showStatus(`✅ ${req.id} (${req.size} KB) → hole at ${chosen.b.start}`, 'ok');
+  teach('ALLOCATED',
+    `${req.id} (${req.size} KB) allocated. ${algorithmExplain}`,
+    'ok'
+  );
+
+  // Clear selected hole highlight after a moment
+  setTimeout(() => {
+    STATE.selectedHoleIdx = -1;
+    drawMemory();
+  }, 1500);
+
+  updateMetrics();
+}
+
+function allocateAll() {
+  const pending = STATE.requests.filter(r => r.status === 'pending');
+  if (pending.length === 0) {
+    for (let i = 0; i < 4; i++) generateRequest();
+  }
+  let i = 0;
+  const step = () => {
+    if (i >= 4) return;
+    allocateNext();
+    i++;
+    setTimeout(step, 500);
+  };
+  step();
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderQueue() {
+  DOM.queueStrip.innerHTML = '<span class="queue-label">REQUESTS</span>';
+  for (const r of STATE.requests) {
+    const chip = document.createElement('div');
+    chip.className = `req-chip ${r.status}`;
+    chip.innerHTML = `${r.id}<br><span style="font-size:0.5rem;">${r.size} KB</span>`;
+    DOM.queueStrip.appendChild(chip);
+  }
+  // Pending label
+  const pending = STATE.requests.filter(r => r.status === 'pending').length;
+  if (pending > 0) {
+    const lbl = document.createElement('span');
+    lbl.style.cssText = 'color:#64748b;font-size:0.55rem;font-family:monospace;margin-left:auto;padding-left:12px;border-left:1px solid #1e293b;';
+    lbl.textContent = `${pending} pending`;
+    DOM.queueStrip.appendChild(lbl);
+  }
+}
+
+function resizeCanvas() {
+  const canvas = DOM.memCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawMemory() {
+  const canvas = DOM.memCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const padX = 50;
+  const padY = 40;
+  const barW = W - padX * 2;
+  const barH = H - padY * 2;
+
+  // Memory bar background
+  ctx.fillStyle = '#0f172a';
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.rect(padX, padY, barW, barH);
+  ctx.fill();
+  ctx.stroke();
+
+  // Draw blocks
+  for (let i = 0; i < STATE.blocks.length; i++) {
+    const b = STATE.blocks[i];
+    const x = padX + (b.start / STATE.totalMemory) * barW;
+    const w = (b.size / STATE.totalMemory) * barW;
+    const isSelected = i === STATE.selectedHoleIdx;
+
+    if (b.allocated) {
+      ctx.fillStyle = '#10b981';
+      ctx.fillRect(x, padY, w, barH);
+      // Label
+      if (w > 40) {
+        ctx.font = 'bold 10px monospace';
+        ctx.fillStyle = '#022c22';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(b.reqId || 'ALLOC', x + w / 2, padY + barH / 2);
+        ctx.font = '9px monospace';
+        ctx.fillStyle = '#065f46';
+        ctx.fillText(b.size + ' KB', x + w / 2, padY + barH / 2 + 14);
+      }
+    } else {
+      // Free hole
+      ctx.fillStyle = isSelected ? 'rgba(245,158,11,0.4)' : 'rgba(100,116,139,0.2)';
+      ctx.fillRect(x, padY, w, barH);
+      ctx.strokeStyle = isSelected ? '#f59e0b' : '#475569';
+      ctx.lineWidth = isSelected ? 3 : 1;
+      ctx.strokeRect(x, padY, w, barH);
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, padY, w, barH);
+      ctx.setLineDash([]);
+
+      if (w > 40) {
+        ctx.font = 'bold 10px monospace';
+        ctx.fillStyle = isSelected ? '#fcd34d' : '#94a3b8';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('free', x + w / 2, padY + barH / 2);
+        ctx.font = '9px monospace';
+        ctx.fillText(b.size + ' KB', x + w / 2, padY + barH / 2 + 14);
+      }
+    }
+
+    // Block boundary tick mark
+    ctx.strokeStyle = '#02040a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, padY);
+    ctx.lineTo(x, padY + barH);
+    ctx.stroke();
+  }
+
+  // Memory address labels
+  ctx.font = '9px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('0', padX, padY + barH + 6);
+  ctx.fillText(STATE.totalMemory / 2 + ' KB', padX + barW / 2, padY + barH + 6);
+  ctx.fillText(STATE.totalMemory + ' KB', padX + barW, padY + barH + 6);
+
+  // Title
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#fcd34d';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`Algorithm: ${STATE.algorithm.toUpperCase()}`, padX, 15);
+
+  const freeTotal = STATE.blocks.filter(b => !b.allocated).reduce((s, b) => s + b.size, 0);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText(`Free: ${freeTotal} KB`, W - padX, 15);
+
+  DOM.memHint.textContent = `— ${STATE.blocks.length} blocks · ${STATE.totalMemory} KB —`;
+}
+
+function animate() {
+  drawMemory();
+  requestAnimationFrame(animate);
+}
+
+function updateMetrics() {
+  const holes = STATE.blocks.filter(b => !b.allocated);
+  DOM.mHoles.textContent = holes.length;
+  DOM.mHoles.className = 'metric-value ' + (holes.length > 5 ? 'bad' : holes.length > 2 ? 'warn' : 'warn');
+  DOM.mFree.textContent = holes.reduce((s, b) => s + b.size, 0) + ' KB';
+  DOM.mAlloc.textContent = STATE.allocated;
+  DOM.mRej.textContent = STATE.rejected;
+  DOM.mRej.className = 'metric-value ' + (STATE.rejected === 0 ? 'good' : STATE.rejected < 3 ? 'warn' : 'bad');
+}
+
+function setAlgorithm(algo) {
+  STATE.algorithm = algo;
+  document.querySelectorAll('.algo-btn').forEach(b => b.classList.toggle('active', b.dataset.algo === algo));
+  const descs = {
+    first: 'FIRST FIT: scan memory from the start, allocate in the FIRST hole that fits. Fast — stops as soon as a fit is found. But leaves small fragments near the start.',
+    best: 'BEST FIT: scan ALL holes, pick the SMALLEST that fits. Minimizes waste per allocation, but produces tiny unusable holes — external fragmentation. Requires full scan.',
+    worst: 'WORST FIT: scan ALL holes, pick the LARGEST. Leaves a large remainder that can (hopefully) still fit future requests. Tends to fragment large holes quickly.',
+    next: 'NEXT FIT: like First Fit, but starts scanning from where the last allocation ended. Spreads allocations evenly across memory, reducing the concentration of small fragments at the start.'
+  };
+  teach('ALGORITHM: ' + algo.toUpperCase(), descs[algo], 'purple');
+  STATE.nextFitPointer = 0;
+}
+
+function resetAll() {
+  initMemory();
+  teach('RESET', 'Memory reset to a single large free hole.', 'info', false);
+}
+
+/* ============================================================
+   COMPARE ALL
+   ============================================================ */
+function compareAll() {
+  // Save current state
+  const savedBlocks = JSON.parse(JSON.stringify(STATE.blocks));
+  const savedReqs = JSON.parse(JSON.stringify(STATE.requests));
+  const savedAlgo = STATE.algorithm;
+
+  // Generate a fixed set of requests
+  const testReqs = [];
+  for (let i = 0; i < 8; i++) {
+    testReqs.push({
+      id: `T${i + 1}`,
+      size: Math.floor(Math.random() * 25) + 8,
+      status: 'pending'
+    });
+  }
+
+  const results = [];
+  const algos = ['first', 'best', 'worst', 'next'];
+
+  for (const algo of algos) {
+    // Reset fresh with same initial holes
+    STATE.blocks = JSON.parse(JSON.stringify(savedBlocks));
+    STATE.requests = JSON.parse(JSON.stringify(testReqs));
+    STATE.algorithm = algo;
+    STATE.nextFitPointer = 0;
+    STATE.allocated = 0;
+    STATE.rejected = 0;
+
+    // Run all
+    for (let i = 0; i < 30; i++) {
+      const pending = STATE.requests.find(r => r.status === 'pending');
+      if (!pending) break;
+      allocateNextSilent();
+    }
+
+    const holes = STATE.blocks.filter(b => !b.allocated);
+    const freeTotal = holes.reduce((s, b) => s + b.size, 0);
+    const largestHole = Math.max(0, ...holes.map(b => b.size));
+
+    results.push({
+      algo,
+      allocated: STATE.allocated,
+      rejected: STATE.rejected,
+      holes: holes.length,
+      freeTotal,
+      largestHole
+    });
+  }
+
+  // Restore
+  STATE.blocks = savedBlocks;
+  STATE.requests = savedReqs;
+  STATE.algorithm = savedAlgo;
+  drawMemory();
+  renderQueue();
+  updateMetrics();
+
+  // Report
+  const lines = results.map(r =>
+    `${r.algo.toUpperCase()}: ${r.allocated} alloc, ${r.rejected} rej, ${r.holes} holes, largest ${r.largestHole} KB`
+  ).join(' · ');
+
+  teach('COMPARISON',
+    `Ran all 4 algorithms on the same 8 requests (starting from current memory state). Results: ${lines}. Notice: Best Fit often leaves many tiny holes; Worst Fit leaves fewer but usually wastes big holes; First and Next Fit are similar in quality but First is simplest; Next Fit spreads allocations evenly.`,
+    'purple'
+  );
+  showToast('📊 Compared 4 algorithms');
+}
+
+function allocateNextSilent() {
+  const req = STATE.requests.find(r => r.status === 'pending');
+  if (!req) return;
+  const holes = STATE.blocks
+    .map((b, i) => ({ b, i }))
+    .filter(({ b }) => !b.allocated && b.size >= req.size);
+  if (holes.length === 0) {
+    req.status = 'rejected';
+    STATE.rejected++;
+    return;
+  }
+  let chosen;
+  if (STATE.algorithm === 'first') chosen = holes[0];
+  else if (STATE.algorithm === 'best') chosen = holes.reduce((m, h) => h.b.size < m.b.size ? h : m, holes[0]);
+  else if (STATE.algorithm === 'worst') chosen = holes.reduce((m, h) => h.b.size > m.b.size ? h : m, holes[0]);
+  else if (STATE.algorithm === 'next') {
+    let found = holes.find(h => h.b.start >= STATE.nextFitPointer);
+    if (!found) found = holes[0];
+    chosen = found;
+    STATE.nextFitPointer = chosen.b.start + req.size;
+  }
+
+  const remainder = chosen.b.size - req.size;
+  const newBlocks = [];
+  for (let i = 0; i < STATE.blocks.length; i++) {
+    if (i === chosen.i) {
+      newBlocks.push({ start: chosen.b.start, size: req.size, allocated: true, reqId: req.id });
+      if (remainder > 0) newBlocks.push({ start: chosen.b.start + req.size, size: remainder, allocated: false, reqId: null });
+    } else newBlocks.push(STATE.blocks[i]);
+  }
+  STATE.blocks = newBlocks;
+  req.status = 'allocated';
+  STATE.allocated++;
+}
+
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+document.querySelectorAll('.algo-btn').forEach(btn => {
+  btn.addEventListener('click', () => setAlgorithm(btn.dataset.algo));
+});
+
+DOM.btnAllocate.addEventListener('click', allocateNext);
+DOM.btnAllNext.addEventListener('click', allocateAll);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnRandomHoles.addEventListener('click', randomHoles);
+DOM.btnTightFit.addEventListener('click', tightFitScenario);
+DOM.btnCompare.addEventListener('click', compareAll);
+
+DOM.memRange.addEventListener('input', e => {
+  STATE.totalMemory = parseInt(e.target.value);
+  DOM.memVal.textContent = STATE.totalMemory;
+  initMemory();
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+initMemory();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Memory Allocation. When a process requests memory, the OS must find a suitable free region (hole) in physical memory. Multiple algorithms exist, each with trade-offs. The same request pattern can succeed or fail depending on which algorithm you use.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE FOUR STRATEGIES',
+      `First Fit: fastest, uses the first hole that fits. Best Fit: minimizes waste but creates tiny unusable fragments. Worst Fit: leaves the largest remainder to be reusable. Next Fit: spreads allocations evenly. There's no universally best algorithm — real systems often use hybrid or segregated-list approaches.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('EXTERNAL FRAGMENTATION',
+      `Even with 100 KB free total, a 50 KB request can fail if the free memory is split into 20 KB + 20 KB + 60 KB holes... wait, that example works. Try: 30+20+20+20+10 — a 25 KB request fails. This is external fragmentation: free memory exists but not contiguously. Compaction can fix it (moving blocks) but is expensive.`,
+      'warn'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Load the Tight Fit scenario, then send a 20 KB request with each algorithm. Watch how First Fit grabs the first available hole, Best Fit grabs the smallest sufficient hole, and Worst Fit grabs the largest. Then click Compare All for a summary.`,
+      'ok'
+    );
+  }, 13000);
+  showToast('👋 Try TIGHT FIT + each algorithm', 4500);
+}, 500);
+</script>
+</body>
+</html>

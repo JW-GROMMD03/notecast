@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Context Switching Overhead — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f59e0b, #ef4444, #8b5cf6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(245,158,11,0.15);
+    color: #fcd34d;
+    border-color: #f59e0b;
+  }
+  .teaching-toggle:hover { background: rgba(245,158,11,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f59e0b; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f59e0b; color: #2a1503; border-color: #f59e0b; }
+  .btn.primary:hover { background: #d97706; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fcd34d; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f59e0b; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(245,158,11,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* CPU VIEW */
+  .cpu-wrap {
+    flex: 1.3;
+    background: #070a14;
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(245,158,11,0.15);
+    min-height: 0;
+  }
+  .cpu-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #cpuCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+  }
+
+  /* PCB PANELS */
+  .pcb-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+  }
+  .pcb-panel {
+    background: #070a14;
+    border: 2px solid;
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    transition: all 0.4s;
+  }
+  .pcb-panel.active { box-shadow: 0 0 25px currentColor; }
+  .pcb-panel.procA { border-color: #3b82f6; color: #3b82f6; }
+  .pcb-panel.procB { border-color: #ec4899; color: #ec4899; }
+
+  .pcb-panel.dimmed { opacity: 0.4; }
+
+  .pcb-head {
+    font-family: monospace;
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .pcb-head .state-badge {
+    font-size: 0.5rem;
+    padding: 2px 8px;
+    border-radius: 8px;
+    letter-spacing: 1px;
+  }
+  .pcb-head .state-badge.running { background: rgba(16,185,129,0.3); color: #86efac; }
+  .pcb-head .state-badge.ready { background: rgba(59,130,246,0.3); color: #93c5fd; }
+  .pcb-head .state-badge.saved { background: rgba(100,116,139,0.3); color: #94a3b8; }
+
+  .pcb-rows {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-family: monospace;
+    font-size: 0.58rem;
+    overflow-y: auto;
+    min-height: 0;
+  }
+  .pcb-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 6px;
+    background: rgba(30,41,59,0.4);
+    border-radius: 4px;
+    transition: all 0.3s;
+  }
+  .pcb-row.changed {
+    background: rgba(245,158,11,0.3);
+    border-left: 3px solid #f59e0b;
+    font-weight: 700;
+  }
+  .pcb-row .lbl { color: #64748b; }
+  .pcb-row .val { color: #cbd5e1; font-weight: 800; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(245,158,11,0.06);
+    border: 1px solid rgba(245,158,11,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fcd34d;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f59e0b;
+    background: rgba(245,158,11,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(245,158,11,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f59e0b;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(245,158,11,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #f59e0b;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fcd34d;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(245,158,11,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.phase { border-color: #a855f7; color: #c4b5fd; box-shadow: 0 0 25px rgba(168,85,247,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>CONTEXT SWITCHING OVERHEAD</h1>
+    <span class="sub">REGISTER SAVE · TLB FLUSH · CACHE POLLUTION</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Control</h3>
+      <button class="btn primary" id="btnSwitch">🔄 Force Context Switch</button>
+      <button class="btn success" id="btnAuto">▶ Auto Switching</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Switch Cost Simulator</h3>
+      <div class="slider-row"><span>Registers</span><span class="value" id="regVal">32</span></div>
+      <input type="range" id="regRange" min="8" max="128" step="8" value="32">
+      <div class="slider-row"><span>TLB size</span><span class="value" id="tlbVal">64</span></div>
+      <input type="range" id="tlbRange" min="16" max="256" step="16" value="64">
+      <div class="slider-row"><span>L1 cache (KB)</span><span class="value" id="l1Val">32</span></div>
+      <input type="range" id="l1Range" min="8" max="128" step="8" value="32">
+    </div>
+
+    <div class="panel">
+      <h3>Optimizations</h3>
+      <button class="btn" id="btnOptTLB">🔧 TLB Tagging (ASID)</button>
+      <button class="btn" id="btnOptCache">🔧 Smart Cache Flush</button>
+      <div style="font-size:0.6rem; color:#64748b; line-height:1.5; margin-top:6px;">
+        Enable to see how modern CPUs reduce switch cost.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:2px;margin-right:6px;"></span>Process A</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ec4899;border-radius:2px;margin-right:6px;"></span>Process B</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:2px;margin-right:6px;"></span>Switching (wasted)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:6px;"></span>Useful work</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">CPU SAVES AND RESTORES STATE · THIS COSTS REAL TIME</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="cpu-wrap">
+          <div class="cpu-title">
+            <span>⏱️ TIMELINE — WHAT CPU SPENDS TIME ON</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="cpuHint">— click FORCE CONTEXT SWITCH —</span>
+          </div>
+          <canvas id="cpuCanvas"></canvas>
+        </div>
+
+        <div class="pcb-grid">
+          <div class="pcb-panel procA" id="pcbA">
+            <div class="pcb-head">
+              <span>📋 PCB — Process A</span>
+              <span class="state-badge running" id="stateA">RUNNING</span>
+            </div>
+            <div class="pcb-rows" id="rowsA"></div>
+          </div>
+          <div class="pcb-panel procB dimmed" id="pcbB">
+            <div class="pcb-head">
+              <span>📋 PCB — Process B</span>
+              <span class="state-badge saved" id="stateB">READY</span>
+            </div>
+            <div class="pcb-rows" id="rowsB"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Switches</div>
+        <div class="metric-value warn" id="mSwitches">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Switch Cost</div>
+        <div class="metric-value bad" id="mCost">0 µs</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Overhead %</div>
+        <div class="metric-value" id="mOverhead">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">TLB Misses</div>
+        <div class="metric-value warn" id="mTlb">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Switch Overhead</div>
+      <div class="info-row"><span class="lbl">Mode switch</span><span class="val good">User → Kernel</span></div>
+      <div class="info-row"><span class="lbl">Save registers</span><span class="val">~100 cycles</span></div>
+      <div class="info-row"><span class="lbl">Save PC/SP</span><span class="val">~10 cycles</span></div>
+      <div class="info-row"><span class="lbl">TLB flush</span><span class="val bad">~500 cycles</span></div>
+      <div class="info-row"><span class="lbl">Cache pollution</span><span class="val bad">~1000s cycles</span></div>
+      <div class="info-row"><span class="lbl">Typical cost</span><span class="val warn">1-10 μs</span></div>
+      <div class="info-row"><span class="lbl">Best practice</span><span class="val good">Batch work</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  currentProcess: 'A',       // A or B
+  switchCount: 0,
+  totalCostUs: 0,
+  totalTimeUs: 0,
+  tlbMisses: 0,
+  registers: 32,
+  tlbSize: 64,
+  l1Cache: 32,
+  tlbTagging: false,
+  smartFlush: false,
+  autoRunning: false,
+  autoTimer: null,
+  switching: false,
+  switchPhase: 0,   // 0 idle, 1-5 saving/loading phases
+  // Timeline of segments
+  segments: [],
+  segmentStartTime: 0,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+/* ============================================================
+   DOM
+   ============================================================ */
+const DOM = {
+  cpuCanvas: document.getElementById('cpuCanvas'),
+  cpuHint: document.getElementById('cpuHint'),
+  pcbA: document.getElementById('pcbA'),
+  pcbB: document.getElementById('pcbB'),
+  stateA: document.getElementById('stateA'),
+  stateB: document.getElementById('stateB'),
+  rowsA: document.getElementById('rowsA'),
+  rowsB: document.getElementById('rowsB'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Buttons
+  btnSwitch: document.getElementById('btnSwitch'),
+  btnAuto: document.getElementById('btnAuto'),
+  btnReset: document.getElementById('btnReset'),
+  btnOptTLB: document.getElementById('btnOptTLB'),
+  btnOptCache: document.getElementById('btnOptCache'),
+  regRange: document.getElementById('regRange'),
+  regVal: document.getElementById('regVal'),
+  tlbRange: document.getElementById('tlbRange'),
+  tlbVal: document.getElementById('tlbVal'),
+  l1Range: document.getElementById('l1Range'),
+  l1Val: document.getElementById('l1Val'),
+  // Metrics
+  mSwitches: document.getElementById('mSwitches'),
+  mCost: document.getElementById('mCost'),
+  mOverhead: document.getElementById('mOverhead'),
+  mTlb: document.getElementById('mTlb'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2000);
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining context switching overhead.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   PCB RENDERING
+   ============================================================ */
+function renderPCB(process) {
+  const rowsEl = process === 'A' ? DOM.rowsA : DOM.rowsB;
+  const rows = [
+    { lbl: 'PID', val: process === 'A' ? '1042' : '1043' },
+    { lbl: 'State', val: process === 'A' ? (STATE.switching && STATE.switchPhase < 3 ? 'RUNNING' : 'READY') : (STATE.switching && STATE.switchPhase >= 3 ? 'RUNNING' : 'READY') },
+    { lbl: 'PC', val: process === 'A' ? '0x4012' : '0x5023' },
+    { lbl: 'SP', val: process === 'A' ? '0x7ffd' : '0x7fce' },
+    { lbl: 'Registers', val: `${STATE.registers} saved` },
+    { lbl: 'Page Table', val: process === 'A' ? 'PT-A' : 'PT-B' },
+    { lbl: 'TLB entries', val: STATE.tlbTagging ? `${STATE.tlbSize} (tagged)` : '0 (flushed)' },
+    { lbl: 'L1 Cache', val: STATE.smartFlush ? 'partial' : '32 KB cold' },
+    { lbl: 'Priority', val: process === 'A' ? '5' : '3' }
+  ];
+
+  rowsEl.innerHTML = rows.map(r => `
+    <div class="pcb-row">
+      <span class="lbl">${r.lbl}</span>
+      <span class="val">${r.val}</span>
+    </div>
+  `).join('');
+}
+
+/* ============================================================
+   TIMELINE VISUALIZATION
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.cpuCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function addSegment(type, durationUs) {
+  STATE.segments.push({
+    type,  // 'A' | 'B' | 'switch'
+    duration: durationUs,
+    startTime: STATE.totalTimeUs
+  });
+  STATE.totalTimeUs += durationUs;
+  // Cap
+  while (STATE.segments.length > 50) STATE.segments.shift();
+}
+
+function drawTimeline() {
+  const canvas = DOM.cpuCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const totalDur = STATE.segments.reduce((s, seg) => s + seg.duration, 0) || 1;
+
+  // Bar dimensions
+  const barY = H / 2 - 30;
+  const barH = 60;
+  const padL = 20;
+  const padR = 20;
+  const chartW = W - padL - padR;
+
+  // Draw base bar
+  ctx.fillStyle = '#02040a';
+  ctx.fillRect(padL, barY, chartW, barH);
+
+  // Draw segments
+  let x = padL;
+  for (const seg of STATE.segments) {
+    const segW = (seg.duration / totalDur) * chartW;
+    if (seg.type === 'A') ctx.fillStyle = '#3b82f6';
+    else if (seg.type === 'B') ctx.fillStyle = '#ec4899';
+    else if (seg.type === 'switch') ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(x, barY, segW, barH);
+
+    // Border between segments
+    ctx.strokeStyle = '#02040a';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, barY, segW, barH);
+
+    // Label if wide enough
+    if (segW > 30) {
+      ctx.font = 'bold 10px monospace';
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const label = seg.type === 'A' ? 'CPU: A' : seg.type === 'B' ? 'CPU: B' : `⇄ ${seg.duration}µs`;
+      ctx.fillText(label, x + segW / 2, barY + barH / 2);
+    }
+
+    x += segW;
+  }
+
+  // Label bar
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('TIME →', padL, barY + barH + 8);
+
+  // Title
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#cbd5e1';
+  ctx.textAlign = 'center';
+  ctx.fillText(`Total time: ${STATE.totalTimeUs.toFixed(0)} µs`, W / 2, 20);
+
+  // Stats at bottom
+  const overhead = STATE.totalTimeUs > 0 ? (STATE.totalCostUs / STATE.totalTimeUs) * 100 : 0;
+  ctx.font = '10px monospace';
+  ctx.fillStyle = overhead > 30 ? '#ef4444' : overhead > 10 ? '#f59e0b' : '#10b981';
+  ctx.textAlign = 'center';
+  ctx.fillText(`Overhead: ${overhead.toFixed(1)}% (${STATE.totalCostUs.toFixed(0)} µs switching)`, W / 2, barY - 20);
+}
+
+function animate() {
+  drawTimeline();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   CONTEXT SWITCH
+   ============================================================ */
+async function doContextSwitch() {
+  if (STATE.switching) return;
+  STATE.switching = true;
+
+  // Cost calculation
+  const registerCost = STATE.registers * 2;                  // ~2 cycles per register saved and loaded
+  const tlbCost = STATE.tlbTagging ? 20 : STATE.tlbSize * 0.5;  // Tagged TLB avoids flush
+  const cacheCost = STATE.smartFlush ? 200 : STATE.l1Cache * 8;  // Cache pollution cost
+  const totalCost = registerCost + tlbCost + cacheCost + 40;  // +40 for mode switches, schedule, etc.
+
+  STATE.switchCount++;
+  STATE.totalCostUs += totalCost;
+  if (!STATE.tlbTagging) STATE.tlbMisses += STATE.tlbSize;
+
+  showStatus(`🔄 CONTEXT SWITCH #${STATE.switchCount} (${totalCost.toFixed(0)} µs)`, 'phase');
+  teach('SWITCH START',
+    `Context switch triggered. The kernel will run through 6 phases: enter kernel mode, save Process ${STATE.currentProcess}'s registers to its PCB, flush/tag TLB, load Process ${STATE.currentProcess === 'A' ? 'B' : 'A'}'s PCB, restore its registers, and return to user mode. Estimated cost: ${totalCost.toFixed(0)} µs.`,
+    'warn'
+  );
+
+  // Phase 1: Enter kernel mode
+  await sleep(150);
+  showStatus('Phase 1/6: Enter kernel mode');
+  await sleep(200);
+
+  // Phase 2: Save current process PCB
+  const savingProc = STATE.currentProcess;
+  renderPCB(savingProc);
+  showStatus(`Phase 2/6: Save Process ${savingProc} registers to PCB`);
+  teach('SAVE REGISTERS',
+    `Saving Process ${savingProc}'s CPU state to its PCB. The kernel copies all ${STATE.registers} general-purpose registers, the program counter, stack pointer, and status flags into the PCB. When this process runs again, this exact state will be restored.`,
+    'info', false
+  );
+  await sleep(300);
+
+  // Phase 3: TLB
+  showStatus('Phase 3/6: Flush or tag TLB');
+  if (STATE.tlbTagging) {
+    teach('TLB TAGGED',
+      `TLB uses ASID (Address Space ID) tagging. Instead of flushing all ${STATE.tlbSize} entries, we just change the ASID register. Entries for both processes coexist. This is a huge optimization — modern CPUs implement it. Cost: ~20 cycles instead of ~${(STATE.tlbSize * 0.5).toFixed(0)}.`,
+      'ok', false
+    );
+  } else {
+    teach('TLB FLUSH',
+      `Flushing all ${STATE.tlbSize} TLB entries. The TLB caches virtual→physical address translations — after the switch, they're all invalid because the new process has a different address space. Next memory access will need a page table walk to refill the TLB. This is one of the biggest costs of context switching.`,
+      'error', false
+    );
+  }
+  await sleep(300);
+
+  // Phase 4: Load new process
+  const newProc = STATE.currentProcess === 'A' ? 'B' : 'A';
+  STATE.currentProcess = newProc;
+  renderPCB(newProc);
+  showStatus(`Phase 4/6: Load Process ${newProc} PCB`);
+  await sleep(300);
+
+  // Phase 5: Restore registers
+  showStatus(`Phase 5/6: Restore Process ${newProc} registers`);
+  teach('RESTORE REGISTERS',
+    `Restoring Process ${newProc}'s registers from its PCB. Its program counter, stack pointer, and all general-purpose registers are loaded back into the CPU. The process resumes exactly where it left off — it doesn't even know it was paused.`,
+    'info', false
+  );
+  await sleep(300);
+
+  // Phase 6: Return to user mode
+  showStatus('Phase 6/6: Return to user mode');
+  await sleep(200);
+
+  // Add to timeline
+  addSegment('switch', totalCost);
+  // Add a small run segment for the new process
+  addSegment(newProc, 300 + Math.random() * 400);
+
+  // Update UI
+  DOM.pcbA.classList.toggle('dimmed', STATE.currentProcess !== 'A');
+  DOM.pcbB.classList.toggle('dimmed', STATE.currentProcess !== 'B');
+  DOM.stateA.textContent = STATE.currentProcess === 'A' ? 'RUNNING' : 'READY';
+  DOM.stateA.className = 'state-badge ' + (STATE.currentProcess === 'A' ? 'running' : 'saved');
+  DOM.stateB.textContent = STATE.currentProcess === 'B' ? 'RUNNING' : 'READY';
+  DOM.stateB.className = 'state-badge ' + (STATE.currentProcess === 'B' ? 'running' : 'saved');
+
+  updateMetrics();
+
+  teach('SWITCH COMPLETE',
+    `Switch #${STATE.switchCount} complete. CPU now runs Process ${newProc}. Cost: ${totalCost.toFixed(0)} µs, split as: registers=${registerCost}µs, TLB=${tlbCost.toFixed(0)}µs, cache=${cacheCost}µs, mode switches=40µs. ${STATE.tlbTagging ? 'TLB tagging saved ~' + (STATE.tlbSize * 0.5 - 20).toFixed(0) + 'µs. ' : ''}${STATE.smartFlush ? 'Smart cache flush saved ~' + (STATE.l1Cache * 8 - 200).toFixed(0) + 'µs.' : ''}`,
+    'ok'
+  );
+
+  STATE.switching = false;
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.mSwitches.textContent = STATE.switchCount;
+  DOM.mCost.textContent = STATE.totalCostUs.toFixed(0) + ' µs';
+  const overhead = STATE.totalTimeUs > 0 ? (STATE.totalCostUs / STATE.totalTimeUs) * 100 : 0;
+  DOM.mOverhead.textContent = overhead.toFixed(1) + '%';
+  DOM.mOverhead.className = 'metric-value ' + (overhead > 30 ? 'bad' : overhead > 10 ? 'warn' : 'good');
+  DOM.mTlb.textContent = STATE.tlbMisses;
+  DOM.mTlb.className = 'metric-value ' + (STATE.tlbMisses > 1000 ? 'bad' : STATE.tlbMisses > 200 ? 'warn' : 'warn');
+}
+
+/* ============================================================
+   AUTO MODE
+   ============================================================ */
+function toggleAuto() {
+  if (STATE.autoRunning) {
+    STATE.autoRunning = false;
+    clearInterval(STATE.autoTimer);
+    STATE.autoTimer = null;
+    DOM.btnAuto.textContent = '▶ Auto Switching';
+    DOM.btnAuto.classList.remove('danger');
+    DOM.btnAuto.classList.add('success');
+    return;
+  }
+  STATE.autoRunning = true;
+  DOM.btnAuto.textContent = '⏸ Stop Auto';
+  DOM.btnAuto.classList.remove('success');
+  DOM.btnAuto.classList.add('danger');
+
+  teach('AUTO MODE',
+    `Auto-switching on. Each switch costs CPU time — you can see the overhead percentage climbing. If this percentage gets too high (say 30%+), the CPU spends more time switching than working. This is why OSes try to batch work: run one process longer before switching, to amortize the switch cost.`,
+    'warn'
+  );
+
+  STATE.autoTimer = setInterval(() => {
+    if (!STATE.switching) {
+      doContextSwitch();
+    }
+  }, 2500);
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  STATE.autoTimer = null;
+  STATE.autoRunning = false;
+  DOM.btnAuto.textContent = '▶ Auto Switching';
+  DOM.btnAuto.classList.remove('danger');
+  DOM.btnAuto.classList.add('success');
+
+  STATE.currentProcess = 'A';
+  STATE.switchCount = 0;
+  STATE.totalCostUs = 0;
+  STATE.totalTimeUs = 0;
+  STATE.tlbMisses = 0;
+  STATE.segments = [];
+  STATE.switching = false;
+
+  // Add initial "A running" segment
+  addSegment('A', 500);
+
+  DOM.pcbA.classList.remove('dimmed');
+  DOM.pcbB.classList.add('dimmed');
+  DOM.stateA.textContent = 'RUNNING';
+  DOM.stateA.className = 'state-badge running';
+  DOM.stateB.textContent = 'READY';
+  DOM.stateB.className = 'state-badge saved';
+
+  renderPCB('A');
+  renderPCB('B');
+  updateMetrics();
+  DOM.statusBanner.classList.remove('show');
+  teach('RESET', 'Timeline cleared, processes reset.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnSwitch.addEventListener('click', doContextSwitch);
+DOM.btnAuto.addEventListener('click', toggleAuto);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.btnOptTLB.addEventListener('click', () => {
+  STATE.tlbTagging = !STATE.tlbTagging;
+  DOM.btnOptTLB.classList.toggle('active', STATE.tlbTagging);
+  DOM.btnOptTLB.textContent = STATE.tlbTagging ? '✓ TLB Tagging (ASID)' : '🔧 TLB Tagging (ASID)';
+  teach('TLB TAGGING',
+    STATE.tlbTagging
+      ? 'TLB tagging enabled. Modern CPUs support ASID (Address Space ID) — each TLB entry is tagged with its process. On a context switch, the CPU just changes the active ASID instead of flushing. This eliminates almost all TLB refill cost.'
+      : 'TLB tagging disabled. Every context switch flushes the entire TLB — the next memory access for the new process will suffer page table walks.',
+    STATE.tlbTagging ? 'ok' : 'warn'
+  );
+});
+
+DOM.btnOptCache.addEventListener('click', () => {
+  STATE.smartFlush = !STATE.smartFlush;
+  DOM.btnOptCache.classList.toggle('active', STATE.smartFlush);
+  DOM.btnOptCache.textContent = STATE.smartFlush ? '✓ Smart Cache Flush' : '🔧 Smart Cache Flush';
+  teach('CACHE POLLUTION',
+    STATE.smartFlush
+      ? 'Smart cache invalidation enabled. Some architectures (like ARM) use tagged caches that avoid full invalidation. Others use selective invalidation based on which cache lines the new process needs. This reduces the cost significantly.'
+      : 'Cache pollution: after a context switch, the L1 cache is full of the previous process\'s data. The new process will experience cache misses until it "warms up" the cache with its own working set. This can cost thousands of cycles for the first few operations.',
+    STATE.smartFlush ? 'ok' : 'warn'
+  );
+});
+
+DOM.regRange.addEventListener('input', e => {
+  STATE.registers = parseInt(e.target.value);
+  DOM.regVal.textContent = STATE.registers;
+  renderPCB('A');
+  renderPCB('B');
+});
+DOM.tlbRange.addEventListener('input', e => {
+  STATE.tlbSize = parseInt(e.target.value);
+  DOM.tlbVal.textContent = STATE.tlbSize;
+  renderPCB('A');
+  renderPCB('B');
+});
+DOM.l1Range.addEventListener('input', e => {
+  STATE.l1Cache = parseInt(e.target.value);
+  DOM.l1Val.textContent = STATE.l1Cache;
+  renderPCB('A');
+  renderPCB('B');
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Context Switching. When the OS switches from one process to another — because of a time quantum expiring, I/O blocking, or a higher-priority process arriving — it must save the current process's CPU state and restore the next process's state. This costs real time, but it's what enables multitasking.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE COST',
+      `A context switch costs roughly 1-10 microseconds on modern hardware. That doesn't sound like much until you realize: if the switch happens every 1ms (typical for real-time systems), you lose 0.1-1% of CPU time to switching alone. Under heavy load, this can balloon to 10-30%, and the CPU spends more time switching than doing useful work — this is called "thrashing".`,
+      'warn'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE BIG COSTS',
+      `Three components dominate: (1) TLB flush — every cached virtual→physical mapping becomes invalid, so the new process pays for page table walks. (2) Cache pollution — the L1 cache is full of the previous process's data, so the new process has cold-start misses. (3) Register save/restore — cheap on its own, but adds up. Modern CPUs solve TLB costs with ASID tagging and reduce cache costs with tagged caches.`,
+      'error'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('REDUCING SWITCH COST',
+      `Real systems minimize switches with: (1) Longer time quanta (fewer switches per second). (2) Thread scheduling instead of process scheduling (threads share address space, so no TLB flush). (3) CPU affinity — keep a process on the same core to reuse its warm cache. (4) Batched system calls — do more per kernel entry. Try toggling TLB tagging and smart cache flush to see the impact.`,
+      'ok'
+    );
+  }, 13500);
+
+  showToast('👋 Click FORCE CONTEXT SWITCH to see the phases', 4500);
+}, 500);
+</script>
+</body>
+</html>

@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chaos Engineering &amp; Fault Injection — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #ef4444, #f59e0b, #ec4899);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(239,68,68,0.15);
+    color: #fca5a5;
+    border-color: #ef4444;
+  }
+  .teaching-toggle:hover { background: rgba(239,68,68,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fca5a5;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #ef4444; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #ef4444; color: #fff; border-color: #ef4444; }
+  .btn.primary:hover { background: #dc2626; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fca5a5; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #ef4444; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(239,68,68,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* HYPOTHESIS BAR */
+  .hypothesis-bar {
+    background: #070a14;
+    border: 2px solid #ef4444;
+    border-radius: 12px;
+    padding: 10px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 0 25px rgba(239,68,68,0.15);
+    flex-shrink: 0;
+  }
+  .hyp-info {
+    font-family: monospace;
+    font-size: 0.65rem;
+    color: #cbd5e1;
+  }
+  .hyp-info .title {
+    color: #fca5a5;
+    font-weight: 900;
+    letter-spacing: 1px;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .hyp-status {
+    font-family: monospace;
+    font-size: 0.7rem;
+    font-weight: 900;
+    padding: 5px 14px;
+    border-radius: 20px;
+    letter-spacing: 1px;
+  }
+  .hyp-status.idle { background: rgba(100,116,139,0.2); color: #94a3b8; border: 2px solid #475569; }
+  .hyp-status.running { background: rgba(245,158,11,0.2); color: #fcd34d; border: 2px solid #f59e0b; animation: hypPulse 1s ease-in-out infinite; }
+  .hyp-status.passed { background: rgba(16,185,129,0.2); color: #6ee7b7; border: 2px solid #10b981; }
+  .hyp-status.failed { background: rgba(239,68,68,0.2); color: #fca5a5; border: 2px solid #ef4444; }
+  @keyframes hypPulse { 50% { opacity: 0.6; } }
+
+  /* SERVICE MESH VIEW */
+  .mesh-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(139,92,246,0.15);
+    min-height: 0;
+  }
+  .mesh-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #meshCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+  }
+
+  /* EXPERIMENT LOG */
+  .log-wrap {
+    background: #070a14;
+    border: 2px solid #10b981;
+    border-radius: 12px;
+    padding: 10px 12px;
+    height: 140px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 20px rgba(16,185,129,0.15);
+    flex-shrink: 0;
+  }
+  .log-title {
+    font-size: 0.58rem;
+    letter-spacing: 2px;
+    color: #6ee7b7;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .log-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    padding: 6px 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.58rem;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .log-entry { color: #cbd5e1; padding: 1px 4px; border-radius: 2px; border-left: 2px solid transparent; }
+  .log-entry.info { border-left-color: #3b82f6; color: #cbd5e1; }
+  .log-entry.success { border-left-color: #10b981; color: #86efac; }
+  .log-entry.error { border-left-color: #ef4444; color: #fca5a5; }
+  .log-entry.warn { border-left-color: #f59e0b; color: #fcd34d; }
+  .log-entry.system { border-left-color: #a855f7; color: #c4b5fd; }
+  .log-entry .ts { color: #475569; margin-right: 6px; font-size: 0.5rem; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(239,68,68,0.06);
+    border: 1px solid rgba(239,68,68,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fca5a5;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #ef4444;
+    background: rgba(239,68,68,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(239,68,68,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fca5a5;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #ef4444;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(239,68,68,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #ef4444;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fca5a5;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(239,68,68,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.safe { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>CHAOS ENGINEERING</h1>
+    <span class="sub">FAULT INJECTION · STEADY STATE · BLAST RADIUS</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Experiments</h3>
+      <button class="btn primary" id="btnRunExp">▶ Run Experiment</button>
+      <button class="btn danger" id="btnKillOne">💀 Kill 1 Pod</button>
+      <button class="btn danger" id="btnKillMany">💥 Kill 50% Pods</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Fault Types</h3>
+      <button class="btn warn" id="btnLatency">🐌 Add Latency</button>
+      <button class="btn warn" id="btnPacketLoss">📡 Packet Loss</button>
+      <button class="btn danger" id="btnCPU">🔥 CPU Stress</button>
+      <button class="btn danger" id="btnPartition">🔌 Partition Net</button>
+    </div>
+
+    <div class="panel">
+      <h3>Blast Radius</h3>
+      <div class="slider-row"><span>Scope</span><span class="value" id="radiusVal">1 service</span></div>
+      <input type="range" id="radiusRange" min="1" max="4" value="1">
+      <div style="font-size:0.6rem; color:#64748b; line-height:1.5;">
+        1=one pod · 2=one service · 3=one region · 4=global
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Hypothesis</h3>
+      <div style="font-size:0.65rem; color:#94a3b8; line-height:1.5; padding:6px; background:rgba(30,41,59,0.4); border-radius:6px;">
+        If one pod of the payments service fails, the API should maintain p99 latency &lt; 200ms and error rate &lt; 1%.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#22c55e;border-radius:50%;margin-right:6px;"></span>Healthy pod</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:50%;margin-right:6px;"></span>Degraded</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:50%;margin-right:6px;"></span>Failed</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">BREAK THINGS ON PURPOSE · IN A CONTROLLED WAY · TO BUILD CONFIDENCE</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="hypothesis-bar">
+          <div class="hyp-info">
+            <span class="title" id="hypTitle">🧪 EXPERIMENT: IDLE</span>
+            <span id="hypDesc">Click RUN EXPERIMENT to inject a fault and observe the system.</span>
+          </div>
+          <span class="hyp-status idle" id="hypStatus">IDLE</span>
+        </div>
+
+        <div class="mesh-wrap">
+          <div class="mesh-title">
+            <span>🕸️ SERVICE MESH</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="meshHint">— 3 services · 9 pods —</span>
+          </div>
+          <canvas id="meshCanvas"></canvas>
+        </div>
+
+        <div class="log-wrap">
+          <div class="log-title">
+            <span>📋 EXPERIMENT LOG</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="logHint">— 0 events —</span>
+          </div>
+          <div class="log-body" id="logBody"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Healthy</div>
+        <div class="metric-value good" id="mHealthy">9/9</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">p99 Latency</div>
+        <div class="metric-value warn" id="mLatency">48 ms</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Error Rate</div>
+        <div class="metric-value good" id="mErrors">0.02%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Experiments</div>
+        <div class="metric-value" id="mExps">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Chaos Principles</div>
+      <div class="info-row"><span class="lbl">Steady state</span><span class="val good">Baseline metrics</span></div>
+      <div class="info-row"><span class="lbl">Hypothesis</span><span class="val">"System survives X"</span></div>
+      <div class="info-row"><span class="lbl">Blast radius</span><span class="val warn">Start small</span></div>
+      <div class="info-row"><span class="lbl">Auto-abort</span><span class="val good">Halt on harm</span></div>
+      <div class="info-row"><span class="lbl">Game days</span><span class="val">Team exercises</span></div>
+      <div class="info-row"><span class="lbl">Systems</span><span class="val">Chaos Monkey, Litmus, Gremlin</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  pods: [],
+  baseline: { latency: 48, errors: 0.02 },
+  current: { latency: 48, errors: 0.02 },
+  experimentCount: 0,
+  running: false,
+  blastRadius: 1,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const SERVICES = [
+  { id: 'gateway', name: 'API Gateway', pods: 3, color: '#a855f7' },
+  { id: 'orders', name: 'Orders', pods: 3, color: '#06b6d4' },
+  { id: 'payments', name: 'Payments', pods: 3, color: '#ec4899' }
+];
+
+/* ============================================================
+   DOM
+   ============================================================ */
+const DOM = {
+  meshCanvas: document.getElementById('meshCanvas'),
+  meshHint: document.getElementById('meshHint'),
+  logBody: document.getElementById('logBody'),
+  logHint: document.getElementById('logHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  hypTitle: document.getElementById('hypTitle'),
+  hypDesc: document.getElementById('hypDesc'),
+  hypStatus: document.getElementById('hypStatus'),
+  // Buttons
+  btnRunExp: document.getElementById('btnRunExp'),
+  btnKillOne: document.getElementById('btnKillOne'),
+  btnKillMany: document.getElementById('btnKillMany'),
+  btnReset: document.getElementById('btnReset'),
+  btnLatency: document.getElementById('btnLatency'),
+  btnPacketLoss: document.getElementById('btnPacketLoss'),
+  btnCPU: document.getElementById('btnCPU'),
+  btnPartition: document.getElementById('btnPartition'),
+  radiusRange: document.getElementById('radiusRange'),
+  radiusVal: document.getElementById('radiusVal'),
+  // Metrics
+  mHealthy: document.getElementById('mHealthy'),
+  mLatency: document.getElementById('mLatency'),
+  mErrors: document.getElementById('mErrors'),
+  mExps: document.getElementById('mExps'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2500);
+}
+
+let LOG_TS = 0;
+function logEntry(cls, msg) {
+  LOG_TS++;
+  const el = document.createElement('div');
+  el.className = `log-entry ${cls}`;
+  el.innerHTML = `<span class="ts">[${String(LOG_TS).padStart(3, '0')}]</span>${msg}`;
+  DOM.logBody.prepend(el);
+  while (DOM.logBody.children.length > 30) DOM.logBody.lastChild.remove();
+  DOM.logHint.textContent = `${LOG_TS} events`;
+}
+
+function clearLog() {
+  LOG_TS = 0;
+  DOM.logBody.innerHTML = '';
+  DOM.logHint.textContent = '0 events';
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining chaos engineering.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   POD INIT
+   ============================================================ */
+function initPods() {
+  STATE.pods = [];
+  let y = 0.2;
+  for (const svc of SERVICES) {
+    for (let i = 0; i < svc.pods; i++) {
+      STATE.pods.push({
+        id: `${svc.id}-pod-${i + 1}`,
+        service: svc.id,
+        serviceName: svc.name,
+        color: svc.color,
+        state: 'healthy',  // healthy | degraded | failed
+        x: 0.15 + SERVICES.indexOf(svc) * 0.35,
+        y: y,
+        fault: null
+      });
+    }
+    y += 0.25;
+  }
+}
+
+/* ============================================================
+   CANVAS
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.meshCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawCanvas() {
+  const canvas = DOM.meshCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Group pods by service
+  const byService = {};
+  for (const pod of STATE.pods) {
+    if (!byService[pod.service]) byService[pod.service] = [];
+    byService[pod.service].push(pod);
+  }
+
+  // Draw service boxes and pods
+  let serviceX = 0.15;
+  for (const svc of SERVICES) {
+    const pods = byService[svc.id] || [];
+    const boxX = serviceX * W - 70;
+    const boxY = 30;
+    const boxW = 140;
+    const boxH = H - 60;
+
+    // Service box
+    ctx.strokeStyle = svc.color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.roundRect(boxX, boxY, boxW, boxH, 10);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Service label
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = svc.color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(svc.name.toUpperCase(), boxX + boxW / 2, boxY - 18);
+
+    // Draw pods vertically
+    const podSpacing = (boxH - 40) / Math.max(pods.length, 1);
+    pods.forEach((pod, i) => {
+      const px = boxX + boxW / 2;
+      const py = boxY + 30 + i * podSpacing;
+
+      // Pod glow for active states
+      if (pod.state === 'failed') {
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 15;
+      } else if (pod.state === 'degraded') {
+        ctx.shadowColor = '#f59e0b';
+        ctx.shadowBlur = 15;
+      }
+
+      ctx.beginPath();
+      ctx.arc(px, py, 20, 0, Math.PI * 2);
+      ctx.fillStyle = pod.state === 'failed' ? '#2a0f0f' :
+                      pod.state === 'degraded' ? '#2a1e0f' : '#0f2a1e';
+      ctx.fill();
+      ctx.strokeStyle = pod.state === 'failed' ? '#ef4444' :
+                        pod.state === 'degraded' ? '#f59e0b' : '#22c55e';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Icon
+      ctx.font = '14px monospace';
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pod.state === 'failed' ? '💀' : pod.state === 'degraded' ? '🐌' : '✓', px, py);
+
+      // Fault label
+      if (pod.fault) {
+        ctx.font = '8px monospace';
+        ctx.fillStyle = pod.state === 'failed' ? '#fca5a5' : '#fcd34d';
+        ctx.textBaseline = 'top';
+        ctx.fillText(pod.fault, px, py + 24);
+      }
+    });
+
+    serviceX += 0.35;
+  }
+}
+
+function animate() {
+  drawCanvas();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  const healthy = STATE.pods.filter(p => p.state === 'healthy').length;
+  const degraded = STATE.pods.filter(p => p.state === 'degraded').length;
+  const failed = STATE.pods.filter(p => p.state === 'failed').length;
+
+  DOM.mHealthy.textContent = `${healthy}/${STATE.pods.length}`;
+  DOM.mHealthy.className = 'metric-value ' + (failed === 0 && degraded === 0 ? 'good' : failed > STATE.pods.length / 2 ? 'bad' : 'warn');
+
+  DOM.mLatency.textContent = STATE.current.latency.toFixed(0) + ' ms';
+  DOM.mLatency.className = 'metric-value ' + (STATE.current.latency > 200 ? 'bad' : STATE.current.latency > 100 ? 'warn' : 'warn');
+
+  DOM.mErrors.textContent = STATE.current.errors.toFixed(2) + '%';
+  DOM.mErrors.className = 'metric-value ' + (STATE.current.errors > 5 ? 'bad' : STATE.current.errors > 1 ? 'warn' : 'good');
+
+  DOM.mExps.textContent = STATE.experimentCount;
+}
+
+function recalcMetrics() {
+  const failed = STATE.pods.filter(p => p.state === 'failed').length;
+  const degraded = STATE.pods.filter(p => p.state === 'degraded').length;
+
+  // Latency grows with failed/degraded pods
+  STATE.current.latency = STATE.baseline.latency + failed * 40 + degraded * 20 + Math.random() * 10;
+  // Error rate grows non-linearly
+  STATE.current.errors = STATE.baseline.errors + failed * 1.2 + degraded * 0.4 + Math.random() * 0.2;
+
+  updateMetrics();
+}
+
+/* ============================================================
+   EXPERIMENTS
+   ============================================================ */
+function runExperiment() {
+  STATE.experimentCount++;
+  STATE.running = true;
+  DOM.hypStatus.textContent = 'RUNNING';
+  DOM.hypStatus.className = 'hyp-status running';
+  DOM.hypTitle.textContent = '🧪 EXPERIMENT RUNNING';
+  DOM.hypDesc.textContent = `Injecting faults with blast radius = ${STATE.blastRadius} (${getRadiusLabel()})`;
+
+  logEntry('system', `Experiment #${STATE.experimentCount} started`);
+  logEntry('info', `Baseline: p99=${STATE.baseline.latency}ms, errors=${STATE.baseline.errors}%`);
+
+  showStatus('🧪 Experiment running');
+  teach('EXPERIMENT STARTED',
+    `Chaos experiment started. Before injecting faults, we record the "steady state" — the normal p99 latency and error rate. This is our baseline. Then we inject a fault and observe whether the system stays within acceptable bounds. If it does, our hypothesis holds.`,
+    'purple'
+  );
+
+  // Inject random fault based on blast radius
+  setTimeout(() => {
+    injectRandomFault();
+  }, 800);
+
+  // Evaluate after some time
+  setTimeout(() => {
+    evaluateExperiment();
+  }, 4500);
+}
+
+function injectRandomFault() {
+  const faults = ['kill', 'latency', 'packet', 'cpu'];
+  const fault = faults[Math.floor(Math.random() * faults.length)];
+  injectFault(fault);
+}
+
+function injectFault(type) {
+  // Determine targets based on blast radius
+  let targets = [];
+  if (STATE.blastRadius === 1) {
+    // One random pod
+    targets = [STATE.pods[Math.floor(Math.random() * STATE.pods.length)]];
+  } else if (STATE.blastRadius === 2) {
+    // All pods of one random service
+    const svc = SERVICES[Math.floor(Math.random() * SERVICES.length)];
+    targets = STATE.pods.filter(p => p.service === svc.id);
+  } else if (STATE.blastRadius === 3) {
+    // All pods of payments + one other
+    const svc = SERVICES[Math.floor(Math.random() * SERVICES.length)];
+    targets = STATE.pods.filter(p => p.service === svc.id || p.service === 'payments');
+  } else {
+    // Global — all pods
+    targets = STATE.pods.slice();
+  }
+
+  const faultNames = {
+    kill: 'killed',
+    latency: '+latency',
+    packet: 'loss',
+    cpu: 'cpu'
+  };
+
+  for (const pod of targets) {
+    if (type === 'kill') {
+      pod.state = 'failed';
+      pod.fault = 'dead';
+    } else if (type === 'latency') {
+      pod.state = 'degraded';
+      pod.fault = '+250ms';
+    } else if (type === 'packet') {
+      pod.state = 'degraded';
+      pod.fault = '25% loss';
+    } else if (type === 'cpu') {
+      pod.state = 'degraded';
+      pod.fault = '90% CPU';
+    }
+  }
+
+  recalcMetrics();
+
+  const targetNames = targets.map(t => t.id).join(', ');
+  logEntry('error', `Injected ${faultNames[type]} on: ${targetNames}`);
+  showStatus(`💥 Fault injected: ${faultNames[type]}`, '');
+
+  const descs = {
+    kill: 'KILLED a pod. The pod is gone — traffic should re-route to remaining pods if the service is properly designed with redundancy.',
+    latency: 'Injected LATENCY. Pods respond slowly — this tests timeout handling, circuit breakers, and whether latency propagates.',
+    packet: 'Injected PACKET LOSS. Network is unreliable — this tests retry logic and whether the system can tolerate transient failures.',
+    cpu: 'Injected CPU STRESS. Pods are resource-starved — this tests whether the system degrades gracefully under load.'
+  };
+  teach('FAULT INJECTED', descs[type] + ` Blast radius: ${getRadiusLabel()}.`, type === 'kill' ? 'error' : 'warn');
+}
+
+function evaluateExperiment() {
+  // Define pass criteria based on hypothesis
+  const passed = STATE.current.latency < 200 && STATE.current.errors < 1.0;
+
+  if (passed) {
+    DOM.hypStatus.textContent = 'PASSED';
+    DOM.hypStatus.className = 'hyp-status passed';
+    DOM.hypTitle.textContent = '✅ HYPOTHESIS HELD';
+    DOM.hypDesc.textContent = `System survived with p99=${STATE.current.latency.toFixed(0)}ms, errors=${STATE.current.errors.toFixed(2)}%`;
+    logEntry('success', `PASSED: p99=${STATE.current.latency.toFixed(0)}ms < 200ms, errors=${STATE.current.errors.toFixed(2)}% < 1%`);
+    showStatus('✅ Hypothesis held', 'safe');
+    teach('HYPOTHESIS HELD',
+      `The system survived the fault injection. p99 latency stayed under 200ms and error rate stayed under 1%. This is confidence — you now KNOW (not hope) that the system tolerates this failure. Do this often enough, and your on-call incidents become routine.`,
+      'ok'
+    );
+  } else {
+    DOM.hypStatus.textContent = 'FAILED';
+    DOM.hypStatus.className = 'hyp-status failed';
+    DOM.hypTitle.textContent = '❌ HYPOTHESIS FAILED';
+    DOM.hypDesc.textContent = `System degraded: p99=${STATE.current.latency.toFixed(0)}ms, errors=${STATE.current.errors.toFixed(2)}%`;
+    logEntry('error', `FAILED: p99=${STATE.current.latency.toFixed(0)}ms, errors=${STATE.current.errors.toFixed(2)}%`);
+    showStatus('❌ Hypothesis failed', 'danger');
+    teach('HYPOTHESIS FAILED',
+      `The system did NOT survive. Either the latency budget was blown, or the error rate exceeded 1%. This is the value of chaos engineering — you found the weakness in a controlled experiment, not during Black Friday. Now you can fix it: add redundancy, tune circuit breakers, or change timeouts.`,
+      'error'
+    );
+  }
+
+  STATE.running = false;
+}
+
+function getRadiusLabel() {
+  return STATE.blastRadius === 1 ? '1 pod' :
+         STATE.blastRadius === 2 ? '1 service' :
+         STATE.blastRadius === 3 ? '1 region' : 'global';
+}
+
+/* ============================================================
+   MANUAL FAULTS
+   ============================================================ */
+function killOne() {
+  const alive = STATE.pods.filter(p => p.state !== 'failed');
+  if (alive.length === 0) {
+    showToast('⚠ No pods left to kill');
+    return;
+  }
+  const victim = alive[Math.floor(Math.random() * alive.length)];
+  victim.state = 'failed';
+  victim.fault = 'dead';
+  recalcMetrics();
+  logEntry('error', `Killed ${victim.id}`);
+  showStatus(`💀 ${victim.id} killed`);
+  teach('KILL POD',
+    `Killed ${victim.id}. Kubernetes will restart it (self-healing), but during the gap, traffic must be re-routed. A well-designed service with multiple replicas continues serving; a single-replica service goes down. This is the simplest chaos experiment — and the most common.`,
+    'error'
+  );
+}
+
+function killMany() {
+  const alive = STATE.pods.filter(p => p.state !== 'failed');
+  const count = Math.ceil(alive.length / 2);
+  for (let i = 0; i < count; i++) {
+    alive[i].state = 'failed';
+    alive[i].fault = 'dead';
+  }
+  recalcMetrics();
+  logEntry('error', `Killed ${count} pods (50%)`);
+  showStatus(`💥 Killed ${count} pods`, 'danger');
+  teach('BLAST RADIUS',
+    `Killed half of all pods — a much larger blast radius. This tests whether your system can survive a significant capacity loss. Many systems handle 1 pod down fine but crumble when 50% are gone. Chaos experiments reveal exactly where that cliff is, BEFORE it happens in production.`,
+    'error'
+  );
+}
+
+function addLatency() {
+  const victim = STATE.pods.find(p => p.state === 'healthy');
+  if (!victim) return;
+  victim.state = 'degraded';
+  victim.fault = '+250ms';
+  recalcMetrics();
+  logEntry('warn', `Added 250ms latency to ${victim.id}`);
+  teach('LATENCY INJECTION',
+    `Injected 250ms latency into ${victim.id}. Latency is sneakier than outright failures — requests still succeed but slowly. Threads block, connection pools exhaust, and the slow response cascades. This is why latency SLIs matter as much as error rates.`,
+    'warn'
+  );
+}
+
+function addPacketLoss() {
+  const victim = STATE.pods.find(p => p.state === 'healthy');
+  if (!victim) return;
+  victim.state = 'degraded';
+  victim.fault = '25% loss';
+  recalcMetrics();
+  logEntry('warn', `Injected 25% packet loss on ${victim.id}`);
+  teach('PACKET LOSS',
+    `Injected 25% packet loss. Some requests won't reach the pod at all — TCP retries mask this, but latency spikes and occasional timeouts occur. Network chaos is the hardest to diagnose because it's intermittent.`,
+    'warn'
+  );
+}
+
+function addCPUStress() {
+  const victim = STATE.pods.find(p => p.state === 'healthy');
+  if (!victim) return;
+  victim.state = 'degraded';
+  victim.fault = '90% CPU';
+  recalcMetrics();
+  logEntry('warn', `Injected CPU stress on ${victim.id}`);
+  teach('CPU STRESS',
+    `CPU stress on ${victim.id}. Every request takes longer because the pod is competing with a CPU hog. This simulates a noisy-neighbor scenario or a poorly-bounded workload. Fixes: resource limits, pod priorities, or horizontal scaling.`,
+    'warn'
+  );
+}
+
+function partitionNet() {
+  const svc = SERVICES[Math.floor(Math.random() * SERVICES.length)];
+  const targets = STATE.pods.filter(p => p.service === svc.id);
+  for (const p of targets) {
+    p.state = 'degraded';
+    p.fault = 'partitioned';
+  }
+  recalcMetrics();
+  logEntry('error', `Network partition on ${svc.name}`);
+  showStatus(`🔌 Partitioned ${svc.name}`, 'danger');
+  teach('NETWORK PARTITION',
+    `Partitioned the ${svc.name} service — it can't reach other services. This is the P in CAP: some nodes can't see others. The system must decide: fail (CP behavior) or serve stale/degraded (AP behavior). Chaos experiments reveal which your system does.`,
+    'error'
+  );
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  initPods();
+  STATE.current = { ...STATE.baseline };
+  STATE.experimentCount = 0;
+  clearLog();
+  DOM.hypStatus.textContent = 'IDLE';
+  DOM.hypStatus.className = 'hyp-status idle';
+  DOM.hypTitle.textContent = '🧪 EXPERIMENT: IDLE';
+  DOM.hypDesc.textContent = 'Click RUN EXPERIMENT to inject a fault and observe the system.';
+  DOM.statusBanner.classList.remove('show');
+  logEntry('info', 'System reset to steady state');
+  updateMetrics();
+  teach('RESET', 'All pods healthy, metrics back to baseline.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRunExp.addEventListener('click', runExperiment);
+DOM.btnKillOne.addEventListener('click', killOne);
+DOM.btnKillMany.addEventListener('click', killMany);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnLatency.addEventListener('click', addLatency);
+DOM.btnPacketLoss.addEventListener('click', addPacketLoss);
+DOM.btnCPU.addEventListener('click', addCPUStress);
+DOM.btnPartition.addEventListener('click', partitionNet);
+
+DOM.radiusRange.addEventListener('input', e => {
+  STATE.blastRadius = parseInt(e.target.value);
+  DOM.radiusVal.textContent = getRadiusLabel();
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+/* ============================================================
+   POLYFILL
+   ============================================================ */
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+    return this;
+  };
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+initPods();
+updateMetrics();
+logEntry('info', 'System initialized with 9 pods across 3 services');
+logEntry('info', 'Baseline: p99=48ms, errors=0.02%');
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Chaos Engineering. Popularized by Netflix's Chaos Monkey in 2011, chaos engineering is the practice of deliberately injecting failures into production systems to build confidence in their resilience. The goal: find weaknesses BEFORE they find you.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE METHOD',
+      `A chaos experiment has four steps: (1) Define steady state (baseline metrics). (2) Form a hypothesis ("if X fails, the system survives"). (3) Inject the fault in a controlled way. (4) Observe whether the hypothesis held. If not, you've found a bug to fix before it causes an outage.`,
+      'purple'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('BLAST RADIUS',
+      `Always start with the smallest blast radius: one pod, one service, one region. Netflix's early Chaos Monkey killed one random server per day. Only when the system handles that confidently do you increase the scope. Adjust the blast radius slider to see the effect.`,
+      'warn'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('GAME DAYS',
+      `Real chaos engineering often takes the form of "game days": pre-scheduled, team-wide exercises where you inject faults in staging or production while the whole team watches. This builds operational muscle memory and reveals assumptions that no amount of code review can find.`,
+      'ok'
+    );
+  }, 13500);
+
+  showToast('👋 Run an experiment, then adjust blast radius', 4500);
+}, 500);
+</script>
+</body>
+</html>

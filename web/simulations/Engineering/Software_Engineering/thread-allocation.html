@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thread Allocation &amp; Context Switching — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #06b6d4, #3b82f6, #8b5cf6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(6,182,212,0.15); color: #67e8f9; border-color: #06b6d4; }
+  .teaching-toggle:hover { background: rgba(6,182,212,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #67e8f9;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit; letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #06b6d4; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #06b6d4; color: #032028; border-color: #06b6d4; }
+  .btn.primary:hover { background: #0891b2; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #67e8f9; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #06b6d4; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(6,182,212,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .kernel-wrap {
+    flex: 1.4; background: #070a14; border: 2px solid #06b6d4; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(6,182,212,0.15); min-height: 0;
+  }
+  .kernel-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #67e8f9; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #kernelCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .threads-strip {
+    background: #070a14; border: 2px solid #8b5cf6; border-radius: 12px;
+    padding: 10px 12px; display: flex; gap: 8px; flex-shrink: 0;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15); overflow-x: auto; min-height: 90px;
+    align-items: center;
+  }
+  .thread-chip {
+    padding: 6px 12px; border-radius: 6px; font-family: monospace; font-size: 0.6rem;
+    font-weight: 800; background: #1e293b; color: #cbd5e1; border: 2px solid #334155;
+    letter-spacing: 0.5px; flex-shrink: 0; transition: all 0.3s; text-align: center;
+  }
+  .thread-chip.running {
+    background: rgba(16,185,129,0.2); border-color: #10b981; color: #86efac;
+    box-shadow: 0 0 12px rgba(16,185,129,0.5);
+  }
+  .thread-chip.ready { background: rgba(59,130,246,0.15); border-color: #3b82f6; color: #93c5fd; }
+  .thread-chip.blocked { background: rgba(245,158,11,0.15); border-color: #f59e0b; color: #fcd34d; }
+  .thread-chip.done { background: rgba(100,116,139,0.2); border-color: #475569; color: #64748b; opacity: 0.6; }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(6,182,212,0.06); border: 1px solid rgba(6,182,212,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #67e8f9; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem; line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #06b6d4;
+    background: rgba(6,182,212,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(6,182,212,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(6,182,212,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #67e8f9;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #06b6d4; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(6,182,212,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #06b6d4; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem; letter-spacing: 1.5px;
+    font-weight: 800; color: #67e8f9; z-index: 12;
+    box-shadow: 0 0 20px rgba(6,182,212,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>THREAD ALLOCATION</h1>
+    <span class="sub">KERNEL · USER · HYBRID THREADS · THREAD POOLS</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Thread Model</h3>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.7rem; color:#94a3b8;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="model" value="many-to-one" style="accent-color:#06b6d4;">
+          Many-to-One (green threads)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="model" value="one-to-one" checked style="accent-color:#06b6d4;">
+          One-to-One (OS threads)
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:4px; border-radius:4px;">
+          <input type="radio" name="model" value="many-to-many" style="accent-color:#06b6d4;">
+          Many-to-Many (hybrid)
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Simulation</h3>
+      <button class="btn primary" id="btnRun">▶ Run Scheduler</button>
+      <button class="btn" id="btnStep">⏭ Step Tick</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Spawn Threads</h3>
+      <button class="btn" id="btnAddCpu">⚙️ Add CPU-bound</button>
+      <button class="btn" id="btnAddIO">💬 Add I/O-bound</button>
+      <button class="btn warn" id="btnAddBatch">⚡ Batch of 10</button>
+    </div>
+
+    <div class="panel">
+      <h3>Config</h3>
+      <div class="slider-row"><span>CPU cores</span><span class="value" id="coresVal">4</span></div>
+      <input type="range" id="coresRange" min="1" max="8" value="4">
+      <div class="slider-row"><span>Speed</span><span class="value" id="speedVal">3×</span></div>
+      <input type="range" id="speedRange" min="1" max="10" value="3">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:50%;margin-right:6px;"></span>Running</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:50%;margin-right:6px;"></span>Ready</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:50%;margin-right:6px;"></span>Blocked (I/O)</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">USER THREADS MAPPED ONTO KERNEL THREADS ONTO CPU CORES</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="kernel-wrap">
+          <div class="kernel-title">
+            <span>🧠 KERNEL SCHEDULER · CPU CORES</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="kernelHint">— click RUN to schedule —</span>
+          </div>
+          <canvas id="kernelCanvas"></canvas>
+        </div>
+        <div class="threads-strip" id="threadsStrip">
+          <span style="font-family:monospace; font-size:0.55rem; color:#64748b; font-weight:800; letter-spacing:1.5px; padding-right:10px; border-right:1px solid #1e293b;">USER THREADS</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Threads</div>
+        <div class="metric-value" id="mThreads">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Running</div>
+        <div class="metric-value good" id="mRunning">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Context Switches</div>
+        <div class="metric-value warn" id="mSwitches">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Done</div>
+        <div class="metric-value" id="mDone">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Thread Models</div>
+      <div class="info-row"><span class="lbl">One-to-One</span><span class="val good">Linux, Windows</span></div>
+      <div class="info-row"><span class="lbl">Many-to-One</span><span class="val warn">Green threads</span></div>
+      <div class="info-row"><span class="lbl">Many-to-Many</span><span class="val">Go, Java (Loom)</span></div>
+      <div class="info-row"><span class="lbl">User thread</span><span class="val">Fast create/switch</span></div>
+      <div class="info-row"><span class="lbl">Kernel thread</span><span class="val">Real parallelism</span></div>
+      <div class="info-row"><span class="lbl">Blocking call</span><span class="val bad">Blocks all in user model</span></div>
+      <div class="info-row"><span class="lbl">Thread pool</span><span class="val good">Reuse, bound resources</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  threads: [],
+  nextTid: 1,
+  cores: 4,
+  model: 'one-to-one',
+  running: false,
+  simTime: 0,
+  contextSwitches: 0,
+  speed: 3,
+  timer: null,
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  kernelCanvas: document.getElementById('kernelCanvas'),
+  kernelHint: document.getElementById('kernelHint'),
+  threadsStrip: document.getElementById('threadsStrip'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnAddCpu: document.getElementById('btnAddCpu'),
+  btnAddIO: document.getElementById('btnAddIO'),
+  btnAddBatch: document.getElementById('btnAddBatch'),
+  coresRange: document.getElementById('coresRange'),
+  coresVal: document.getElementById('coresVal'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  mThreads: document.getElementById('mThreads'),
+  mRunning: document.getElementById('mRunning'),
+  mSwitches: document.getElementById('mSwitches'),
+  mDone: document.getElementById('mDone'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg) {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.classList.add('show');
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining thread allocation models.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#f97316', '#a855f7'];
+
+function addThread(kind = 'cpu') {
+  const burst = kind === 'cpu' ? Math.floor(Math.random() * 8) + 4 : Math.floor(Math.random() * 3) + 1;
+  const io = kind === 'io' ? Math.floor(Math.random() * 4) + 2 : 0;
+  const thread = {
+    tid: `T${STATE.nextTid++}`,
+    kind,
+    burst,
+    remaining: burst,
+    ioRemaining: 0,
+    ioCount: io,
+    color: COLORS[(STATE.nextTid - 2) % COLORS.length],
+    state: 'ready',
+    core: null
+  };
+  STATE.threads.push(thread);
+  renderThreads();
+  return thread;
+}
+
+function addCpu() {
+  const t = addThread('cpu');
+  showToast(`⚙️ Added ${t.tid} (burst ${t.burst})`);
+  teach('CPU-BOUND THREAD',
+    `Added CPU-bound thread ${t.tid} — it will use its full time quantum. CPU-bound threads benefit from real parallelism (multiple cores). In a Many-to-One model, they'd all share one kernel thread, so no parallelism.`,
+    'cyan', false
+  );
+}
+
+function addIO() {
+  const t = addThread('io');
+  showToast(`💬 Added ${t.tid} (burst ${t.burst}, ${t.ioCount} I/O ops)`);
+  teach('I/O-BOUND THREAD',
+    `Added I/O-bound thread ${t.tid}. It does short bursts of CPU work, then blocks on I/O. I/O-bound threads benefit most from the One-to-One model: when one blocks, another runs immediately. In Many-to-One, a blocked user thread blocks the entire kernel thread — all peers stall.`,
+    'cyan', false
+  );
+}
+
+function addBatch() {
+  for (let i = 0; i < 10; i++) addThread(i < 5 ? 'cpu' : 'io');
+  showToast('⚡ Added 10 threads');
+  teach('BATCH SPAWN',
+    `Spawned 10 threads at once. Watch the thread strip fill up and the ready queue grow. With more threads than cores, the kernel scheduler must interleave — more context switches, more overhead. This is why thread pools bound concurrency: too many threads means thrashing.`,
+    'warn'
+  );
+}
+
+function stepTick() {
+  STATE.simTime++;
+
+  // Initialize core array
+  const cores = Array(STATE.cores).fill(null);
+
+  // Assign running threads to cores
+  const running = STATE.threads.filter(t => t.state === 'running');
+  running.forEach(t => {
+    if (t.core !== null) cores[t.core] = t;
+  });
+
+  // Scheduler: pick ready threads for free cores
+  for (let c = 0; c < cores.length; c++) {
+    if (cores[c]) continue;
+    const ready = STATE.threads.find(t => t.state === 'ready');
+    if (ready) {
+      ready.state = 'running';
+      ready.core = c;
+      cores[c] = ready;
+      STATE.contextSwitches++;
+    }
+  }
+
+  // Run each active thread
+  for (let c = 0; c < cores.length; c++) {
+    const t = cores[c];
+    if (!t) continue;
+    t.remaining--;
+    if (t.remaining <= 0) {
+      // Either block on I/O or finish
+      if (t.ioCount > 0 && t.ioRemaining === 0) {
+        t.ioCount--;
+        t.state = 'blocked';
+        t.core = null;
+        t.ioRemaining = 2;
+        teach('BLOCKED', `${t.tid} blocked on I/O. In One-to-One models, its core is now free for another thread.`, 'warn', false);
+      } else {
+        t.state = 'done';
+        t.core = null;
+      }
+    }
+  }
+
+  // Wake blocked threads
+  for (const t of STATE.threads) {
+    if (t.state === 'blocked') {
+      t.ioRemaining--;
+      if (t.ioRemaining <= 0) {
+        t.state = 'ready';
+        t.remaining = Math.floor(Math.random() * 3) + 2;
+        teach('WAKE', `${t.tid} finished I/O and is ready to run again.`, 'cyan', false);
+      }
+    }
+  }
+
+  renderThreads();
+  drawCanvas(cores);
+  updateMetrics();
+
+  if (STATE.threads.length > 0 && STATE.threads.every(t => t.state === 'done')) {
+    STATE.running = false;
+    if (STATE.timer) clearInterval(STATE.timer);
+    STATE.timer = null;
+    DOM.btnRun.textContent = '▶ Run Scheduler';
+    showStatus(`✅ All threads complete in ${STATE.simTime} ticks`);
+  }
+}
+
+function renderThreads() {
+  DOM.threadsStrip.innerHTML = '<span style="font-family:monospace; font-size:0.55rem; color:#64748b; font-weight:800; letter-spacing:1.5px; padding-right:10px; border-right:1px solid #1e293b;">USER THREADS</span>';
+  for (const t of STATE.threads) {
+    const chip = document.createElement('div');
+    chip.className = `thread-chip ${t.state}`;
+    chip.innerHTML = `${t.tid}<br><span style="font-size:0.5rem; color:#94a3b8;">${t.kind === 'cpu' ? '⚙️' : '💬'} ${t.remaining}/${t.burst}</span>`;
+    DOM.threadsStrip.appendChild(chip);
+  }
+}
+
+function resizeCanvas() {
+  const canvas = DOM.kernelCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawCanvas(cores) {
+  const canvas = DOM.kernelCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw each core as a horizontal lane
+  const laneH = (H - 40) / STATE.cores;
+  for (let c = 0; c < STATE.cores; c++) {
+    const y = 20 + c * laneH;
+
+    // Core background
+    ctx.fillStyle = 'rgba(30,41,59,0.3)';
+    ctx.fillRect(60, y, W - 80, laneH - 8);
+
+    // Core label
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = '#67e8f9';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`CPU ${c}`, 52, y + (laneH - 8) / 2);
+
+    // Running thread
+    const t = cores[c];
+    if (t) {
+      ctx.fillStyle = t.color;
+      ctx.globalAlpha = 0.6;
+      ctx.fillRect(66, y + 4, (W - 80) * (1 - t.remaining / t.burst), laneH - 16);
+      ctx.globalAlpha = 1;
+
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${t.tid} (${t.kind})`, 76, y + (laneH - 8) / 2);
+
+      // Progress percentage
+      const pct = Math.round((1 - t.remaining / t.burst) * 100);
+      ctx.fillStyle = '#fcd34d';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${pct}%`, W - 20, y + (laneH - 8) / 2);
+    } else {
+      ctx.font = 'bold 11px monospace';
+      ctx.fillStyle = '#475569';
+      ctx.textAlign = 'left';
+      ctx.fillText('— idle —', 76, y + (laneH - 8) / 2);
+    }
+  }
+
+  DOM.kernelHint.textContent = `— ${STATE.cores} cores · ${STATE.threads.filter(t => t.state === 'running').length} running —`;
+}
+
+function animate() {
+  const cores = Array(STATE.cores).fill(null);
+  STATE.threads.filter(t => t.state === 'running').forEach(t => {
+    if (t.core !== null) cores[t.core] = t;
+  });
+  drawCanvas(cores);
+  requestAnimationFrame(animate);
+}
+
+function updateMetrics() {
+  DOM.mThreads.textContent = STATE.threads.length;
+  DOM.mRunning.textContent = STATE.threads.filter(t => t.state === 'running').length;
+  DOM.mSwitches.textContent = STATE.contextSwitches;
+  DOM.mSwitches.className = 'metric-value ' + (STATE.contextSwitches > 40 ? 'bad' : STATE.contextSwitches > 20 ? 'warn' : 'warn');
+  DOM.mDone.textContent = STATE.threads.filter(t => t.state === 'done').length;
+}
+
+function runScheduler() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.timer);
+    STATE.timer = null;
+    DOM.btnRun.textContent = '▶ Run Scheduler';
+    return;
+  }
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+  showStatus(`▶ Scheduling with ${STATE.cores} cores`);
+  teach('SCHEDULING',
+    `Running kernel scheduler. ${STATE.threads.length} threads, ${STATE.cores} cores. Thread model: ${STATE.model}. Watch how the kernel packs threads onto cores.`,
+    'cyan'
+  );
+  STATE.timer = setInterval(stepTick, 1000 / STATE.speed);
+}
+
+function resetAll() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.timer = null;
+  STATE.running = false;
+  STATE.threads = [];
+  STATE.nextTid = 1;
+  STATE.simTime = 0;
+  STATE.contextSwitches = 0;
+  DOM.btnRun.textContent = '▶ Run Scheduler';
+  renderThreads();
+  drawCanvas([]);
+  updateMetrics();
+  showToast('⟲ Reset');
+}
+
+document.querySelectorAll('input[name="model"]').forEach(r => {
+  r.addEventListener('change', e => {
+    STATE.model = e.target.value;
+    const descs = {
+      'many-to-one': 'Many-to-One: Many user-level threads are multiplexed onto ONE kernel thread. Thread creation is very fast (pure user space). BUT: a blocking syscall blocks ALL threads, and no true parallelism on multi-core (kernel sees one thread). Used by old Java "green threads", early Go.',
+      'one-to-one': 'One-to-One: Each user thread maps to one kernel thread. Full parallelism (multi-core). Blocking calls don\'t stall peers. BUT: every thread is a kernel object — expensive to create, and there\'s a limit. This is Linux/Windows default (pthreads, Java threads).',
+      'many-to-many': 'Many-to-Many: N user threads map to M kernel threads. Combines parallelism with cheap user-level creation. Blocked threads don\'t block their peers. Used by Go (goroutines), Erlang, Java 21+ Virtual Threads (Project Loom).'
+    };
+    teach('MODEL: ' + e.target.value.toUpperCase(), descs[e.target.value], 'purple');
+  });
+});
+
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRun.addEventListener('click', runScheduler);
+DOM.btnStep.addEventListener('click', stepTick);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnAddCpu.addEventListener('click', addCpu);
+DOM.btnAddIO.addEventListener('click', addIO);
+DOM.btnAddBatch.addEventListener('click', addBatch);
+DOM.coresRange.addEventListener('input', e => {
+  STATE.cores = parseInt(e.target.value);
+  DOM.coresVal.textContent = STATE.cores;
+});
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseInt(e.target.value);
+  DOM.speedVal.textContent = STATE.speed + '×';
+  if (STATE.running) {
+    clearInterval(STATE.timer);
+    STATE.timer = setInterval(stepTick, 1000 / STATE.speed);
+  }
+});
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+
+// Seed
+addThread('cpu');
+addThread('cpu');
+addThread('io');
+addThread('io');
+addThread('cpu');
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Thread Allocation. A thread is a lightweight unit of execution that shares its process's address space with sibling threads. How threads map to kernel scheduling entities is one of the biggest design choices in an OS or runtime.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('USER vs KERNEL THREADS',
+      `User threads are managed entirely in user space — no syscall needed to create or switch. Blazing fast, but the kernel doesn't know they exist. Kernel threads are real OS-level scheduling entities — visible to the kernel, schedulable on any core. The trade-off: user threads are cheap but can't achieve parallelism; kernel threads are expensive but parallel.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('THREAD POOLS',
+      `In practice, you rarely create threads on-demand. Thread pools keep a fixed set of worker threads and reuse them for tasks. This bounds resource usage and avoids the cost of thread creation. Every web server, database driver, and async runtime uses them. Try the batch button — 10 threads at once is fine, 10,000 would thrash.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Add threads and watch them map to cores. Toggle the model to see how Many-to-One collapses parallelism. Try a batch spawn to see the ready queue overflow the core count.`,
+      'warn'
+    );
+  }, 13000);
+  showToast('👋 Add threads and click RUN', 4500);
+}, 500);
+</script>
+</body>
+</html>

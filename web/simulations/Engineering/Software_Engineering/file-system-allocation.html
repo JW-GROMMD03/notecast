@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>File System Allocation — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #10b981, #06b6d4, #0ea5e9);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(16,185,129,0.15); color: #86efac; border-color: #10b981; }
+  .teaching-toggle:hover { background: rgba(16,185,129,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #86efac;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #10b981; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #10b981; color: #022c22; border-color: #10b981; }
+  .btn.primary:hover { background: #059669; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #10b981; color: #022c22; border-color: #10b981; }
+  .algo-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+  .algo-btn {
+    padding: 7px 4px; background: #02040a; border: 1.5px solid #334155;
+    border-radius: 6px; font-family: monospace; font-size: 0.55rem;
+    font-weight: 800; color: #94a3b8; cursor: pointer;
+    letter-spacing: 0.3px; transition: all 0.2s;
+  }
+  .algo-btn:hover { border-color: #10b981; color: #86efac; }
+  .algo-btn.active {
+    background: rgba(16,185,129,0.2); border-color: #10b981;
+    color: #86efac; box-shadow: 0 0 10px rgba(16,185,129,0.4);
+  }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #86efac; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #10b981; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(16,185,129,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .fs-wrap {
+    flex: 1.2; background: #070a14; border: 2px solid #10b981; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(16,185,129,0.15); min-height: 0;
+  }
+  .fs-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #86efac; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #diskCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .files-strip {
+    background: #070a14; border: 2px solid #8b5cf6; border-radius: 12px;
+    padding: 10px 14px; display: flex; gap: 8px; align-items: center;
+    flex-shrink: 0; overflow-x: auto; min-height: 90px;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15);
+  }
+  .file-chip {
+    padding: 6px 12px; border-radius: 6px; font-family: monospace;
+    font-size: 0.6rem; font-weight: 800; background: #1e293b; color: #cbd5e1;
+    border: 2px solid #334155; flex-shrink: 0; text-align: center;
+  }
+  .file-chip.has-color {
+    background: rgba(16,185,129,0.15);
+  }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #86efac; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #10b981;
+    background: rgba(16,185,129,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(16,185,129,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(16,185,129,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #86efac;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #10b981; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(16,185,129,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #10b981; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #86efac; z-index: 12;
+    box-shadow: 0 0 20px rgba(16,185,129,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.err { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>FILE SYSTEM ALLOCATION</h1>
+    <span class="sub">CONTIGUOUS · LINKED · INDEXED · FAT · INODE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Allocation Method</h3>
+      <div class="algo-grid" id="algoGrid">
+        <button class="algo-btn active" data-algo="contig">CONTIG</button>
+        <button class="algo-btn" data-algo="linked">LINKED</button>
+        <button class="algo-btn" data-algo="indexed">INDEXED</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Files</h3>
+      <button class="btn primary" id="btnCreate">📄 Create File</button>
+      <button class="btn" id="btnCreateBig">📁 Create Large File</button>
+      <button class="btn danger" id="btnDelete">🗑️ Delete File</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Config</h3>
+      <div class="slider-row"><span>Disk blocks</span><span class="value" id="blocksVal">32</span></div>
+      <input type="range" id="blocksRange" min="16" max="64" value="32">
+      <div class="slider-row"><span>Block size</span><span class="value" id="sizeVal">4 KB</span></div>
+      <input type="range" id="sizeRange" min="1" max="16" value="4">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#1e293b;border:1px solid #334155;border-radius:2px;margin-right:6px;"></span>Free block</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:6px;"></span>Data block</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#a855f7;border-radius:2px;margin-right:6px;"></span>Index / pointer block</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">HOW DO YOU FIND A FILE'S BLOCKS ON DISK?</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="fs-wrap">
+          <div class="fs-title">
+            <span>💾 DISK BLOCKS</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="fsHint">— 0/32 used —</span>
+          </div>
+          <canvas id="diskCanvas"></canvas>
+        </div>
+        <div class="files-strip" id="filesStrip">
+          <span style="font-family:monospace; font-size:0.55rem; color:#64748b; font-weight:800; letter-spacing:1.5px; padding-right:10px; border-right:1px solid #1e293b;">FILES</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Used Blocks</div>
+        <div class="metric-value warn" id="mUsed">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Files</div>
+        <div class="metric-value good" id="mFiles">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Overhead</div>
+        <div class="metric-value" id="mOverhead">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Frag. Level</div>
+        <div class="metric-value bad" id="mFrag">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Allocation Methods</div>
+      <div class="info-row"><span class="lbl">Contiguous</span><span class="val good">Fast, but fragments</span></div>
+      <div class="info-row"><span class="lbl">Linked</span><span class="val warn">Flexible, slow seeks</span></div>
+      <div class="info-row"><span class="lbl">Indexed</span><span class="val good">Fast random, overhead</span></div>
+      <div class="info-row"><span class="lbl">FAT</span><span class="val">MS-DOS, whole-disk table</span></div>
+      <div class="info-row"><span class="lbl">Inode</span><span class="val good">Unix/Linux</span></div>
+      <div class="info-row"><span class="lbl">Extent</span><span class="val">Modern: run of blocks</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  method: 'contig',
+  totalBlocks: 32,
+  blockSize: 4,
+  blocks: [],       // {state: 'free'|'data'|'pointer', fileId: null, next: null}
+  files: [],
+  nextFileId: 1,
+  usedBlocks: 0,
+  teaching: true,
+  voiceEnabled: false
+};
+
+const FILE_COLORS = ['#10b981', '#06b6d4', '#a855f7', '#ec4899', '#f97316', '#facc15', '#8b5cf6', '#14b8a6'];
+
+const DOM = {
+  diskCanvas: document.getElementById('diskCanvas'),
+  fsHint: document.getElementById('fsHint'),
+  filesStrip: document.getElementById('filesStrip'),
+  statusBanner: document.getElementById('statusBanner'),
+  algoGrid: document.getElementById('algoGrid'),
+  btnCreate: document.getElementById('btnCreate'),
+  btnCreateBig: document.getElementById('btnCreateBig'),
+  btnDelete: document.getElementById('btnDelete'),
+  btnReset: document.getElementById('btnReset'),
+  blocksRange: document.getElementById('blocksRange'),
+  blocksVal: document.getElementById('blocksVal'),
+  sizeRange: document.getElementById('sizeRange'),
+  sizeVal: document.getElementById('sizeVal'),
+  mUsed: document.getElementById('mUsed'),
+  mFiles: document.getElementById('mFiles'),
+  mOverhead: document.getElementById('mOverhead'),
+  mFrag: document.getElementById('mFrag'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2000);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining file system allocation.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+function initDisk() {
+  STATE.blocks = [];
+  for (let i = 0; i < STATE.totalBlocks; i++) {
+    STATE.blocks.push({ state: 'free', fileId: null, color: null, next: null });
+  }
+  STATE.files = [];
+  STATE.nextFileId = 1;
+  STATE.usedBlocks = 0;
+  drawDisk();
+  renderFiles();
+  updateMetrics();
+}
+
+/* ============================================================
+   CREATE FILES BY METHOD
+   ============================================================ */
+function createFile(bigFile = false) {
+  const blocksNeeded = bigFile ? Math.floor(Math.random() * 3) + 6 : Math.floor(Math.random() * 3) + 2;
+  const fileId = STATE.nextFileId++;
+  const color = FILE_COLORS[(fileId - 1) % FILE_COLORS.length];
+  const file = {
+    id: `f${fileId}`,
+    blocks: blocksNeeded,
+    size: blocksNeeded * STATE.blockSize,
+    color,
+    dataBlocks: [],
+    indexBlock: null,
+    overhead: 0
+  };
+
+  let success = false;
+  if (STATE.method === 'contig') success = allocContig(file);
+  else if (STATE.method === 'linked') success = allocLinked(file);
+  else if (STATE.method === 'indexed') success = allocIndexed(file);
+
+  if (!success) {
+    showStatus(`❌ Not enough space for ${file.blocks} blocks`, 'err');
+    teach('NO SPACE',
+      `Cannot create file — need ${file.blocks} contiguous/free blocks but the disk is too fragmented. ${STATE.method === 'contig' ? 'With CONTIGUOUS allocation, we need a single run of free blocks — external fragmentation kills us.' : 'Not enough free blocks remain.'}`,
+      'error'
+    );
+    return;
+  }
+
+  STATE.files.push(file);
+  renderFiles();
+  drawDisk();
+  updateMetrics();
+}
+
+function allocContig(file) {
+  // Find a contiguous run of `blocks` free blocks
+  for (let start = 0; start <= STATE.totalBlocks - file.blocks; start++) {
+    let ok = true;
+    for (let i = 0; i < file.blocks; i++) {
+      if (STATE.blocks[start + i].state !== 'free') { ok = false; break; }
+    }
+    if (ok) {
+      for (let i = 0; i < file.blocks; i++) {
+        STATE.blocks[start + i].state = 'data';
+        STATE.blocks[start + i].fileId = file.id;
+        STATE.blocks[start + i].color = file.color;
+        file.dataBlocks.push(start + i);
+      }
+      STATE.usedBlocks += file.blocks;
+      showStatus(`✅ ${file.id}: blocks ${start}–${start + file.blocks - 1}`);
+      teach('CONTIGUOUS ALLOC',
+        `${file.id} (${file.blocks} blocks) allocated contiguously at blocks ${start}–${start + file.blocks - 1}. Sequential reads are very fast — just advance the head. Random access also great: block N is just start + N. But finding contiguous runs becomes hard as the disk fills up (external fragmentation).`,
+        'ok'
+      );
+      return true;
+    }
+  }
+  return false;
+}
+
+function allocLinked(file) {
+  // Just find free blocks scattered anywhere
+  const free = STATE.blocks.map((b, i) => i).filter(i => STATE.blocks[i].state === 'free');
+  if (free.length < file.blocks) return false;
+  // Shuffle for realism
+  for (let i = free.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [free[i], free[j]] = [free[j], free[i]];
+  }
+  const chosen = free.slice(0, file.blocks);
+  for (let i = 0; i < chosen.length; i++) {
+    const idx = chosen[i];
+    STATE.blocks[idx].state = 'data';
+    STATE.blocks[idx].fileId = file.id;
+    STATE.blocks[idx].color = file.color;
+    STATE.blocks[idx].next = (i < chosen.length - 1) ? chosen[i + 1] : null;
+    file.dataBlocks.push(idx);
+  }
+  STATE.usedBlocks += file.blocks;
+
+  showStatus(`✅ ${file.id}: ${file.blocks} blocks scattered`);
+  teach('LINKED ALLOCATION',
+    `${file.id} allocated ${file.blocks} blocks anywhere: [${chosen.join(', ')}]. Each block contains a pointer to the next. No external fragmentation — any free block works. Downside: reading block N requires walking the whole chain. Random access is O(N). Also, pointer storage costs space in each block.`,
+    'warn'
+  );
+  return true;
+}
+
+function allocIndexed(file) {
+  const free = STATE.blocks.map((b, i) => i).filter(i => STATE.blocks[i].state === 'free');
+  if (free.length < file.blocks + 1) return false;  // +1 for index block
+  // Take first block as index, rest as data
+  const indexIdx = free[0];
+  const dataIdxs = free.slice(1, file.blocks + 1);
+
+  STATE.blocks[indexIdx].state = 'pointer';
+  STATE.blocks[indexIdx].fileId = file.id;
+  STATE.blocks[indexIdx].color = '#a855f7';
+  file.indexBlock = indexIdx;
+  file.dataBlocks = dataIdxs;
+
+  for (const idx of dataIdxs) {
+    STATE.blocks[idx].state = 'data';
+    STATE.blocks[idx].fileId = file.id;
+    STATE.blocks[idx].color = file.color;
+  }
+  STATE.usedBlocks += file.blocks + 1;
+  file.overhead = 1;
+
+  showStatus(`✅ ${file.id}: index@${indexIdx}, ${file.blocks} data blocks`);
+  teach('INDEXED ALLOCATION',
+    `${file.id} uses an INDEX BLOCK at position ${indexIdx} pointing to data blocks [${dataIdxs.join(', ')}]. Random access is O(1) — go to index block, jump to the Nth pointer. Sequential is also fast. Cost: 1 extra block of overhead per file. UNIX inodes use this pattern with multi-level indirection for large files.`,
+    'ok'
+  );
+  return true;
+}
+
+function deleteFile() {
+  if (STATE.files.length === 0) {
+    showToast('⚠ No files');
+    return;
+  }
+  const file = STATE.files[Math.floor(Math.random() * STATE.files.length)];
+  // Free all blocks used by this file
+  for (const b of STATE.blocks) {
+    if (b.fileId === file.id) {
+      b.state = 'free';
+      b.fileId = null;
+      b.color = null;
+      b.next = null;
+    }
+  }
+  STATE.usedBlocks -= (file.dataBlocks.length + (file.indexBlock !== null ? 1 : 0));
+  STATE.files = STATE.files.filter(f => f.id !== file.id);
+  showStatus(`🗑️ ${file.id} deleted`);
+  teach('DELETE',
+    `Deleted ${file.id}. Its ${file.dataBlocks.length + (file.indexBlock !== null ? 1 : 0)} block(s) are now free. Notice how with contiguous allocation this creates a contiguous hole (good for future large files). With linked or indexed, we're just freeing scattered blocks.`,
+    'warn', false
+  );
+  renderFiles();
+  drawDisk();
+  updateMetrics();
+}
+
+function renderFiles() {
+  DOM.filesStrip.innerHTML = '<span style="font-family:monospace; font-size:0.55rem; color:#64748b; font-weight:800; letter-spacing:1.5px; padding-right:10px; border-right:1px solid #1e293b;">FILES</span>';
+  for (const f of STATE.files) {
+    const el = document.createElement('div');
+    el.className = 'file-chip has-color';
+    el.style.borderColor = f.color;
+    el.style.color = f.color;
+    el.innerHTML = `${f.id}<br><span style="font-size:0.5rem;color:#94a3b8;">${f.blocks} blk · ${f.size}KB</span>`;
+    DOM.filesStrip.appendChild(el);
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.diskCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawDisk() {
+  const canvas = DOM.diskCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid layout: 8 columns
+  const cols = 8;
+  const rows = Math.ceil(STATE.totalBlocks / cols);
+  const padX = 30;
+  const padY = 30;
+  const cellW = (W - padX * 2) / cols;
+  const cellH = (H - padY * 2) / rows;
+
+  for (let i = 0; i < STATE.totalBlocks; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = padX + col * cellW;
+    const y = padY + row * cellH;
+
+    const b = STATE.blocks[i];
+
+    // Cell background
+    let fillColor = '#0f172a';
+    let strokeColor = '#334155';
+    if (b.state === 'data') {
+      fillColor = b.color || '#10b981';
+      strokeColor = '#02040a';
+    } else if (b.state === 'pointer') {
+      fillColor = '#a855f7';
+      strokeColor = '#02040a';
+    }
+
+    ctx.fillStyle = fillColor;
+    ctx.fillRect(x + 3, y + 3, cellW - 6, cellH - 6);
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 3, y + 3, cellW - 6, cellH - 6);
+
+    // Block index
+    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = b.state === 'free' ? '#64748b' : '#02040a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(i, x + cellW / 2, y + 10);
+
+    // Contents
+    if (b.state === 'data') {
+      ctx.font = 'bold 10px monospace';
+      ctx.fillStyle = '#02040a';
+      ctx.fillText(b.fileId, x + cellW / 2, y + cellH / 2);
+
+      // Next pointer for linked allocation
+      if (STATE.method === 'linked' && b.next !== null) {
+        ctx.font = 'bold 8px monospace';
+        ctx.fillStyle = '#022c22';
+        ctx.fillText(`→${b.next}`, x + cellW / 2, y + cellH - 12);
+      }
+    } else if (b.state === 'pointer') {
+      ctx.font = 'bold 10px monospace';
+      ctx.fillStyle = '#fff';
+      ctx.fillText('IDX', x + cellW / 2, y + cellH / 2 - 4);
+      ctx.font = '8px monospace';
+      ctx.fillText(b.fileId, x + cellW / 2, y + cellH / 2 + 8);
+    }
+  }
+
+  // Title
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#86efac';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`METHOD: ${STATE.method.toUpperCase()}`, padX, 10);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(`${STATE.usedBlocks}/${STATE.totalBlocks} blocks used`, W - padX, 10);
+
+  DOM.fsHint.textContent = `— ${STATE.usedBlocks}/${STATE.totalBlocks} used —`;
+}
+
+function animate() {
+  drawDisk();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.mUsed.textContent = STATE.usedBlocks;
+  DOM.mUsed.className = 'metric-value ' + (STATE.usedBlocks > STATE.totalBlocks * 0.8 ? 'bad' : 'warn');
+  DOM.mFiles.textContent = STATE.files.length;
+
+  const totalOverhead = STATE.files.reduce((s, f) => s + (f.indexBlock !== null ? 1 : 0), 0);
+  const pct = STATE.usedBlocks > 0 ? Math.round((totalOverhead / STATE.usedBlocks) * 100) : 0;
+  DOM.mOverhead.textContent = pct + '%';
+
+  // Fragmentation level: count free runs
+  let runs = 0;
+  let inFree = false;
+  for (let i = 0; i < STATE.totalBlocks; i++) {
+    if (STATE.blocks[i].state === 'free' && !inFree) { runs++; inFree = true; }
+    else if (STATE.blocks[i].state !== 'free') inFree = false;
+  }
+  DOM.mFrag.textContent = runs;
+  DOM.mFrag.className = 'metric-value ' + (runs > 6 ? 'bad' : runs > 3 ? 'warn' : 'good');
+}
+
+/* ============================================================
+   METHODS
+   ============================================================ */
+function setMethod(method) {
+  STATE.method = method;
+  document.querySelectorAll('.algo-btn').forEach(b => b.classList.toggle('active', b.dataset.algo === method));
+  initDisk();
+  const descs = {
+    contig: 'CONTIGUOUS: Each file occupies a single contiguous run of blocks. Fast sequential and random access. But external fragmentation makes new large files hard to fit. This is how CD-ROMs and some video streaming systems are laid out.',
+    linked: 'LINKED: Each file is a linked list of blocks, scattered anywhere on disk. No external fragmentation. Sequential read is fine, but random access requires walking the chain. Each block wastes some bytes on the next-pointer. Used by FAT (File Allocation Table).',
+    indexed: 'INDEXED: Each file has an index block containing pointers to all its data blocks. Random access is O(1). Costs one index block per file (or multi-level for large files). Unix/Linux inodes use this pattern with 12 direct, 1 single-indirect, 1 double-indirect, and 1 triple-indirect pointers.'
+  };
+  teach('METHOD: ' + method.toUpperCase(), descs[method], 'purple');
+}
+
+function resetAll() {
+  initDisk();
+  teach('RESET', 'Disk cleared. All blocks free.', 'info', false);
+}
+
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+document.querySelectorAll('.algo-btn').forEach(btn => {
+  btn.addEventListener('click', () => setMethod(btn.dataset.algo));
+});
+
+DOM.btnCreate.addEventListener('click', () => createFile(false));
+DOM.btnCreateBig.addEventListener('click', () => createFile(true));
+DOM.btnDelete.addEventListener('click', deleteFile);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.blocksRange.addEventListener('input', e => {
+  STATE.totalBlocks = parseInt(e.target.value);
+  DOM.blocksVal.textContent = STATE.totalBlocks;
+  initDisk();
+});
+DOM.sizeRange.addEventListener('input', e => {
+  STATE.blockSize = parseInt(e.target.value);
+  DOM.sizeVal.textContent = STATE.blockSize + ' KB';
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+initDisk();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to File System Allocation. A file is a sequence of bytes, but on disk it must be broken into blocks. The file system decides WHERE to put those blocks and HOW to record their locations. Three classic strategies: contiguous, linked, and indexed.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE TRADE-OFFS',
+      `Contiguous: fastest but fragments. Linked: flexible but slow random access. Indexed: best of both, with overhead of one extra block per file. Every real file system is a variation of these three — FAT is linked, ext4 uses extents (contiguous runs with fallback), NTFS uses extents with B-trees.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('THE INODE',
+      `On Unix/Linux, an INODE is the file's metadata plus its block pointers. Small files fit in the inode's 12 direct pointers. Medium files use a single-indirect block. Large files use double and triple indirection. This hybrid approach gives fast access for the common case (small files) while scaling to huge files.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click CREATE FILE repeatedly with each method selected. Notice how CONTIGUOUS eventually fails (no run big enough) while LINKED and INDEXED keep working. Then delete files to create fragments and try again.`,
+      'warn'
+    );
+  }, 13000);
+  showToast('👋 Try each method, then delete + re-create', 4500);
+}, 500);
+</script>
+</body>
+</html>

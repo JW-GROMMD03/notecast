@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inverted Page Tables &amp; TLB Caches — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #06b6d4, #0ea5e9, #6366f1);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(6,182,212,0.15); color: #67e8f9; border-color: #06b6d4; }
+  .teaching-toggle:hover { background: rgba(6,182,212,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #67e8f9;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #06b6d4; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #06b6d4; color: #032028; border-color: #06b6d4; }
+  .btn.primary:hover { background: #0891b2; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #67e8f9; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #06b6d4; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(6,182,212,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 16px;
+  }
+  .panel-wrap {
+    background: #070a14; border: 2px solid; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column; min-height: 0;
+  }
+  .panel-wrap.tlb { border-color: #06b6d4; box-shadow: 0 0 25px rgba(6,182,212,0.15); }
+  .panel-wrap.ipt { border-color: #6366f1; box-shadow: 0 0 25px rgba(99,102,241,0.15); }
+  .panel-wrap-title {
+    font-size: 0.62rem; letter-spacing: 2px; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .panel-wrap.tlb .panel-wrap-title { color: #67e8f9; }
+  .panel-wrap.ipt .panel-wrap-title { color: #a5b4fc; }
+  #tlbCanvas, #iptCanvas {
+    flex: 1; width: 100%; display: block; background: #02040a;
+    border-radius: 8px; border: 1px solid #1e293b; min-height: 0;
+  }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(6,182,212,0.06); border: 1px solid rgba(6,182,212,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #67e8f9; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #06b6d4;
+    background: rgba(6,182,212,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(6,182,212,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(6,182,212,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #67e8f9;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #06b6d4; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(6,182,212,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #06b6d4; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #67e8f9; z-index: 12;
+    box-shadow: 0 0 20px rgba(6,182,212,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.hit { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.miss { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>INVERTED PAGE TABLES &amp; TLB</h1>
+    <span class="sub">VIRTUAL → PHYSICAL · TLB HITS · HASH LOOKUP</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Access Memory</h3>
+      <button class="btn primary" id="btnAccess">🔍 Access (random)</button>
+      <button class="btn" id="btnAccessSeq">📊 Sequential Access</button>
+      <button class="btn" id="btnFlush">💥 Flush TLB</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Behavior</h3>
+      <button class="btn success" id="btnLocality">✅ Good Locality</button>
+      <button class="btn warn" id="btnRandom">🎲 Random Access</button>
+      <button class="btn danger" id="btnThrash">🌪️ Thrash TLB</button>
+    </div>
+
+    <div class="panel">
+      <h3>Config</h3>
+      <div class="slider-row"><span>TLB size</span><span class="value" id="tlbSizeVal">8</span></div>
+      <input type="range" id="tlbSizeRange" min="2" max="16" value="8">
+      <div class="slider-row"><span>Page size</span><span class="value" id="pageSizeVal">4 KB</span></div>
+      <input type="range" id="pageSizeRange" min="1" max="16" value="4">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#06b6d4;border-radius:2px;margin-right:6px;"></span>TLB entry (fast)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#6366f1;border-radius:2px;margin-right:6px;"></span>Inverted page table</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:6px;"></span>Valid mapping</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:2px;margin-right:6px;"></span>Page fault</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">TLB MISS → WALK INVERTED PAGE TABLE → REFILL TLB</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="panel-wrap tlb">
+          <div class="panel-wrap-title">
+            <span>⚡ TLB (TRANSLATION LOOKASIDE BUFFER)</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="tlbHint">— 0/8 —</span>
+          </div>
+          <canvas id="tlbCanvas"></canvas>
+        </div>
+        <div class="panel-wrap ipt">
+          <div class="panel-wrap-title">
+            <span>🗂️ INVERTED PAGE TABLE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="iptHint">— 16 frames —</span>
+          </div>
+          <canvas id="iptCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">TLB Hits</div>
+        <div class="metric-value good" id="mHits">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">TLB Misses</div>
+        <div class="metric-value bad" id="mMisses">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Hit Rate</div>
+        <div class="metric-value warn" id="mRate">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Lookups</div>
+        <div class="metric-value" id="mLookups">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Memory Translation</div>
+      <div class="info-row"><span class="lbl">Page table</span><span class="val">Per-process, huge</span></div>
+      <div class="info-row"><span class="lbl">Inverted table</span><span class="val good">One global, size = frames</span></div>
+      <div class="info-row"><span class="lbl">Hash lookup</span><span class="val">(pid, vpn) → frame</span></div>
+      <div class="info-row"><span class="lbl">TLB</span><span class="val good">Cache of translations</span></div>
+      <div class="info-row"><span class="lbl">TLB size</span><span class="val">64-2048 entries</span></div>
+      <div class="info-row"><span class="lbl">TLB hit cost</span><span class="val good">~1 cycle</span></div>
+      <div class="info-row"><span class="lbl">TLB miss cost</span><span class="val bad">~10-100 cycles</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">PowerPC, Itanium, older IBM</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  // Memory model
+  totalFrames: 16,
+  // Inverted page table: for each frame, which (pid, vpn) is resident
+  ipt: [],   // {frame, pid, vpn, valid}
+  // TLB: LRU cache of (pid, vpn) → frame
+  tlb: [],
+  tlbSize: 8,
+  pageSize: 4,
+  // Stats
+  hits: 0,
+  misses: 0,
+  lookups: 0,
+  // Last access
+  lastAccess: null,
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  tlbCanvas: document.getElementById('tlbCanvas'),
+  iptCanvas: document.getElementById('iptCanvas'),
+  tlbHint: document.getElementById('tlbHint'),
+  iptHint: document.getElementById('iptHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnAccess: document.getElementById('btnAccess'),
+  btnAccessSeq: document.getElementById('btnAccessSeq'),
+  btnFlush: document.getElementById('btnFlush'),
+  btnReset: document.getElementById('btnReset'),
+  btnLocality: document.getElementById('btnLocality'),
+  btnRandom: document.getElementById('btnRandom'),
+  btnThrash: document.getElementById('btnThrash'),
+  tlbSizeRange: document.getElementById('tlbSizeRange'),
+  tlbSizeVal: document.getElementById('tlbSizeVal'),
+  pageSizeRange: document.getElementById('pageSizeRange'),
+  pageSizeVal: document.getElementById('pageSizeVal'),
+  mHits: document.getElementById('mHits'),
+  mMisses: document.getElementById('mMisses'),
+  mRate: document.getElementById('mRate'),
+  mLookups: document.getElementById('mLookups'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 1800);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining inverted page tables and TLB.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+function initSystem() {
+  STATE.ipt = [];
+  for (let i = 0; i < STATE.totalFrames; i++) {
+    STATE.ipt.push({
+      frame: i,
+      pid: null,
+      vpn: null,
+      valid: false
+    });
+  }
+  // Pre-populate some mappings from two processes
+  const processes = [
+    { pid: 1, pages: 6 },
+    { pid: 2, pages: 4 }
+  ];
+  let frameIdx = 0;
+  for (const p of processes) {
+    for (let v = 0; v < p.pages && frameIdx < STATE.totalFrames; v++) {
+      STATE.ipt[frameIdx].pid = p.pid;
+      STATE.ipt[frameIdx].vpn = v;
+      STATE.ipt[frameIdx].valid = true;
+      frameIdx++;
+    }
+  }
+  // Remaining frames unused
+  STATE.tlb = [];
+  STATE.hits = 0;
+  STATE.misses = 0;
+  STATE.lookups = 0;
+  STATE.lastAccess = null;
+  drawTLB();
+  drawIPT();
+  updateMetrics();
+}
+
+/* ============================================================
+   MEMORY ACCESS
+   ============================================================ */
+function accessMemory(pid, vpn) {
+  STATE.lookups++;
+  STATE.lastAccess = { pid, vpn };
+
+  // Check TLB
+  const tlbIdx = STATE.tlb.findIndex(t => t.pid === pid && t.vpn === vpn);
+  if (tlbIdx >= 0) {
+    // TLB HIT
+    STATE.hits++;
+    // Move to MRU position
+    const entry = STATE.tlb.splice(tlbIdx, 1)[0];
+    STATE.tlb.push(entry);
+    entry.hit = performance.now();  // for animation
+    showStatus(`✅ TLB HIT: (P${pid}, page ${vpn}) → frame ${entry.frame}`, 'hit');
+    drawTLB();
+    updateMetrics();
+    return true;
+  }
+
+  // TLB MISS — walk the inverted page table
+  STATE.misses++;
+  const iptEntry = STATE.ipt.find(e => e.valid && e.pid === pid && e.vpn === vpn);
+  if (!iptEntry) {
+    // Page fault — page not in memory
+    showStatus(`❌ PAGE FAULT: (P${pid}, page ${vpn}) not in memory`, 'miss');
+    teach('PAGE FAULT',
+      `TLB miss → walked the inverted page table → no entry for (P${pid}, page ${vpn}). The page isn't in physical memory. The OS must load it from disk, find a free frame (or evict one), and update the inverted table.`,
+      'error'
+    );
+    drawTLB();
+    drawIPT();
+    updateMetrics();
+    return false;
+  }
+
+  // Found it — add to TLB
+  addToTLB(pid, vpn, iptEntry.frame);
+
+  showStatus(`🔄 TLB MISS → refilled from IPT (frame ${iptEntry.frame})`, '');
+  teach('TLB MISS',
+    `TLB miss: (P${pid}, page ${vpn}) wasn't cached. Walked the inverted page table (which is indexed by frame, not VPN — so it takes a hash or linear scan). Found frame ${iptEntry.frame}. Now caching this translation in the TLB for next time.`,
+    'warn', false
+  );
+  drawTLB();
+  drawIPT();
+  updateMetrics();
+  return true;
+}
+
+function addToTLB(pid, vpn, frame) {
+  // Evict if full (LRU)
+  if (STATE.tlb.length >= STATE.tlbSize) {
+    STATE.tlb.shift();  // LRU evict
+  }
+  STATE.tlb.push({ pid, vpn, frame, hit: performance.now() });
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawTLB() {
+  const canvas = DOM.tlbCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Header
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#67e8f9';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('PID  VPN  →  FRAME  HIT?', 15, 12);
+
+  // Separator
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(10, 28);
+  ctx.lineTo(W - 10, 28);
+  ctx.stroke();
+
+  const rowH = Math.min(25, (H - 40) / STATE.tlbSize);
+  const now = performance.now();
+
+  // Draw TLB size empty slots
+  for (let i = 0; i < STATE.tlbSize; i++) {
+    const y = 34 + i * rowH;
+    const entry = STATE.tlb[i];
+
+    if (entry) {
+      const recentHit = (now - entry.hit) < 800;
+
+      // Row background
+      ctx.fillStyle = recentHit ? 'rgba(16,185,129,0.2)' : 'rgba(6,182,212,0.08)';
+      ctx.fillRect(10, y, W - 20, rowH - 3);
+
+      ctx.strokeStyle = recentHit ? '#10b981' : '#06b6d4';
+      ctx.lineWidth = recentHit ? 2 : 1;
+      ctx.strokeRect(10, y, W - 20, rowH - 3);
+
+      ctx.font = 'bold 10px monospace';
+      ctx.fillStyle = recentHit ? '#86efac' : '#67e8f9';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`P${entry.pid}`, 25, y + rowH / 2 - 1);
+      ctx.fillText(`#${entry.vpn}`, 70, y + rowH / 2 - 1);
+      ctx.fillText('→', 115, y + rowH / 2 - 1);
+      ctx.fillStyle = '#10b981';
+      ctx.fillText(`F${entry.frame}`, 135, y + rowH / 2 - 1);
+
+      if (recentHit) {
+        ctx.fillStyle = '#86efac';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText('HIT ✓', W - 20, y + rowH / 2 - 1);
+      } else {
+        ctx.fillStyle = '#475569';
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`LRU ${STATE.tlb.indexOf(entry)}`, W - 20, y + rowH / 2 - 1);
+      }
+    } else {
+      // Empty slot
+      ctx.fillStyle = 'rgba(30,41,59,0.3)';
+      ctx.fillRect(10, y, W - 20, rowH - 3);
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(10, y, W - 20, rowH - 3);
+
+      ctx.font = '9px monospace';
+      ctx.fillStyle = '#475569';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('— empty —', W / 2, y + rowH / 2 - 1);
+    }
+  }
+
+  DOM.tlbHint.textContent = `— ${STATE.tlb.length}/${STATE.tlbSize} entries —`;
+}
+
+function drawIPT() {
+  const canvas = DOM.iptCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Header
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#a5b4fc';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('FRAME  PID  VPN   VALID', 15, 12);
+
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(10, 28);
+  ctx.lineTo(W - 10, 28);
+  ctx.stroke();
+
+  const rowH = Math.min(22, (H - 40) / STATE.totalFrames);
+  const access = STATE.lastAccess;
+
+  for (let i = 0; i < STATE.totalFrames; i++) {
+    const entry = STATE.ipt[i];
+    const y = 34 + i * rowH;
+
+    // Highlight the last-accessed entry
+    const isTarget = access && entry.valid && entry.pid === access.pid && entry.vpn === access.vpn;
+
+    if (entry.valid) {
+      ctx.fillStyle = isTarget ? 'rgba(16,185,129,0.25)' : 'rgba(99,102,241,0.1)';
+      ctx.fillRect(10, y, W - 20, rowH - 2);
+
+      ctx.strokeStyle = isTarget ? '#10b981' : '#6366f1';
+      ctx.lineWidth = isTarget ? 2 : 1;
+      ctx.strokeRect(10, y, W - 20, rowH - 2);
+
+      ctx.font = 'bold 10px monospace';
+      ctx.fillStyle = isTarget ? '#86efac' : '#a5b4fc';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`F${String(entry.frame).padStart(2, '0')}`, 20, y + rowH / 2 - 1);
+      ctx.fillText(`P${entry.pid}`, 80, y + rowH / 2 - 1);
+      ctx.fillText(`vpn=${entry.vpn}`, 130, y + rowH / 2 - 1);
+      ctx.fillStyle = '#6ee7b7';
+      ctx.fillText('✓', W - 30, y + rowH / 2 - 1);
+    } else {
+      ctx.fillStyle = 'rgba(30,41,59,0.3)';
+      ctx.fillRect(10, y, W - 20, rowH - 2);
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(10, y, W - 20, rowH - 2);
+
+      ctx.font = '10px monospace';
+      ctx.fillStyle = '#475569';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`F${String(entry.frame).padStart(2, '0')}`, 20, y + rowH / 2 - 1);
+      ctx.fillStyle = '#475569';
+      ctx.fillText('— free —', 80, y + rowH / 2 - 1);
+    }
+  }
+
+  DOM.iptHint.textContent = `— ${STATE.ipt.filter(e => e.valid).length}/${STATE.totalFrames} frames used —`;
+}
+
+function animate() {
+  drawTLB();
+  drawIPT();
+  requestAnimationFrame(animate);
+}
+
+function updateMetrics() {
+  DOM.mHits.textContent = STATE.hits;
+  DOM.mMisses.textContent = STATE.misses;
+  DOM.mLookups.textContent = STATE.lookups;
+  const total = STATE.hits + STATE.misses;
+  const rate = total > 0 ? Math.round((STATE.hits / total) * 100) : 0;
+  DOM.mRate.textContent = rate + '%';
+  DOM.mRate.className = 'metric-value ' + (rate > 80 ? 'good' : rate > 50 ? 'warn' : 'bad');
+}
+
+/* ============================================================
+   BEHAVIORS
+   ============================================================ */
+function randomAccess() {
+  const pid = Math.random() < 0.5 ? 1 : 2;
+  const vpn = Math.floor(Math.random() * 8);
+  accessMemory(pid, vpn);
+}
+
+function sequentialAccess() {
+  if (!STATE._seqState) STATE._seqState = { pid: 1, vpn: 0 };
+  const s = STATE._seqState;
+  accessMemory(s.pid, s.vpn);
+  s.vpn++;
+  if (s.vpn > 7) {
+    s.vpn = 0;
+    s.pid = s.pid === 1 ? 2 : 1;
+  }
+}
+
+function goodLocality() {
+  // Access same page repeatedly
+  if (!STATE._locState) STATE._locState = { pid: 1, vpn: 2, count: 0 };
+  const s = STATE._locState;
+  accessMemory(s.pid, s.vpn);
+  s.count++;
+  if (s.count > 5) {
+    s.count = 0;
+    s.vpn = (s.vpn + 1) % 6;
+  }
+  showStatus('✅ Good locality: TLB hits dominate');
+  teach('LOCALITY',
+    `Accessing pages with strong TEMPORAL LOCALITY: same page used repeatedly before moving on. This is how real programs behave — loops, hot data structures, active working set. High TLB hit rates (>95%) are the norm for well-behaved code.`,
+    'ok', false
+  );
+}
+
+function thrashTLB() {
+  // Access pages that will evict each other from a small TLB
+  const pages = [];
+  for (let i = 0; i < STATE.tlbSize + 3; i++) {
+    pages.push(Math.floor(Math.random() * 8));
+  }
+  let i = 0;
+  const step = () => {
+    if (i >= pages.length) return;
+    accessMemory(1, pages[i]);
+    i++;
+    setTimeout(step, 200);
+  };
+  step();
+  showStatus('🌪️ Thrashing: TLB churn');
+  teach('TLB THRASHING',
+    `Accessing more distinct pages than fit in the TLB. Each access evicts an entry that the next access needs — TLB hit rate collapses to near zero. Every memory access now pays the full TLB miss cost. This is why good programs have small working sets (a few pages) at any given moment.`,
+    'error'
+  );
+}
+
+function flushTLB() {
+  STATE.tlb = [];
+  drawTLB();
+  showStatus('💥 TLB flushed');
+  teach('TLB FLUSH',
+    `Flushed the entire TLB. This happens on every context switch (unless ASID tagging is used) — the new process has a different address space, so all cached translations are invalid. After a flush, every access is a TLB miss until the working set is re-cached.`,
+    'warn'
+  );
+}
+
+function resetAll() {
+  initSystem();
+  showToast('⟲ Reset');
+}
+
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnAccess.addEventListener('click', randomAccess);
+DOM.btnAccessSeq.addEventListener('click', sequentialAccess);
+DOM.btnFlush.addEventListener('click', flushTLB);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnLocality.addEventListener('click', goodLocality);
+DOM.btnRandom.addEventListener('click', () => {
+  for (let i = 0; i < 5; i++) setTimeout(randomAccess, i * 150);
+  showStatus('🎲 Random access pattern');
+});
+DOM.btnThrash.addEventListener('click', thrashTLB);
+
+DOM.tlbSizeRange.addEventListener('input', e => {
+  STATE.tlbSize = parseInt(e.target.value);
+  DOM.tlbSizeVal.textContent = STATE.tlbSize;
+  // Trim TLB if too big
+  while (STATE.tlb.length > STATE.tlbSize) STATE.tlb.shift();
+});
+DOM.pageSizeRange.addEventListener('input', e => {
+  STATE.pageSize = parseInt(e.target.value);
+  DOM.pageSizeVal.textContent = STATE.pageSize + ' KB';
+});
+
+window.addEventListener('resize', () => {
+  resizeCanvas(DOM.tlbCanvas);
+  resizeCanvas(DOM.iptCanvas);
+});
+
+resizeCanvas(DOM.tlbCanvas);
+resizeCanvas(DOM.iptCanvas);
+animate();
+initSystem();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Inverted Page Tables and TLB. Classic page tables are per-process and indexed by virtual page number — a 64-bit process with 4 KB pages would need a 16-million-entry table. Inverted tables flip this: ONE global table indexed by physical frame, holding (pid, vpn) for each frame.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('HOW IT WORKS',
+      `A virtual address (pid, vpn) must be searched in the inverted table — usually via hash. That's slower than an array lookup, so we cache recent translations in the TLB (Translation Lookaside Buffer). A TLB hit is ~1 cycle; a miss requires walking the inverted table (10-100 cycles).`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('TLB HIT RATE MATTERS',
+      `A well-behaved program has a small working set and gets 99%+ TLB hit rate. A thrashing program — one that touches many pages randomly — gets near 0% hit rate and runs many times slower. This is why data structure layout matters: linked lists (pointer chasing across many pages) hurt; arrays (contiguous) help.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click ACCESS repeatedly and watch the TLB fill up and the IPT light up. Then try GOOD LOCALITY (hits dominate) vs RANDOM (misses climb) vs THRASH TLB (hit rate collapses). Finally, FLUSH TLB to see what happens on a context switch.`,
+      'warn'
+    );
+  }, 13000);
+  showToast('👋 Click ACCESS, then try GOOD LOCALITY', 4500);
+}, 500);
+</script>
+</body>
+</html>

@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memory Stack vs Heap — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f59e0b, #ec4899, #8b5cf6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(245,158,11,0.15);
+    color: #fcd34d;
+    border-color: #f59e0b;
+  }
+  .teaching-toggle:hover { background: rgba(245,158,11,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f59e0b; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f59e0b; color: #2a1503; border-color: #f59e0b; }
+  .btn.primary:hover { background: #d97706; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fcd34d; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f59e0b; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(245,158,11,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* CODE VIEW */
+  .code-view {
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(139,92,246,0.15);
+    flex-shrink: 0;
+    max-height: 200px;
+  }
+  .code-header {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .code-display {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    padding: 8px 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.65rem;
+    line-height: 1.7;
+    color: #cbd5e1;
+    min-height: 0;
+  }
+  .code-line {
+    padding: 1px 4px;
+    border-radius: 3px;
+    transition: all 0.3s;
+    border-left: 3px solid transparent;
+    white-space: pre;
+  }
+  .code-line.active {
+    background: rgba(245,158,11,0.2);
+    border-left-color: #f59e0b;
+    color: #fde047;
+  }
+  .code-line.executed {
+    border-left-color: #10b981;
+    color: #a7f3d0;
+  }
+  .code-line .kw { color: #c084fc; font-weight: 700; }
+  .code-line .cls { color: #67e8f9; font-weight: 700; }
+  .code-line .str { color: #86efac; }
+  .code-line .num { color: #fcd34d; }
+  .code-line .cmt { color: #475569; font-style: italic; }
+  .code-line .fn { color: #f9a8d4; }
+
+  /* TWO PANELS: STACK & HEAP */
+  .memory-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1.3fr;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  .memory-panel {
+    background: #070a14;
+    border: 2px solid;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .memory-panel.stack {
+    border-color: #06b6d4;
+    box-shadow: 0 0 25px rgba(6,182,212,0.15);
+  }
+  .memory-panel.heap {
+    border-color: #ec4899;
+    box-shadow: 0 0 25px rgba(236,72,153,0.15);
+  }
+
+  .memory-title {
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .memory-panel.stack .memory-title { color: #67e8f9; }
+  .memory-panel.heap .memory-title { color: #f9a8d4; }
+
+  .memory-cap {
+    font-size: 0.5rem;
+    color: #64748b;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+
+  .memory-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+    padding: 8px;
+    min-height: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 3px;
+  }
+
+  .memory-panel.heap .memory-body {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 6px;
+  }
+
+  /* Stack frames */
+  .stack-frame {
+    background: linear-gradient(145deg, #0c1e4d, #071733);
+    border: 2px solid #06b6d4;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: monospace;
+    font-size: 0.6rem;
+    animation: frameIn 0.4s ease;
+    position: relative;
+  }
+  @keyframes frameIn {
+    from { transform: translateY(-10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .stack-frame.leaving {
+    animation: frameOut 0.4s ease forwards;
+  }
+  @keyframes frameOut {
+    to { transform: translateX(-100%); opacity: 0; }
+  }
+  .frame-name {
+    font-weight: 900;
+    color: #67e8f9;
+    letter-spacing: 0.5px;
+    font-size: 0.65rem;
+    margin-bottom: 4px;
+    border-bottom: 1px solid rgba(103,232,249,0.3);
+    padding-bottom: 2px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .frame-var {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+    color: #cbd5e1;
+    font-size: 0.55rem;
+  }
+  .frame-var .vname { color: #94a3b8; }
+  .frame-var .vval { color: #fde047; font-weight: 700; }
+  .frame-var .vval.ref { color: #f9a8d4; }
+  .frame-var .vval.prim { color: #86efac; }
+
+  /* Heap objects */
+  .heap-object {
+    background: linear-gradient(145deg, #450a0a, #2a0707);
+    border: 2px solid #ec4899;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: monospace;
+    font-size: 0.6rem;
+    animation: objIn 0.5s cubic-bezier(.68,-0.55,.27,1.55);
+    min-width: 130px;
+    position: relative;
+  }
+  @keyframes objIn {
+    from { transform: scale(0.3) rotate(-10deg); opacity: 0; }
+    to { transform: scale(1) rotate(0); opacity: 1; }
+  }
+  .heap-object.leaving {
+    animation: objOut 0.5s ease forwards;
+  }
+  @keyframes objOut {
+    to { transform: scale(0.3); opacity: 0; }
+  }
+  .heap-object.collected {
+    animation: objCollect 0.6s ease forwards;
+  }
+  @keyframes objCollect {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.1); opacity: 0.8; box-shadow: 0 0 25px #ef4444; }
+    100% { transform: scale(0); opacity: 0; }
+  }
+  .heap-object .obj-id {
+    position: absolute;
+    top: -8px;
+    right: 8px;
+    background: #ec4899;
+    color: #fff;
+    font-size: 0.5rem;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+  }
+  .heap-object .obj-title {
+    font-weight: 900;
+    color: #f9a8d4;
+    letter-spacing: 0.5px;
+    font-size: 0.68rem;
+    margin-bottom: 4px;
+  }
+  .heap-object .obj-field {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+    font-size: 0.55rem;
+    color: #cbd5e1;
+  }
+  .heap-object .obj-field .fname { color: #94a3b8; }
+  .heap-object .obj-field .fval { color: #fde047; font-weight: 700; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(245,158,11,0.06);
+    border: 1px solid rgba(245,158,11,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fcd34d;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f59e0b;
+    background: rgba(245,158,11,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(245,158,11,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f59e0b;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(245,158,11,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #f59e0b;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fcd34d;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(245,158,11,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.stack { border-color: #06b6d4; color: #67e8f9; box-shadow: 0 0 25px rgba(6,182,212,0.6); }
+  .status-banner.heap { border-color: #ec4899; color: #f9a8d4; box-shadow: 0 0 25px rgba(236,72,153,0.6); }
+  .status-banner.gc { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>MEMORY: STACK vs HEAP</h1>
+    <span class="sub">PRIMITIVES · OBJECTS · REFERENCES · GC</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Execution</h3>
+      <button class="btn primary" id="btnRun">▶ Execute Program</button>
+      <button class="btn" id="btnStep">⏭ Step Line</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Actions</h3>
+      <button class="btn" id="btnCallFn">📞 Call Function</button>
+      <button class="btn danger" id="btnNull">🚫 Null Reference</button>
+      <button class="btn warn" id="btnEscape">⚠️ Escape Reference</button>
+    </div>
+
+    <div class="panel">
+      <h3>Garbage Collection</h3>
+      <button class="btn success" id="btnGC">♻️ Run GC Now</button>
+      <div style="font-size:0.6rem; color:#64748b; margin-top:4px; line-height:1.5;">
+        GC collects heap objects that are no longer referenced from the stack.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Allocation</h3>
+      <div class="slider-row"><span>Heap size</span><span class="value" id="heapSizeVal">8 slots</span></div>
+      <input type="range" id="heapSizeRange" min="4" max="16" value="8">
+      <button class="btn danger" id="btnAllocLeak">🔥 Allocate + Leak</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #06b6d4;background:#0c1e4d;margin-right:6px;border-radius:3px;"></span>Stack frame</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #ec4899;background:#450a0a;margin-right:6px;border-radius:3px;"></span>Heap object</div>
+        <div style="margin-top:4px;"><span style="color:#86efac;">primitive</span> · <span style="color:#f9a8d4;">reference</span></div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">STACK: LOCAL VARIABLES & CALL FRAMES · HEAP: OBJECTS & REFERENCES</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="code-view">
+          <div class="code-header">
+            <span>💻 EXECUTING CODE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="codeHint">— line 0 —</span>
+          </div>
+          <div class="code-display" id="codeDisplay"></div>
+        </div>
+
+        <div class="memory-grid">
+          <div class="memory-panel stack">
+            <div class="memory-title">
+              <span>📚 CALL STACK</span>
+              <span class="memory-cap" id="stackCap">0 / 20 frames</span>
+            </div>
+            <div class="memory-body" id="stackBody"></div>
+          </div>
+
+          <div class="memory-panel heap">
+            <div class="memory-title">
+              <span>🗄️ HEAP MEMORY</span>
+              <span class="memory-cap" id="heapCap">0 / 8 objects</span>
+            </div>
+            <div class="memory-body" id="heapBody"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Stack Frames</div>
+        <div class="metric-value" id="mStack">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Heap Objects</div>
+        <div class="metric-value warn" id="mHeap">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">GC Runs</div>
+        <div class="metric-value good" id="mGC">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Collected</div>
+        <div class="metric-value" id="mCollected">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Stack vs Heap</div>
+      <div class="info-row"><span class="lbl">Stack — size</span><span class="val good">Small (KB-MB)</span></div>
+      <div class="info-row"><span class="lbl">Heap — size</span><span class="val">Large (GB)</span></div>
+      <div class="info-row"><span class="lbl">Stack — speed</span><span class="val good">Very fast</span></div>
+      <div class="info-row"><span class="lbl">Heap — speed</span><span class="val warn">Slower (alloc/GC)</span></div>
+      <div class="info-row"><span class="lbl">Stack — holds</span><span class="val">Primitives + refs</span></div>
+      <div class="info-row"><span class="lbl">Heap — holds</span><span class="val">Objects, arrays</span></div>
+      <div class="info-row"><span class="lbl">Stack — freed</span><span class="val good">Auto on return</span></div>
+      <div class="info-row"><span class="lbl">Heap — freed</span><span class="val bad">Garbage collector</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  currentLine: -1,
+  running: false,
+  heapSize: 8,
+  nextObjectId: 1,
+  // Stack frames
+  frames: [],
+  // Heap objects
+  heap: [],
+  // Stats
+  gcRuns: 0,
+  collected: 0,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+/* ============================================================
+   CODE SAMPLE
+   ============================================================ */
+const CODE = [
+  '<span class="cmt">// Every value in JS is one of two kinds: primitive or object</span>',
+  '<span class="kw">let</span> age = <span class="num">30</span>;                    <span class="cmt">// primitive — lives on stack</span>',
+  '<span class="kw">let</span> name = <span class="str">"Alice"</span>;             <span class="cmt">// primitive — lives on stack</span>',
+  '',
+  '<span class="kw">let</span> person = {                <span class="cmt">// object — lives on heap</span>',
+  '  name: <span class="str">"Alice"</span>,',
+  '  age: <span class="num">30</span>,',
+  '  address: {',
+  '    city: <span class="str">"Berlin"</span>',
+  '  }',
+  '};',
+  '',
+  '<span class="kw">function</span> <span class="fn">birthday</span>(p) {          <span class="cmt">// new stack frame</span>',
+  '  p.age = p.age + <span class="num">1</span>;          <span class="cmt">// mutates heap object</span>',
+  '  <span class="kw">let</span> msg = <span class="str">"Happy birthday!"</span>;   <span class="cmt">// stack only</span>',
+  '  <span class="kw">return</span> msg;',
+  '}',
+  '',
+  '<span class="fn">birthday</span>(person);              <span class="cmt">// frame pushed, then popped</span>',
+  '',
+  '<span class="cmt">// person still referenced — its object stays on heap</span>',
+  'console.<span class="fn">log</span>(person.age);       <span class="cmt">// 31</span>'
+];
+
+/* ============================================================
+   DOM
+   ============================================================ */
+const DOM = {
+  codeDisplay: document.getElementById('codeDisplay'),
+  codeHint: document.getElementById('codeHint'),
+  stackBody: document.getElementById('stackBody'),
+  heapBody: document.getElementById('heapBody'),
+  stackCap: document.getElementById('stackCap'),
+  heapCap: document.getElementById('heapCap'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Buttons
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnCallFn: document.getElementById('btnCallFn'),
+  btnNull: document.getElementById('btnNull'),
+  btnEscape: document.getElementById('btnEscape'),
+  btnGC: document.getElementById('btnGC'),
+  btnAllocLeak: document.getElementById('btnAllocLeak'),
+  heapSizeRange: document.getElementById('heapSizeRange'),
+  heapSizeVal: document.getElementById('heapSizeVal'),
+  // Metrics
+  mStack: document.getElementById('mStack'),
+  mHeap: document.getElementById('mHeap'),
+  mGC: document.getElementById('mGC'),
+  mCollected: document.getElementById('mCollected'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2400);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining memory: stack versus heap.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderCode() {
+  DOM.codeDisplay.innerHTML = '';
+  CODE.forEach((line, i) => {
+    const el = document.createElement('div');
+    el.className = 'code-line';
+    el.dataset.line = i;
+    el.innerHTML = line || '&nbsp;';
+    DOM.codeDisplay.appendChild(el);
+  });
+  updateCodeHighlight();
+}
+
+function updateCodeHighlight() {
+  DOM.codeDisplay.querySelectorAll('.code-line').forEach((el, i) => {
+    el.classList.remove('active', 'executed');
+    if (i < STATE.currentLine) el.classList.add('executed');
+    else if (i === STATE.currentLine) el.classList.add('active');
+  });
+  DOM.codeHint.textContent = `— line ${STATE.currentLine + 1} / ${CODE.length} —`;
+}
+
+function renderStack() {
+  DOM.stackBody.innerHTML = '';
+  // Stack grows downward visually (bottom is deepest frame)
+  for (const frame of STATE.frames) {
+    const el = document.createElement('div');
+    el.className = 'stack-frame';
+    el.innerHTML = `
+      <div class="frame-name">📞 ${frame.name}<span style="color:#64748b;font-size:0.5rem;">${frame.ret ? '→ ' + frame.ret : ''}</span></div>
+      ${frame.vars.map(v => `
+        <div class="frame-var">
+          <span class="vname">${v.name}</span>
+          <span class="vval ${v.kind === 'ref' ? 'ref' : 'prim'}">${v.value}</span>
+        </div>
+      `).join('')}
+    `;
+    DOM.stackBody.appendChild(el);
+  }
+  DOM.stackCap.textContent = `${STATE.frames.length} / 20 frames`;
+  DOM.mStack.textContent = STATE.frames.length;
+}
+
+function renderHeap() {
+  DOM.heapBody.innerHTML = '';
+  for (const obj of STATE.heap) {
+    const el = document.createElement('div');
+    el.className = 'heap-object';
+    el.dataset.objId = obj.id;
+    el.innerHTML = `
+      <div class="obj-id">@${obj.id}</div>
+      <div class="obj-title">${obj.type}</div>
+      ${obj.fields.map(f => `
+        <div class="obj-field">
+          <span class="fname">${f.name}</span>
+          <span class="fval">${f.value}</span>
+        </div>
+      `).join('')}
+      ${obj.referencedBy.length > 0 ? `<div class="obj-field" style="margin-top:4px;border-top:1px solid rgba(236,72,153,0.3);padding-top:3px;"><span class="fname">refs</span><span class="fval" style="color:#f9a8d4;">${obj.referencedBy.join(', ')}</span></div>` : ''}
+    `;
+    DOM.heapBody.appendChild(el);
+  }
+  DOM.heapCap.textContent = `${STATE.heap.length} / ${STATE.heapSize} objects`;
+  DOM.mHeap.textContent = STATE.heap.length;
+  DOM.mHeap.className = 'metric-value ' + (STATE.heap.length >= STATE.heapSize ? 'bad' : STATE.heap.length > STATE.heapSize * 0.7 ? 'warn' : 'warn');
+}
+
+function renderAll() {
+  renderStack();
+  renderHeap();
+  updateCodeHighlight();
+}
+
+/* ============================================================
+   EXECUTION
+   ============================================================ */
+function stepLine() {
+  STATE.currentLine++;
+  if (STATE.currentLine >= CODE.length) {
+    STATE.running = false;
+    DOM.btnRun.textContent = '▶ Execute Program';
+    showStatus('✅ Program finished');
+    teach('DONE',
+      `Program execution complete. Notice: primitives (age, name, msg) were stored entirely on the stack and disappeared when their frame popped. Objects (person, address) live on the heap — their references are on the stack, but the data itself survives as long as a reference exists.`,
+      'ok'
+    );
+    return;
+  }
+
+  updateCodeHighlight();
+  executeLine(STATE.currentLine);
+}
+
+function executeLine(line) {
+  const text = CODE[line].replace(/<[^>]*>/g, '').trim();
+
+  // Line 1: let age = 30
+  if (line === 1) {
+    ensureFrame('main');
+    addVar('main', 'age', '30', 'prim');
+    teach('PRIMITIVE',
+      `let age = 30. The number 30 is a primitive. It's small, immutable, and stored directly on the stack. Copying it copies the value.`,
+      'cyan'
+    );
+  }
+  // Line 2: let name = "Alice"
+  else if (line === 2) {
+    addVar('main', 'name', '"Alice"', 'prim');
+    teach('PRIMITIVE',
+      `let name = "Alice". Strings are also primitives (in most languages). They live on the stack.`,
+      'cyan'
+    );
+  }
+  // Line 4-10: let person = { ... }
+  else if (line === 4) {
+    showStatus('🗄️ Allocating object on heap...', 'heap');
+    const objId = STATE.nextObjectId++;
+    STATE.heap.push({
+      id: objId,
+      type: 'Person',
+      fields: [
+        { name: 'name', value: '"Alice"' },
+        { name: 'age', value: '30' }
+      ],
+      referencedBy: ['main.person']
+    });
+    addVar('main', 'person', '@' + objId, 'ref');
+    teach('OBJECT ALLOCATION',
+      `let person = {...}. The object literal {name, age, address} is allocated on the HEAP. The stack only holds a REFERENCE (a pointer) to it, shown as @${objId}. This is the key insight: primitives go on the stack, objects go on the heap.`,
+      'purple'
+    );
+  }
+  // Line 8: nested object
+  else if (line === 8) {
+    const objId = STATE.nextObjectId++;
+    STATE.heap.push({
+      id: objId,
+      type: 'Address',
+      fields: [{ name: 'city', value: '"Berlin"' }],
+      referencedBy: ['person.address']
+    });
+    // Link from person object
+    const person = STATE.heap.find(o => o.type === 'Person');
+    if (person) {
+      person.fields.push({ name: 'address', value: '@' + objId });
+    }
+    teach('NESTED OBJECT',
+      `Nested object {city: "Berlin"}. This is a separate heap allocation (@${objId}). The Person object holds a reference to it. Nested objects don't nest on the heap — they're linked by references. This is why deeply nested structures can be expensive to copy.`,
+      'warn'
+    );
+  }
+  // Line 13: function birthday(p)
+  else if (line === 13) {
+    showStatus('📞 Function call — pushing new frame', 'stack');
+    const frame = {
+      name: 'birthday()',
+      vars: [],
+      ret: 'main'
+    };
+    STATE.frames.push(frame);
+    // Push the argument `p` — a reference to the person object
+    frame.vars.push({ name: 'p', value: '@1', kind: 'ref' });
+    teach('STACK FRAME',
+      `Calling birthday(person) pushes a new stack frame. The frame contains the parameter p — which is a REFERENCE to the person object on the heap (not a copy!). This is why mutating p inside the function affects the original object.`,
+      'cyan'
+    );
+  }
+  // Line 14: p.age = p.age + 1
+  else if (line === 14) {
+    const person = STATE.heap.find(o => o.type === 'Person');
+    if (person) {
+      const ageField = person.fields.find(f => f.name === 'age');
+      if (ageField) ageField.value = '31';
+    }
+    teach('MUTATION',
+      `p.age = p.age + 1. Even though p is a local variable in birthday's frame, it points to the SAME heap object. Mutating p.age changes the shared object. This is object identity vs object value — critical concept for debugging.`,
+      'purple'
+    );
+    renderHeap();
+  }
+  // Line 15: let msg
+  else if (line === 15) {
+    const frame = STATE.frames[STATE.frames.length - 1];
+    if (frame) frame.vars.push({ name: 'msg', value: '"Happy birthday!"', kind: 'prim' });
+    teach('LOCAL PRIMITIVE',
+      `let msg = "Happy birthday!". This local variable is a primitive — it lives in the current stack frame only. When the frame pops, msg disappears. No heap allocation, no GC needed.`,
+      'cyan'
+    );
+  }
+  // Line 16: return
+  else if (line === 16) {
+    teach('RETURN',
+      `return msg; The function returns a primitive string. The stack frame will pop in a moment, taking p, msg, and the return value with it. Only the person object on the heap survives.`,
+      'info'
+    );
+  }
+  // Line 17: end of function
+  else if (line === 17) {
+    // Pop the frame
+    const frame = STATE.frames.pop();
+    if (frame) {
+      showStatus('📤 Popping frame: ' + frame.name, 'stack');
+      teach('FRAME POP',
+        `Stack frame for birthday() is popped. All locals (p, msg) disappear. But the person object on the heap was NOT freed — it's still referenced by main.person. This is the crucial difference: stack cleanup is automatic; heap cleanup requires garbage collection.`,
+        'ok'
+      );
+    }
+  }
+  // Line 19: birthday(person)
+  else if (line === 19) {
+    // Already handled by lines 13-17; skip
+  }
+  // Line 21: console.log(person.age)
+  else if (line === 21) {
+    teach('OBSERVE',
+      `console.log(person.age) prints 31. Even though the birthday() frame is long gone, the mutation persists — because the person object was shared, not copied.`,
+      'ok'
+    );
+  }
+}
+
+function ensureFrame(name) {
+  if (!STATE.frames.find(f => f.name === name)) {
+    STATE.frames.push({ name, vars: [], ret: '' });
+  }
+}
+
+function addVar(frameName, name, value, kind) {
+  const frame = STATE.frames.find(f => f.name === frameName);
+  if (!frame) return;
+  // Update if exists
+  const existing = frame.vars.find(v => v.name === name);
+  if (existing) {
+    existing.value = value;
+    existing.kind = kind;
+  } else {
+    frame.vars.push({ name, value, kind });
+  }
+}
+
+/* ============================================================
+   RUN / AUTOPLAY
+   ============================================================ */
+function runProgram() {
+  if (STATE.running) {
+    STATE.running = false;
+    DOM.btnRun.textContent = '▶ Execute Program';
+    return;
+  }
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+  const tick = () => {
+    if (!STATE.running) return;
+    stepLine();
+    if (STATE.currentLine < CODE.length && STATE.running) {
+      setTimeout(tick, 700);
+    }
+  };
+  tick();
+}
+
+/* ============================================================
+   ACTIONS
+   ============================================================ */
+function callFunction() {
+  showStatus('📞 Manually pushing a new frame', 'stack');
+  const frame = {
+    name: 'helper()',
+    vars: [
+      { name: 'x', value: '42', kind: 'prim' },
+      { name: 'obj', value: 'null', kind: 'ref' }
+    ],
+    ret: 'main'
+  };
+  STATE.frames.push(frame);
+  teach('FUNCTION CALL',
+    `A new stack frame pushed. Notice how the stack grows downward. Each frame has its own local scope: variables declared inside are invisible to other frames. When the function returns, the frame is popped and its locals disappear.`,
+    'cyan'
+  );
+  renderStack();
+
+  setTimeout(() => {
+    const popped = STATE.frames.pop();
+    if (popped) {
+      showStatus('📤 Frame popped: ' + popped.name);
+      teach('FRAME POP',
+        `The helper() frame popped automatically. Its locals (x, obj) are gone. This happens on every function return — no manual cleanup needed for stack variables.`,
+        'ok', false
+      );
+      renderStack();
+    }
+  }, 2000);
+}
+
+function nullReference() {
+  showStatus('❌ Null Reference Error', 'gc');
+  teach('NULL REFERENCE',
+    `You tried to dereference a null reference. In Java/C# this throws NullPointerException. In C/C++ it's undefined behavior (crash or memory corruption). In Rust the compiler prevents this. This is one of the most common runtime errors — always check for null before dereferencing.`,
+    'error'
+  );
+  // Flash an error on all heap objects
+  DOM.heapBody.querySelectorAll('.heap-object').forEach(el => {
+    el.style.borderColor = '#ef4444';
+    setTimeout(() => { el.style.borderColor = ''; }, 600);
+  });
+}
+
+function escapeReference() {
+  showStatus('⚠️ Object escapes its scope', 'heap');
+  const objId = STATE.nextObjectId++;
+  STATE.heap.push({
+    id: objId,
+    type: 'LeakedObject',
+    fields: [
+      { name: 'data', value: '"stays alive"' },
+      { name: 'why', value: '"still referenced"' }
+    ],
+    referencedBy: ['global.registry']
+  });
+  teach('ESCAPING REFERENCE',
+    `A reference "escaped" its scope — it was stored in a global or long-lived structure, so the heap object cannot be collected. This is the mechanism behind memory leaks: heap objects stay alive as long as ANY reference exists. Common causes: event listeners never removed, caches that grow unbounded, closures that capture large objects.`,
+    'warn'
+  );
+  renderHeap();
+}
+
+function runGC() {
+  STATE.gcRuns++;
+  DOM.mGC.textContent = STATE.gcRuns;
+
+  showStatus('♻️ Running garbage collector...', 'gc');
+  teach('GC RUNNING',
+    `Garbage collector running. It starts from the "roots" (stack frames, globals, static fields) and marks every reachable heap object. Unmarked objects are garbage — they're swept and their memory is reclaimed. This is mark-and-sweep.`,
+    'purple'
+  );
+
+  // Find unreferenced heap objects
+  const before = STATE.heap.length;
+  const toCollect = STATE.heap.filter(o => o.referencedBy.length === 0);
+
+  for (const obj of toCollect) {
+    const el = DOM.heapBody.querySelector(`[data-obj-id="${obj.id}"]`);
+    if (el) el.classList.add('collected');
+  }
+
+  setTimeout(() => {
+    STATE.heap = STATE.heap.filter(o => o.referencedBy.length > 0);
+    STATE.collected += toCollect.length;
+    DOM.mCollected.textContent = STATE.collected;
+    renderHeap();
+    if (toCollect.length > 0) {
+      teach('GC COMPLETE',
+        `Collected ${toCollect.length} unreachable object${toCollect.length === 1 ? '' : 's'}. Heap size: ${STATE.heap.length}/${STATE.heapSize}. In real systems, GC runs during idle time or when heap pressure builds. Mark-and-sweep is the classic algorithm; modern GCs add generational collection, reference counting, and concurrent marking for efficiency.`,
+        'ok'
+      );
+      showStatus(`♻️ Collected ${toCollect.length} object${toCollect.length === 1 ? '' : 's'}`, 'gc');
+    } else {
+      teach('GC COMPLETE',
+        `No garbage to collect — every heap object is still reachable. Heap stays at ${STATE.heap.length}/${STATE.heapSize} objects.`,
+        'info', false
+      );
+      showStatus('♻️ Nothing to collect', 'gc');
+    }
+  }, 700);
+}
+
+function allocateLeak() {
+  if (STATE.heap.length >= STATE.heapSize) {
+    showStatus('⚠️ Heap full — allocation failed', 'gc');
+    teach('OUT OF MEMORY',
+      `Heap is full (${STATE.heapSize} objects). The allocation failed. In real systems, this triggers: (1) A more aggressive GC run. (2) Growing the heap if possible. (3) If neither works, an OutOfMemoryError and process crash. This is why memory leaks eventually kill services.`,
+      'error'
+    );
+    return;
+  }
+  const objId = STATE.nextObjectId++;
+  STATE.heap.push({
+    id: objId,
+    type: 'LeakedBuffer',
+    fields: [
+      { name: 'size', value: (Math.random() * 10 + 1).toFixed(1) + ' MB' },
+      { name: 'data', value: '[...]' }
+    ],
+    referencedBy: ['global.leaks']  // Intentionally "leaked"
+  });
+  teach('MEMORY LEAK',
+    `Allocated a "leaked" object — it's stored in a global array that never gets cleared. The GC can see the reference, so it can never collect this object. This is exactly what a memory leak looks like: objects accumulate, heap grows, and eventually the process dies with OutOfMemoryError. Fix: remove listeners, clear caches, avoid global state.`,
+    'warn'
+  );
+  renderHeap();
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.currentLine = -1;
+  STATE.running = false;
+  STATE.frames = [];
+  STATE.heap = [];
+  STATE.nextObjectId = 1;
+  STATE.gcRuns = 0;
+  STATE.collected = 0;
+  DOM.btnRun.textContent = '▶ Execute Program';
+  DOM.mGC.textContent = '0';
+  DOM.mCollected.textContent = '0';
+  DOM.statusBanner.classList.remove('show');
+  renderAll();
+  teach('RESET', 'Memory cleared. Stack and heap are empty.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRun.addEventListener('click', runProgram);
+DOM.btnStep.addEventListener('click', stepLine);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnCallFn.addEventListener('click', callFunction);
+DOM.btnNull.addEventListener('click', nullReference);
+DOM.btnEscape.addEventListener('click', escapeReference);
+DOM.btnGC.addEventListener('click', runGC);
+DOM.btnAllocLeak.addEventListener('click', allocateLeak);
+
+DOM.heapSizeRange.addEventListener('input', e => {
+  STATE.heapSize = parseInt(e.target.value);
+  DOM.heapSizeVal.textContent = STATE.heapSize + ' slots';
+  renderHeap();
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+renderCode();
+renderAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Stack vs Heap. Every running program has two main memory regions: the STACK (fast, small, automatic) and the HEAP (slower, large, manual or GC-managed). Primitives and local variables live on the stack; objects live on the heap. References on the stack point to objects on the heap.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE STACK',
+      `The stack is a LIFO structure of call frames. Each function call pushes a frame containing its parameters and locals. When the function returns, the frame pops — automatic and instant. The stack is small (typically 1-8 MB per thread) and overflow causes StackOverflowError — usually from infinite recursion.`,
+      'ok'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE HEAP',
+      `The heap is a large pool of memory for dynamically allocated objects. It's shared across all threads, so allocation involves synchronization. Objects stay alive as long as any reference points to them — the garbage collector finds unreachable objects and reclaims their memory. Languages differ: Java/C#/Go use GC, C/C++ use manual free(), Rust uses ownership.`,
+      'purple'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click EXECUTE PROGRAM to walk through the sample code. Watch how primitives go to the stack and objects to the heap. Then try RUN GC to see garbage collection in action — objects with no references get swept. Try ALLOCATE + LEAK to see how leaks accumulate.`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Click EXECUTE PROGRAM to trace memory', 4500);
+}, 500);
+</script>
+</body>
+</html>

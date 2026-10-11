@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Actor Model Concurrency — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #a855f7, #ec4899, #f59e0b);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(168,85,247,0.15);
+    color: #c4b5fd;
+    border-color: #a855f7;
+  }
+  .teaching-toggle:hover { background: rgba(168,85,247,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #a855f7; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #a855f7; color: #fff; border-color: #a855f7; }
+  .btn.primary:hover { background: #9333ea; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #c4b5fd; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #a855f7; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(168,85,247,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* TOPOLOGY + MAILBOXES */
+  .topo-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #a855f7;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(168,85,247,0.15);
+    min-height: 0;
+    position: relative;
+  }
+  .topo-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #actorCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+  }
+
+  /* MAILBOX PANELS */
+  .mailboxes-wrap {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    height: 130px;
+  }
+  .mailbox {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #ec4899;
+    border-radius: 10px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 15px rgba(236,72,153,0.15);
+    min-height: 0;
+    transition: all 0.3s;
+  }
+  .mailbox.active {
+    border-color: #fcd34d;
+    box-shadow: 0 0 20px rgba(252,211,77,0.4);
+  }
+  .mailbox.dead {
+    border-color: #ef4444;
+    opacity: 0.5;
+  }
+  .mailbox-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: monospace;
+    font-size: 0.6rem;
+    margin-bottom: 6px;
+    font-weight: 800;
+  }
+  .mailbox-name {
+    color: #f9a8d4;
+    letter-spacing: 0.5px;
+  }
+  .mailbox.dead .mailbox-name { color: #fca5a5; }
+  .mailbox-count {
+    background: rgba(236,72,153,0.2);
+    color: #f9a8d4;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 0.55rem;
+  }
+  .mailbox-queue {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border-radius: 4px;
+    border: 1px solid #1e293b;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+  }
+  .msg {
+    background: linear-gradient(145deg, #450a0a, #2a0707);
+    border-left: 3px solid #ec4899;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.5rem;
+    color: #cbd5e1;
+    animation: msgIn 0.3s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  @keyframes msgIn {
+    from { transform: translateX(-10px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .msg.system { border-left-color: #a855f7; background: linear-gradient(145deg, #2e1065, #1e0845); color: #c4b5fd; }
+  .msg.hello { border-left-color: #22c55e; background: linear-gradient(145deg, #14532d, #052e16); color: #86efac; }
+
+  /* SUPERVISION PANEL */
+  .supervision-wrap {
+    background: #070a14;
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    box-shadow: 0 0 20px rgba(245,158,11,0.15);
+  }
+  .sup-item {
+    font-family: monospace;
+    font-size: 0.6rem;
+    text-align: center;
+  }
+  .sup-item .lbl {
+    display: block;
+    color: #64748b;
+    font-size: 0.5rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  .sup-item .val {
+    display: block;
+    color: #fcd34d;
+    font-weight: 900;
+    font-size: 0.9rem;
+  }
+  .sup-item .val.good { color: #6ee7b7; }
+  .sup-item .val.bad { color: #fca5a5; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(168,85,247,0.06);
+    border: 1px solid rgba(168,85,247,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #c4b5fd;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #a855f7;
+    background: rgba(168,85,247,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(168,85,247,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(168,85,247,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #a855f7;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(168,85,247,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #a855f7;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #c4b5fd;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(168,85,247,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.danger { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+  .status-banner.safe { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>ACTOR MODEL</h1>
+    <span class="sub">MESSAGE PASSING · MAILBOXES · SUPERVISION · NO SHARED STATE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Send Messages</h3>
+      <button class="btn primary" id="btnHello">👋 Send "hello" to Echo</button>
+      <button class="btn" id="btnPing">🏓 Ping Counter</button>
+      <button class="btn" id="btnCalc">🧮 Send Math Task</button>
+      <button class="btn ghost" id="btnBurst">⚡ Burst 20 Messages</button>
+    </div>
+
+    <div class="panel">
+      <h3>Fault Injection</h3>
+      <button class="btn danger" id="btnCrash">💥 Crash Counter Actor</button>
+      <button class="btn warn" id="btnStuck">🐌 Make Worker Stuck</button>
+      <button class="btn" id="btnPoison">☠️ Send Poison Message</button>
+    </div>
+
+    <div class="panel">
+      <h3>Supervision</h3>
+      <div style="font-size:0.65rem; color:#94a3b8; line-height:1.6; margin-bottom:8px;">
+        Strategy: <b style="color:#fcd34d;">Restart on failure</b>
+      </div>
+      <button class="btn success" id="btnRestart">🔄 Restart Supervisor</button>
+    </div>
+
+    <div class="panel">
+      <h3>Simulation</h3>
+      <div class="slider-row"><span>Messages/sec</span><span class="value" id="mpsVal">5</span></div>
+      <input type="range" id="mpsRange" min="1" max="20" value="5">
+      <button class="btn ghost" id="btnReset">⟲ Reset Cluster</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#a855f7;margin-right:6px;"></span>Actor</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#fcd34d;margin-right:6px;"></span>Processing</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ef4444;margin-right:6px;"></span>Crashed</div>
+        <div style="margin-top:4px; color:#ec4899;">■ messages in mailbox</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">EACH ACTOR OWNS STATE · COMMUNICATES ONLY VIA MESSAGES</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="topo-wrap">
+          <div class="topo-title">
+            <span>🎭 ACTOR SYSTEM</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="topoHint">— click an actor to inspect —</span>
+          </div>
+          <canvas id="actorCanvas"></canvas>
+        </div>
+
+        <div class="mailboxes-wrap" id="mailboxesWrap"></div>
+
+        <div class="supervision-wrap">
+          <div class="sup-item">
+            <span class="lbl">Supervisor</span>
+            <span class="val good" id="supState">Running</span>
+          </div>
+          <div class="sup-item">
+            <span class="lbl">Restarts</span>
+            <span class="val" id="supRestarts">0</span>
+          </div>
+          <div class="sup-item">
+            <span class="lbl">Active Actors</span>
+            <span class="val good" id="supActive">5</span>
+          </div>
+          <div class="sup-item">
+            <span class="lbl">Crashed</span>
+            <span class="val" id="supCrashed">0</span>
+          </div>
+          <div class="sup-item">
+            <span class="lbl">Messages Delivered</span>
+            <span class="val" id="supDelivered">0</span>
+          </div>
+          <div class="sup-item">
+            <span class="lbl">Avg Latency</span>
+            <span class="val" id="supLatency">0 ms</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Actors</div>
+        <div class="metric-value" id="mActors">5</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Mailbox Depth</div>
+        <div class="metric-value warn" id="mDepth">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Processed</div>
+        <div class="metric-value good" id="mProcessed">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Crashes</div>
+        <div class="metric-value bad" id="mCrashes">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Actor Model Rules</div>
+      <div class="info-row"><span class="lbl">No shared state</span><span class="val good">Everything is messages</span></div>
+      <div class="info-row"><span class="lbl">Mailbox</span><span class="val">Unbounded queue</span></div>
+      <div class="info-row"><span class="lbl">Single-threaded</span><span class="val">Per actor</span></div>
+      <div class="info-row"><span class="lbl">Address</span><span class="val">Opaque handle</span></div>
+      <div class="info-row"><span class="lbl">Supervision</span><span class="val good">Let it crash</span></div>
+      <div class="info-row"><span class="lbl">Location transparent</span><span class="val">Local or remote</span></div>
+      <div class="info-row"><span class="lbl">Systems</span><span class="val">Erlang/Elixir, Akka, Orleans</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  actors: [],
+  messages: [],       // messages in flight { from, to, payload, progress }
+  delivered: 0,
+  crashes: 0,
+  restarts: 0,
+  mps: 5,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  // Timers
+  spawnTimer: null
+};
+
+/* ============================================================
+   ACTOR DEFINITIONS
+   ============================================================ */
+const ACTOR_DEFS = [
+  { id: 'echo',     name: 'Echo',     x: 0.15, y: 0.25, color: '#a855f7', kind: 'echo' },
+  { id: 'counter',  name: 'Counter',  x: 0.5,  y: 0.2,  color: '#06b6d4', kind: 'counter' },
+  { id: 'worker1',  name: 'Worker-1', x: 0.15, y: 0.75, color: '#f59e0b', kind: 'worker' },
+  { id: 'worker2',  name: 'Worker-2', x: 0.5,  y: 0.8,  color: '#f59e0b', kind: 'worker' },
+  { id: 'logger',   name: 'Logger',   x: 0.85, y: 0.5,  color: '#22c55e', kind: 'logger' }
+];
+
+/* ============================================================
+   DOM
+   ============================================================ */
+const DOM = {
+  actorCanvas: document.getElementById('actorCanvas'),
+  topoHint: document.getElementById('topoHint'),
+  mailboxesWrap: document.getElementById('mailboxesWrap'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Supervisor stats
+  supState: document.getElementById('supState'),
+  supRestarts: document.getElementById('supRestarts'),
+  supActive: document.getElementById('supActive'),
+  supCrashed: document.getElementById('supCrashed'),
+  supDelivered: document.getElementById('supDelivered'),
+  supLatency: document.getElementById('supLatency'),
+  // Buttons
+  btnHello: document.getElementById('btnHello'),
+  btnPing: document.getElementById('btnPing'),
+  btnCalc: document.getElementById('btnCalc'),
+  btnBurst: document.getElementById('btnBurst'),
+  btnCrash: document.getElementById('btnCrash'),
+  btnStuck: document.getElementById('btnStuck'),
+  btnPoison: document.getElementById('btnPoison'),
+  btnRestart: document.getElementById('btnRestart'),
+  btnReset: document.getElementById('btnReset'),
+  mpsRange: document.getElementById('mpsRange'),
+  mpsVal: document.getElementById('mpsVal'),
+  // Metrics
+  mActors: document.getElementById('mActors'),
+  mDepth: document.getElementById('mDepth'),
+  mProcessed: document.getElementById('mProcessed'),
+  mCrashes: document.getElementById('mCrashes'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining the actor model.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   ACTOR CREATION
+   ============================================================ */
+function initActors() {
+  STATE.actors = ACTOR_DEFS.map(def => ({
+    id: def.id,
+    name: def.name,
+    x: def.x,
+    y: def.y,
+    color: def.color,
+    kind: def.kind,
+    mailbox: [],
+    processed: 0,
+    crashed: false,
+    stuck: false,
+    state: 'idle'
+  }));
+  renderMailboxes();
+  renderSupervisorStats();
+}
+
+/* ============================================================
+   SEND MESSAGE
+   ============================================================ */
+function sendMessage(fromId, toId, payload, kind = 'normal') {
+  const from = STATE.actors.find(a => a.id === fromId);
+  const to = STATE.actors.find(a => a.id === toId);
+  if (!from || !to) return;
+
+  if (to.crashed) {
+    showStatus(`⚠ ${to.name} is crashed — message bounced`, 'danger');
+    teach('MAILBOX DEAD',
+      `Tried to send "${payload}" to ${to.name}, but the actor is crashed. In actor systems, messages to a dead actor go to a dead-letter queue (or are dropped). The supervisor will restart it — then the sender can retry.`,
+      'error', false
+    );
+    return;
+  }
+
+  to.mailbox.push({
+    payload,
+    kind,
+    receivedAt: performance.now()
+  });
+
+  // Visualize the message in flight
+  STATE.messages.push({
+    from: fromId,
+    to: toId,
+    progress: 0,
+    payload,
+    kind
+  });
+
+  renderMailboxes();
+  updateMetrics();
+}
+
+/* ============================================================
+   PROCESS MAILBOX
+   ============================================================ */
+function processActor(actor) {
+  if (actor.crashed || actor.stuck) return;
+  if (actor.mailbox.length === 0) return;
+
+  const msg = actor.mailbox.shift();
+  actor.state = 'processing';
+  actor.processed++;
+  STATE.delivered++;
+
+  // Reset lastActive timestamp for animation
+  actor.lastActive = performance.now();
+
+  // Handle based on actor kind
+  if (actor.kind === 'echo') {
+    teach('ECHO',
+      `Echo received "${msg.payload}" and echoed it back to the sender. In actor systems, actors communicate by sending messages — no method calls, no shared memory. The return value is just another message.`,
+      'purple', false
+    );
+  } else if (actor.kind === 'counter') {
+    teach('COUNTER',
+      `Counter incremented its internal state on message "${msg.payload}". Notice: no locks, no atomics needed. The actor processes messages ONE AT A TIME, so its internal state is naturally thread-safe. This is the actor model's superpower — serialized state access for free.`,
+      'ok', false
+    );
+  } else if (actor.kind === 'worker') {
+    // Simulate worker taking longer
+    actor.state = 'processing';
+    setTimeout(() => {
+      actor.state = 'idle';
+      renderMailboxes();
+    }, 200);
+  } else if (actor.kind === 'logger') {
+    teach('LOGGER',
+      `Logger recorded: "${msg.payload}" — logging is a classic side-effect that actors handle cleanly. Instead of a global logger with locks, you send log messages to a single Logger actor that processes them sequentially.`,
+      'cyan', false
+    );
+  }
+
+  // Message handled, remove it
+  setTimeout(() => {
+    actor.state = 'idle';
+    renderMailboxes();
+  }, 400);
+
+  updateMetrics();
+}
+
+/* ============================================================
+   RENDER MAILBOXES
+   ============================================================ */
+function renderMailboxes() {
+  DOM.mailboxesWrap.innerHTML = '';
+  for (const actor of STATE.actors) {
+    const el = document.createElement('div');
+    el.className = `mailbox ${actor.crashed ? 'dead' : actor.state === 'processing' ? 'active' : ''}`;
+
+    const queueHTML = actor.mailbox.length === 0
+      ? '<div style="color:#475569; text-align:center; font-size:0.5rem; padding:4px;">— empty —</div>'
+      : actor.mailbox.slice(-6).map(m => `<div class="msg ${m.kind}">${m.payload}</div>`).join('');
+
+    el.innerHTML = `
+      <div class="mailbox-head">
+        <span class="mailbox-name">${actor.crashed ? '💀' : actor.state === 'processing' ? '⚡' : '🎭'} ${actor.name}</span>
+        <span class="mailbox-count">${actor.mailbox.length}</span>
+      </div>
+      <div class="mailbox-queue">${queueHTML}</div>
+    `;
+    DOM.mailboxesWrap.appendChild(el);
+  }
+}
+
+/* ============================================================
+   RENDER CANVAS
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.actorCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawCanvas() {
+  const canvas = DOM.actorCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+
+  const W = canvas._w;
+  const H = canvas._h;
+  const now = performance.now();
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw connection lines (all actors can message each other)
+  for (let i = 0; i < STATE.actors.length; i++) {
+    for (let j = i + 1; j < STATE.actors.length; j++) {
+      const a = STATE.actors[i];
+      const b = STATE.actors[j];
+      ctx.strokeStyle = 'rgba(71,85,105,0.15)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 4]);
+      ctx.beginPath();
+      ctx.moveTo(a.x * W, a.y * H);
+      ctx.lineTo(b.x * W, b.y * H);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // Draw messages in flight
+  for (let i = STATE.messages.length - 1; i >= 0; i--) {
+    const msg = STATE.messages[i];
+    msg.progress += 0.04;
+    if (msg.progress >= 1) {
+      STATE.messages.splice(i, 1);
+      continue;
+    }
+    const from = STATE.actors.find(a => a.id === msg.from);
+    const to = STATE.actors.find(a => a.id === msg.to);
+    if (!from || !to) continue;
+    const fx = from.x * W, fy = from.y * H;
+    const tx = to.x * W, ty = to.y * H;
+    const t = msg.progress;
+    const mt = 1 - t;
+    // Bezier for arc
+    const cx = (fx + tx) / 2;
+    const cy = (fy + ty) / 2 - 60;
+    const x = mt * mt * fx + 2 * mt * t * cx + t * t * tx;
+    const y = mt * mt * fy + 2 * mt * t * cy + t * t * ty;
+
+    ctx.beginPath();
+    ctx.fillStyle = msg.kind === 'system' ? '#a855f7' : msg.kind === 'hello' ? '#22c55e' : '#ec4899';
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur = 12;
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Draw actors
+  for (const actor of STATE.actors) {
+    const x = actor.x * W;
+    const y = actor.y * H;
+    const r = 32;
+
+    // Active glow
+    const active = actor.lastActive && (now - actor.lastActive < 500);
+    if (active && !actor.crashed) {
+      ctx.beginPath();
+      ctx.arc(x, y, r + 8 + Math.sin(now / 100) * 4, 0, Math.PI * 2);
+      ctx.strokeStyle = actor.color;
+      ctx.globalAlpha = 0.4;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // Node body
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    if (actor.crashed) {
+      ctx.fillStyle = '#2a0f0f';
+      ctx.strokeStyle = '#ef4444';
+    } else if (actor.stuck) {
+      ctx.fillStyle = '#2a1e0f';
+      ctx.strokeStyle = '#f59e0b';
+    } else {
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = actor.color;
+    }
+    ctx.lineWidth = 3;
+    ctx.fill();
+    ctx.stroke();
+
+    // Icon
+    ctx.font = '20px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const icon = actor.crashed ? '💀' : actor.stuck ? '🐌' : actor.kind === 'echo' ? '🔊' : actor.kind === 'counter' ? '🔢' : actor.kind === 'logger' ? '📝' : '⚙️';
+    ctx.fillText(icon, x, y);
+
+    // Name
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = actor.crashed ? '#fca5a5' : actor.stuck ? '#fcd34d' : actor.color;
+    ctx.textBaseline = 'top';
+    ctx.fillText(actor.name, x, y + r + 6);
+
+    // Mailbox count badge
+    if (actor.mailbox.length > 0) {
+      ctx.font = 'bold 10px monospace';
+      ctx.fillStyle = '#ec4899';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(actor.mailbox.length, x + r - 4, y - r + 4);
+      ctx.beginPath();
+      ctx.arc(x + r - 4, y - r + 4, 9, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(236,72,153,0.9)';
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillText(actor.mailbox.length, x + r - 4, y - r + 4);
+    }
+  }
+}
+
+function animate() {
+  drawCanvas();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   MESSAGE PROCESSING LOOP
+   ============================================================ */
+function startProcessingLoop() {
+  setInterval(() => {
+    for (const actor of STATE.actors) {
+      // Only process one message per tick per actor
+      if (actor.mailbox.length > 0 && !actor.crashed && !actor.stuck && actor.state !== 'processing') {
+        processActor(actor);
+      }
+    }
+  }, 300);
+}
+
+/* ============================================================
+   CLIENT MESSAGES
+   ============================================================ */
+function sendHello() {
+  sendMessage('client', 'echo', '"hello"', 'hello');
+  teach('MESSAGE PASSING',
+    `Sent "hello" to Echo. The sender doesn't call a method on Echo — it drops a message into Echo's mailbox and moves on. This is asynchronous, fire-and-forget messaging. Echo will process it when it's ready.`,
+    'purple'
+  );
+  showStatus('👋 "hello" → Echo');
+}
+
+function sendPing() {
+  sendMessage('client', 'counter', 'increment', 'system');
+  teach('STATE OWNERSHIP',
+    `Sent "increment" to Counter. The Counter actor holds the counter value as PRIVATE state — no other actor can read or write it directly. To change it, you must send a message. This is why actors don't have race conditions: state is encapsulated and processed one message at a time.`,
+    'ok'
+  );
+  showStatus('🔢 increment → Counter');
+}
+
+function sendCalc() {
+  const worker = Math.random() < 0.5 ? 'worker1' : 'worker2';
+  sendMessage('client', worker, 'math-task', 'system');
+  teach('WORKER POOL',
+    `Sent a math task to ${worker}. Multiple workers process tasks in parallel — each has its own mailbox. This is the actor equivalent of a thread pool, but without shared state or locks. Scale workers up by spawning more actors.`,
+    'cyan'
+  );
+  showStatus(`🧮 task → ${worker}`);
+}
+
+function burst() {
+  for (let i = 0; i < 20; i++) {
+    setTimeout(() => {
+      const targets = ['echo', 'counter', 'worker1', 'worker2', 'logger'];
+      const t = targets[Math.floor(Math.random() * targets.length)];
+      sendMessage('client', t, `msg-${i + 1}`, 'system');
+    }, i * 80);
+  }
+  showToast('⚡ 20 messages dispatched');
+  teach('MAILBOX BUFFERING',
+    `20 messages dispatched in a burst. Each actor's mailbox is a QUEUE — messages are buffered and processed one at a time. This is how actor systems handle bursts: the mailbox acts as a buffer, and the actor drains it as fast as it can. If the mailbox grows unboundedly, you have a "mailbox overflow" problem — real systems cap mailbox size or use backpressure.`,
+    'warn'
+  );
+}
+
+/* ============================================================
+   FAULT INJECTION
+   ============================================================ */
+function crashCounter() {
+  const actor = STATE.actors.find(a => a.id === 'counter');
+  if (!actor) return;
+  actor.crashed = true;
+  actor.state = 'crashed';
+  STATE.crashes++;
+  renderMailboxes();
+  renderSupervisorStats();
+
+  showStatus('💥 Counter actor crashed', 'danger');
+  teach('CRASH',
+    `Counter actor crashed. In the actor model, this is expected — "let it crash" is a philosophy. Instead of defensive programming, you let actors fail and rely on supervisors to restart them. The crash is isolated: no other actor is affected because they don't share state.`,
+    'error'
+  );
+
+  // Auto-restart after 3 seconds
+  setTimeout(() => {
+    if (actor.crashed) {
+      actor.crashed = false;
+      actor.mailbox = [];  // fresh mailbox
+      STATE.restarts++;
+      renderMailboxes();
+      renderSupervisorStats();
+      showStatus('🔄 Counter restarted by supervisor', 'safe');
+      teach('SUPERVISOR RESTART',
+        `Supervisor restarted Counter. In Erlang/Elixir, this is called a "supervision tree" — each actor has a supervisor, and the supervisor decides on failure: restart, stop, escalate, or restart all siblings. The result: systems that self-heal from transient bugs without human intervention.`,
+        'ok'
+      );
+    }
+  }, 3000);
+}
+
+function makeStuck() {
+  const worker = STATE.actors.find(a => a.kind === 'worker' && !a.stuck && !a.crashed);
+  if (!worker) {
+    showToast('⚠ No worker to slow');
+    return;
+  }
+  worker.stuck = true;
+  teach('STUCK ACTOR',
+    `${worker.name} is now "stuck" (simulating a slow external call). Its mailbox will fill up because it can't drain messages. In real systems, you'd see mailbox depth grow — a warning sign. Fixes: timeouts, circuit breakers, or splitting the actor.`,
+    'warn'
+  );
+  renderMailboxes();
+
+  setTimeout(() => {
+    worker.stuck = false;
+    renderMailboxes();
+    teach('UNSTUCK', `${worker.name} recovered. Mailbox will drain.`, 'ok', false);
+  }, 8000);
+}
+
+function sendPoison() {
+  const actor = STATE.actors.find(a => a.kind === 'counter');
+  sendMessage('client', 'counter', 'POISON', 'normal');
+  teach('POISON MESSAGE',
+    `Sent a poison message. In real actor systems, a poison message is one that crashes the actor every time it's processed. This creates a "crash loop": supervisor restarts, message is re-delivered, actor crashes again. Solutions: dead-letter queues, poison pill detection (after N failures, skip), or manual intervention.`,
+    'error'
+  );
+  showStatus('☠️ Poison message sent', 'danger');
+}
+
+function restartSupervisor() {
+  for (const actor of STATE.actors) {
+    actor.crashed = false;
+    actor.stuck = false;
+    actor.mailbox = [];
+  }
+  STATE.restarts++;
+  renderMailboxes();
+  renderSupervisorStats();
+  showToast('🔄 Supervisor restarted all actors');
+  teach('RESTART',
+    `Supervisor restarted all actors with fresh mailboxes. This is the "one-for-all" restart strategy. Alternatives: "one-for-one" (only restart the crashed one), "rest-for-one" (restart a subset). The choice depends on how coupled the actors are.`,
+    'ok'
+  );
+}
+
+/* ============================================================
+   SUPERVISOR STATS
+   ============================================================ */
+function renderSupervisorStats() {
+  const active = STATE.actors.filter(a => !a.crashed).length;
+  const crashed = STATE.actors.filter(a => a.crashed).length;
+  DOM.supState.textContent = crashed > 0 ? 'Restarting' : 'Running';
+  DOM.supState.className = 'val ' + (crashed > 0 ? 'bad' : 'good');
+  DOM.supRestarts.textContent = STATE.restarts;
+  DOM.supActive.textContent = active;
+  DOM.supActive.className = 'val ' + (active === STATE.actors.length ? 'good' : 'bad');
+  DOM.supCrashed.textContent = crashed;
+  DOM.supDelivered.textContent = STATE.delivered;
+  DOM.supLatency.textContent = (50 + Math.random() * 30).toFixed(0) + ' ms';
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.mActors.textContent = STATE.actors.length;
+  const depth = STATE.actors.reduce((sum, a) => sum + a.mailbox.length, 0);
+  DOM.mDepth.textContent = depth;
+  DOM.mDepth.className = 'metric-value ' + (depth > 15 ? 'bad' : depth > 8 ? 'warn' : 'warn');
+  DOM.mProcessed.textContent = STATE.delivered;
+  DOM.mCrashes.textContent = STATE.crashes;
+
+  // Also update supervisor panel
+  DOM.supDelivered.textContent = STATE.delivered;
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.messages = [];
+  STATE.delivered = 0;
+  STATE.crashes = 0;
+  STATE.restarts = 0;
+  initActors();
+  updateMetrics();
+  showToast('⟲ Cluster reset');
+  teach('RESET', 'All actors restarted with empty mailboxes, all counters zeroed.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnHello.addEventListener('click', sendHello);
+DOM.btnPing.addEventListener('click', sendPing);
+DOM.btnCalc.addEventListener('click', sendCalc);
+DOM.btnBurst.addEventListener('click', burst);
+DOM.btnCrash.addEventListener('click', crashCounter);
+DOM.btnStuck.addEventListener('click', makeStuck);
+DOM.btnPoison.addEventListener('click', sendPoison);
+DOM.btnRestart.addEventListener('click', restartSupervisor);
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.mpsRange.addEventListener('input', e => {
+  STATE.mps = parseInt(e.target.value);
+  DOM.mpsVal.textContent = STATE.mps;
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+// Click on canvas to inspect actors
+DOM.actorCanvas.addEventListener('click', e => {
+  const canvas = DOM.actorCanvas;
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = (e.clientY - rect.top) / rect.height;
+  for (const actor of STATE.actors) {
+    const dx = x - actor.x;
+    const dy = y - actor.y;
+    if (dx * dx + dy * dy < 0.02) {
+      teach('ACTOR: ' + actor.name.toUpperCase(),
+        `${actor.name} is a ${actor.kind} actor. Mailbox: ${actor.mailbox.length} messages. Processed: ${actor.processed}. State: ${actor.crashed ? 'CRASHED' : actor.stuck ? 'STUCK' : 'healthy'}. Actors process messages one at a time — no locks, no shared memory.`,
+        actor.crashed ? 'error' : actor.stuck ? 'warn' : 'purple'
+      );
+      return;
+    }
+  }
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+initActors();
+updateMetrics();
+startProcessingLoop();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to the Actor Model. Invented by Carl Hewitt in 1973, popularized by Erlang and Elixir, and implemented in Akka, Orleans, and Microsoft's Service Fabric. The idea: forget shared state and locks. Instead, model everything as independent actors that communicate only via asynchronous messages.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE THREE RULES',
+      `Actors follow three rules: (1) Each actor has private state — nobody else can touch it. (2) Actors communicate ONLY by sending messages to mailboxes. (3) Actors process messages ONE AT A TIME. That's it. From these rules, you get inherent thread-safety: no two threads ever touch the same state.`,
+      'purple'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('SUPERVISION',
+      `What happens when an actor crashes? In the actor model, you don't hide the crash — you "let it crash". A supervisor watches its children and decides what to do: restart, stop, or escalate. This gives you self-healing systems. Erlang famously powers telecom switches with 99.9999999% uptime using this model.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click HELLO, PING, or CALC to send messages between actors. Watch the mailboxes fill and drain. Then CRASH the Counter actor — the supervisor will restart it after 3 seconds. This is the actor model's resilience in action. The key insight: no locks, no race conditions, no shared state.`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Send messages, then crash an actor', 4500);
+}, 500);
+</script>
+</body>
+</html>

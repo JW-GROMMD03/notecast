@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consistent Hashing &amp; DHT Rings — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(99,102,241,0.15); color: #a5b4fc; border-color: #6366f1; }
+  .teaching-toggle:hover { background: rgba(99,102,241,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #a5b4fc;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #6366f1; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #6366f1; color: #fff; border-color: #6366f1; }
+  .btn.primary:hover { background: #4f46e5; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(99,102,241,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; gap: 10px; padding: 0 16px;
+  }
+  .ring-wrap {
+    flex: 1.5; background: #070a14; border: 2px solid #6366f1; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(99,102,241,0.15); min-height: 0;
+  }
+  .ring-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #a5b4fc; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #ringCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .info-wrap {
+    width: 340px; background: #070a14; border: 2px solid #a855f7; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(168,85,247,0.15); flex-shrink: 0;
+    min-height: 0;
+  }
+  .info-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #c4b5fd; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .info-body {
+    flex: 1; overflow-y: auto; min-height: 0; font-family: monospace; font-size: 0.6rem;
+  }
+  .node-stat {
+    padding: 6px 10px; margin-bottom: 6px;
+    background: rgba(30,41,59,0.3); border-radius: 6px;
+    border-left: 3px solid #6366f1;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .node-stat .name { color: #cbd5e1; font-weight: 900; }
+  .node-stat .count {
+    background: rgba(99,102,241,0.2); color: #a5b4fc;
+    padding: 1px 8px; border-radius: 10px; font-size: 0.55rem;
+  }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #a5b4fc; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #6366f1;
+    background: rgba(99,102,241,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(99,102,241,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(99,102,241,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #a5b4fc;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #6366f1; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(99,102,241,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #6366f1; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #a5b4fc; z-index: 12;
+    box-shadow: 0 0 20px rgba(99,102,241,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.warn { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+  .status-banner.ok { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>CONSISTENT HASHING</h1>
+    <span class="sub">HASH RING · VIRTUAL NODES · MINIMAL REMAPPING</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Cluster Control</h3>
+      <button class="btn primary" id="btnAddNode">➕ Add Node</button>
+      <button class="btn danger" id="btnRemoveNode">➖ Remove Node</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Keys</h3>
+      <button class="btn" id="btnAddKey">🔑 Add Random Key</button>
+      <button class="btn" id="btnAdd100">⚡ Add 100 Keys</button>
+      <button class="btn danger" id="btnClearKeys">🗑️ Clear Keys</button>
+    </div>
+
+    <div class="panel">
+      <h3>Virtual Nodes</h3>
+      <div class="slider-row"><span>Replicas</span><span class="value" id="replicaVal">1</span></div>
+      <input type="range" id="replicaRange" min="1" max="10" value="1">
+      <div style="font-size:0.6rem; color:#64748b; line-height:1.5; margin-top:4px;">
+        More vnodes → more even distribution, more memory.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Compare</h3>
+      <button class="btn warn" id="btnCompare">📊 Modulo vs Consistent</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#6366f1;border-radius:50%;margin-right:6px;"></span>Node</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#a855f7;border-radius:50%;margin-right:6px;"></span>Virtual node</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:50%;margin-right:6px;"></span>Key</div>
+        <div style="margin-top:4px;">Key stored on next node clockwise</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">KEYS MAP TO THE NEXT NODE CLOCKWISE ON THE RING</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="ring-wrap">
+          <div class="ring-title">
+            <span>🌐 HASH RING (0 → 2³²-1)</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="ringHint">— 0 nodes · 0 keys —</span>
+          </div>
+          <canvas id="ringCanvas"></canvas>
+        </div>
+
+        <div class="info-wrap">
+          <div class="info-title">
+            <span>📋 LOAD DISTRIBUTION</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="infoHint">— per node —</span>
+          </div>
+          <div class="info-body" id="infoBody"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Nodes</div>
+        <div class="metric-value" id="mNodes">3</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Keys</div>
+        <div class="metric-value warn" id="mKeys">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Balance</div>
+        <div class="metric-value" id="mBalance">—</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Remapped</div>
+        <div class="metric-value bad" id="mRemap">0%</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Consistent Hashing</div>
+      <div class="info-row"><span class="lbl">Ring size</span><span class="val">2³² positions</span></div>
+      <div class="info-row"><span class="lbl">Key → node</span><span class="val">Next clockwise</span></div>
+      <div class="info-row"><span class="lbl">Add node</span><span class="val good">~1/n keys move</span></div>
+      <div class="info-row"><span class="lbl">Remove node</span><span class="val good">Only its keys move</span></div>
+      <div class="info-row"><span class="lbl">Naive modulo</span><span class="val bad">~100% remap!</span></div>
+      <div class="info-row"><span class="lbl">Virtual nodes</span><span class="val">Even distribution</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">Cassandra, DynamoDB, Redis Cluster</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  nodes: [],       // { id, name, color, hash, keys: [] }
+  keys: [],        // { id, hash, nodeId }
+  nextNodeId: 1,
+  nextKeyId: 1,
+  replicas: 1,
+  ringSize: 1000,  // for visual clarity, not actual 2^32
+  teaching: true,
+  voiceEnabled: false
+};
+
+const NODE_COLORS = ['#6366f1', '#a855f7', '#ec4899', '#06b6d4', '#10b981', '#f59e0b', '#f97316', '#8b5cf6', '#14b8a6', '#ef4444'];
+
+const DOM = {
+  ringCanvas: document.getElementById('ringCanvas'),
+  ringHint: document.getElementById('ringHint'),
+  infoBody: document.getElementById('infoBody'),
+  infoHint: document.getElementById('infoHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnAddNode: document.getElementById('btnAddNode'),
+  btnRemoveNode: document.getElementById('btnRemoveNode'),
+  btnReset: document.getElementById('btnReset'),
+  btnAddKey: document.getElementById('btnAddKey'),
+  btnAdd100: document.getElementById('btnAdd100'),
+  btnClearKeys: document.getElementById('btnClearKeys'),
+  btnCompare: document.getElementById('btnCompare'),
+  replicaRange: document.getElementById('replicaRange'),
+  replicaVal: document.getElementById('replicaVal'),
+  mNodes: document.getElementById('mNodes'),
+  mKeys: document.getElementById('mKeys'),
+  mBalance: document.getElementById('mBalance'),
+  mRemap: document.getElementById('mRemap'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining consistent hashing.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(text => Voice.say(msg));
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   HASHING
+   ============================================================ */
+function hashString(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h) % STATE.ringSize;
+}
+
+/* ============================================================
+   NODES + KEYS
+   ============================================================ */
+function addNode() {
+  const id = STATE.nextNodeId++;
+  const node = {
+    id,
+    name: `Node-${id}`,
+    color: NODE_COLORS[(id - 1) % NODE_COLORS.length],
+    ringPos: hashString('node' + id + Date.now()),
+    keys: []
+  };
+  STATE.nodes.push(node);
+  reassignKeys();
+  renderInfo();
+  drawRing();
+  updateMetrics();
+  showStatus(`➕ Added ${node.name}`, 'ok');
+  teach('ADD NODE',
+    `Added ${node.name}. In consistent hashing, adding a node only redistributes keys that fall in the range from the previous node to the new node — roughly 1/n of the keys if we have n nodes. The other (n-1)/n keys stay put. Compare to modulo hashing where adding a node would remap almost ALL keys.`,
+    'ok'
+  );
+}
+
+function removeNode() {
+  if (STATE.nodes.length <= 1) {
+    showToast('⚠ Cannot remove last node');
+    return;
+  }
+  const victim = STATE.nodes[Math.floor(Math.random() * STATE.nodes.length)];
+  STATE.nodes = STATE.nodes.filter(n => n.id !== victim.id);
+  reassignKeys();
+  renderInfo();
+  drawRing();
+  updateMetrics();
+  showStatus(`➖ Removed ${victim.name}`);
+  teach('REMOVE NODE',
+    `Removed ${victim.name}. All keys that were on this node have been reassigned to the next clockwise node. That's typically only 1/n of the total keys. This is the key insight of consistent hashing: minimizing redistribution when nodes come and go.`,
+    'warn'
+  );
+}
+
+function addRandomKey() {
+  const id = STATE.nextKeyId++;
+  const key = {
+    id,
+    name: `k${id}`,
+    ringPos: Math.floor(Math.random() * STATE.ringSize),
+    nodeId: null
+  };
+  STATE.keys.push(key);
+  assignKey(key);
+  renderInfo();
+  drawRing();
+  updateMetrics();
+}
+
+function add100Keys() {
+  for (let i = 0; i < 100; i++) {
+    const id = STATE.nextKeyId++;
+    STATE.keys.push({
+      id,
+      name: `k${id}`,
+      ringPos: Math.floor(Math.random() * STATE.ringSize),
+      nodeId: null
+    });
+  }
+  for (const k of STATE.keys) assignKey(k);
+  renderInfo();
+  drawRing();
+  updateMetrics();
+  showStatus('⚡ Added 100 keys');
+  teach('BULK KEYS',
+    `Added 100 random keys. They distribute across nodes based on ring position. With virtual nodes, distribution is more even. Without vnodes and with few nodes, distribution is often skewed — one node may own 60% of the ring while another owns only 10%.`,
+    'cyan'
+  );
+}
+
+function clearKeys() {
+  STATE.keys = [];
+  for (const n of STATE.nodes) n.keys = [];
+  renderInfo();
+  drawRing();
+  updateMetrics();
+}
+
+function assignKey(key) {
+  // Find next clockwise node from key's position
+  if (STATE.nodes.length === 0) {
+    key.nodeId = null;
+    return;
+  }
+  // Sort nodes by ring position
+  const sortedNodes = [...STATE.nodes].sort((a, b) => a.ringPos - b.ringPos);
+  // Find first node with ringPos >= key.ringPos (wrapping around)
+  let target = sortedNodes.find(n => n.ringPos >= key.ringPos);
+  if (!target) target = sortedNodes[0];  // wrap
+  key.nodeId = target.id;
+}
+
+function reassignKeys() {
+  // Reset node key lists
+  for (const n of STATE.nodes) n.keys = [];
+  // Assign all keys
+  for (const k of STATE.keys) {
+    assignKey(k);
+    const node = STATE.nodes.find(n => n.id === k.nodeId);
+    if (node) node.keys.push(k);
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.ringCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawRing() {
+  const canvas = DOM.ringCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const cx = W / 2;
+  const cy = H / 2;
+  const R = Math.min(W, H) * 0.38;
+  const ringW = 8;
+
+  // Draw ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = ringW;
+  ctx.stroke();
+
+  // Draw colored arcs for each node's range
+  const sortedNodes = [...STATE.nodes].sort((a, b) => a.ringPos - b.ringPos);
+  for (let i = 0; i < sortedNodes.length; i++) {
+    const node = sortedNodes[i];
+    const next = sortedNodes[(i + 1) % sortedNodes.length];
+    const startAngle = (node.ringPos / STATE.ringSize) * Math.PI * 2 - Math.PI / 2;
+    const endAngle = (next.ringPos / STATE.ringSize) * Math.PI * 2 - Math.PI / 2;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, startAngle, endAngle);
+    ctx.strokeStyle = node.color;
+    ctx.lineWidth = ringW;
+    ctx.stroke();
+  }
+
+  // Draw node markers on ring
+  for (const node of STATE.nodes) {
+    const angle = (node.ringPos / STATE.ringSize) * Math.PI * 2 - Math.PI / 2;
+    const x = cx + Math.cos(angle) * R;
+    const y = cy + Math.sin(angle) * R;
+
+    // Line from center to node
+    ctx.strokeStyle = node.color + '55';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+
+    // Node circle
+    ctx.beginPath();
+    ctx.arc(x, y, 12, 0, Math.PI * 2);
+    ctx.fillStyle = node.color;
+    ctx.fill();
+    ctx.strokeStyle = '#02040a';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Label
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = '#02040a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(node.id, x, y);
+
+    // Name label outside ring
+    const lx = cx + Math.cos(angle) * (R + 30);
+    const ly = cy + Math.sin(angle) * (R + 30);
+    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = node.color;
+    ctx.fillText(node.name, lx, ly);
+  }
+
+  // Draw keys
+  for (const key of STATE.keys) {
+    const angle = (key.ringPos / STATE.ringSize) * Math.PI * 2 - Math.PI / 2;
+    const x = cx + Math.cos(angle) * (R - 30);
+    const y = cy + Math.sin(angle) * (R - 30);
+
+    // If there are many keys, draw as small dots
+    if (STATE.keys.length > 30) {
+      ctx.beginPath();
+      ctx.arc(x, y, 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+    } else {
+      // Draw as small circles
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+      ctx.strokeStyle = '#02040a';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  // Center label
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('HASH RING', cx, cy - 10);
+  ctx.font = '9px monospace';
+  ctx.fillText(`0 → ${STATE.ringSize}`, cx, cy + 8);
+
+  DOM.ringHint.textContent = `— ${STATE.nodes.length} nodes · ${STATE.keys.length} keys —`;
+}
+
+function animate() {
+  drawRing();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   INFO PANEL
+   ============================================================ */
+function renderInfo() {
+  DOM.infoBody.innerHTML = '';
+  if (STATE.nodes.length === 0) {
+    DOM.infoBody.innerHTML = '<div style="color:#475569; text-align:center; padding:20px;">— no nodes —</div>';
+    return;
+  }
+
+  const sortedNodes = [...STATE.nodes].sort((a, b) => a.ringPos - b.ringPos);
+  for (const node of sortedNodes) {
+    const count = STATE.keys.filter(k => k.nodeId === node.id).length;
+    const pct = STATE.keys.length > 0 ? ((count / STATE.keys.length) * 100).toFixed(1) : '0.0';
+    const el = document.createElement('div');
+    el.className = 'node-stat';
+    el.style.borderLeftColor = node.color;
+    el.innerHTML = `
+      <span class="name" style="color:${node.color}">${node.name}</span>
+      <span>
+        <span style="color:#94a3b8; font-size:0.5rem;">${pct}%</span>
+        <span class="count">${count}</span>
+      </span>
+    `;
+    DOM.infoBody.appendChild(el);
+  }
+
+  DOM.infoHint.textContent = `— ${STATE.keys.length} keys —`;
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.mNodes.textContent = STATE.nodes.length;
+  DOM.mKeys.textContent = STATE.keys.length;
+
+  if (STATE.keys.length === 0 || STATE.nodes.length === 0) {
+    DOM.mBalance.textContent = '—';
+    DOM.mRemap.textContent = '0%';
+    return;
+  }
+
+  // Balance: max load / average load. 1.0 = perfect, higher = worse
+  const loads = STATE.nodes.map(n => STATE.keys.filter(k => k.nodeId === n.id).length);
+  const maxLoad = Math.max(...loads);
+  const avgLoad = STATE.keys.length / STATE.nodes.length;
+  const balance = maxLoad / Math.max(avgLoad, 1);
+  DOM.mBalance.textContent = balance.toFixed(2);
+  DOM.mBalance.className = 'metric-value ' + (balance < 1.3 ? 'good' : balance < 2 ? 'warn' : 'bad');
+}
+
+/* ============================================================
+   COMPARISON DEMO
+   ============================================================ */
+function compareModulo() {
+  if (STATE.keys.length === 0) {
+    showToast('⚠ Add some keys first');
+    return;
+  }
+
+  const numNodes = STATE.nodes.length;
+  const testNodeCount = numNodes + 1;
+
+  // How many keys move if we use naive modulo hashing?
+  const currentModuloAssign = STATE.keys.map((k, i) => i % numNodes);
+  const newModuloAssign = STATE.keys.map((k, i) => i % testNodeCount);
+  let remapped = 0;
+  for (let i = 0; i < STATE.keys.length; i++) {
+    if (currentModuloAssign[i] !== newModuloAssign[i]) remapped++;
+  }
+  const moduloRemapPct = (remapped / STATE.keys.length * 100).toFixed(0);
+
+  // With consistent hashing, we expect ~ 1/(n+1) of keys to move
+  const expectedRemapPct = (100 / testNodeCount).toFixed(0);
+
+  teach('MODULO vs CONSISTENT',
+    `With MODULO hashing (hash % N): adding one node (going from ${numNodes} → ${testNodeCount}) remaps roughly ${moduloRemapPct}% of keys — nearly ALL of them. With CONSISTENT hashing: only ~${expectedRemapPct}% need to move (the keys that fall in the range now owned by the new node). For a 100-node cluster, adding one node moves ~1% of keys with consistent hashing vs ~99% with modulo. This is why every distributed cache uses consistent hashing.`,
+    'purple'
+  );
+  showToast(`📊 Modulo: ${moduloRemapPct}% remap · Consistent: ~${expectedRemapPct}%`);
+  DOM.mRemap.textContent = moduloRemapPct + '%';
+  DOM.mRemap.className = 'metric-value bad';
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.nodes = [];
+  STATE.keys = [];
+  STATE.nextNodeId = 1;
+  STATE.nextKeyId = 1;
+  // Add default 3 nodes
+  for (let i = 0; i < 3; i++) {
+    const id = STATE.nextNodeId++;
+    STATE.nodes.push({
+      id,
+      name: `Node-${id}`,
+      color: NODE_COLORS[(id - 1) % NODE_COLORS.length],
+      ringPos: hashString('node' + id + (i + 1) * 1000),
+      keys: []
+    });
+  }
+  renderInfo();
+  drawRing();
+  updateMetrics();
+  teach('RESET', 'Ring reset with 3 nodes and no keys.', 'info', false);
+}
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnAddNode.addEventListener('click', addNode);
+DOM.btnRemoveNode.addEventListener('click', removeNode);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnAddKey.addEventListener('click', addRandomKey);
+DOM.btnAdd100.addEventListener('click', add100Keys);
+DOM.btnClearKeys.addEventListener('click', clearKeys);
+DOM.btnCompare.addEventListener('click', compareModulo);
+
+DOM.replicaRange.addEventListener('input', e => {
+  STATE.replicas = parseInt(e.target.value);
+  DOM.replicaVal.textContent = STATE.replicas;
+  // For simplicity, we don't actually replicate keys — just teach about it
+  if (STATE.replicas > 1) {
+    teach('VIRTUAL NODES',
+      `Setting virtual nodes to ${STATE.replicas}. In real systems, each physical node is represented by ~100-200 virtual nodes scattered across the ring. This gives much more even distribution — without vnodes, one node might own 60% of the ring while another owns 5%. Memory cost is small (just hash values).`,
+      'cyan'
+    );
+  }
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+resetAll();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Consistent Hashing. When you have a distributed cache or database, you need to decide which node stores which key. The naive approach is hash(key) % N — but when N changes (a node joins or leaves), almost every key gets remapped, causing a storm of cache misses.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE RING',
+      `Consistent hashing places both nodes and keys on a circular hash ring (0 to 2³²-1). Each key is stored on the FIRST node clockwise from its position. Adding a node only affects keys in the arc just before it. Removing a node only affects its own keys. Everything else stays put.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('VIRTUAL NODES',
+      `The problem: with only 3-5 nodes, the ring segments are very unequal — one node might own 60% of the ring. Solution: virtual nodes. Each physical node gets multiple ring positions (e.g., 100 per node). Keys distribute evenly because the ring looks much denser. This is what Cassandra, DynamoDB, and Redis Cluster do.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Add some keys and watch them distribute around the ring. Add a node and notice that only the keys in one arc get reassigned. Remove a node and see its keys hand off to the next node. Click COMPARE to see the difference vs naive modulo.`,
+      'warn'
+    );
+  }, 13000);
+  showToast('👋 Add keys, then add/remove nodes', 4500);
+}, 500);
+</script>
+</body>
+</html>

@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hash Collision Resolution — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #ec4899, #a855f7, #6366f1);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(236,72,153,0.15); color: #f9a8d4; border-color: #ec4899; }
+  .teaching-toggle:hover { background: rgba(236,72,153,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #f9a8d4;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #ec4899; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #ec4899; color: #fff; border-color: #ec4899; }
+  .btn.primary:hover { background: #db2777; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #ec4899; color: #fff; border-color: #ec4899; }
+  .algo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .algo-btn {
+    padding: 8px 6px; background: #02040a; border: 1.5px solid #334155;
+    border-radius: 6px; font-family: monospace; font-size: 0.55rem;
+    font-weight: 800; color: #94a3b8; cursor: pointer;
+    letter-spacing: 0.3px; transition: all 0.2s;
+  }
+  .algo-btn:hover { border-color: #ec4899; color: #f9a8d4; }
+  .algo-btn.active {
+    background: rgba(236,72,153,0.2); border-color: #ec4899;
+    color: #f9a8d4; box-shadow: 0 0 10px rgba(236,72,153,0.4);
+  }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #f9a8d4; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #ec4899; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(236,72,153,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .table-wrap {
+    flex: 1; background: #070a14; border: 2px solid #ec4899; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(236,72,153,0.15); min-height: 0;
+  }
+  .table-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #f9a8d4; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #hashCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .queue-strip {
+    background: #070a14; border: 2px solid #8b5cf6; border-radius: 12px;
+    padding: 10px 14px; display: flex; gap: 8px; align-items: center;
+    flex-shrink: 0; overflow-x: auto; min-height: 80px;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15);
+  }
+  .key-chip {
+    padding: 6px 12px; border-radius: 6px; font-family: monospace;
+    font-size: 0.7rem; font-weight: 900; background: #1e293b; color: #cbd5e1;
+    border: 2px solid #334155; flex-shrink: 0; text-align: center;
+  }
+  .key-chip.inserted {
+    border-color: #10b981;
+    background: rgba(16,185,129,0.15);
+    color: #86efac;
+  }
+  .key-chip.collision {
+    border-color: #f59e0b;
+    background: rgba(245,158,11,0.2);
+    color: #fcd34d;
+    animation: collidePulse 0.6s ease-in-out infinite alternate;
+  }
+  @keyframes collidePulse {
+    0% { box-shadow: 0 0 5px rgba(245,158,11,0.4); }
+    100% { box-shadow: 0 0 20px rgba(245,158,11,0.9); }
+  }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(236,72,153,0.06); border: 1px solid rgba(236,72,153,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #f9a8d4; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #ec4899;
+    background: rgba(236,72,153,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(236,72,153,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(236,72,153,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #f9a8d4;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #ec4899; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(236,72,153,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #ec4899; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #f9a8d4; z-index: 12;
+    box-shadow: 0 0 20px rgba(236,72,153,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.ok { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.warn { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>HASH COLLISION RESOLUTION</h1>
+    <span class="sub">CHAINING · LINEAR PROBE · QUADRATIC · DOUBLE HASH</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Collision Strategy</h3>
+      <div class="algo-grid" id="algoGrid">
+        <button class="algo-btn active" data-algo="chain">CHAINING</button>
+        <button class="algo-btn" data-algo="linear">LINEAR PROBE</button>
+        <button class="algo-btn" data-algo="quad">QUADRATIC</button>
+        <button class="algo-btn" data-algo="double">DOUBLE HASH</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Operations</h3>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <input type="number" id="keyInput" value="42" style="flex:1; padding:8px; background:#02040a; color:#cbd5e1; border:1px solid #334155; border-radius:6px; font-family:monospace; font-size:0.75rem;">
+        <button class="btn primary" id="btnInsert" style="width:auto; padding:8px 12px; margin:0;">Insert</button>
+      </div>
+      <button class="btn danger" id="btnRemove" style="margin-top:6px;">🗑️ Remove Random</button>
+      <button class="btn" id="btnBurst">⚡ Insert 10 Random</button>
+    </div>
+
+    <div class="panel">
+      <h3>Table Config</h3>
+      <div class="slider-row"><span>Table size</span><span class="value" id="sizeVal">13</span></div>
+      <input type="range" id="sizeRange" min="7" max="23" step="2" value="13">
+      <div class="slider-row"><span>Load factor</span><span class="value" id="lfVal">0.00</span></div>
+      <div style="font-size:0.6rem; color:#64748b; line-height:1.5;">
+        Higher load → more collisions. Real hash tables resize at ~0.75.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#1e293b;border:1px solid #334155;border-radius:2px;margin-right:6px;"></span>Empty slot</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:6px;"></span>Filled slot</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:2px;margin-right:6px;"></span>Probed slot</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:2px;margin-right:6px;"></span>Collision</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">TWO KEYS HASH TO THE SAME BUCKET — NOW WHAT?</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="table-wrap">
+          <div class="table-title">
+            <span>🗄️ HASH TABLE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="tableHint">— size 13 · 0 items —</span>
+          </div>
+          <canvas id="hashCanvas"></canvas>
+        </div>
+        <div class="queue-strip" id="queueStrip">
+          <span style="font-family:monospace; font-size:0.55rem; color:#64748b; font-weight:800; letter-spacing:1.5px; padding-right:10px; border-right:1px solid #1e293b;">RECENT KEYS</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Items</div>
+        <div class="metric-value" id="mItems">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Load Factor</div>
+        <div class="metric-value warn" id="mLoad">0.00</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Collisions</div>
+        <div class="metric-value bad" id="mColl">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Avg Probes</div>
+        <div class="metric-value" id="mProbes">0.00</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Collision Strategies</div>
+      <div class="info-row"><span class="lbl">Chaining</span><span class="val good">Linked list per bucket</span></div>
+      <div class="info-row"><span class="lbl">Linear probe</span><span class="val">h, h+1, h+2, ...</span></div>
+      <div class="info-row"><span class="lbl">Quadratic</span><span class="val">h, h+1, h+4, h+9, ...</span></div>
+      <div class="info-row"><span class="lbl">Double hash</span><span class="val good">h1 + i·h2</span></div>
+      <div class="info-row"><span class="lbl">Clustering</span><span class="val bad">Linear probe's weakness</span></div>
+      <div class="info-row"><span class="lbl">Best load</span><span class="val good">&lt; 0.75</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">Java HashMap, Python dict</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  strategy: 'chain',
+  tableSize: 13,
+  table: [],       // array of { key, state, chain: [], probeIdx, color }
+  items: 0,
+  collisions: 0,
+  totalProbes: 0,
+  recentKeys: [],  // [{ key, hash, result, collision }]
+  teaching: true,
+  voiceEnabled: false
+};
+
+const COLORS = ['#3b82f6', '#a855f7', '#ec4899', '#f59e0b', '#06b6d4', '#10b981', '#f97316', '#8b5cf6', '#14b8a6'];
+
+const DOM = {
+  hashCanvas: document.getElementById('hashCanvas'),
+  tableHint: document.getElementById('tableHint'),
+  queueStrip: document.getElementById('queueStrip'),
+  statusBanner: document.getElementById('statusBanner'),
+  keyInput: document.getElementById('keyInput'),
+  btnInsert: document.getElementById('btnInsert'),
+  btnRemove: document.getElementById('btnRemove'),
+  btnBurst: document.getElementById('btnBurst'),
+  sizeRange: document.getElementById('sizeRange'),
+  sizeVal: document.getElementById('sizeVal'),
+  lfVal: document.getElementById('lfVal'),
+  algoGrid: document.getElementById('algoGrid'),
+  mItems: document.getElementById('mItems'),
+  mLoad: document.getElementById('mLoad'),
+  mColl: document.getElementById('mColl'),
+  mProbes: document.getElementById('mProbes'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 1800);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining hash collision resolution.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   HASH FUNCTIONS
+   ============================================================ */
+function h1(key) {
+  return Math.abs(key) % STATE.tableSize;
+}
+
+function h2(key) {
+  // For double hashing: another hash function (prime < table size)
+  return 1 + (Math.abs(key) * 7) % (STATE.tableSize - 1);
+}
+
+/* ============================================================
+   TABLE INIT
+   ============================================================ */
+function initTable() {
+  STATE.tableSize = parseInt(DOM.sizeRange.value);
+  STATE.table = [];
+  for (let i = 0; i < STATE.tableSize; i++) {
+    STATE.table.push({
+      key: null,
+      state: 'empty',  // empty | occupied | probed
+      chain: [],        // for chaining
+      probeIdx: -1
+    });
+  }
+  STATE.items = 0;
+  STATE.collisions = 0;
+  STATE.totalProbes = 0;
+  STATE.recentKeys = [];
+  renderTable();
+  renderRecentKeys();
+  updateMetrics();
+}
+
+/* ============================================================
+   INSERT
+   ============================================================ */
+function insertKey(key) {
+  const hash = h1(key);
+  let probes = 0;
+  let collision = false;
+
+  // Clear any stale 'probed' marks
+  for (const slot of STATE.table) slot.state = slot.state === 'probed' ? 'empty' : slot.state;
+
+  if (STATE.strategy === 'chain') {
+    // Chaining: each bucket holds a list
+    if (STATE.table[hash].chain.length === 0) {
+      STATE.table[hash].chain.push(key);
+      STATE.table[hash].state = 'occupied';
+      probes = 1;
+    } else {
+      // Collision — append to chain
+      collision = true;
+      STATE.collisions++;
+      STATE.table[hash].chain.push(key);
+      probes = STATE.table[hash].chain.length;
+    }
+    STATE.table[hash].key = key;  // for display
+  } else {
+    // Open addressing
+    let idx = hash;
+    let i = 0;
+    let placed = false;
+
+    while (i < STATE.tableSize) {
+      probes++;
+      if (STATE.table[idx].state === 'empty') {
+        STATE.table[idx].state = 'occupied';
+        STATE.table[idx].key = key;
+        STATE.table[idx].probeIdx = i;
+        placed = true;
+        break;
+      }
+      // Occupied — collision
+      if (!collision) {
+        collision = true;
+        STATE.collisions++;
+      }
+      STATE.table[idx].state = STATE.table[idx].state === 'occupied' ? 'occupied' : STATE.table[idx].state;
+      idx = probeNext(hash, i, key);
+      i++;
+    }
+
+    if (!placed) {
+      showStatus('❌ Table full — cannot insert', 'warn');
+      teach('TABLE FULL',
+        `Tried to insert key ${key} but the table is full. Every probe sequence has been exhausted. In real hash tables, this triggers a resize (typically doubling the table size and rehashing all keys).`,
+        'error'
+      );
+      return false;
+    }
+  }
+
+  STATE.items++;
+  STATE.totalProbes += probes;
+
+  STATE.recentKeys.unshift({
+    key, hash,
+    result: STATE.strategy === 'chain' ? 'chained' : `slot ${STATE.table.findIndex(s => s.key === key && s.state === 'occupied')}`,
+    collision,
+    strategy: STATE.strategy
+  });
+  if (STATE.recentKeys.length > 15) STATE.recentKeys.pop();
+
+  renderTable();
+  renderRecentKeys();
+  updateMetrics();
+
+  if (collision) {
+    showStatus(`⚠️ Collision on key ${key}`, 'warn');
+    if (STATE.strategy === 'chain') {
+      teach('COLLISION → CHAIN',
+        `Key ${key} hashed to bucket ${hash} which is already occupied. With CHAINING, we simply append ${key} to the linked list at that bucket. No probing needed — O(1) insert regardless of load factor. But search cost grows with chain length.`,
+        'warn'
+      );
+    } else if (STATE.strategy === 'linear') {
+      teach('COLLISION → LINEAR PROBE',
+        `Key ${key} hashed to slot ${hash} (occupied). Linear probing checks slot ${hash + 1}, then ${hash + 2}, ... until finding an empty slot. Simple but causes CLUSTERING — once slots start filling in a contiguous run, new keys pile up at the end.`,
+        'warn'
+      );
+    } else if (STATE.strategy === 'quad') {
+      teach('COLLISION → QUADRATIC',
+        `Key ${key} collided at slot ${hash}. Quadratic probing checks slots +1, +4, +9, +16, ... — spreading probes out to reduce primary clustering. But it introduces secondary clustering (keys with the same hash follow identical sequences).`,
+        'warn'
+      );
+    } else {
+      teach('COLLISION → DOUBLE HASH',
+        `Key ${key} collided at slot ${hash}. Double hashing uses a second hash function to determine step size: ${h2(key)}. This nearly eliminates clustering — different keys with the same h1 get different step sizes. Best probe distribution of all open-addressing schemes.`,
+        'warn'
+      );
+    }
+  } else {
+    showStatus(`✅ Inserted ${key} at slot ${hash}`, 'ok');
+  }
+
+  return true;
+}
+
+function probeNext(hash, i, key) {
+  if (STATE.strategy === 'linear') return (hash + i + 1) % STATE.tableSize;
+  if (STATE.strategy === 'quad') return (hash + (i + 1) * (i + 1)) % STATE.tableSize;
+  if (STATE.strategy === 'double') return (hash + (i + 1) * h2(key)) % STATE.tableSize;
+  return hash;
+}
+
+/* ============================================================
+   REMOVE
+   ============================================================ */
+function removeRandom() {
+  // Find a random occupied slot and clear it
+  const occupied = [];
+  for (let i = 0; i < STATE.table.length; i++) {
+    if (STATE.strategy === 'chain' && STATE.table[i].chain.length > 0) occupied.push(i);
+    else if (STATE.table[i].state === 'occupied') occupied.push(i);
+  }
+  if (occupied.length === 0) {
+    showToast('⚠ Table empty');
+    return;
+  }
+  const idx = occupied[Math.floor(Math.random() * occupied.length)];
+
+  if (STATE.strategy === 'chain') {
+    const removed = STATE.table[idx].chain.shift();
+    if (STATE.table[idx].chain.length === 0) {
+      STATE.table[idx].state = 'empty';
+      STATE.table[idx].key = null;
+    }
+    showToast(`🗑️ Removed ${removed} from bucket ${idx}`);
+  } else {
+    const removed = STATE.table[idx].key;
+    STATE.table[idx].key = null;
+    STATE.table[idx].state = 'empty';
+    showToast(`🗑️ Removed ${removed} from slot ${idx}`);
+  }
+  STATE.items--;
+  renderTable();
+  renderRecentKeys();
+  updateMetrics();
+}
+
+function insertBurst() {
+  for (let i = 0; i < 10; i++) {
+    setTimeout(() => {
+      const k = Math.floor(Math.random() * 100);
+      insertKey(k);
+    }, i * 120);
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.hashCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawTable() {
+  const canvas = DOM.hashCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (STATE.strategy === 'chain') {
+    drawChainTable(ctx, W, H);
+  } else {
+    drawOpenTable(ctx, W, H);
+  }
+}
+
+function drawChainTable(ctx, W, H) {
+  const rows = STATE.tableSize;
+  const rowH = Math.min(50, (H - 40) / rows);
+  const padX = 30;
+  const padY = 20;
+  const bucketW = 70;
+
+  // Header
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#f9a8d4';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('BUCKET', padX, 5);
+  ctx.fillText('CHAIN', padX + bucketW + 20, 5);
+
+  for (let i = 0; i < rows; i++) {
+    const y = padY + i * rowH;
+    const slot = STATE.table[i];
+
+    // Bucket
+    const bucketFill = slot.chain.length > 0 ? 'rgba(16,185,129,0.15)' : '#0f172a';
+    const bucketStroke = slot.chain.length > 0 ? '#10b981' : '#334155';
+
+    ctx.fillStyle = bucketFill;
+    ctx.fillRect(padX, y, bucketW, rowH - 4);
+    ctx.strokeStyle = bucketStroke;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(padX, y, bucketW, rowH - 4);
+
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = slot.chain.length > 0 ? '#86efac' : '#64748b';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('[' + i + ']', padX + bucketW / 2, y + (rowH - 4) / 2);
+
+    // Chain
+    let cx = padX + bucketW + 20;
+    if (slot.chain.length > 0) {
+      for (let k = 0; k < slot.chain.length; k++) {
+        const chipW = 50;
+        const color = COLORS[(slot.chain[k]) % COLORS.length];
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.fillRect(cx, y + 2, chipW, rowH - 8);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(cx, y + 2, chipW, rowH - 8);
+
+        ctx.font = 'bold 11px monospace';
+        ctx.fillStyle = color;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(slot.chain[k], cx + chipW / 2, y + (rowH - 4) / 2);
+
+        // Arrow
+        if (k < slot.chain.length - 1) {
+          ctx.strokeStyle = '#64748b';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(cx + chipW, y + (rowH - 4) / 2);
+          ctx.lineTo(cx + chipW + 15, y + (rowH - 4) / 2);
+          ctx.stroke();
+          // Arrowhead
+          ctx.beginPath();
+          ctx.moveTo(cx + chipW + 15, y + (rowH - 4) / 2);
+          ctx.lineTo(cx + chipW + 8, y + (rowH - 4) / 2 - 5);
+          ctx.lineTo(cx + chipW + 8, y + (rowH - 4) / 2 + 5);
+          ctx.closePath();
+          ctx.fillStyle = '#64748b';
+          ctx.fill();
+        }
+        cx += chipW + 20;
+      }
+    }
+  }
+}
+
+function drawOpenTable(ctx, W, H) {
+  const cols = 5;
+  const rows = Math.ceil(STATE.tableSize / cols);
+  const padX = 40;
+  const padY = 60;
+  const cellW = (W - padX * 2) / cols - 10;
+  const cellH = Math.min(60, (H - padY - 40) / rows);
+
+  // Header
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#f9a8d4';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('SLOT: VALUE', W / 2, 20);
+
+  for (let i = 0; i < STATE.tableSize; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = padX + col * ((W - padX * 2) / cols);
+    const y = padY + row * (cellH + 10);
+    const slot = STATE.table[i];
+
+    let fill = '#0f172a';
+    let stroke = '#334155';
+    let textColor = '#64748b';
+    let label = '—';
+
+    if (slot.state === 'occupied' && slot.key !== null) {
+      fill = 'rgba(16,185,129,0.15)';
+      stroke = '#10b981';
+      textColor = '#86efac';
+      label = String(slot.key);
+    } else if (slot.state === 'probed') {
+      fill = 'rgba(245,158,11,0.15)';
+      stroke = '#f59e0b';
+      textColor = '#fcd34d';
+    }
+
+    // Slot background
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, cellW, cellH);
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, cellW, cellH);
+
+    // Slot index
+    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('[' + i + ']', x + 6, y + 4);
+
+    // Value
+    ctx.font = 'bold 16px monospace';
+    ctx.fillStyle = textColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + cellW / 2, y + cellH / 2 + 4);
+  }
+}
+
+function animate() {
+  drawTable();
+  requestAnimationFrame(animate);
+}
+
+function renderRecentKeys() {
+  DOM.queueStrip.innerHTML = '<span style="font-family:monospace; font-size:0.55rem; color:#64748b; font-weight:800; letter-spacing:1.5px; padding-right:10px; border-right:1px solid #1e293b;">RECENT KEYS</span>';
+
+  for (const r of STATE.recentKeys) {
+    const el = document.createElement('div');
+    el.className = 'key-chip ' + (r.collision ? 'collision' : 'inserted');
+    el.innerHTML = `${r.key}<br><span style="font-size:0.5rem; color:#94a3b8;">h=${r.hash}</span>`;
+    DOM.queueStrip.appendChild(el);
+  }
+
+  if (STATE.recentKeys.length === 0) {
+    const placeholder = document.createElement('span');
+    placeholder.style.cssText = 'color:#475569; font-family:monospace; font-size:0.6rem;';
+    placeholder.textContent = '— no keys inserted yet —';
+    DOM.queueStrip.appendChild(placeholder);
+  }
+}
+
+function updateMetrics() {
+  DOM.mItems.textContent = STATE.items;
+  const lf = STATE.items / STATE.tableSize;
+  DOM.mLoad.textContent = lf.toFixed(2);
+  DOM.lfVal.textContent = lf.toFixed(2);
+  DOM.mLoad.className = 'metric-value ' + (lf > 0.75 ? 'bad' : lf > 0.5 ? 'warn' : 'good');
+  DOM.mColl.textContent = STATE.collisions;
+  DOM.mColl.className = 'metric-value ' + (STATE.collisions === 0 ? 'good' : STATE.collisions < 5 ? 'warn' : 'bad');
+  const avg = STATE.items > 0 ? STATE.totalProbes / STATE.items : 0;
+  DOM.mProbes.textContent = avg.toFixed(2);
+  DOM.tableHint.textContent = `— size ${STATE.tableSize} · ${STATE.items} items —`;
+}
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+document.querySelectorAll('.algo-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    STATE.strategy = btn.dataset.algo;
+    document.querySelectorAll('.algo-btn').forEach(b => b.classList.toggle('active', b === btn));
+    initTable();
+    const descs = {
+      chain: 'CHAINING (Separate Chaining): each bucket holds a linked list. Collisions are appended to the list. Simple, works with any load factor, and easy to delete from. Cost: extra memory for pointers, and search degrades linearly with chain length.',
+      linear: 'LINEAR PROBING: on collision, check the next slot (h, h+1, h+2, ...). Cache-friendly and simple. But causes PRIMARY CLUSTERING — long runs of occupied slots form, and the next collision makes the cluster even longer. Performs terribly above 70% load.',
+      quad: 'QUADRATIC PROBING: check slots at distance 1, 4, 9, 16, ... (h + i²). Breaks up primary clusters but introduces SECONDARY CLUSTERING — keys with the same hash follow the same probe sequence. Also may fail to find a slot even when one exists (unless table size is prime and load < 0.5).',
+      double: 'DOUBLE HASHING: use a second hash function h2(key) to determine step size. Probe sequence is h1 + i·h2. Nearly eliminates clustering — best probe distribution of all open-addressing schemes. Requires h2 to be coprime with table size (usually enforce by making table size prime).'
+    };
+    teach('STRATEGY: ' + btn.dataset.algo.toUpperCase(), descs[btn.dataset.algo], 'purple');
+  });
+});
+
+DOM.btnInsert.addEventListener('click', () => {
+  const key = parseInt(DOM.keyInput.value) || 0;
+  insertKey(key);
+  DOM.keyInput.value = Math.floor(Math.random() * 100);
+});
+
+DOM.btnRemove.addEventListener('click', removeRandom);
+DOM.btnBurst.addEventListener('click', insertBurst);
+
+DOM.sizeRange.addEventListener('input', e => {
+  DOM.sizeVal.textContent = e.target.value;
+  initTable();
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+initTable();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Hash Collision Resolution. A hash table maps keys to values using a hash function that computes an index into an array. Ideally, every key goes to its own slot. In practice, two keys can hash to the same slot — a COLLISION. How you handle collisions determines the table's performance.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('CHAINING',
+      `Separate chaining is the most common strategy. Each bucket holds a linked list. Collisions just append to the list. Simple, handles any load, easy deletes. Cost: extra memory and pointer chasing. Java's HashMap uses chaining (with tree-ification after 8 collisions).`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('OPEN ADDRESSING',
+      `Open addressing stores everything IN the table. On collision, probe for the next empty slot. Linear probing is cache-friendly but clusters badly. Quadratic and double hashing spread things out. All schemes degrade above ~70% load — that's why real tables resize when load factor exceeds ~0.75.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Insert a few keys and watch what happens on collisions. Switch strategies to compare. Insert 10 keys at once and watch the collision counter grow. Increase the load factor to see clustering kick in.`,
+      'warn'
+    );
+  }, 13000);
+  showToast('👋 Insert keys, then try different strategies', 4500);
+}, 500);
+</script>
+</body>
+</html>

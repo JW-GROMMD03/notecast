@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Case Study: Production Incident Response — Interactive Simulation</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+
+  .severity-badge {
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    border: 2px solid;
+  }
+  .severity-badge.sev1 {
+    background: rgba(239,68,68,0.2);
+    border-color: #ef4444;
+    color: #fca5a5;
+    animation: sev1Pulse 1.5s ease-in-out infinite;
+  }
+  .severity-badge.sev2 {
+    background: rgba(245,158,11,0.2);
+    border-color: #f59e0b;
+    color: #fcd34d;
+  }
+  .severity-badge.sev3 {
+    background: rgba(16,185,129,0.2);
+    border-color: #10b981;
+    color: #6ee7b7;
+  }
+  @keyframes sev1Pulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(239,68,68,0.4); }
+    50% { box-shadow: 0 0 25px rgba(239,68,68,0.9); }
+  }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(239,68,68,0.15);
+    color: #fca5a5;
+    border-color: #ef4444;
+  }
+  .teaching-toggle:hover { background: rgba(239,68,68,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fca5a5;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    text-align: left;
+  }
+  .btn:hover { border-color: #ef4444; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #ef4444; color: #fff; border-color: #ef4444; text-align: center; }
+  .btn.primary:hover { background: #dc2626; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; text-align: center; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #ef4444; color: #fff; border-color: #ef4444; }
+
+  .action-btn {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #0b0f19;
+    border: 1.5px solid #334155;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.7rem;
+    color: #cbd5e1;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.25s;
+    margin-bottom: 6px;
+    line-height: 1.4;
+    width: 100%;
+  }
+  .action-btn:hover {
+    border-color: #ef4444;
+    background: rgba(239,68,68,0.05);
+    transform: translateX(2px);
+  }
+  .action-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .action-btn:disabled:hover {
+    border-color: #334155;
+    background: #0b0f19;
+  }
+  .action-btn.selected {
+    border-color: #10b981;
+    background: rgba(16,185,129,0.08);
+  }
+  .action-btn.selected::after {
+    content: '✓';
+    color: #10b981;
+    font-weight: 900;
+    margin-left: auto;
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+  .action-num {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #1e293b;
+    color: #64748b;
+    font-family: monospace;
+    font-size: 0.6rem;
+    font-weight: 900;
+    flex-shrink: 0;
+    border: 1.5px solid #334155;
+  }
+  .action-btn.selected .action-num {
+    background: #10b981;
+    color: #022c22;
+    border-color: #10b981;
+  }
+  .action-text { flex: 1; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(239,68,68,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* INCIDENT OVERVIEW */
+  .incident-wrap {
+    background: #070a14;
+    border: 2px solid #ef4444;
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 0 25px rgba(239,68,68,0.15);
+    flex-shrink: 0;
+    gap: 16px;
+  }
+  .incident-info { flex: 1; min-width: 0; }
+  .incident-title {
+    font-family: monospace;
+    font-size: 0.8rem;
+    font-weight: 900;
+    color: #fca5a5;
+    letter-spacing: 1px;
+    margin-bottom: 3px;
+  }
+  .incident-desc {
+    font-family: monospace;
+    font-size: 0.6rem;
+    color: #94a3b8;
+    line-height: 1.5;
+  }
+  .incident-clock {
+    font-family: monospace;
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .incident-clock .lbl {
+    font-size: 0.5rem;
+    color: #64748b;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    display: block;
+  }
+  .incident-clock .val {
+    font-size: 1.6rem;
+    font-weight: 900;
+    color: #ef4444;
+    letter-spacing: 1px;
+    text-shadow: 0 0 15px rgba(239,68,68,0.6);
+  }
+
+  /* DASHBOARD */
+  .dashboard-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(139,92,246,0.15);
+    min-height: 0;
+  }
+  .dash-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #dashCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+  }
+
+  /* TIMELINE */
+  .timeline-wrap {
+    background: #070a14;
+    border: 2px solid #06b6d4;
+    border-radius: 12px;
+    padding: 10px 12px;
+    height: 130px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 20px rgba(6,182,212,0.15);
+    flex-shrink: 0;
+  }
+  .timeline-title {
+    font-size: 0.58rem;
+    letter-spacing: 2px;
+    color: #67e8f9;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .timeline-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #02040a;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    padding: 6px 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.58rem;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .timeline-entry {
+    padding: 2px 6px;
+    border-radius: 3px;
+    border-left: 2px solid transparent;
+    animation: timelineIn 0.3s ease;
+  }
+  @keyframes timelineIn {
+    from { transform: translateX(-6px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .timeline-entry.alert { border-left-color: #ef4444; color: #fca5a5; font-weight: 700; }
+  .timeline-entry.action { border-left-color: #06b6d4; color: #cbd5e1; }
+  .timeline-entry.info { border-left-color: #64748b; color: #94a3b8; }
+  .timeline-entry.success { border-left-color: #10b981; color: #6ee7b7; font-weight: 700; }
+  .timeline-entry.warn { border-left-color: #f59e0b; color: #fcd34d; }
+  .timeline-entry .ts { color: #475569; margin-right: 6px; font-size: 0.5rem; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(239,68,68,0.06);
+    border: 1px solid rgba(239,68,68,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fca5a5;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #ef4444;
+    background: rgba(239,68,68,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(239,68,68,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fca5a5;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #ef4444;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(239,68,68,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #ef4444;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fca5a5;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(239,68,68,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.ok { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.warn { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+
+  /* Score card */
+  .score-card {
+    position: absolute;
+    top: 44px;
+    right: 20px;
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #10b981;
+    border-radius: 12px;
+    padding: 10px 14px;
+    z-index: 10;
+    display: none;
+    font-family: monospace;
+  }
+  .score-card.show { display: block; }
+  .score-title {
+    font-size: 0.55rem;
+    color: #86efac;
+    letter-spacing: 2px;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .score-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-size: 0.6rem;
+    gap: 12px;
+  }
+  .score-row .lbl { color: #94a3b8; }
+  .score-row .val { color: #67e8f9; font-weight: 900; }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>CASE STUDY: PRODUCTION INCIDENT</h1>
+    <span class="sub">DETECT · DIAGNOSE · MITIGATE · POSTMORTEM</span>
+  </div>
+  <div class="header-actions">
+    <div class="severity-badge sev1" id="sevBadge">SEV-1</div>
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>📋 Investigation</h3>
+      <button class="btn primary" id="btnStart">▶ Begin Investigation</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset Scenario</button>
+    </div>
+
+    <div class="panel">
+      <h3>🔍 Available Actions</h3>
+      <div id="actionsContainer">
+        <div style="font-size:0.62rem; color:#64748b; text-align:center; padding:20px 0;">
+          Click <b style="color:#fca5a5;">BEGIN INVESTIGATION</b> to see your options.
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>📖 Reference</h3>
+      <div style="font-size:0.6rem; color:#94a3b8; line-height:1.7;">
+        <div style="color:#c4b5fd; font-weight:900; margin-bottom:4px;">Incident Playbook</div>
+        <div>1. <b>Assess blast radius</b> — how many users affected?</div>
+        <div>2. <b>Check dashboards</b> — which metrics are anomalous?</div>
+        <div>3. <b>Correlate recent changes</b> — deploys, config, infra</div>
+        <div>4. <b>Form hypothesis</b> — smallest reversible change</div>
+        <div>5. <b>Mitigate</b> — roll back, disable, scale up</div>
+        <div>6. <b>Verify recovery</b> — metrics return to baseline</div>
+        <div>7. <b>Postmortem</b> — blame-free, action items</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">E-COMMERCE PLATFORM · BLACK FRIDAY · 09:42 UTC</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+      <div class="score-card" id="scoreCard">
+        <div class="score-title">Investigation Score</div>
+        <div class="score-row"><span class="lbl">Actions taken</span><span class="val" id="scoreActions">0</span></div>
+        <div class="score-row"><span class="lbl">Correct steps</span><span class="val" id="scoreCorrect">0</span></div>
+        <div class="score-row"><span class="lbl">Wrong moves</span><span class="val" id="scoreWrong">0</span></div>
+        <div class="score-row"><span class="lbl">Time elapsed</span><span class="val" id="scoreTime">00:00</span></div>
+      </div>
+
+      <div class="main-split">
+        <div class="incident-wrap">
+          <div class="incident-info">
+            <div class="incident-title" id="incidentTitle">🚨 ALERT: Checkout latency spike + error surge</div>
+            <div class="incident-desc" id="incidentDesc">
+              PagerDuty page at 09:42. Checkout success rate dropped from 99.8% to 62%. p99 latency 40ms → 4.2s. Frontend reporting intermittent 5xx.
+            </div>
+          </div>
+          <div class="incident-clock">
+            <span class="lbl">Elapsed</span>
+            <span class="val" id="elapsedClock">00:00</span>
+          </div>
+        </div>
+
+        <div class="dashboard-wrap">
+          <div class="dash-title">
+            <span>📊 PRODUCTION DASHBOARD (LIVE)</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="dashHint">— awaiting investigation —</span>
+          </div>
+          <canvas id="dashCanvas"></canvas>
+        </div>
+
+        <div class="timeline-wrap">
+          <div class="timeline-title">
+            <span>⏱️ INCIDENT TIMELINE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="timelineHint">— 0 events —</span>
+          </div>
+          <div class="timeline-body" id="timelineBody"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Success Rate</div>
+        <div class="metric-value bad" id="mSuccess">62%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">p99 Latency</div>
+        <div class="metric-value bad" id="mLatency">4.2s</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Error Rate</div>
+        <div class="metric-value bad" id="mErrors">38%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Affected Users</div>
+        <div class="metric-value warn" id="mUsers">2.4K</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Concepts in Play</div>
+      <div class="info-row"><span class="lbl">Circuit breaker</span><span class="val">Files #10</span></div>
+      <div class="info-row"><span class="lbl">Distributed tracing</span><span class="val">Files #18</span></div>
+      <div class="info-row"><span class="lbl">Blue-green deploy</span><span class="val">Files #5</span></div>
+      <div class="info-row"><span class="lbl">Canary release</span><span class="val">Files #6</span></div>
+      <div class="info-row"><span class="lbl">Rate limiting</span><span class="val">Files #11</span></div>
+      <div class="info-row"><span class="lbl">Cache invalidation</span><span class="val">Files #25</span></div>
+      <div class="info-row"><span class="lbl">CAP theorem</span><span class="val">Files #21</span></div>
+      <div class="info-row"><span class="lbl">Postmortems</span><span class="val good">Blameless culture</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  phase: 'idle',   // idle | investigating | mitigated | resolved
+  startTime: null,
+  elapsedSeconds: 0,
+  actionsTaken: 0,
+  correctSteps: 0,
+  wrongMoves: 0,
+  // Live metrics
+  metrics: {
+    success: 62,
+    latency: 4200,
+    errors: 38,
+    users: 2400
+  },
+  // Root cause (fixed for this scenario)
+  rootCause: 'bad_deploy',
+  // What the investigation has discovered
+  discovered: {
+    blastRadius: false,
+    metricAnomaly: false,
+    deployHistory: false,
+    traceSpans: false,
+    logsAnalyzed: false,
+    rootCauseIdentified: false
+  },
+  // Timeline
+  timelineEvents: [],
+  // Metrics history for chart
+  metricsHistory: [],
+  // Timer
+  timer: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+/* ============================================================
+   ACTION DEFINITIONS
+   ============================================================ */
+const ACTIONS = [
+  {
+    id: 'assess_blast',
+    label: 'Check blast radius — how many users affected?',
+    hint: 'First step in any incident: understand the scope.',
+    correct: true,
+    unlocks: 'blastRadius',
+    teachTag: 'BLAST RADIUS',
+    teachMsg: 'You check the user impact dashboard. 2,400 checkout sessions failed in the last 10 minutes. Revenue loss estimate: $18K/min. Blast radius is severe — checkout is the revenue-critical path. But is the whole site down, or just checkout? The alert says "checkout" specifically — other pages (browsing, search) are fine. That narrows the search space.',
+    teachKind: 'warn',
+    onRun: () => {
+      STATE.metrics.users = 2400;
+      logTimeline('action', 'Checked blast radius: 2.4K checkout sessions affected, $18K/min revenue loss');
+    }
+  },
+  {
+    id: 'check_metrics',
+    label: 'Open the production dashboard — which metrics are anomalous?',
+    hint: 'Metrics tell you WHERE the problem is (latency? errors? saturation?).',
+    correct: true,
+    unlocks: 'metricAnomaly',
+    teachTag: 'METRIC ANOMALY',
+    teachMsg: 'Looking at the golden signals: (1) Success rate for /checkout is 62% (baseline 99.8%). (2) p99 latency is 4.2s (baseline 40ms) — a 100x increase. (3) Error rate is 38%, and the errors are HTTP 504 Gateway Timeout. (4) All other endpoints (browse, search, cart) show NORMAL metrics. The problem is isolated to the checkout path. Latency of 4.2s with 504 errors points to a downstream service that is hanging, not crashing.',
+    teachKind: 'cyan',
+    onRun: () => {
+      logTimeline('action', 'Analyzed golden signals: 504s on /checkout only, others normal');
+    }
+  },
+  {
+    id: 'trace_spans',
+    label: 'Pull distributed traces for failing checkout requests',
+    hint: 'Traces show the exact service where requests are timing out.',
+    correct: true,
+    unlocks: 'traceSpans',
+    teachTag: 'TRACE ANALYSIS',
+    teachMsg: 'The trace waterfall is revealing. Requests flow: client → API Gateway → Checkout Service → (Payment Service + Inventory Service). The Payment span is normal (25ms). The Inventory span is normal (18ms). But the Checkout Service span shows 4.1s of self-time — the checkout service itself is spending 4 seconds before even calling downstream. That means the bottleneck is INSIDE the checkout service, not one of its dependencies.',
+    teachKind: 'purple',
+    onRun: () => {
+      logTimeline('action', 'Traced failing requests: 4.1s self-time in Checkout Service');
+    }
+  },
+  {
+    id: 'check_deploys',
+    label: 'Review recent deploys and config changes (last 2 hours)',
+    hint: 'Most incidents correlate with a recent change. What shipped?',
+    correct: true,
+    unlocks: 'deployHistory',
+    teachTag: 'CHANGE CORRELATION',
+    teachMsg: 'The deploy log shows: at 09:31 UTC (11 minutes before the alert), a canary deploy of Checkout Service v2.4.7 rolled out to 5% of traffic. The metric spike began at 09:33 — 2 minutes after the canary started. This is a textbook correlation. The canary was SUPPOSED to catch exactly this, but the rollout was not paused on alert — the automated canary analysis window was too short (30s instead of 10min), so the new version kept receiving traffic.',
+    teachKind: 'error',
+    onRun: () => {
+      logTimeline('warn', 'Correlated incident with canary deploy v2.4.7 at 09:31 UTC');
+    }
+  },
+  {
+    id: 'analyze_logs',
+    label: 'Analyze Checkout Service logs for exceptions',
+    hint: 'Logs give you the exact exception and where it was thrown.',
+    correct: true,
+    unlocks: 'logsAnalyzed',
+    teachTag: 'LOG ANALYSIS',
+    teachMsg: 'The logs show a repeating exception: `NullPointerException at PricingCalculator.computeDiscount(PricingCalculator.java:142)`. The stack trace points to code that was ADDED in v2.4.7. The null field is `promoCode.campaignId` — a field that is null when the promotion is auto-applied. The new pricing logic in v2.4.7 assumes campaignId is always populated. When it\'s not, the checkout hangs waiting on a retry, then times out. This is the root cause.',
+    teachKind: 'error',
+    onRun: () => {
+      logTimeline('action', 'Found NullPointerException in PricingCalculator from v2.4.7');
+    }
+  },
+  {
+    id: 'mitigate_rollback',
+    label: 'ROLL BACK Checkout Service to v2.4.6 immediately',
+    hint: 'When you have a correlated change, roll back first, ask questions later.',
+    correct: true,
+    unlocks: 'rootCauseIdentified',
+    teachTag: 'MITIGATION',
+    teachMsg: 'You execute the rollback. Within 40 seconds: success rate for /checkout recovers from 62% → 99.7%. p99 latency drops from 4.2s → 45ms. Error rate falls to 0.1%. Revenue flow resumes. Total mitigation time: 4 minutes from alert to recovery. This is the "revert first, investigate later" principle: for correlated incidents with a recent deploy, rolling back is almost always the fastest path to recovery.',
+    teachKind: 'ok',
+    onRun: () => {
+      STATE.metrics.success = 99.7;
+      STATE.metrics.latency = 45;
+      STATE.metrics.errors = 0.1;
+      STATE.metrics.users = 0;
+      STATE.phase = 'mitigated';
+      logTimeline('success', 'Rollback executed — metrics fully recovered in 40s');
+      updateSeverity('sev3');
+      showScore();
+    }
+  },
+  {
+    id: 'mitigate_scale',
+    label: 'Scale up Checkout Service pods (10 → 30)',
+    hint: 'Scaling helps with load. Does this look like a load problem?',
+    correct: false,
+    teachTag: 'WRONG MOVE',
+    teachMsg: 'You scaled up the checkout service from 10 to 30 pods. Cost jumped, but the metrics did NOT improve — success rate stayed at 62%, latency stayed at 4.2s. Of course: this is not a load problem. The pods are hanging on a null pointer exception, not queueing requests. Adding more pods just means more pods burning CPU on the same broken code path. This is a common trap: reaching for a familiar fix without confirming the problem class first.',
+    teachKind: 'error',
+    onRun: () => {
+      logTimeline('warn', 'Scaled Checkout Service to 30 pods — no metric improvement');
+    }
+  },
+  {
+    id: 'mitigate_restart',
+    label: 'Restart all Checkout Service pods (rolling restart)',
+    hint: 'Restart fixes state issues. Does this look like a state issue?',
+    correct: false,
+    teachTag: 'WRONG MOVE',
+    teachMsg: 'You trigger a rolling restart. New pods come up — but they\'re running the SAME broken v2.4.7 code. The NullPointerException reproduces immediately. Metrics don\'t budge. Restarting is a great fix for memory leaks, stuck threads, and stale caches. It does NOT fix bad code that is deployed. The version doesn\'t change when you restart.',
+    teachKind: 'error',
+    onRun: () => {
+      logTimeline('warn', 'Rolling restart of Checkout Service — same v2.4.7, still broken');
+    }
+  },
+  {
+    id: 'mitigate_flush_cache',
+    label: 'Flush the checkout Redis cache',
+    hint: 'Cache issues cause stale data. Is the symptom consistent with staleness?',
+    correct: false,
+    teachTag: 'WRONG MOVE',
+    teachMsg: 'You flush the cache. Checkout latency briefly INCREASES (cold cache = more DB hits) before settling back to the same 4.2s. The problem isn\'t cache staleness — it\'s an exception in the pricing code. Cache flushing is a great mitigation for stale-data incidents (see Files #25). It\'s a red herring for code bugs.',
+    teachKind: 'error',
+    onRun: () => {
+      logTimeline('warn', 'Flushed Redis cache — cold-start spike, then back to baseline problem');
+    }
+  },
+  {
+    id: 'mitigate_disable_canary',
+    label: 'Disable the canary traffic (drain the 5%)',
+    hint: 'This reduces the blast radius while you investigate.',
+    correct: true,
+    teachTag: 'PARTIAL MITIGATION',
+    teachMsg: 'You disable the canary and route all traffic to the stable v2.4.6. Success rate improves from 62% → 95%, but not 100%. Why? Because some in-flight requests were already queued on the canary pods. And the canary pods themselves keep running the broken code — they still serve traffic to sessions that were pinned to them. This is a good damage-limiting step, but it is NOT a full fix. The real fix is to remove the broken version entirely.',
+    teachKind: 'warn',
+    onRun: () => {
+      STATE.metrics.success = 95;
+      STATE.metrics.errors = 5;
+      logTimeline('warn', 'Canary drained — partial recovery to 95% success');
+    }
+  }
+];
+
+/* ============================================================
+   DOM
+   ============================================================ */
+const DOM = {
+  sevBadge: document.getElementById('sevBadge'),
+  incidentTitle: document.getElementById('incidentTitle'),
+  incidentDesc: document.getElementById('incidentDesc'),
+  elapsedClock: document.getElementById('elapsedClock'),
+  dashCanvas: document.getElementById('dashCanvas'),
+  dashHint: document.getElementById('dashHint'),
+  timelineBody: document.getElementById('timelineBody'),
+  timelineHint: document.getElementById('timelineHint'),
+  actionsContainer: document.getElementById('actionsContainer'),
+  statusBanner: document.getElementById('statusBanner'),
+  scoreCard: document.getElementById('scoreCard'),
+  scoreActions: document.getElementById('scoreActions'),
+  scoreCorrect: document.getElementById('scoreCorrect'),
+  scoreWrong: document.getElementById('scoreWrong'),
+  scoreTime: document.getElementById('scoreTime'),
+  btnStart: document.getElementById('btnStart'),
+  btnReset: document.getElementById('btnReset'),
+  // Metrics
+  mSuccess: document.getElementById('mSuccess'),
+  mLatency: document.getElementById('mLatency'),
+  mErrors: document.getElementById('mErrors'),
+  mUsers: document.getElementById('mUsers'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2400);
+}
+
+let TIMELINE_TS = 0;
+function logTimeline(cls, msg) {
+  TIMELINE_TS++;
+  const el = document.createElement('div');
+  el.className = `timeline-entry ${cls}`;
+  const elapsed = formatTime(STATE.elapsedSeconds);
+  el.innerHTML = `<span class="ts">[${elapsed}]</span>${msg}`;
+  DOM.timelineBody.prepend(el);
+  while (DOM.timelineBody.children.length > 30) DOM.timelineBody.lastChild.remove();
+  DOM.timelineHint.textContent = `${TIMELINE_TS} events`;
+}
+
+function clearTimeline() {
+  TIMELINE_TS = 0;
+  DOM.timelineBody.innerHTML = '';
+  DOM.timelineHint.textContent = '0 events';
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining the production incident response simulation.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   SEVERITY
+   ============================================================ */
+function updateSeverity(sev) {
+  DOM.sevBadge.className = 'severity-badge ' + sev;
+  DOM.sevBadge.textContent = sev.toUpperCase().replace('SEV', 'SEV-');
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.mSuccess.textContent = STATE.metrics.success.toFixed(1) + '%';
+  DOM.mSuccess.className = 'metric-value ' + (STATE.metrics.success > 99 ? 'good' : STATE.metrics.success > 90 ? 'warn' : 'bad');
+
+  DOM.mLatency.textContent = STATE.metrics.latency >= 1000
+    ? (STATE.metrics.latency / 1000).toFixed(1) + 's'
+    : STATE.metrics.latency + 'ms';
+  DOM.mLatency.className = 'metric-value ' + (STATE.metrics.latency < 200 ? 'good' : STATE.metrics.latency < 1000 ? 'warn' : 'bad');
+
+  DOM.mErrors.textContent = STATE.metrics.errors.toFixed(1) + '%';
+  DOM.mErrors.className = 'metric-value ' + (STATE.metrics.errors < 1 ? 'good' : STATE.metrics.errors < 10 ? 'warn' : 'bad');
+
+  DOM.mUsers.textContent = STATE.metrics.users > 0
+    ? (STATE.metrics.users / 1000).toFixed(1) + 'K'
+    : '0';
+  DOM.mUsers.className = 'metric-value ' + (STATE.metrics.users === 0 ? 'good' : STATE.metrics.users < 1000 ? 'warn' : 'bad');
+}
+
+function showScore() {
+  DOM.scoreCard.classList.add('show');
+  DOM.scoreActions.textContent = STATE.actionsTaken;
+  DOM.scoreCorrect.textContent = STATE.correctSteps;
+  DOM.scoreWrong.textContent = STATE.wrongMoves;
+}
+
+/* ============================================================
+   TIMER
+   ============================================================ */
+function startTimer() {
+  if (STATE.timer) return;
+  STATE.timer = setInterval(() => {
+    STATE.elapsedSeconds++;
+    const timeStr = formatTime(STATE.elapsedSeconds);
+    DOM.elapsedClock.textContent = timeStr;
+    DOM.scoreTime.textContent = timeStr;
+  }, 1000);
+}
+
+function stopTimer() {
+  if (STATE.timer) {
+    clearInterval(STATE.timer);
+    STATE.timer = null;
+  }
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+function initScenario() {
+  stopTimer();
+  STATE.phase = 'idle';
+  STATE.elapsedSeconds = 0;
+  STATE.actionsTaken = 0;
+  STATE.correctSteps = 0;
+  STATE.wrongMoves = 0;
+  STATE.metrics = { success: 62, latency: 4200, errors: 38, users: 2400 };
+  STATE.discovered = {
+    blastRadius: false,
+    metricAnomaly: false,
+    deployHistory: false,
+    traceSpans: false,
+    logsAnalyzed: false,
+    rootCauseIdentified: false
+  };
+  STATE.timelineEvents = [];
+  STATE.metricsHistory = [];
+
+  DOM.elapsedClock.textContent = '00:00';
+  DOM.scoreTime.textContent = '00:00';
+  DOM.scoreCard.classList.remove('show');
+  DOM.actionsContainer.innerHTML = `
+    <div style="font-size:0.62rem; color:#64748b; text-align:center; padding:20px 0;">
+      Click <b style="color:#fca5a5;">BEGIN INVESTIGATION</b> to see your options.
+    </div>
+  `;
+  clearTimeline();
+  updateSeverity('sev1');
+  updateMetrics();
+  DOM.dashHint.textContent = '— awaiting investigation —';
+  drawDashboard();
+
+  // Reset incident description
+  DOM.incidentTitle.textContent = '🚨 ALERT: Checkout latency spike + error surge';
+  DOM.incidentDesc.textContent = 'PagerDuty page at 09:42. Checkout success rate dropped from 99.8% to 62%. p99 latency 40ms → 4.2s. Frontend reporting intermittent 5xx.';
+}
+
+/* ============================================================
+   START INVESTIGATION
+   ============================================================ */
+function startInvestigation() {
+  if (STATE.phase !== 'idle') return;
+  STATE.phase = 'investigating';
+  STATE.startTime = Date.now();
+
+  logTimeline('alert', '🚨 SEV-1 INCIDENT: Checkout service failing, 2.4K users affected');
+  logTimeline('info', 'PagerDuty page received. Joining incident bridge.');
+  logTimeline('info', 'Assembling on-call team: SRE, backend, frontend.');
+
+  teach('INCIDENT DECLARED',
+    `You've been paged. It's 09:42 UTC on Black Friday. Checkout is broken. Every second costs roughly $18,000 in lost revenue. This is a live incident-response simulation — your job is to go from alert to mitigation as fast as possible WITHOUT making things worse. Work through the actions on the left in the order a real responder would.`,
+    'error'
+  );
+
+  startTimer();
+  updateSeverity('sev1');
+  showScore();
+  renderActions();
+  DOM.dashHint.textContent = '— investigating —';
+}
+
+/* ============================================================
+   RENDER ACTIONS
+   ============================================================ */
+function renderActions() {
+  DOM.actionsContainer.innerHTML = '';
+
+  // Group: investigation actions first, mitigation later
+  const investigation = ACTIONS.filter(a => a.id.startsWith('assess_') || a.id.startsWith('check_') || a.id.startsWith('trace_') || a.id.startsWith('analyze_'));
+  const mitigation = ACTIONS.filter(a => a.id.startsWith('mitigate_'));
+
+  // Investigation section
+  const invHeader = document.createElement('div');
+  invHeader.style.cssText = 'font-size:0.55rem; color:#67e8f9; letter-spacing:1.5px; text-transform:uppercase; margin:6px 0 6px 0; font-weight:800; font-family:monospace;';
+  invHeader.textContent = '🔍 Investigate';
+  DOM.actionsContainer.appendChild(invHeader);
+
+  investigation.forEach((action, idx) => {
+    DOM.actionsContainer.appendChild(createActionButton(action, idx + 1));
+  });
+
+  // Mitigation section (only appears after we know the root cause)
+  if (STATE.discovered.logsAnalyzed || STATE.discovered.deployHistory) {
+    const mitHeader = document.createElement('div');
+    mitHeader.style.cssText = 'font-size:0.55rem; color:#fca5a5; letter-spacing:1.5px; text-transform:uppercase; margin:14px 0 6px 0; font-weight:800; font-family:monospace;';
+    mitHeader.textContent = '🔧 Mitigate';
+    DOM.actionsContainer.appendChild(mitHeader);
+
+    mitigation.forEach(action => {
+      DOM.actionsContainer.appendChild(createActionButton(action, null));
+    });
+  } else {
+    const hint = document.createElement('div');
+    hint.style.cssText = 'font-size:0.58rem; color:#64748b; text-align:center; padding:14px 0; font-family:monospace; font-style:italic;';
+    hint.textContent = '→ Investigate first. Mitigation options unlock once you understand the cause.';
+    DOM.actionsContainer.appendChild(hint);
+  }
+}
+
+function createActionButton(action, num) {
+  const btn = document.createElement('button');
+  btn.className = 'action-btn';
+  btn.dataset.actionId = action.id;
+
+  const numSpan = num !== null
+    ? `<span class="action-num">${num}</span>`
+    : `<span class="action-num">⚡</span>`;
+
+  btn.innerHTML = `
+    ${numSpan}
+    <span class="action-text">${action.label}</span>
+  `;
+
+  btn.addEventListener('click', () => runAction(action));
+  return btn;
+}
+
+/* ============================================================
+   RUN ACTION
+   ============================================================ */
+function runAction(action) {
+  if (STATE.phase === 'resolved') {
+    showToast('✓ Scenario complete — click RESET to try again');
+    return;
+  }
+
+  // Check if already run
+  const btn = document.querySelector(`[data-action-id="${action.id}"]`);
+  if (btn && btn.classList.contains('selected')) {
+    showToast('⚠ Already ran this action');
+    return;
+  }
+
+  // Prevent wrong moves after successful mitigation
+  if (action.id.startsWith('mitigate_') && STATE.phase === 'mitigated' && action.correct) {
+    showToast('✓ Already resolved');
+    return;
+  }
+
+  STATE.actionsTaken++;
+  if (action.correct) {
+    STATE.correctSteps++;
+  } else {
+    STATE.wrongMoves++;
+  }
+
+  // Mark button
+  if (btn) {
+    btn.classList.add('selected');
+    btn.disabled = true;
+  }
+
+  // Run the action
+  action.onRun();
+
+  // Show teaching
+  teach(action.teachTag, action.teachMsg, action.teachKind);
+
+  // Track discovery
+  if (action.unlocks) {
+    STATE.discovered[action.unlocks] = true;
+  }
+
+  // Check for scenario completion
+  if (action.id === 'mitigate_rollback') {
+    completeScenario();
+  } else if (action.id === 'mitigate_disable_canary' && STATE.correctSteps >= 5) {
+    // Alternative ending — not a full fix but a partial mitigation
+    teach('CONSIDER FULL FIX',
+      `You've drained the canary, but v2.4.7 pods are still running. The best practice is to roll back the deploy entirely — remove the broken version from the environment. Try ROLL BACK Checkout Service to v2.4.6.`,
+      'warn'
+    );
+  }
+
+  // Re-render (may unlock mitigation options)
+  setTimeout(() => {
+    renderActions();
+    // Re-mark completed actions
+    for (const a of ACTIONS) {
+      const isDone = STATE.discovered[a.unlocks];
+      if (isDone) {
+        const b = document.querySelector(`[data-action-id="${a.id}"]`);
+        if (b) { b.classList.add('selected'); b.disabled = true; }
+      }
+    }
+    // Also re-mark any action we already clicked
+    document.querySelectorAll('.action-btn').forEach(b => {
+      if (b.dataset.actionId === action.id) {
+        b.classList.add('selected');
+        b.disabled = true;
+      }
+    });
+  }, 50);
+
+  updateMetrics();
+  showScore();
+}
+
+/* ============================================================
+   COMPLETE SCENARIO
+   ============================================================ */
+function completeScenario() {
+  STATE.phase = 'resolved';
+  stopTimer();
+
+  updateSeverity('sev3');
+  showStatus('✅ INCIDENT RESOLVED — metrics recovered', 'ok');
+
+  logTimeline('success', '═══════════════════════════════════════');
+  logTimeline('success', 'INCIDENT RESOLVED');
+  logTimeline('success', `Total time: ${formatTime(STATE.elapsedSeconds)}`);
+  logTimeline('success', `Actions: ${STATE.actionsTaken} (${STATE.correctSteps} correct, ${STATE.wrongMoves} wrong)`);
+  logTimeline('success', '═══════════════════════════════════════');
+
+  teach('INCIDENT RESOLVED',
+    `Recovery complete. From alert to full mitigation: ${formatTime(STATE.elapsedSeconds)}. You took ${STATE.actionsTaken} action${STATE.actionsTaken === 1 ? '' : 's'} (${STATE.correctSteps} correct, ${STATE.wrongMoves} incorrect). A production-grade response would aim for under 5 minutes for a correlated canary regression — the metrics back on the dashboard are the real success criterion.`,
+    'ok'
+  );
+
+  setTimeout(() => {
+    teach('POSTMORTEM RECOMMENDATIONS',
+      `Blameless postmortem action items: (1) Increase canary analysis window from 30s to 10min — 30s is far too short to detect a 2-minute-latency regression. (2) Add a check to canary promotion: block on p99 latency > 2x baseline. (3) Add a null check for campaignId in PricingCalculator — the pricing change needed to handle auto-applied promos. (4) Add a synthetic checkout monitor that fires BEFORE user-facing metrics degrade. (5) Consider a canary at the API gateway level: route 1% of checkout traffic through a mirror deployment.`,
+      'purple'
+    );
+  }, 4000);
+
+  setTimeout(() => {
+    teach('CURRICULUM CROSS-REFERENCE',
+      `Every step in this investigation maps to a simulation in the curriculum: (1) Blast radius assessment — CAP theorem (Files #21) and observability. (2) Metric analysis — distributed tracing (Files #18). (3) Trace analysis — same file, span waterfall. (4) Deploy correlation — blue-green (Files #5) and canary (Files #6). (5) Root cause — reading logs like a debugger. (6) Rollback — deployment strategies. (7) Self-healing fallback — circuit breaker (Files #10). Congratulations — you just exercised 8+ concepts from the curriculum at once.`,
+      'cyan'
+    );
+  }, 8000);
+}
+
+/* ============================================================
+   RENDER DASHBOARD
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.dashCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawDashboard() {
+  const canvas = DOM.dashCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Four mini-charts: success rate, latency, error rate, users
+  const charts = [
+    { label: 'Success Rate', key: 'success', unit: '%', color: '#10b981', max: 100, good: 'high' },
+    { label: 'p99 Latency', key: 'latency', unit: 'ms', color: '#f59e0b', max: 5000, good: 'low' },
+    { label: 'Error Rate', key: 'errors', unit: '%', color: '#ef4444', max: 50, good: 'low' },
+    { label: 'Affected Users', key: 'users', unit: '', color: '#a855f7', max: 5000, good: 'low' }
+  ];
+
+  const chartW = (W - 60) / 4;
+  const chartH = H - 60;
+  const padY = 40;
+
+  charts.forEach((chart, i) => {
+    const x = 20 + i * (chartW + 10);
+    const y = padY;
+
+    // Current value
+    const val = STATE.metrics[chart.key];
+    const pct = Math.min(1, val / chart.max);
+    const barH = chartH * pct;
+    const isGood = chart.good === 'high' ? pct > 0.9 : pct < 0.1;
+
+    // Chart background
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(x, y, chartW, chartH);
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, chartW, chartH);
+
+    // Bar fill from bottom
+    const fillColor = isGood ? chart.color : (pct > 0.5 ? '#ef4444' : chart.color);
+    ctx.fillStyle = fillColor;
+    ctx.globalAlpha = 0.4;
+    ctx.fillRect(x + 2, y + chartH - barH + 2, chartW - 4, barH - 4);
+    ctx.globalAlpha = 1;
+
+    // Top border glow
+    if (!isGood) {
+      ctx.strokeStyle = fillColor;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(x, y + chartH - barH);
+      ctx.lineTo(x + chartW, y + chartH - barH);
+      ctx.stroke();
+    }
+
+    // Label
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = '#94a3b8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(chart.label, x + chartW / 2, y - 6);
+
+    // Value
+    let displayVal;
+    if (chart.key === 'latency') displayVal = val >= 1000 ? (val / 1000).toFixed(1) + 's' : val + 'ms';
+    else if (chart.key === 'users') displayVal = (val / 1000).toFixed(1) + 'K';
+    else displayVal = val.toFixed(1) + chart.unit;
+
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = chart.color;
+    ctx.textBaseline = 'top';
+    ctx.fillText(displayVal, x + chartW / 2, y + chartH + 6);
+  });
+
+  // Baseline markers
+  ctx.font = '9px monospace';
+  ctx.fillStyle = '#475569';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('Baseline: 99.8% · 40ms · 0.1% · 0 users', 20, 10);
+
+  // Timestamp
+  ctx.textAlign = 'right';
+  ctx.fillText('09:42 UTC · Black Friday · SEV-1', W - 20, 10);
+}
+
+function animate() {
+  drawDashboard();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   METRICS DRIFT (make dashboard feel alive)
+   ============================================================ */
+function startMetricDrift() {
+  setInterval(() => {
+    if (STATE.phase === 'investigating' && STATE.metrics.success < 99) {
+      // Small random fluctuations while investigating
+      STATE.metrics.success = Math.max(55, Math.min(70, STATE.metrics.success + (Math.random() - 0.5) * 4));
+      STATE.metrics.latency = Math.max(3500, Math.min(5000, STATE.metrics.latency + (Math.random() - 0.5) * 400));
+      STATE.metrics.errors = Math.max(30, Math.min(45, STATE.metrics.errors + (Math.random() - 0.5) * 3));
+      STATE.metrics.users = Math.max(2000, Math.min(3000, STATE.metrics.users + (Math.random() - 0.5) * 200));
+      updateMetrics();
+    }
+  }, 2000);
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  initScenario();
+  teach('RESET', 'Scenario reset. Ready to begin a fresh investigation.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnStart.addEventListener('click', startInvestigation);
+DOM.btnReset.addEventListener('click', resetAll);
+
+window.addEventListener('resize', resizeCanvas);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+initScenario();
+startMetricDrift();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to the Production Incident Case Study. This is a live simulation that stitches together concepts from across the entire curriculum. It's Black Friday, 09:42 UTC, and your checkout service just started failing. Your goal: go from alert to recovery as fast as possible — WITHOUT making things worse.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE RESPONDER MINDSET',
+      `Three principles: (1) Fix the customer first, then investigate. (2) Correlate with recent changes — 80% of incidents follow a deploy. (3) Prefer the smallest reversible action. Rollback, disable, drain — these are reversible. Scaling, restarting, and refactoring are not, or they mask the cause.`,
+      'purple'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('YOUR TOOLKIT',
+      `You have investigation actions (assess blast radius, check metrics, trace requests, review deploys, analyze logs) and mitigation actions (rollback, scale, restart, flush cache, drain canary). The RIGHT answer is not always the first one you think of — some mitigations that work in other incidents will make no difference here, or worse, burn precious time.`,
+      'warn'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('READY?',
+      `Click BEGIN INVESTIGATION on the left to start the timer and reveal your first actions. Work through them logically: understand scope → find anomaly → trace to root cause → mitigate. Good luck.`,
+      'ok'
+    );
+  }, 13000);
+
+  showToast('👋 Click BEGIN INVESTIGATION to start', 4500);
+}, 500);
+</script>
+</body>
+</html>

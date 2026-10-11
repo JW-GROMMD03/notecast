@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monolith to Microservices Decomposition — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f97316, #f59e0b, #22c55e);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(249,115,22,0.15);
+    color: #fdba74;
+    border-color: #f97316;
+  }
+  .teaching-toggle:hover { background: rgba(249,115,22,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f97316; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f97316; color: #fff; border-color: #f97316; }
+  .btn.primary:hover { background: #ea580c; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fdba74; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f97316; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(249,115,22,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* STAGE PROGRESS BAR */
+  .stage-bar {
+    background: #070a14;
+    border: 2px solid #f97316;
+    border-radius: 12px;
+    padding: 10px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 0 25px rgba(249,115,22,0.15);
+    flex-shrink: 0;
+  }
+  .stage-step {
+    font-family: monospace;
+    font-size: 0.65rem;
+    font-weight: 800;
+    color: #64748b;
+    padding: 4px 12px;
+    border-radius: 6px;
+    letter-spacing: 0.5px;
+    transition: all 0.4s;
+  }
+  .stage-step.active {
+    background: rgba(249,115,22,0.2);
+    color: #fdba74;
+    box-shadow: 0 0 10px rgba(249,115,22,0.4);
+  }
+  .stage-step.done {
+    color: #6ee7b7;
+  }
+  .stage-step.done::before { content: '✓ '; }
+
+  /* MAIN CANVAS */
+  .canvas-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(245,158,11,0.15);
+    min-height: 0;
+  }
+  .canvas-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #decompCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+  }
+
+  /* BOTTOM: BOUNDED CONTEXTS */
+  .contexts-wrap {
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15);
+    overflow-x: auto;
+  }
+  .context-chip {
+    flex-shrink: 0;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 2px solid #334155;
+    font-family: monospace;
+    font-size: 0.6rem;
+    font-weight: 800;
+    background: #02040a;
+    color: #64748b;
+    letter-spacing: 0.5px;
+    transition: all 0.4s;
+  }
+  .context-chip.active {
+    border-color: #8b5cf6;
+    background: rgba(139,92,246,0.15);
+    color: #c4b5fd;
+    box-shadow: 0 0 12px rgba(139,92,246,0.4);
+  }
+  .context-chip.extracted {
+    border-color: #22c55e;
+    background: rgba(34,197,94,0.15);
+    color: #86efac;
+    box-shadow: 0 0 12px rgba(34,197,94,0.4);
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(249,115,22,0.06);
+    border: 1px solid rgba(249,115,22,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fdba74;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f97316;
+    background: rgba(249,115,22,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(249,115,22,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(249,115,22,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fdba74;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f97316;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(249,115,22,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #f97316;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fdba74;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(249,115,22,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>MONOLITH → MICROSERVICES</h1>
+    <span class="sub">DECOMPOSITION · BOUNDED CONTEXTS · STRANGLER FIG</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Decomposition</h3>
+      <button class="btn primary" id="btnRun">▶ Auto-Decompose</button>
+      <button class="btn" id="btnStep">⏭ Step</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset to Monolith</button>
+    </div>
+
+    <div class="panel">
+      <h3>Extract Service</h3>
+      <button class="btn" id="btnExtractAuth">🔐 Extract Auth</button>
+      <button class="btn" id="btnExtractOrder">📦 Extract Orders</button>
+      <button class="btn" id="btnExtractUser">👤 Extract Users</button>
+      <button class="btn" id="btnExtractPay">💳 Extract Payments</button>
+      <button class="btn" id="btnExtractInv">📊 Extract Inventory</button>
+    </div>
+
+    <div class="panel">
+      <h3>Patterns</h3>
+      <button class="btn" id="btnStrangler">🌿 Strangler Fig</button>
+      <button class="btn" id="btnAPI">🌐 API Gateway</button>
+      <button class="btn" id="btnSaga">🎭 Saga Pattern</button>
+    </div>
+
+    <div class="panel">
+      <h3>Risks</h3>
+      <button class="btn warn" id="btnShared">⚠️ Shared DB (anti-pattern)</button>
+      <button class="btn danger" id="btnDistTx">💥 Distributed Transaction</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:12px;height:12px;background:#1e293b;border:2px solid #64748b;margin-right:6px;border-radius:3px;vertical-align:middle;"></span>Monolith block</div>
+        <div><span style="display:inline-block;width:12px;height:12px;background:#0f172a;border:2px solid #22c55e;margin-right:6px;border-radius:3px;vertical-align:middle;"></span>Extracted service</div>
+        <div><span style="display:inline-block;width:12px;height:12px;background:#0f172a;border:2px solid #f59e0b;margin-right:6px;border-radius:3px;vertical-align:middle;"></span>Still in monolith</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">INCREMENTAL DECOMPOSITION · BOUNDED CONTEXTS · STRANGLER FIG</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="stage-bar">
+          <div class="stage-step active" data-stage="0">0 · MONOLITH</div>
+          <div class="stage-step" data-stage="1">1 · IDENTIFY</div>
+          <div class="stage-step" data-stage="2">2 · EXTRACT</div>
+          <div class="stage-step" data-stage="3">3 · STRANGLE</div>
+          <div class="stage-step" data-stage="4">4 · MICROSERVICES</div>
+        </div>
+
+        <div class="canvas-wrap">
+          <div class="canvas-title">
+            <span>🏗️ APPLICATION STRUCTURE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="canvasHint">— click a service to inspect —</span>
+          </div>
+          <canvas id="decompCanvas"></canvas>
+        </div>
+
+        <div class="contexts-wrap" id="contextsWrap">
+          <!-- Bounded context chips injected by JS -->
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Services</div>
+        <div class="metric-value" id="mServices">1</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Deploy Time</div>
+        <div class="metric-value warn" id="mDeploy">30 min</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Coupling</div>
+        <div class="metric-value bad" id="mCoupling">High</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Team Autonomy</div>
+        <div class="metric-value" id="mAutonomy">Low</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Decomposition Principles</div>
+      <div class="info-row"><span class="lbl">Bounded context</span><span class="val good">DDD boundary</span></div>
+      <div class="info-row"><span class="lbl">Business capability</span><span class="val">Not technical layers</span></div>
+      <div class="info-row"><span class="lbl">Data ownership</span><span class="val">One DB per service</span></div>
+      <div class="info-row"><span class="lbl">Async messaging</span><span class="val">Decouple teams</span></div>
+      <div class="info-row"><span class="lbl">Strangler fig</span><span class="val good">Incremental migration</span></div>
+      <div class="info-row"><span class="lbl">Saga pattern</span><span class="val">Distributed tx alternative</span></div>
+      <div class="info-row"><span class="lbl">Anti-pattern</span><span class="val bad">Shared database</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  stage: 0,
+  services: [],        // currently extracted services
+  contexts: [],        // bounded context chips
+  extracted: [],       // ids of extracted contexts
+  running: false,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false,
+  // Visual flash
+  flash: {}
+};
+
+/* ============================================================
+   BOUNDED CONTEXTS
+   ============================================================ */
+const CONTEXTS = [
+  { id: 'auth',      name: 'Auth',      color: '#a855f7', icon: '🔐' },
+  { id: 'user',      name: 'Users',     color: '#06b6d4', icon: '👤' },
+  { id: 'order',     name: 'Orders',    color: '#f59e0b', icon: '📦' },
+  { id: 'payment',   name: 'Payments',  color: '#ec4899', icon: '💳' },
+  { id: 'inventory', name: 'Inventory', color: '#22c55e', icon: '📊' }
+];
+
+/* ============================================================
+   DOM
+   ============================================================ */
+const DOM = {
+  decompCanvas: document.getElementById('decompCanvas'),
+  canvasHint: document.getElementById('canvasHint'),
+  contextsWrap: document.getElementById('contextsWrap'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Buttons
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnExtractAuth: document.getElementById('btnExtractAuth'),
+  btnExtractOrder: document.getElementById('btnExtractOrder'),
+  btnExtractUser: document.getElementById('btnExtractUser'),
+  btnExtractPay: document.getElementById('btnExtractPay'),
+  btnExtractInv: document.getElementById('btnExtractInv'),
+  btnStrangler: document.getElementById('btnStrangler'),
+  btnAPI: document.getElementById('btnAPI'),
+  btnSaga: document.getElementById('btnSaga'),
+  btnShared: document.getElementById('btnShared'),
+  btnDistTx: document.getElementById('btnDistTx'),
+  // Metrics
+  mServices: document.getElementById('mServices'),
+  mDeploy: document.getElementById('mDeploy'),
+  mCoupling: document.getElementById('mCoupling'),
+  mAutonomy: document.getElementById('mAutonomy'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg) {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.classList.add('show');
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2400);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining monolith to microservices decomposition.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   RENDER CONTEXT CHIPS
+   ============================================================ */
+function renderContexts() {
+  DOM.contextsWrap.innerHTML = '';
+  for (const ctx of CONTEXTS) {
+    const el = document.createElement('div');
+    el.className = 'context-chip' + (STATE.extracted.includes(ctx.id) ? ' extracted' : '');
+    el.innerHTML = `${ctx.icon} ${ctx.name}`;
+    DOM.contextsWrap.appendChild(el);
+  }
+}
+
+/* ============================================================
+   CANVAS DRAWING
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.decompCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawCanvas() {
+  const canvas = DOM.decompCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // If monolith (no extracted services), draw one big block
+  if (STATE.extracted.length === 0) {
+    drawMonolith(ctx, W, H);
+    return;
+  }
+
+  // If all extracted, draw service mesh
+  if (STATE.extracted.length === CONTEXTS.length) {
+    drawMicroservices(ctx, W, H);
+    return;
+  }
+
+  // Otherwise: hybrid — monolith in center, extracted services around it
+  drawHybrid(ctx, W, H);
+}
+
+function drawMonolith(ctx, W, H) {
+  const bw = Math.min(W * 0.6, 500);
+  const bh = Math.min(H * 0.7, 380);
+  const bx = (W - bw) / 2;
+  const by = (H - bh) / 2;
+
+  // Big block
+  ctx.fillStyle = '#0f172a';
+  ctx.strokeStyle = '#64748b';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, bw, bh, 12);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.font = 'bold 14px monospace';
+  ctx.fillStyle = '#94a3b8';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('MONOLITH', W / 2, by + 24);
+
+  // Draw inner modules
+  const modules = [
+    { name: 'Auth',      color: '#a855f7', icon: '🔐' },
+    { name: 'Users',     color: '#06b6d4', icon: '👤' },
+    { name: 'Orders',    color: '#f59e0b', icon: '📦' },
+    { name: 'Payments',  color: '#ec4899', icon: '💳' },
+    { name: 'Inventory', color: '#22c55e', icon: '📊' }
+  ];
+
+  const cols = 3;
+  const rows = 2;
+  const cw = (bw - 40) / cols;
+  const ch = (bh - 80) / rows;
+
+  modules.forEach((m, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = bx + 20 + col * cw;
+    const y = by + 50 + row * ch;
+
+    ctx.fillStyle = 'rgba(30,41,59,0.6)';
+    ctx.strokeStyle = m.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x + 4, y + 4, cw - 12, ch - 12, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = '18px monospace';
+    ctx.fillStyle = m.color;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(m.icon, x + cw / 2 - 4, y + ch / 2 - 5);
+
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText(m.name, x + cw / 2 - 4, y + ch / 2 + 15);
+  });
+}
+
+function drawMicroservices(ctx, W, H) {
+  // Layout: API gateway at top, then services in a row
+  const gatewayX = W / 2;
+  const gatewayY = 50;
+  const gatewayW = 160;
+  const gatewayH = 50;
+
+  // Draw gateway
+  ctx.fillStyle = '#0f172a';
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(gatewayX - gatewayW / 2, gatewayY - gatewayH / 2, gatewayW, gatewayH, 10);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#93c5fd';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🌐 API Gateway', gatewayX, gatewayY);
+
+  // Draw services in a row
+  const serviceW = 140;
+  const serviceH = 70;
+  const gap = 20;
+  const totalW = CONTEXTS.length * serviceW + (CONTEXTS.length - 1) * gap;
+  const startX = (W - totalW) / 2;
+  const serviceY = H * 0.55;
+
+  CONTEXTS.forEach((svc, i) => {
+    const x = startX + i * (serviceW + gap);
+    const y = serviceY - serviceH / 2;
+
+    // Connection from gateway
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(gatewayX, gatewayY + gatewayH / 2);
+    ctx.lineTo(x + serviceW / 2, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Service box
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = svc.color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(x, y, serviceW, serviceH, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = '18px monospace';
+    ctx.fillStyle = svc.color;
+    ctx.fillText(svc.icon, x + serviceW / 2, y + 20);
+
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = svc.color;
+    ctx.fillText(svc.name.toUpperCase(), x + serviceW / 2, y + 42);
+
+    ctx.font = '8px monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText('own DB', x + serviceW / 2, y + 58);
+  });
+
+  // Title
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#86efac';
+  ctx.fillText('MICROSERVICES', W / 2, H - 20);
+}
+
+function drawHybrid(ctx, W, H) {
+  // Monolith on left, extracted services on right
+  const monoW = W * 0.4;
+  const monoH = H * 0.75;
+  const monoX = 30;
+  const monoY = (H - monoH) / 2;
+
+  // Monolith (shrinking)
+  ctx.fillStyle = '#0f172a';
+  ctx.strokeStyle = '#64748b';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.roundRect(monoX, monoY, monoW, monoH, 10);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#94a3b8';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('MONOLITH', monoX + monoW / 2, monoY + 20);
+
+  // Remaining modules in monolith
+  const remaining = CONTEXTS.filter(c => !STATE.extracted.includes(c.id));
+  const cols = 2;
+  const rows = Math.ceil(remaining.length / cols);
+  const cw = (monoW - 30) / cols;
+  const ch = (monoH - 50) / Math.max(rows, 1);
+
+  remaining.forEach((m, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = monoX + 10 + col * cw;
+    const y = monoY + 40 + row * ch;
+
+    ctx.fillStyle = 'rgba(30,41,59,0.6)';
+    ctx.strokeStyle = m.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x + 3, y + 3, cw - 8, ch - 8, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = '16px monospace';
+    ctx.fillStyle = m.color;
+    ctx.fillText(m.icon, x + cw / 2 - 2, y + ch / 2 - 6);
+
+    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText(m.name, x + cw / 2 - 2, y + ch / 2 + 10);
+  });
+
+  // Extracted services on the right
+  const extractedList = CONTEXTS.filter(c => STATE.extracted.includes(c.id));
+  const svcX = monoX + monoW + 60;
+  const svcW = W - svcX - 30;
+  const svcH = 60;
+  const svcGap = 10;
+  const totalH = extractedList.length * svcH + (extractedList.length - 1) * svcGap;
+  const startY = (H - totalH) / 2;
+
+  // Draw arrow from monolith to services
+  if (extractedList.length > 0) {
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(monoX + monoW, H / 2);
+    ctx.lineTo(svcX, H / 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Arrowhead
+    ctx.fillStyle = '#22c55e';
+    ctx.beginPath();
+    ctx.moveTo(svcX, H / 2);
+    ctx.lineTo(svcX - 10, H / 2 - 6);
+    ctx.lineTo(svcX - 10, H / 2 + 6);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  extractedList.forEach((svc, i) => {
+    const y = startY + i * (svcH + svcGap);
+
+    // Glow
+    ctx.shadowColor = svc.color;
+    ctx.shadowBlur = 15;
+
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = svc.color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(svcX, y, svcW, svcH, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.font = '20px monospace';
+    ctx.fillStyle = svc.color;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(svc.icon, svcX + 14, y + svcH / 2);
+
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = svc.color;
+    ctx.fillText(svc.name.toUpperCase() + ' SVC', svcX + 44, y + svcH / 2 - 6);
+
+    ctx.font = '9px monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText('own DB · own repo · own team', svcX + 44, y + svcH / 2 + 8);
+  });
+
+  // Extracted counter
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = '#22c55e';
+  ctx.textAlign = 'center';
+  ctx.fillText(`extracted: ${extractedList.length} / ${CONTEXTS.length}`, W - 100, H - 20);
+}
+
+function animate() {
+  drawCanvas();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   EXTRACTION
+   ============================================================ */
+function extractService(ctxId) {
+  const ctx = CONTEXTS.find(c => c.id === ctxId);
+  if (!ctx) return;
+  if (STATE.extracted.includes(ctxId)) {
+    showToast(`⚠ ${ctx.name} already extracted`);
+    return;
+  }
+
+  STATE.extracted.push(ctxId);
+  renderContexts();
+
+  // Update stage
+  if (STATE.extracted.length === 1) setStage(1);
+  if (STATE.extracted.length === 2) setStage(2);
+  if (STATE.extracted.length === 3) setStage(3);
+  if (STATE.extracted.length === CONTEXTS.length) setStage(4);
+
+  teach('EXTRACT: ' + ctx.name.toUpperCase(),
+    `Extracted ${ctx.name} into its own service. The bounded context is now: (1) independent deployable, (2) owns its data, (3) can have its own team. The monolith calls it over the network now instead of in-process. This is the Strangler Fig pattern — new services grow around the old monolith until it can be retired.`,
+    'ok'
+  );
+
+  updateMetrics();
+  showStatus(`🌿 Extracted ${ctx.name}`);
+}
+
+function setStage(n) {
+  STATE.stage = n;
+  document.querySelectorAll('.stage-step').forEach((el, i) => {
+    el.classList.remove('active', 'done');
+    if (i < n) el.classList.add('done');
+    else if (i === n) el.classList.add('active');
+  });
+}
+
+function autoDecompose() {
+  if (STATE.running) {
+    STATE.running = false;
+    DOM.btnRun.textContent = '▶ Auto-Decompose';
+    return;
+  }
+  if (STATE.extracted.length === CONTEXTS.length) {
+    showToast('✓ Already fully decomposed');
+    return;
+  }
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Stop';
+  const remaining = CONTEXTS.filter(c => !STATE.extracted.includes(c.id));
+  let i = 0;
+  const step = () => {
+    if (!STATE.running || i >= remaining.length) {
+      STATE.running = false;
+      DOM.btnRun.textContent = '▶ Auto-Decompose';
+      return;
+    }
+    extractService(remaining[i].id);
+    i++;
+    setTimeout(step, 1500);
+  };
+  step();
+}
+
+/* ============================================================
+   PATTERNS
+   ============================================================ */
+function showStrangler() {
+  teach('STRANGLER FIG',
+    `The Strangler Fig pattern: gradually replace parts of the monolith with new services, like a strangler fig vine envelops a tree. Route traffic to the new service, then remove the old code. Keeps risk low — you migrate incrementally and can roll back anytime. Name comes from the strangler fig plant.`,
+    'purple'
+  );
+  showStatus('🌿 Strangler Fig explained');
+}
+
+function showAPI() {
+  teach('API GATEWAY',
+    `The API Gateway pattern: put a single entry point in front of the microservices. Clients call the gateway, it routes to the right service. Benefits: auth, rate limiting, and routing all live in one place; clients only need to know one URL. Drawback: the gateway becomes a critical path and potential bottleneck.`,
+    'purple'
+  );
+  showStatus('🌐 API Gateway explained');
+}
+
+function showSaga() {
+  teach('SAGA PATTERN',
+    `Saga pattern: distribute a long-running business transaction across multiple services. Each service performs its local transaction and emits an event (or the orchestrator calls the next step). If a step fails, compensating transactions roll back the previous steps. This replaces distributed 2PC transactions, which don't scale.`,
+    'purple'
+  );
+  showStatus('🎭 Saga Pattern explained');
+}
+
+/* ============================================================
+   RISKS / ANTI-PATTERNS
+   ============================================================ */
+function showSharedDb() {
+  teach('SHARED DATABASE (ANTI-PATTERN)',
+    `⚠️ If two services share a database, they're coupled at the data layer — this defeats the purpose of decomposition. Schema changes by one team break the other. You can't scale independently. You can't migrate to a different store. Rule: one database per service. If services need to share data, use APIs or events.`,
+    'error'
+  );
+  showStatus('⚠️ Shared DB is an anti-pattern');
+}
+
+function showDistTx() {
+  teach('DISTRIBUTED TRANSACTION (HARD)',
+    `⚠️ Distributed transactions (2PC, XA) are tempting when you split a monolith — "I need to update orders AND payments atomically." But they don't scale: the coordinator blocks, latency explodes, and a failed participant can leave locks dangling. The correct alternative is the Saga pattern: eventual consistency via events with compensating actions.`,
+    'error'
+  );
+  showStatus('💥 Avoid distributed transactions');
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  const count = STATE.extracted.length + 1; // extracted + monolith
+  DOM.mServices.textContent = count;
+
+  // Deploy time: monolith deploy is slow and grows
+  const deployTime = Math.max(3, 30 - STATE.extracted.length * 5);
+  DOM.mDeploy.textContent = deployTime + ' min';
+  DOM.mDeploy.className = 'metric-value ' + (deployTime > 20 ? 'bad' : deployTime > 10 ? 'warn' : 'good');
+
+  // Coupling: high if no services extracted, low when all extracted
+  const coupling = STATE.extracted.length === 0 ? 'High' :
+                   STATE.extracted.length < 3 ? 'Medium' : 'Low';
+  DOM.mCoupling.textContent = coupling;
+  DOM.mCoupling.className = 'metric-value ' + (coupling === 'Low' ? 'good' : coupling === 'Medium' ? 'warn' : 'bad');
+
+  // Team autonomy
+  const autonomy = STATE.extracted.length === 0 ? 'Low' :
+                   STATE.extracted.length < 3 ? 'Partial' : 'High';
+  DOM.mAutonomy.textContent = autonomy;
+  DOM.mAutonomy.className = 'metric-value ' + (autonomy === 'High' ? 'good' : autonomy === 'Partial' ? 'warn' : 'bad');
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.running) {
+    STATE.running = false;
+    DOM.btnRun.textContent = '▶ Auto-Decompose';
+  }
+  STATE.extracted = [];
+  STATE.services = [];
+  STATE.stage = 0;
+  setStage(0);
+  renderContexts();
+  updateMetrics();
+  showToast('⟲ Reset to monolith');
+  teach('RESET', 'Back to monolith. All services extracted into a single deployable unit again.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRun.addEventListener('click', autoDecompose);
+DOM.btnStep.addEventListener('click', () => {
+  const remaining = CONTEXTS.filter(c => !STATE.extracted.includes(c.id));
+  if (remaining.length > 0) extractService(remaining[0].id);
+});
+DOM.btnReset.addEventListener('click', resetAll);
+
+DOM.btnExtractAuth.addEventListener('click', () => extractService('auth'));
+DOM.btnExtractOrder.addEventListener('click', () => extractService('order'));
+DOM.btnExtractUser.addEventListener('click', () => extractService('user'));
+DOM.btnExtractPay.addEventListener('click', () => extractService('payment'));
+DOM.btnExtractInv.addEventListener('click', () => extractService('inventory'));
+
+DOM.btnStrangler.addEventListener('click', showStrangler);
+DOM.btnAPI.addEventListener('click', showAPI);
+DOM.btnSaga.addEventListener('click', showSaga);
+DOM.btnShared.addEventListener('click', showSharedDb);
+DOM.btnDistTx.addEventListener('click', showDistTx);
+
+window.addEventListener('resize', resizeCanvas);
+
+/* ============================================================
+   POLYFILL roundRect for older browsers
+   ============================================================ */
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+    return this;
+  };
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+renderContexts();
+updateMetrics();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Monolith to Microservices Decomposition. A monolith is a single deployable unit containing all functionality. It's simple to start but hard to scale: one team's change forces a redeploy of the whole system, and coupling grows over time. Decomposition splits it into independently deployable services, each owning a business capability.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('BOUNDED CONTEXTS',
+      `The key insight from Domain-Driven Design: don't split by technical layer (controllers, services, DAOs) — split by BUSINESS CAPABILITY. Each bounded context has its own language, its own data, its own rules. Auth, Orders, Payments — these are bounded contexts. Extracting one means it becomes independently deployable and owns its own data.`,
+      'purple'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('STRANGLER FIG',
+      `Don't rewrite the monolith. Use the Strangler Fig pattern: incrementally extract services while the monolith keeps running. Route new traffic to the new service, then delete the old code. If something goes wrong, revert. This is how real companies (Amazon, Netflix, Shopify) migrated — slowly, over years, not in one big rewrite.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('THE COST',
+      `Microservices aren't free. You trade code complexity for operational complexity: network calls, service discovery, distributed tracing, eventual consistency, deployment orchestration. Small teams often shouldn't split. If you're under 20 engineers, a well-structured monolith is usually the right call. Decompose when the monolith becomes a bottleneck, not before.`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Click EXTRACT buttons or AUTO-DECOMPOSE', 4500);
+}, 500);
+</script>
+</body>
+</html>

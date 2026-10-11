@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Threading, Thread Pools &amp; Race Conditions — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #f59e0b, #ef4444, #ec4899);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(245,158,11,0.15);
+    color: #fcd34d;
+    border-color: #f59e0b;
+  }
+  .teaching-toggle:hover { background: rgba(245,158,11,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f59e0b; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f59e0b; color: #2a1503; border-color: #f59e0b; }
+  .btn.primary:hover { background: #d97706; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fcd34d; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f59e0b; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(245,158,11,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* THREAD VISUALIZER */
+  .thread-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(245,158,11,0.15);
+    min-height: 0;
+  }
+  .thread-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #threadCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+  }
+
+  /* SHARED STATE */
+  .state-wrap {
+    background: #070a14;
+    border: 2px solid #ec4899;
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 0 20px rgba(236,72,153,0.15);
+    flex-shrink: 0;
+  }
+  .state-item {
+    font-family: monospace;
+    text-align: center;
+  }
+  .state-item .lbl {
+    font-size: 0.55rem;
+    color: #94a3b8;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 3px;
+  }
+  .state-item .val {
+    font-size: 1.6rem;
+    font-weight: 900;
+    color: #f9a8d4;
+    letter-spacing: 1px;
+    display: block;
+    text-shadow: 0 0 15px rgba(236,72,153,0.5);
+  }
+  .state-item .val.expected { color: #6ee7b7; text-shadow: 0 0 10px rgba(16,185,129,0.5); font-size: 1rem; }
+  .state-item .val.mismatch { color: #fca5a5; text-shadow: 0 0 15px rgba(239,68,68,0.7); animation: mismatchPulse 0.7s ease-in-out infinite alternate; }
+  @keyframes mismatchPulse {
+    0% { opacity: 0.6; }
+    100% { opacity: 1; }
+  }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(245,158,11,0.06);
+    border: 1px solid rgba(245,158,11,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #fcd34d;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #f59e0b;
+    background: rgba(245,158,11,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(245,158,11,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #fcd34d;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #f59e0b;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(245,158,11,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #f59e0b;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #fcd34d;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(245,158,11,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.danger { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+  .status-banner.safe { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>THREAD POOLS &amp; RACE CONDITIONS</h1>
+    <span class="sub">CONCURRENCY · MUTEXES · ATOMICITY · CONTEXT SWITCHING</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Simulation</h3>
+      <button class="btn primary" id="btnRun">▶ Run Increments</button>
+      <button class="btn" id="btnStep">⏭ Step Tick</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset Counter</button>
+    </div>
+
+    <div class="panel">
+      <h3>Sync Mode</h3>
+      <button class="btn danger" id="btnUnsafe">❌ No Lock (racy)</button>
+      <button class="btn success" id="btnSafe">🔒 Mutex Lock</button>
+      <button class="btn warn" id="btnAtomic">⚛️ Atomic CAS</button>
+    </div>
+
+    <div class="panel">
+      <h3>Thread Config</h3>
+      <div class="slider-row"><span>Threads</span><span class="value" id="threadsVal">4</span></div>
+      <input type="range" id="threadsRange" min="2" max="8" value="4">
+      <div class="slider-row"><span>Ops / thread</span><span class="value" id="opsVal">5</span></div>
+      <input type="range" id="opsRange" min="1" max="20" value="5">
+      <div class="slider-row"><span>Context switch ms</span><span class="value" id="csVal">120</span></div>
+      <input type="range" id="csRange" min="20" max="400" value="120" step="20">
+    </div>
+
+    <div class="panel">
+      <h3>Thread Pool</h3>
+      <div class="slider-row"><span>Pool size</span><span class="value" id="poolVal">4</span></div>
+      <input type="range" id="poolRange" min="1" max="8" value="4">
+      <button class="btn" id="btnSubmit">📥 Submit 20 Tasks</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:50%;margin-right:6px;"></span>Thread running</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:50%;margin-right:6px;"></span>Thread waiting / blocked</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:50%;margin-right:6px;"></span>Thread done</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:50%;margin-right:6px;"></span>Lost update (race)</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">SHARED STATE · INTERLEAVED EXECUTION · RACE CONDITIONS</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="thread-wrap">
+          <div class="thread-title">
+            <span>🧵 THREAD TIMELINE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="threadHint">— press RUN to start —</span>
+          </div>
+          <canvas id="threadCanvas"></canvas>
+        </div>
+
+        <div class="state-wrap">
+          <div class="state-item">
+            <span class="lbl">Shared Counter</span>
+            <span class="val" id="stateCounter">0</span>
+          </div>
+          <div class="state-item">
+            <span class="lbl">Expected</span>
+            <span class="val expected" id="stateExpected">0</span>
+          </div>
+          <div class="state-item">
+            <span class="lbl">Lost Updates</span>
+            <span class="val mismatch" id="stateLost" style="font-size:1.1rem;">0</span>
+          </div>
+          <div class="state-item">
+            <span class="lbl">Lock Contention</span>
+            <span class="val expected" id="stateContention">0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Threads</div>
+        <div class="metric-value" id="mThreads">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Counter</div>
+        <div class="metric-value warn" id="mCounter">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Lost Updates</div>
+        <div class="metric-value bad" id="mLost">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Ops Done</div>
+        <div class="metric-value good" id="mOps">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Concurrency Essentials</div>
+      <div class="info-row"><span class="lbl">Race condition</span><span class="val bad">Unsynchronized access</span></div>
+      <div class="info-row"><span class="lbl">Mutex</span><span class="val good">Mutual exclusion lock</span></div>
+      <div class="info-row"><span class="lbl">Atomic ops</span><span class="val good">Hardware CAS</span></div>
+      <div class="info-row"><span class="lbl">Deadlock</span><span class="val bad">Circular waits</span></div>
+      <div class="info-row"><span class="lbl">Thread pool</span><span class="val">Reuse threads</span></div>
+      <div class="info-row"><span class="lbl">Context switch</span><span class="val warn">~1-10 μs cost</span></div>
+      <div class="info-row"><span class="lbl">Systems</span><span class="val">JVM, pthreads, Go, Rust</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  threadCount: 4,
+  opsPerThread: 5,
+  contextSwitchMs: 120,
+  poolSize: 4,
+  syncMode: 'unsafe',     // unsafe | mutex | atomic
+  // Sim
+  threads: [],
+  running: false,
+  counter: 0,
+  expected: 0,
+  lostUpdates: 0,
+  opsDone: 0,
+  lockContention: 0,
+  tickInterval: null,
+  // Thread pool
+  poolTasks: [],
+  poolWorkers: [],
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  threadCanvas: document.getElementById('threadCanvas'),
+  threadHint: document.getElementById('threadHint'),
+  stateCounter: document.getElementById('stateCounter'),
+  stateExpected: document.getElementById('stateExpected'),
+  stateLost: document.getElementById('stateLost'),
+  stateContention: document.getElementById('stateContention'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Buttons
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnUnsafe: document.getElementById('btnUnsafe'),
+  btnSafe: document.getElementById('btnSafe'),
+  btnAtomic: document.getElementById('btnAtomic'),
+  btnSubmit: document.getElementById('btnSubmit'),
+  threadsRange: document.getElementById('threadsRange'),
+  threadsVal: document.getElementById('threadsVal'),
+  opsRange: document.getElementById('opsRange'),
+  opsVal: document.getElementById('opsVal'),
+  csRange: document.getElementById('csRange'),
+  csVal: document.getElementById('csVal'),
+  poolRange: document.getElementById('poolRange'),
+  poolVal: document.getElementById('poolVal'),
+  // Metrics
+  mThreads: document.getElementById('mThreads'),
+  mCounter: document.getElementById('mCounter'),
+  mLost: document.getElementById('mLost'),
+  mOps: document.getElementById('mOps'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining thread pools and race conditions.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   CANVAS
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.threadCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawCanvas() {
+  const canvas = DOM.threadCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const n = Math.max(STATE.threads.length, 1);
+  const rowH = Math.min(40, H / Math.max(n, 5));
+
+  // Draw rows for each thread
+  STATE.threads.forEach((thread, i) => {
+    const y = 20 + i * rowH;
+    const rowHeight = rowH - 6;
+
+    // Row background
+    ctx.fillStyle = 'rgba(30,41,59,0.3)';
+    ctx.fillRect(20, y, W - 40, rowHeight);
+
+    // Thread label
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(thread.name, 5, y + rowHeight / 2);
+
+    // Timeline blocks
+    thread.timeline.forEach(block => {
+      const bx = 20 + (block.start / thread.totalTicks) * (W - 40);
+      const bw = (block.duration / thread.totalTicks) * (W - 40);
+      const by = y + 2;
+
+      if (block.type === 'read') {
+        ctx.fillStyle = '#3b82f6';
+      } else if (block.type === 'write') {
+        ctx.fillStyle = '#10b981';
+      } else if (block.type === 'critical') {
+        ctx.fillStyle = '#f59e0b';
+      } else if (block.type === 'lost') {
+        ctx.fillStyle = '#ef4444';
+      } else if (block.type === 'wait') {
+        ctx.fillStyle = '#64748b';
+      } else {
+        ctx.fillStyle = '#a855f7';
+      }
+
+      ctx.fillRect(bx, by, Math.max(2, bw), rowHeight - 4);
+
+      // Label inside if wide enough
+      if (bw > 30) {
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'bold 8px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(block.label || block.type, bx + bw / 2, by + rowHeight / 2 - 2);
+      }
+    });
+
+    // Current progress marker
+    if (thread.currentTick < thread.totalTicks && thread.state === 'running') {
+      const px = 20 + (thread.currentTick / thread.totalTicks) * (W - 40);
+      ctx.strokeStyle = '#fcd34d';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px, y + 2);
+      ctx.lineTo(px, y + rowHeight - 2);
+      ctx.stroke();
+    }
+  });
+
+  // Timeline header
+  ctx.font = '10px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'right';
+  ctx.fillText('time →', W - 10, 12);
+}
+
+function animate() {
+  drawCanvas();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   RACE CONDITION SIMULATION
+   ============================================================ */
+function buildThreads() {
+  STATE.threads = [];
+  for (let i = 0; i < STATE.threadCount; i++) {
+    const totalTicks = STATE.opsPerThread * 4 + 2;  // read+add+write per op, approx
+    STATE.threads.push({
+      name: 'T' + (i + 1),
+      state: 'idle',       // idle | running | done
+      currentTick: 0,
+      totalTicks,
+      opsDone: 0,
+      timeline: [],
+      localRead: 0
+    });
+  }
+}
+
+async function runIncrements() {
+  if (STATE.running) {
+    STATE.running = false;
+    DOM.btnRun.textContent = '▶ Run Increments';
+    return;
+  }
+
+  buildThreads();
+  STATE.running = true;
+  STATE.counter = 0;
+  STATE.expected = STATE.threadCount * STATE.opsPerThread;
+  STATE.lostUpdates = 0;
+  STATE.opsDone = 0;
+  STATE.lockContention = 0;
+  updateState();
+  DOM.btnRun.textContent = '⏸ Stop';
+
+  showStatus(`▶ Running ${STATE.threadCount} threads · mode: ${STATE.mode || STATE.syncMode}`, '');
+  teach('SIMULATION START',
+    `Running ${STATE.threadCount} threads, each doing ${STATE.opsPerThread} increments of a shared counter. Expected final value: ${STATE.expected}. Sync mode: ${STATE.syncMode.toUpperCase()}. Watch what happens when threads interleave.`,
+    'cyan'
+  );
+
+  const results = await Promise.all(STATE.threads.map((t, i) => runThread(t, i)));
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Run Increments';
+
+  // Compare
+  const actual = STATE.counter;
+  const expected = STATE.expected;
+  const lost = expected - actual;
+  STATE.lostUpdates = Math.max(0, lost);
+
+  if (lost > 0) {
+    showStatus(`❌ Lost ${lost} updates — counter = ${actual}, expected ${expected}`, 'danger');
+    teach('RACE CONDITION',
+      `LOST UPDATES: counter ended at ${actual}, but expected ${expected}. ${lost} increments were lost! Here's why: two threads both read counter = 5, both compute 6, both write 6. The second write overwrote the first — one increment vanished. This is the classic "lost update" race condition. Solutions: mutex locks or atomic compare-and-swap.`,
+      'error'
+    );
+  } else {
+    showStatus(`✅ Correct: counter = ${actual} = expected`, 'safe');
+    teach('CONSISTENT',
+      `Counter ended at ${actual}, matching the expected ${expected}. No lost updates! ${STATE.syncMode === 'mutex' ? 'The mutex serialized all increments — one thread at a time.' : STATE.syncMode === 'atomic' ? 'Atomic compare-and-swap made each read-modify-write indivisible.' : 'The timing happened to not conflict this run — try again, and it will likely break.'}`,
+      'ok'
+    );
+  }
+
+  updateState();
+}
+
+async function runThread(thread, index) {
+  await sleep(index * 20);
+  thread.state = 'running';
+  const opTime = STATE.contextSwitchMs / STATE.opsPerThread * 2;
+  const totalTicks = thread.totalTicks;
+
+  for (let op = 0; op < STATE.opsPerThread; op++) {
+    if (!STATE.running) break;
+
+    // Check mutex
+    let acquired = false;
+    if (STATE.syncMode === 'mutex' || STATE.syncMode === 'atomic') {
+      // Simulate lock contention: if another thread is in critical section
+      const busy = STATE.threads.some(t => t !== thread && t.inCriticalSection);
+      if (busy) {
+        STATE.lockContention++;
+        // Add wait block
+        thread.timeline.push({
+          start: thread.currentTick,
+          duration: 1,
+          type: 'wait',
+          label: 'wait'
+        });
+        await sleep(opTime / 2);
+      }
+      thread.inCriticalSection = true;
+      acquired = true;
+    }
+
+    // Read
+    thread.timeline.push({ start: thread.currentTick, duration: 1, type: 'read', label: 'read' });
+    thread.currentTick++;
+    const read = STATE.counter;
+    await sleep(opTime / 4);
+
+    // Compute
+    const write = read + 1;
+
+    // Write
+    thread.timeline.push({ start: thread.currentTick, duration: 1, type: 'write', label: 'write' });
+    thread.currentTick++;
+
+    if (STATE.syncMode === 'unsafe') {
+      // Race window: other threads may have written between read and write
+      await sleep(opTime / 3);
+      // Check if counter changed while we were reading
+      if (STATE.counter !== read) {
+        STATE.lostUpdates++;
+        thread.timeline.push({ start: thread.currentTick - 2, duration: 2, type: 'lost', label: 'LOST!' });
+        STATE.counter = write;  // still overwrites
+      } else {
+        STATE.counter = write;
+      }
+    } else if (STATE.syncMode === 'mutex') {
+      // No race: we hold the lock
+      STATE.counter = write;
+    } else if (STATE.syncMode === 'atomic') {
+      // CAS loop: retry if changed
+      let attempts = 0;
+      while (attempts < 5) {
+        if (STATE.counter === read) {
+          STATE.counter = write;
+          break;
+        }
+        // Value changed — retry
+        attempts++;
+        STATE.lockContention++;
+        await sleep(10);
+        const newRead = STATE.counter;
+        if (STATE.counter === newRead) {
+          STATE.counter = newRead + 1;
+          break;
+        }
+      }
+    }
+
+    thread.opsDone++;
+    STATE.opsDone++;
+    thread.currentTick++;
+    await sleep(opTime / 4);
+
+    if (acquired) thread.inCriticalSection = false;
+
+    updateState();
+  }
+
+  thread.state = 'done';
+  // Fill rest of timeline as idle
+  while (thread.currentTick < totalTicks) {
+    thread.timeline.push({ start: thread.currentTick, duration: 1, type: 'idle' });
+    thread.currentTick++;
+  }
+  updateState();
+}
+
+function stepTick() {
+  if (STATE.threads.length === 0) buildThreads();
+  // Advance counter by 1 (simulating one thread step)
+  STATE.counter++;
+  STATE.expected = STATE.threadCount * STATE.opsPerThread;
+  STATE.opsDone++;
+  updateState();
+}
+
+function updateState() {
+  DOM.stateCounter.textContent = STATE.counter;
+  DOM.stateExpected.textContent = STATE.expected || '?';
+  DOM.stateLost.textContent = STATE.lostUpdates;
+  DOM.stateContention.textContent = STATE.lockContention;
+
+  DOM.mThreads.textContent = STATE.threadCount;
+  DOM.mCounter.textContent = STATE.counter;
+  DOM.mLost.textContent = STATE.lostUpdates;
+  DOM.mOps.textContent = STATE.opsDone;
+
+  DOM.mLost.className = 'metric-value ' + (STATE.lostUpdates === 0 ? 'good' : STATE.lostUpdates < 3 ? 'warn' : 'bad');
+  DOM.mCounter.className = 'metric-value ' + (STATE.lostUpdates > 0 ? 'bad' : 'warn');
+}
+
+/* ============================================================
+   SYNC MODE
+   ============================================================ */
+function setSyncMode(mode) {
+  STATE.syncMode = mode;
+  DOM.btnUnsafe.classList.toggle('active', mode === 'unsafe');
+  DOM.btnSafe.classList.toggle('active', mode === 'mutex');
+  DOM.btnAtomic.classList.toggle('active', mode === 'atomic');
+
+  const msgs = {
+    unsafe: 'UNSAFE MODE: no synchronization. All threads read-modify-write the counter freely. Lost updates are almost guaranteed when threads interleave. This is what happens in real code when you forget to lock.',
+    mutex: 'MUTEX MODE: only one thread can be in the critical section at a time. When a thread acquires the lock, other threads wait. This guarantees correct increments, but adds lock contention overhead — some threads wait.',
+    atomic: 'ATOMIC MODE: uses hardware compare-and-swap (CAS). No lock — each thread tries to swap the value in one indivisible operation. If the value changed since read, retry. Faster than mutex in some cases, especially with low contention.'
+  };
+  teach('SYNC: ' + mode.toUpperCase(), msgs[mode], mode === 'unsafe' ? 'error' : 'ok');
+}
+
+/* ============================================================
+   THREAD POOL
+   ============================================================ */
+function submitTasks() {
+  STATE.poolTasks = [];
+  for (let i = 0; i < 20; i++) {
+    STATE.poolTasks.push({
+      id: i + 1,
+      duration: 200 + Math.random() * 500
+    });
+  }
+
+  showStatus(`📥 20 tasks submitted to pool of ${STATE.poolSize}`, '');
+  teach('THREAD POOL',
+    `20 tasks submitted to a pool of ${STATE.poolSize} worker threads. Tasks queue up — each worker picks the next available task. This is why thread pools exist: creating and destroying threads is expensive (context switches, memory). Reusing a fixed pool bounds resource usage.`,
+    'purple'
+  );
+
+  // Execute tasks
+  let idx = 0;
+  const workers = [];
+  const timings = [];
+  for (let w = 0; w < STATE.poolSize; w++) {
+    workers.push((async () => {
+      while (idx < STATE.poolTasks.length) {
+        const task = STATE.poolTasks[idx++];
+        timings.push(`Worker ${w + 1}: task ${task.id}`);
+        await sleep(task.duration);
+      }
+    })());
+  }
+  Promise.all(workers).then(() => {
+    showStatus('✅ All 20 tasks complete', 'safe');
+    teach('POOL COMPLETE',
+      `All 20 tasks completed using ${STATE.poolSize} worker threads. The pool never grew beyond its limit — this is back-pressure: if tasks arrive faster than they're processed, the queue grows, but the pool stays fixed. This protects the system from thread explosion.`,
+      'ok'
+    );
+  });
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  STATE.running = false;
+  STATE.counter = 0;
+  STATE.expected = 0;
+  STATE.lostUpdates = 0;
+  STATE.opsDone = 0;
+  STATE.lockContention = 0;
+  STATE.threads = [];
+  DOM.btnRun.textContent = '▶ Run Increments';
+  DOM.statusBanner.classList.remove('show');
+  updateState();
+  teach('RESET', 'Counter reset to 0. Threads cleared.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRun.addEventListener('click', runIncrements);
+DOM.btnStep.addEventListener('click', stepTick);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnUnsafe.addEventListener('click', () => setSyncMode('unsafe'));
+DOM.btnSafe.addEventListener('click', () => setSyncMode('mutex'));
+DOM.btnAtomic.addEventListener('click', () => setSyncMode('atomic'));
+DOM.btnSubmit.addEventListener('click', submitTasks);
+
+DOM.threadsRange.addEventListener('input', e => {
+  STATE.threadCount = parseInt(e.target.value);
+  DOM.threadsVal.textContent = STATE.threadCount;
+});
+DOM.opsRange.addEventListener('input', e => {
+  STATE.opsPerThread = parseInt(e.target.value);
+  DOM.opsVal.textContent = STATE.opsPerThread;
+});
+DOM.csRange.addEventListener('input', e => {
+  STATE.contextSwitchMs = parseInt(e.target.value);
+  DOM.csVal.textContent = STATE.contextSwitchMs;
+});
+DOM.poolRange.addEventListener('input', e => {
+  STATE.poolSize = parseInt(e.target.value);
+  DOM.poolVal.textContent = STATE.poolSize;
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+buildThreads();
+updateState();
+setSyncMode('unsafe');
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Thread Pools and Race Conditions. Concurrency is what lets a single process use multiple CPU cores — but it introduces a whole class of bugs. The most famous: the race condition, where two threads read-modify-write shared state and one's update silently overwrites the other.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE LOST UPDATE',
+      `Imagine counter = 5 and threads T1 and T2 both do counter++. T1 reads 5, T2 reads 5. T1 writes 6, T2 writes 6. Final value: 6, but expected 7. One increment vanished. This is a lost update, and it's why real systems need locks or atomics for shared mutable state.`,
+      'error'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('MUTEXES & ATOMICS',
+      `Two classic solutions. A MUTEX (mutual exclusion lock) lets only one thread be inside the critical section at a time. Simple but adds contention overhead. An ATOMIC operation uses CPU-level compare-and-swap — the entire read-modify-write happens indivisibly. Often faster. Modern languages offer both: synchronized in Java, AtomicInteger, Mutex in Rust, etc.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('THREAD POOLS',
+      `Instead of creating a thread per task (expensive!), a thread pool keeps a fixed set of workers. Tasks queue up and workers pick them one at a time. This bounds resource usage and improves throughput. Every server framework uses them: Tomcat, Node.js (via libuv), Go's goroutine scheduler, Java's ExecutorService.`,
+      'purple'
+    );
+  }, 13500);
+
+  showToast('👋 Try UNSAFE vs SAFE modes', 4500);
+}, 500);
+</script>
+</body>
+</html>

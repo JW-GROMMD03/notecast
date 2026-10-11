@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Producer-Consumer Bounded Buffer — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #06b6d4, #3b82f6, #a855f7);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(6,182,212,0.15); color: #67e8f9; border-color: #06b6d4; }
+  .teaching-toggle:hover { background: rgba(6,182,212,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #67e8f9;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #06b6d4; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #06b6d4; color: #032028; border-color: #06b6d4; }
+  .btn.primary:hover { background: #0891b2; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #06b6d4; color: #032028; border-color: #06b6d4; }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #67e8f9; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #06b6d4; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(6,182,212,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .buffer-wrap {
+    flex: 1; background: #070a14; border: 2px solid #06b6d4; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(6,182,212,0.15); min-height: 0;
+  }
+  .buffer-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #67e8f9; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #bufferCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .agent-panels {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex-shrink: 0; height: 130px;
+  }
+  .agent-panel {
+    background: #070a14; border: 2px solid; border-radius: 10px;
+    padding: 10px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .agent-panel.producer { border-color: #06b6d4; box-shadow: 0 0 15px rgba(6,182,212,0.15); }
+  .agent-panel.consumer { border-color: #a855f7; box-shadow: 0 0 15px rgba(168,85,247,0.15); }
+  .agent-head {
+    font-family: monospace; font-size: 0.65rem; font-weight: 900;
+    letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .agent-panel.producer .agent-head { color: #67e8f9; }
+  .agent-panel.consumer .agent-head { color: #c4b5fd; }
+  .agent-state-badge {
+    font-size: 0.5rem; padding: 2px 8px; border-radius: 8px;
+    letter-spacing: 1px; background: rgba(30,41,59,0.6); color: #cbd5e1;
+  }
+  .agent-state-badge.active { background: rgba(16,185,129,0.3); color: #86efac; }
+  .agent-state-badge.blocked { background: rgba(239,68,68,0.3); color: #fca5a5; }
+  .agent-log {
+    flex: 1; overflow-y: auto; font-family: monospace; font-size: 0.55rem;
+    color: #94a3b8; line-height: 1.5;
+  }
+  .agent-log-entry { padding: 1px 4px; border-radius: 2px; border-left: 2px solid transparent; }
+  .agent-log-entry.info { border-left-color: #475569; }
+  .agent-log-entry.success { border-left-color: #10b981; color: #86efac; }
+  .agent-log-entry.blocked { border-left-color: #ef4444; color: #fca5a5; }
+  .agent-log-entry.wake { border-left-color: #fcd34d; color: #fcd34d; }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(6,182,212,0.06); border: 1px solid rgba(6,182,212,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #67e8f9; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #06b6d4;
+    background: rgba(6,182,212,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(6,182,212,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(6,182,212,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #67e8f9;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #06b6d4; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(6,182,212,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #06b6d4; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #67e8f9; z-index: 12;
+    box-shadow: 0 0 20px rgba(6,182,212,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.blocked { border-color: #ef4444; color: #fca5a5; box-shadow: 0 0 25px rgba(239,68,68,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>PRODUCER-CONSUMER</h1>
+    <span class="sub">BOUNDED BUFFER · SEMAPHORES · CONDITION VARIABLES</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Simulation</h3>
+      <button class="btn primary" id="btnRun">▶ Run</button>
+      <button class="btn" id="btnStep">⏭ Step Tick</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Synchronization</h3>
+      <button class="btn danger" id="btnUnsync">❌ No Sync (race)</button>
+      <button class="btn success" id="btnSemaphore">✅ Semaphores</button>
+      <button class="btn warn" id="btnCondvar">🔄 Condition Variables</button>
+    </div>
+
+    <div class="panel">
+      <h3>Burst Control</h3>
+      <button class="btn" id="btnBurstProducer">⚡ Producer Burst</button>
+      <button class="btn" id="btnBurstConsumer">⚡ Consumer Burst</button>
+    </div>
+
+    <div class="panel">
+      <h3>Parameters</h3>
+      <div class="slider-row"><span>Buffer size</span><span class="value" id="bufVal">5</span></div>
+      <input type="range" id="bufRange" min="2" max="10" value="5">
+      <div class="slider-row"><span>Producer rate</span><span class="value" id="pRateVal">2/s</span></div>
+      <input type="range" id="pRateRange" min="1" max="8" value="2">
+      <div class="slider-row"><span>Consumer rate</span><span class="value" id="cRateVal">2/s</span></div>
+      <input type="range" id="cRateRange" min="1" max="8" value="2">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#06b6d4;border-radius:2px;margin-right:6px;"></span>Item in buffer</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#1e293b;border:1px solid #334155;border-radius:2px;margin-right:6px;"></span>Empty slot</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">PRODUCER WRITES · CONSUMER READS · BUFFER SYNCHRONIZES</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="buffer-wrap">
+          <div class="buffer-title">
+            <span>📦 BOUNDED BUFFER</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="bufferHint">— 0/5 —</span>
+          </div>
+          <canvas id="bufferCanvas"></canvas>
+        </div>
+        <div class="agent-panels">
+          <div class="agent-panel producer">
+            <div class="agent-head">
+              <span>📤 PRODUCER</span>
+              <span class="agent-state-badge" id="prodState">IDLE</span>
+            </div>
+            <div class="agent-log" id="prodLog"></div>
+          </div>
+          <div class="agent-panel consumer">
+            <div class="agent-head">
+              <span>📥 CONSUMER</span>
+              <span class="agent-state-badge" id="consState">IDLE</span>
+            </div>
+            <div class="agent-log" id="consLog"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Buffer</div>
+        <div class="metric-value warn" id="mBuffer">0/5</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Produced</div>
+        <div class="metric-value good" id="mProduced">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Consumed</div>
+        <div class="metric-value good" id="mConsumed">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Lost Items</div>
+        <div class="metric-value bad" id="mLost">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Sync Primitives</div>
+      <div class="info-row"><span class="lbl">empty</span><span class="val">Counts free slots</span></div>
+      <div class="info-row"><span class="lbl">full</span><span class="val">Counts filled slots</span></div>
+      <div class="info-row"><span class="lbl">mutex</span><span class="val good">Protects buffer</span></div>
+      <div class="info-row"><span class="lbl">Producer</span><span class="val">wait(empty)</span></div>
+      <div class="info-row"><span class="lbl">Consumer</span><span class="val">wait(full)</span></div>
+      <div class="info-row"><span class="lbl">Deadlock</span><span class="val bad">Wrong wait order</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">Kafka, RabbitMQ, pipes</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  bufferSize: 5,
+  buffer: [],
+  produced: 0,
+  consumed: 0,
+  lost: 0,
+  prodRate: 2,
+  consRate: 2,
+  syncMode: 'semaphore',  // unsync | semaphore | condvar
+  running: false,
+  prodBlocked: false,
+  consBlocked: false,
+  prodActive: false,
+  consActive: false,
+  timer: null,
+  // Semaphore state
+  empty: 5,
+  full: 0,
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  bufferCanvas: document.getElementById('bufferCanvas'),
+  bufferHint: document.getElementById('bufferHint'),
+  prodState: document.getElementById('prodState'),
+  consState: document.getElementById('consState'),
+  prodLog: document.getElementById('prodLog'),
+  consLog: document.getElementById('consLog'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnUnsync: document.getElementById('btnUnsync'),
+  btnSemaphore: document.getElementById('btnSemaphore'),
+  btnCondvar: document.getElementById('btnCondvar'),
+  btnBurstProducer: document.getElementById('btnBurstProducer'),
+  btnBurstConsumer: document.getElementById('btnBurstConsumer'),
+  bufRange: document.getElementById('bufRange'),
+  bufVal: document.getElementById('bufVal'),
+  pRateRange: document.getElementById('pRateRange'),
+  pRateVal: document.getElementById('pRateVal'),
+  cRateRange: document.getElementById('cRateRange'),
+  cRateVal: document.getElementById('cRateVal'),
+  mBuffer: document.getElementById('mBuffer'),
+  mProduced: document.getElementById('mProduced'),
+  mConsumed: document.getElementById('mConsumed'),
+  mLost: document.getElementById('mLost'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining producer consumer.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+function logTo(agent, cls, msg) {
+  const logEl = agent === 'prod' ? DOM.prodLog : DOM.consLog;
+  const el = document.createElement('div');
+  el.className = `agent-log-entry ${cls}`;
+  el.textContent = msg;
+  logEl.prepend(el);
+  while (logEl.children.length > 12) logEl.lastChild.remove();
+}
+
+/* ============================================================
+   PRODUCER / CONSUMER LOGIC
+   ============================================================ */
+function produce() {
+  STATE.prodActive = true;
+  const item = { id: STATE.produced + 1, color: `hsl(${(STATE.produced * 47) % 360}, 70%, 55%)` };
+
+  if (STATE.syncMode === 'unsync') {
+    // Race: no synchronization at all
+    if (STATE.buffer.length >= STATE.bufferSize) {
+      STATE.lost++;
+      logTo('prod', 'blocked', `Item #${item.id} LOST (buffer full)`);
+      showStatus(`💥 Item lost — buffer overflow`, 'blocked');
+      teach('BUFFER OVERFLOW',
+        `Item #${item.id} is lost — the buffer is full and there's no synchronization to make the producer wait. In a real system this could be dropped data, a corrupted buffer, or a crash. This is the race condition that semaphores prevent.`,
+        'error', false
+      );
+      STATE.prodActive = false;
+      return;
+    }
+    STATE.buffer.push(item);
+    STATE.produced++;
+    logTo('prod', 'success', `Produced #${item.id}`);
+  } else if (STATE.syncMode === 'semaphore') {
+    // Proper: wait(empty), wait(mutex), produce, signal(mutex), signal(full)
+    if (STATE.empty > 0) {
+      STATE.empty--;
+      STATE.buffer.push(item);
+      STATE.produced++;
+      STATE.full++;
+      logTo('prod', 'success', `Produced #${item.id} (empty=${STATE.empty})`);
+      if (STATE.consBlocked) {
+        STATE.consBlocked = false;
+        logTo('cons', 'wake', `Woke up — new item available`);
+      }
+    } else {
+      STATE.prodBlocked = true;
+      logTo('prod', 'blocked', `Blocked on wait(empty)`);
+      if (!STATE.blockedWarned) {
+        STATE.blockedWarned = true;
+        teach('PRODUCER BLOCKED',
+          `Producer blocked: wait(empty) — the buffer is full. It will sleep until a consumer signals it. This is exactly what we want: no data loss, just backpressure. The producer waits instead of overwriting or dropping.`,
+          'warn', false
+        );
+      }
+    }
+  } else if (STATE.syncMode === 'condvar') {
+    // Condition variable approach
+    if (STATE.buffer.length < STATE.bufferSize) {
+      STATE.buffer.push(item);
+      STATE.produced++;
+      logTo('prod', 'success', `Produced #${item.id}`);
+      if (STATE.consBlocked) {
+        STATE.consBlocked = false;
+        logTo('cons', 'wake', `Woke up — new item available`);
+      }
+    } else {
+      STATE.prodBlocked = true;
+      logTo('prod', 'blocked', `Blocked on not_full.wait()`);
+    }
+  }
+
+  STATE.prodActive = false;
+  updateUI();
+}
+
+function consume() {
+  STATE.consActive = true;
+
+  if (STATE.syncMode === 'unsync') {
+    if (STATE.buffer.length === 0) {
+      STATE.lost++;
+      logTo('cons', 'blocked', `Consumed GARBAGE (buffer empty)`);
+      showStatus(`💥 Read from empty buffer`, 'blocked');
+      teach('BUFFER UNDERFLOW',
+        `Consumer read from an empty buffer — it "consumed" garbage data. Without synchronization, there's nothing to stop the consumer from reading when there's nothing there. Real systems might return null, crash, or read uninitialized memory.`,
+        'error', false
+      );
+      STATE.consActive = false;
+      return;
+    }
+    const item = STATE.buffer.shift();
+    STATE.consumed++;
+    logTo('cons', 'success', `Consumed #${item.id}`);
+  } else if (STATE.syncMode === 'semaphore') {
+    if (STATE.full > 0) {
+      STATE.full--;
+      const item = STATE.buffer.shift();
+      STATE.consumed++;
+      STATE.empty++;
+      logTo('cons', 'success', `Consumed #${item.id} (full=${STATE.full})`);
+      if (STATE.prodBlocked) {
+        STATE.prodBlocked = false;
+        logTo('prod', 'wake', `Woke up — free slot available`);
+      }
+    } else {
+      STATE.consBlocked = true;
+      logTo('cons', 'blocked', `Blocked on wait(full)`);
+    }
+  } else if (STATE.syncMode === 'condvar') {
+    if (STATE.buffer.length > 0) {
+      const item = STATE.buffer.shift();
+      STATE.consumed++;
+      logTo('cons', 'success', `Consumed #${item.id}`);
+      if (STATE.prodBlocked) {
+        STATE.prodBlocked = false;
+        logTo('prod', 'wake', `Woke up — slot freed`);
+      }
+    } else {
+      STATE.consBlocked = true;
+      logTo('cons', 'blocked', `Blocked on not_empty.wait()`);
+    }
+  }
+
+  STATE.consActive = false;
+  updateUI();
+}
+
+function tick() {
+  // Probabilistic production/consumption based on rate
+  if (Math.random() < STATE.prodRate / 5) produce();
+  if (Math.random() < STATE.consRate / 5) consume();
+
+  // Update empty/full from buffer state
+  STATE.empty = STATE.bufferSize - STATE.buffer.length;
+  STATE.full = STATE.buffer.length;
+
+  updateUI();
+  drawBuffer();
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.bufferCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawBuffer() {
+  const canvas = DOM.bufferCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const padX = 60;
+  const boxW = (W - padX * 2) / STATE.bufferSize;
+  const boxH = 80;
+  const boxY = (H - boxH) / 2;
+
+  // Header labels
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#67e8f9';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('📤 Producer', 60, boxY - 20);
+  ctx.fillStyle = '#c4b5fd';
+  ctx.fillText('📥 Consumer', W - 60, boxY - 20);
+
+  // Draw buffer slots
+  for (let i = 0; i < STATE.bufferSize; i++) {
+    const x = padX + i * boxW;
+    const item = STATE.buffer[i];
+
+    ctx.fillStyle = item ? item.color : '#1e293b';
+    ctx.fillRect(x + 4, boxY, boxW - 8, boxH);
+
+    ctx.strokeStyle = item ? '#06b6d4' : '#334155';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 4, boxY, boxW - 8, boxH);
+
+    // Slot label
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = item ? '#fff' : '#64748b';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(item ? item.id : '·', x + boxW / 2, boxY + boxH / 2);
+  }
+
+  // Producer arrow
+  const midY = boxY + boxH / 2;
+  ctx.strokeStyle = '#06b6d4';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(20, midY);
+  ctx.lineTo(padX - 4, midY);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(padX - 4, midY);
+  ctx.lineTo(padX - 12, midY - 6);
+  ctx.lineTo(padX - 12, midY + 6);
+  ctx.closePath();
+  ctx.fillStyle = '#06b6d4';
+  ctx.fill();
+
+  // Consumer arrow
+  ctx.strokeStyle = '#a855f7';
+  ctx.beginPath();
+  ctx.moveTo(W - padX + 4, midY);
+  ctx.lineTo(W - 20, midY);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(W - 20, midY);
+  ctx.lineTo(W - 28, midY - 6);
+  ctx.lineTo(W - 28, midY + 6);
+  ctx.closePath();
+  ctx.fillStyle = '#a855f7';
+  ctx.fill();
+
+  // Buffer hint
+  DOM.bufferHint.textContent = `— ${STATE.buffer.length}/${STATE.bufferSize} full —`;
+}
+
+function animate() {
+  drawBuffer();
+  requestAnimationFrame(animate);
+}
+
+function updateUI() {
+  DOM.prodState.textContent = STATE.prodActive ? 'WRITING' : STATE.prodBlocked ? 'BLOCKED' : 'IDLE';
+  DOM.prodState.className = 'agent-state-badge ' + (STATE.prodActive ? 'active' : STATE.prodBlocked ? 'blocked' : '');
+  DOM.consState.textContent = STATE.consActive ? 'READING' : STATE.consBlocked ? 'BLOCKED' : 'IDLE';
+  DOM.consState.className = 'agent-state-badge ' + (STATE.consActive ? 'active' : STATE.consBlocked ? 'blocked' : '');
+
+  DOM.mBuffer.textContent = `${STATE.buffer.length}/${STATE.bufferSize}`;
+  DOM.mBuffer.className = 'metric-value ' + (STATE.buffer.length >= STATE.bufferSize ? 'bad' : STATE.buffer.length === 0 ? 'warn' : 'warn');
+  DOM.mProduced.textContent = STATE.produced;
+  DOM.mConsumed.textContent = STATE.consumed;
+  DOM.mLost.textContent = STATE.lost;
+  DOM.mLost.className = 'metric-value ' + (STATE.lost === 0 ? 'good' : STATE.lost < 3 ? 'warn' : 'bad');
+}
+
+function runSimulation() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.timer);
+    STATE.timer = null;
+    DOM.btnRun.textContent = '▶ Run';
+    return;
+  }
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+  showStatus('▶ Producer/Consumer running');
+  STATE.timer = setInterval(tick, 300);
+}
+
+function setSyncMode(mode) {
+  STATE.syncMode = mode;
+  DOM.btnUnsync.classList.toggle('active', mode === 'unsync');
+  DOM.btnSemaphore.classList.toggle('active', mode === 'semaphore');
+  DOM.btnCondvar.classList.toggle('active', mode === 'condvar');
+
+  const descs = {
+    unsync: 'NO SYNCHRONIZATION: producer writes whenever it wants, consumer reads whenever it wants. If the buffer overflows, items are lost. If it underflows, garbage is read. This is what happens when you forget synchronization — subtle data corruption that\'s hard to debug.',
+    semaphore: 'SEMAPHORES: three semaphores coordinate: "empty" (counts free slots), "full" (counts filled slots), "mutex" (protects buffer access). Producer does wait(empty), wait(mutex), ..., signal(mutex), signal(full). Consumer mirrors it. This is the canonical Dijkstra solution.',
+    condvar: 'CONDITION VARIABLES: A mutex protects the buffer, and two condition variables (not_full, not_empty) let threads sleep and wake. Producer waits on not_full when full; consumer waits on not_empty when empty. Cleaner than semaphores in many languages.'
+  };
+  teach('SYNC MODE: ' + mode.toUpperCase(), descs[mode], mode === 'unsync' ? 'error' : 'ok');
+
+  // Reset buffer
+  STATE.buffer = [];
+  STATE.empty = STATE.bufferSize;
+  STATE.full = 0;
+  updateUI();
+}
+
+function resetAll() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.timer = null;
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Run';
+  STATE.buffer = [];
+  STATE.produced = 0;
+  STATE.consumed = 0;
+  STATE.lost = 0;
+  STATE.prodBlocked = false;
+  STATE.consBlocked = false;
+  STATE.prodActive = false;
+  STATE.consActive = false;
+  STATE.empty = STATE.bufferSize;
+  STATE.full = 0;
+  DOM.prodLog.innerHTML = '';
+  DOM.consLog.innerHTML = '';
+  DOM.statusBanner.classList.remove('show');
+  updateUI();
+  teach('RESET', 'Simulation reset.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnRun.addEventListener('click', runSimulation);
+DOM.btnStep.addEventListener('click', tick);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnUnsync.addEventListener('click', () => setSyncMode('unsync'));
+DOM.btnSemaphore.addEventListener('click', () => setSyncMode('semaphore'));
+DOM.btnCondvar.addEventListener('click', () => setSyncMode('condvar'));
+DOM.btnBurstProducer.addEventListener('click', () => {
+  for (let i = 0; i < 5; i++) setTimeout(produce, i * 40);
+  showToast('⚡ Producer burst (5 items)');
+});
+DOM.btnBurstConsumer.addEventListener('click', () => {
+  for (let i = 0; i < 5; i++) setTimeout(consume, i * 40);
+  showToast('⚡ Consumer burst (5 reads)');
+});
+
+DOM.bufRange.addEventListener('input', e => {
+  STATE.bufferSize = parseInt(e.target.value);
+  DOM.bufVal.textContent = STATE.bufferSize;
+  STATE.buffer = STATE.buffer.slice(0, STATE.bufferSize);
+  STATE.empty = STATE.bufferSize - STATE.buffer.length;
+  updateUI();
+});
+DOM.pRateRange.addEventListener('input', e => {
+  STATE.prodRate = parseInt(e.target.value);
+  DOM.pRateVal.textContent = STATE.prodRate + '/s';
+});
+DOM.cRateRange.addEventListener('input', e => {
+  STATE.consRate = parseInt(e.target.value);
+  DOM.cRateVal.textContent = STATE.consRate + '/s';
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+updateUI();
+setSyncMode('semaphore');
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Producer-Consumer. A producer generates items and writes them to a shared buffer. A consumer reads items from the buffer and processes them. The buffer has a limited size, so producer and consumer must coordinate: producer waits if full, consumer waits if empty.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE SEMAPHORES',
+      `Dijkstra's classic solution uses 3 semaphores. "empty" counts free slots, initialized to N. "full" counts filled slots, initialized to 0. "mutex" protects buffer access, initialized to 1. Producer: wait(empty), wait(mutex), add item, signal(mutex), signal(full). Consumer mirrors it. If you swap the first two waits, you get deadlock!`,
+      'ok'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('TRY THE RACE',
+      `Switch to "No Sync" mode and run. Watch lost items accumulate: producer overflows, consumer reads garbage. This is what unsynchronized code actually does — the bug is subtle, timing-dependent, and often invisible in testing but catastrophic in production.`,
+      'error'
+    );
+  }, 9000);
+  showToast('👋 Run with No Sync, then Semaphores', 4500);
+}, 500);
+</script>
+</body>
+</html>

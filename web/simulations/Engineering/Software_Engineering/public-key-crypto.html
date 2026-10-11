@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cryptographic Handshakes (RSA / Diffie-Hellman) — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #10b981, #22c55e, #eab308);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(16,185,129,0.15); color: #86efac; border-color: #10b981; }
+  .teaching-toggle:hover { background: rgba(16,185,129,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #86efac;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #10b981; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #10b981; color: #022c22; border-color: #10b981; }
+  .btn.primary:hover { background: #059669; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #10b981; color: #022c22; border-color: #10b981; }
+  .algo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .algo-btn {
+    padding: 8px 6px; background: #02040a; border: 1.5px solid #334155;
+    border-radius: 6px; font-family: monospace; font-size: 0.55rem;
+    font-weight: 800; color: #94a3b8; cursor: pointer;
+    letter-spacing: 0.3px; transition: all 0.2s;
+  }
+  .algo-btn:hover { border-color: #10b981; color: #86efac; }
+  .algo-btn.active {
+    background: rgba(16,185,129,0.2); border-color: #10b981;
+    color: #86efac; box-shadow: 0 0 10px rgba(16,185,129,0.4);
+  }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(16,185,129,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .crypto-wrap {
+    flex: 1; background: #070a14; border: 2px solid #10b981; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(16,185,129,0.15); min-height: 0;
+  }
+  .crypto-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #86efac; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #cryptoCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .log-wrap {
+    background: #070a14; border: 2px solid #8b5cf6; border-radius: 12px;
+    padding: 10px 12px; height: 160px; display: flex; flex-direction: column;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15); flex-shrink: 0;
+  }
+  .log-title {
+    font-size: 0.58rem; letter-spacing: 2px; color: #c4b5fd; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .log-body {
+    flex: 1; overflow-y: auto; background: #02040a; border-radius: 6px;
+    border: 1px solid #1e293b; padding: 6px 8px; font-family: 'Courier New', monospace;
+    font-size: 0.6rem; line-height: 1.5; display: flex; flex-direction: column; gap: 2px;
+  }
+  .log-entry {
+    padding: 2px 6px; border-radius: 3px;
+    border-left: 2px solid transparent; animation: logIn 0.3s ease;
+  }
+  @keyframes logIn { from { transform: translateX(-6px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .log-entry.alice { border-left-color: #06b6d4; color: #67e8f9; }
+  .log-entry.bob { border-left-color: #f59e0b; color: #fcd34d; }
+  .log-entry.system { border-left-color: #a855f7; color: #c4b5fd; }
+  .log-entry.crypto { border-left-color: #10b981; color: #86efac; font-weight: 700; }
+  .log-entry.error { border-left-color: #ef4444; color: #fca5a5; }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #86efac; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #10b981;
+    background: rgba(16,185,129,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(16,185,129,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(16,185,129,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #86efac;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #10b981; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(16,185,129,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #10b981; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #86efac; z-index: 12;
+    box-shadow: 0 0 20px rgba(16,185,129,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.warn { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>PUBLIC-KEY CRYPTOGRAPHY</h1>
+    <span class="sub">RSA · DIFFIE-HELLMAN · KEY EXCHANGE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Protocol</h3>
+      <div class="algo-grid" id="algoGrid">
+        <button class="algo-btn active" data-algo="dh">DIFFIE-HELLMAN</button>
+        <button class="algo-btn" data-algo="rsa">RSA KEY EXCHANGE</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Protocol Flow</h3>
+      <button class="btn primary" id="btnStep">▶ Next Step</button>
+      <button class="btn success" id="btnRun">▶ Auto-Play</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Attack Simulation</h3>
+      <button class="btn danger" id="btnEve">🕵️ Activate Eavesdropper</button>
+      <button class="btn warn" id="btnMitm">🎭 Man-in-the-Middle</button>
+    </div>
+
+    <div class="panel">
+      <h3>Parameters</h3>
+      <div style="font-size:0.6rem; color:#64748b; line-height:1.5;">
+        DH uses small numbers here for visualization. Real DH uses 2048+ bit primes.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#06b6d4;border-radius:50%;margin-right:6px;"></span>Alice (client)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:50%;margin-right:6px;"></span>Bob (server)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:50%;margin-right:6px;"></span>Shared secret</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:50%;margin-right:6px;"></span>Eve (attacker)</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">AGREE ON A SHARED SECRET OVER AN INSECURE CHANNEL</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="crypto-wrap">
+          <div class="crypto-title">
+            <span>🔐 KEY EXCHANGE VISUALIZATION</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="cryptoHint">— click NEXT STEP —</span>
+          </div>
+          <canvas id="cryptoCanvas"></canvas>
+        </div>
+
+        <div class="log-wrap">
+          <div class="log-title">
+            <span>📡 PROTOCOL LOG</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="logHint">— 0 messages —</span>
+          </div>
+          <div class="log-body" id="logBody"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Step</div>
+        <div class="metric-value warn" id="mStep">0 / 5</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Secret Match</div>
+        <div class="metric-value good" id="mMatch">—</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Prime p</div>
+        <div class="metric-value" id="mP">23</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Generator g</div>
+        <div class="metric-value" id="mG">5</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Diffie-Hellman</div>
+      <div class="info-row"><span class="lbl">Public: p, g</span><span class="val">prime + generator</span></div>
+      <div class="info-row"><span class="lbl">Alice secret: a</span><span class="val">private random</span></div>
+      <div class="info-row"><span class="lbl">Bob secret: b</span><span class="val">private random</span></div>
+      <div class="info-row"><span class="lbl">Alice sends</span><span class="val">A = g^a mod p</span></div>
+      <div class="info-row"><span class="lbl">Bob sends</span><span class="val">B = g^b mod p</span></div>
+      <div class="info-row"><span class="lbl">Shared secret</span><span class="val good">A^b = B^a mod p</span></div>
+      <div class="info-row"><span class="lbl">Security</span><span class="val bad">Discrete log hard</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">TLS, SSH, Signal</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  protocol: 'dh',
+  step: 0,
+  maxSteps: 6,
+  // DH parameters (small for visualization)
+  p: 23,
+  g: 5,
+  aliceSecret: 0,
+  bobSecret: 0,
+  alicePublic: 0,
+  bobPublic: 0,
+  sharedAlice: 0,
+  sharedBob: 0,
+  eveActive: false,
+  mitmActive: false,
+  running: false,
+  timer: null,
+  // Visual state
+  aliceBubble: null,
+  bobBubble: null,
+  eveBubble: null,
+  messages: [],
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  cryptoCanvas: document.getElementById('cryptoCanvas'),
+  cryptoHint: document.getElementById('cryptoHint'),
+  logBody: document.getElementById('logBody'),
+  logHint: document.getElementById('logHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnStep: document.getElementById('btnStep'),
+  btnRun: document.getElementById('btnRun'),
+  btnReset: document.getElementById('btnReset'),
+  btnEve: document.getElementById('btnEve'),
+  btnMitm: document.getElementById('btnMitm'),
+  algoGrid: document.getElementById('algoGrid'),
+  mStep: document.getElementById('mStep'),
+  mMatch: document.getElementById('mMatch'),
+  mP: document.getElementById('mP'),
+  mG: document.getElementById('mG'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+let LOG_TS = 0;
+function logEntry(cls, msg) {
+  LOG_TS++;
+  const el = document.createElement('div');
+  el.className = `log-entry ${cls}`;
+  const prefix = cls === 'alice' ? '🔵 Alice' : cls === 'bob' ? '🟠 Bob' : cls === 'system' ? '⚙️ System' : cls === 'error' ? '💀 Eve' : '📡';
+  el.innerHTML = `<span style="color:#475569;">[${String(LOG_TS).padStart(2, '0')}]</span> <b>${prefix}:</b> ${msg}`;
+  DOM.logBody.appendChild(el);
+  DOM.logBody.scrollTop = DOM.logBody.scrollHeight;
+  DOM.logHint.textContent = `${LOG_TS} messages`;
+}
+
+function clearLog() {
+  LOG_TS = 0;
+  DOM.logBody.innerHTML = '';
+  DOM.logHint.textContent = '0 messages';
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining public key cryptography.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   MATH UTILITIES
+   ============================================================ */
+function modPow(base, exp, mod) {
+  let result = 1;
+  base = base % mod;
+  while (exp > 0) {
+    if (exp % 2 === 1) result = (result * base) % mod;
+    exp = Math.floor(exp / 2);
+    base = (base * base) % mod;
+  }
+  return result;
+}
+
+/* ============================================================
+   DH PROTOCOL STEPS
+   ============================================================ */
+function resetProtocol() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Auto-Play';
+  STATE.step = 0;
+  STATE.aliceSecret = Math.floor(Math.random() * 10) + 2;
+  STATE.bobSecret = Math.floor(Math.random() * 10) + 2;
+  STATE.alicePublic = 0;
+  STATE.bobPublic = 0;
+  STATE.sharedAlice = 0;
+  STATE.sharedBob = 0;
+  STATE.messages = [];
+  STATE.eveActive = false;
+  STATE.mitmActive = false;
+  DOM.btnEve.classList.remove('active');
+  DOM.btnMitm.classList.remove('active');
+  clearLog();
+  updateMetrics();
+  drawCanvas();
+  logEntry('system', `Protocol reset. Public parameters: p=${STATE.p}, g=${STATE.g}`);
+  logEntry('system', `Alice's private secret: ${STATE.aliceSecret} (known only to Alice)`);
+  logEntry('system', `Bob's private secret: ${STATE.bobSecret} (known only to Bob)`);
+  teach('RESET',
+    `Protocol reset. Alice and Bob each have a private secret random number. They will use these to compute a shared secret via the magic of modular exponentiation.`,
+    'info', false
+  );
+}
+
+function stepProtocol() {
+  if (STATE.step >= STATE.maxSteps) {
+    if (STATE.running) {
+      STATE.running = false;
+      clearInterval(STATE.timer);
+      STATE.timer = null;
+      DOM.btnRun.textContent = '▶ Auto-Play';
+    }
+    return false;
+  }
+
+  STATE.step++;
+
+  switch (STATE.step) {
+    case 1:
+      // Step 1: Public parameters
+      logEntry('system', `Public parameters: p=${STATE.p} (prime), g=${STATE.g} (generator)`);
+      teach('STEP 1: PUBLIC PARAMETERS',
+        `Alice and Bob agree on two public numbers: a large prime p=${STATE.p} and a generator g=${STATE.g}. These can be sent openly — Eve can see them without breaking the protocol. Real DH uses p with 2048+ bits.`,
+        'cyan'
+      );
+      showStatus('📢 Step 1: Public parameters exchanged');
+      break;
+
+    case 2:
+      // Step 2: Alice computes A = g^a mod p
+      STATE.alicePublic = modPow(STATE.g, STATE.aliceSecret, STATE.p);
+      logEntry('alice', `Computes A = g^a mod p = ${STATE.g}^${STATE.aliceSecret} mod ${STATE.p} = ${STATE.alicePublic}`);
+      logEntry('alice', `→ Sends A = ${STATE.alicePublic} to Bob`);
+      teach('STEP 2: ALICE\'S PUBLIC VALUE',
+        `Alice picks her private secret a=${STATE.aliceSecret} and computes her public value A = g^a mod p = ${STATE.g}^${STATE.aliceSecret} mod ${STATE.p} = ${STATE.alicePublic}. She sends A to Bob over the open channel. Eve sees A but cannot recover a — that would require solving the discrete logarithm problem.`,
+        'cyan'
+      );
+      showStatus(`📤 Alice → Bob: A = ${STATE.alicePublic}`);
+      break;
+
+    case 3:
+      // Step 3: Bob computes B = g^b mod p
+      STATE.bobPublic = modPow(STATE.g, STATE.bobSecret, STATE.p);
+      logEntry('bob', `Computes B = g^b mod p = ${STATE.g}^${STATE.bobSecret} mod ${STATE.p} = ${STATE.bobPublic}`);
+      logEntry('bob', `→ Sends B = ${STATE.bobPublic} to Alice`);
+      teach('STEP 3: BOB\'S PUBLIC VALUE',
+        `Bob picks his private secret b=${STATE.bobSecret} and computes B = g^b mod p = ${STATE.g}^${STATE.bobSecret} mod ${STATE.p} = ${STATE.bobPublic}. He sends B to Alice. Eve also sees B.`,
+        'cyan'
+      );
+      showStatus(`📤 Bob → Alice: B = ${STATE.bobPublic}`);
+      break;
+
+    case 4:
+      // Step 4: Alice computes shared secret
+      STATE.sharedAlice = modPow(STATE.bobPublic, STATE.aliceSecret, STATE.p);
+      logEntry('alice', `Computes S = B^a mod p = ${STATE.bobPublic}^${STATE.aliceSecret} mod ${STATE.p} = ${STATE.sharedAlice}`);
+      teach('STEP 4: ALICE COMPUTES SHARED SECRET',
+        `Alice takes Bob's public value B=${STATE.bobPublic} and raises it to her private secret a=${STATE.aliceSecret}: S = B^a mod p = ${STATE.sharedAlice}. This is her version of the shared secret.`,
+        'ok'
+      );
+      showStatus(`🔐 Alice's shared secret = ${STATE.sharedAlice}`);
+      break;
+
+    case 5:
+      // Step 5: Bob computes shared secret
+      STATE.sharedBob = modPow(STATE.alicePublic, STATE.bobSecret, STATE.p);
+      logEntry('bob', `Computes S = A^b mod p = ${STATE.alicePublic}^${STATE.bobSecret} mod ${STATE.p} = ${STATE.sharedBob}`);
+      if (STATE.sharedAlice === STATE.sharedBob) {
+        logEntry('crypto', `✅ Shared secret MATCHES: ${STATE.sharedAlice}`);
+        teach('STEP 5: BOB COMPUTES SHARED SECRET',
+          `Bob computes S = A^b mod p = ${STATE.alicePublic}^${STATE.bobSecret} mod ${STATE.p} = ${STATE.sharedBob}. By the magic of modular arithmetic, (g^a)^b = (g^b)^a, so Alice and Bob have the SAME shared secret: ${STATE.sharedAlice}. They can now use it as a symmetric key for AES.`,
+          'ok'
+        );
+        showStatus(`✅ Shared secret: ${STATE.sharedAlice}`, 'ok');
+      } else {
+        showStatus('❌ Secret mismatch!');
+      }
+      break;
+
+    case 6:
+      // Step 6: Verify
+      logEntry('system', `Both parties now share a secret that Eve cannot compute`);
+      logEntry('system', `→ Use this secret as an AES key for the rest of the session`);
+      teach('COMPLETE',
+        `Key exchange complete. Alice and Bob share the secret ${STATE.sharedAlice} which Eve does not know. From here on, all messages are encrypted with AES using this key. This is how every HTTPS connection starts.`,
+        'ok'
+      );
+      showStatus('🔒 Secure channel established', 'ok');
+      break;
+  }
+
+  updateMetrics();
+  drawCanvas();
+  return true;
+}
+
+function autoRun() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.timer);
+    STATE.timer = null;
+    DOM.btnRun.textContent = '▶ Auto-Play';
+    return;
+  }
+  if (STATE.step >= STATE.maxSteps) resetProtocol();
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+  STATE.timer = setInterval(() => {
+    if (!stepProtocol()) {
+      STATE.running = false;
+      clearInterval(STATE.timer);
+      STATE.timer = null;
+      DOM.btnRun.textContent = '▶ Auto-Play';
+    }
+  }, 1400);
+}
+
+function toggleEve() {
+  STATE.eveActive = !STATE.eveActive;
+  DOM.btnEve.classList.toggle('active', STATE.eveActive);
+  DOM.btnEve.style.background = STATE.eveActive ? 'rgba(239,68,68,0.3)' : '';
+
+  if (STATE.eveActive) {
+    logEntry('error', `Eve is listening on the wire...`);
+    teach('EAVESDROPPER',
+      `Eve can see everything that goes over the network: p=${STATE.p}, g=${STATE.g}, A=${STATE.alicePublic || '?'}, B=${STATE.bobPublic || '?'}. But she CANNOT compute the shared secret, because she doesn't know a or b. That's the whole point of Diffie-Hellman — public info is enough for Alice and Bob, but not enough for Eve.`,
+      'error'
+    );
+    showStatus('🕵️ Eve is now listening', 'warn');
+  } else {
+    logEntry('system', `Eve has stopped listening`);
+  }
+  drawCanvas();
+}
+
+function toggleMitm() {
+  if (!STATE.eveActive) {
+    showToast('⚠ Enable Eve first');
+    return;
+  }
+  STATE.mitmActive = !STATE.mitmActive;
+  DOM.btnMitm.classList.toggle('active', STATE.mitmActive);
+  DOM.btnMitm.style.background = STATE.mitmActive ? 'rgba(245,158,11,0.3)' : '';
+
+  if (STATE.mitmActive) {
+    logEntry('error', `💥 Man-in-the-Middle attack activated!`);
+    logEntry('error', `Eve now runs TWO separate DH exchanges: one with Alice, one with Bob`);
+    logEntry('error', `Alice thinks she shares a secret with Bob — but it's really with Eve`);
+    logEntry('error', `Bob thinks he shares a secret with Alice — but it's really with Eve`);
+    logEntry('error', `Eve decrypts and re-encrypts every message. Classic MITM.`);
+    teach('MAN-IN-THE-MIDDLE',
+      `This is the fatal flaw of plain Diffie-Hellman: it authenticates NOTHING. Eve can intercept Alice's public value and substitute her own. Alice ends up sharing a secret with Eve; Bob ends up sharing a different secret with Eve. Both think they're talking to each other. This is why real protocols add authentication: RSA signatures, certificates, or pre-shared secrets. TLS uses certificates.`,
+      'error'
+    );
+    showStatus('🎭 MITM active — unauthenticated DH is broken', 'warn');
+  } else {
+    logEntry('system', `MITM attack stopped`);
+  }
+  drawCanvas();
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.cryptoCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawCanvas() {
+  const canvas = DOM.cryptoCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Layout: Alice on left, Bob on right, Eve in the middle (when active)
+  const aliceX = W * 0.15;
+  const bobX = W * 0.85;
+  const midX = W * 0.5;
+  const midY = H * 0.5;
+  const nodeY = H * 0.5;
+
+  // Channel line
+  ctx.strokeStyle = STATE.mitmActive ? '#ef4444' : '#334155';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  ctx.moveTo(aliceX + 40, nodeY);
+  ctx.lineTo(bobX - 40, nodeY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Alice node
+  drawParty(ctx, aliceX, nodeY, '🔵', 'Alice', '#06b6d4', STATE.aliceSecret, STATE.alicePublic);
+  // Bob node
+  drawParty(ctx, bobX, nodeY, '🟠', 'Bob', '#f59e0b', STATE.bobSecret, STATE.bobPublic);
+
+  // Eve in the middle
+  if (STATE.eveActive) {
+    ctx.beginPath();
+    ctx.arc(midX, nodeY - 80, 32, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(239,68,68,0.2)';
+    ctx.fill();
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.font = '24px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(STATE.mitmActive ? '🎭' : '🕵️', midX, nodeY - 80);
+
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = '#fca5a5';
+    ctx.textBaseline = 'top';
+    ctx.fillText(STATE.mitmActive ? 'Eve (MITM)' : 'Eve (listening)', midX, nodeY - 42);
+
+    // Connection to channel
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(midX, nodeY - 48);
+    ctx.lineTo(midX, nodeY - 10);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Messages in flight
+  for (const m of STATE.messages) {
+    const t = m.progress;
+    const x = m.fromX + (m.toX - m.fromX) * t;
+    const y = nodeY - 30;
+
+    // Message bubble
+    const label = m.label;
+    ctx.font = 'bold 11px monospace';
+    const tw = ctx.measureText(label).width + 16;
+    ctx.fillStyle = m.color === 'alice' ? 'rgba(6,182,212,0.3)' : 'rgba(245,158,11,0.3)';
+    ctx.beginPath();
+    ctx.roundRect(x - tw / 2, y - 12, tw, 24, 12);
+    ctx.fill();
+    ctx.strokeStyle = m.color === 'alice' ? '#06b6d4' : '#f59e0b';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = m.color === 'alice' ? '#67e8f9' : '#fcd34d';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y);
+  }
+
+  // Shared secret badge (if step >= 6)
+  if (STATE.step >= 6 && STATE.sharedAlice === STATE.sharedBob) {
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = '#10b981';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`🔐 SHARED SECRET: ${STATE.sharedAlice}`, W / 2, H - 40);
+    ctx.font = '11px monospace';
+    ctx.fillStyle = '#86efac';
+    ctx.fillText('(Eve does not know this)', W / 2, H - 22);
+  }
+
+  DOM.cryptoHint.textContent = `— step ${STATE.step} / ${STATE.maxSteps} —`;
+}
+
+function drawParty(ctx, x, y, icon, name, color, secret, publicVal) {
+  const r = 40;
+
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#0f172a';
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.font = '32px monospace';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(icon, x, y);
+
+  ctx.font = 'bold 12px monospace';
+  ctx.fillStyle = color;
+  ctx.textBaseline = 'top';
+  ctx.fillText(name, x, y + r + 5);
+
+  // Secret
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = '#fca5a5';
+  ctx.fillText(`a = ${secret}`, x, y + r + 22);
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px monospace';
+  ctx.fillText('(private)', x, y + r + 35);
+
+  // Public value
+  if (publicVal > 0) {
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = '#67e8f9';
+    ctx.fillText(`pub: ${publicVal}`, x, y - r - 20);
+  }
+}
+
+function spawnMessage(from, to, label, color) {
+  const canvas = DOM.cryptoCanvas;
+  const W = canvas._w;
+  const nodeY = canvas._h * 0.5;
+  STATE.messages.push({
+    fromX: from === 'alice' ? W * 0.15 + 40 : W * 0.85 - 40,
+    toX: from === 'alice' ? W * 0.85 - 40 : W * 0.15 + 40,
+    progress: 0,
+    label,
+    color,
+    duration: 60
+  });
+}
+
+function animate() {
+  // Update message particles
+  for (let i = STATE.messages.length - 1; i >= 0; i--) {
+    const m = STATE.messages[i];
+    m.progress += 0.02;
+    if (m.progress >= 1) STATE.messages.splice(i, 1);
+  }
+  drawCanvas();
+  requestAnimationFrame(animate);
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+function updateMetrics() {
+  DOM.mStep.textContent = `${STATE.step} / ${STATE.maxSteps}`;
+  if (STATE.sharedAlice && STATE.sharedBob) {
+    DOM.mMatch.textContent = STATE.sharedAlice === STATE.sharedBob ? `✅ ${STATE.sharedAlice}` : '❌';
+  } else {
+    DOM.mMatch.textContent = '—';
+  }
+  DOM.mP.textContent = STATE.p;
+  DOM.mG.textContent = STATE.g;
+}
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+document.querySelectorAll('.algo-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    STATE.protocol = btn.dataset.algo;
+    document.querySelectorAll('.algo-btn').forEach(b => b.classList.toggle('active', b === btn));
+    const descs = {
+      dh: 'DIFFIE-HELLMAN: Alice and Bob can agree on a shared secret over an insecure channel by combining public parameters with private secrets. Security relies on the hardness of the discrete logarithm problem.',
+      rsa: 'RSA KEY EXCHANGE: uses the same math as RSA encryption. Alice encrypts a random symmetric key with Bob\'s public RSA key and sends it. Bob decrypts with his private key. Simpler than DH but requires RSA infrastructure.'
+    };
+    teach('PROTOCOL: ' + btn.dataset.algo.toUpperCase(), descs[btn.dataset.algo], 'purple');
+    resetProtocol();
+  });
+});
+
+DOM.btnStep.addEventListener('click', stepProtocol);
+DOM.btnRun.addEventListener('click', autoRun);
+DOM.btnReset.addEventListener('click', resetProtocol);
+DOM.btnEve.addEventListener('click', toggleEve);
+DOM.btnMitm.addEventListener('click', toggleMitm);
+
+window.addEventListener('resize', resizeCanvas);
+
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+    return this;
+  };
+}
+
+resizeCanvas();
+animate();
+resetProtocol();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Public-Key Cryptography. Alice and Bob want to establish a shared secret over a network that Eve can listen to. Amazingly, they can do this WITHOUT ever sending the secret itself. Diffie-Hellman, published in 1976, was the first public-key protocol.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE MAGIC',
+      `Alice picks a secret a and sends g^a mod p. Bob picks a secret b and sends g^b mod p. Alice computes (g^b)^a. Bob computes (g^a)^b. Both equal g^(ab) mod p. Eve sees g, p, g^a, and g^b, but computing g^(ab) requires solving the discrete logarithm problem — computationally infeasible for large primes.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('THE FLAW',
+      `Plain Diffie-Hellman authenticates nothing. Eve can intercept and substitute her own public values — a Man-in-the-Middle attack. Alice ends up sharing a secret with Eve. The fix: authentication. TLS uses certificates signed by a trusted CA to prove that the other party is who they claim to be.`,
+      'error'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click NEXT STEP to advance the protocol one message at a time. Watch the shared secret compute on both sides. Then activate Eve to see what she learns (and doesn't learn). Click MAN-IN-THE-MIDDLE to see the attack.`,
+      'warn'
+    );
+  }, 13000);
+  showToast('👋 Click NEXT STEP to run the protocol', 4500);
+}, 500);
+</script>
+</body>
+</html>

@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disk Scheduling Algorithms — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #3b82f6, #06b6d4, #10b981);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(59,130,246,0.15); color: #93c5fd; border-color: #3b82f6; }
+  .teaching-toggle:hover { background: rgba(59,130,246,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #93c5fd;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #3b82f6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .btn.primary:hover { background: #2563eb; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .algo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .algo-btn {
+    padding: 7px 6px; background: #02040a; border: 1.5px solid #334155;
+    border-radius: 6px; font-family: monospace; font-size: 0.6rem;
+    font-weight: 800; color: #94a3b8; cursor: pointer;
+    letter-spacing: 0.5px; transition: all 0.2s;
+  }
+  .algo-btn:hover { border-color: #3b82f6; color: #93c5fd; }
+  .algo-btn.active {
+    background: rgba(59,130,246,0.2); border-color: #3b82f6;
+    color: #93c5fd; box-shadow: 0 0 10px rgba(59,130,246,0.4);
+  }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #93c5fd; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #3b82f6; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(59,130,246,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .chart-wrap {
+    flex: 1; background: #070a14; border: 2px solid #3b82f6; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(59,130,246,0.15); min-height: 0;
+  }
+  .chart-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #93c5fd; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #chartCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .queue-strip {
+    background: #070a14; border: 2px solid #8b5cf6; border-radius: 12px;
+    padding: 10px 14px; display: flex; gap: 8px; align-items: center;
+    flex-shrink: 0; overflow-x: auto; min-height: 80px;
+    box-shadow: 0 0 20px rgba(139,92,246,0.15);
+  }
+  .queue-label {
+    font-family: monospace; font-size: 0.55rem; color: #64748b;
+    font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;
+    padding-right: 10px; border-right: 1px solid #1e293b; flex-shrink: 0;
+  }
+  .req-chip {
+    padding: 6px 12px; border-radius: 6px; font-family: monospace;
+    font-size: 0.65rem; font-weight: 900; background: #1e293b; color: #cbd5e1;
+    border: 2px solid #334155; flex-shrink: 0; transition: all 0.3s;
+  }
+  .req-chip.pending { border-color: #3b82f6; color: #93c5fd; background: rgba(59,130,246,0.15); }
+  .req-chip.served { border-color: #10b981; color: #86efac; background: rgba(16,185,129,0.15); opacity: 0.6; }
+  .req-chip.current { border-color: #fcd34d; color: #fde047; background: rgba(245,158,11,0.3); box-shadow: 0 0 15px rgba(245,158,11,0.6); transform: scale(1.1); }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #93c5fd; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #3b82f6;
+    background: rgba(59,130,246,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(59,130,246,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(59,130,246,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #93c5fd;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #3b82f6; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(59,130,246,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #3b82f6; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #93c5fd; z-index: 12;
+    box-shadow: 0 0 20px rgba(59,130,246,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>DISK SCHEDULING</h1>
+    <span class="sub">FIFO · SSTF · SCAN · C-SCAN · LOOK · C-LOOK</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Algorithm</h3>
+      <div class="algo-grid" id="algoGrid">
+        <button class="algo-btn active" data-algo="fifo">FIFO</button>
+        <button class="algo-btn" data-algo="sstf">SSTF</button>
+        <button class="algo-btn" data-algo="scan">SCAN</button>
+        <button class="algo-btn" data-algo="cscan">C-SCAN</button>
+        <button class="algo-btn" data-algo="look">LOOK</button>
+        <button class="algo-btn" data-algo="clook">C-LOOK</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Control</h3>
+      <button class="btn primary" id="btnRun">▶ Run</button>
+      <button class="btn" id="btnStep">⏭ Step</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Queue</h3>
+      <button class="btn" id="btnRandom">🎲 Random Queue</button>
+      <button class="btn" id="btnClustered">📍 Clustered Queue</button>
+      <button class="btn" id="btnSorted">⬆️ Sorted Queue</button>
+    </div>
+
+    <div class="panel">
+      <h3>Compare</h3>
+      <button class="btn success" id="btnCompare">📊 Compare All Algorithms</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:50%;margin-right:6px;"></span>Pending request</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#fcd34d;border-radius:50%;margin-right:6px;"></span>Current position</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:50%;margin-right:6px;"></span>Served</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">DISK HEAD SEEK ORDER — MINIMIZE TOTAL HEAD MOVEMENT</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="chart-wrap">
+          <div class="chart-title">
+            <span>📊 SEEK PATTERN (CYLINDER 0 → 199)</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="chartHint">— click RUN —</span>
+          </div>
+          <canvas id="chartCanvas"></canvas>
+        </div>
+        <div class="queue-strip" id="queueStrip">
+          <span class="queue-label">REQUESTS</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Head Position</div>
+        <div class="metric-value warn" id="mHead">50</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Served</div>
+        <div class="metric-value good" id="mServed">0/0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Total Movement</div>
+        <div class="metric-value" id="mMovement">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Avg Seek</div>
+        <div class="metric-value bad" id="mAvg">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Disk Algorithms</div>
+      <div class="info-row"><span class="lbl">FIFO/FCFS</span><span class="val warn">Fair, thrashy</span></div>
+      <div class="info-row"><span class="lbl">SSTF</span><span class="val good">Shortest seek next</span></div>
+      <div class="info-row"><span class="lbl">SCAN</span><span class="val">Elevator — full sweep</span></div>
+      <div class="info-row"><span class="lbl">C-SCAN</span><span class="val good">Circular, uniform wait</span></div>
+      <div class="info-row"><span class="lbl">LOOK</span><span class="val good">SCAN, stop at last</span></div>
+      <div class="info-row"><span class="lbl">C-LOOK</span><span class="val good">Best in practice</span></div>
+      <div class="info-row"><span class="lbl">SSTF risk</span><span class="val bad">Starvation</span></div>
+      <div class="info-row"><span class="lbl">Used by</span><span class="val">Linux (Deadline, BFQ), macOS</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  algorithm: 'fifo',
+  cylinderMax: 199,
+  queue: [],
+  served: [],
+  currentPosition: 50,
+  direction: 'up',
+  totalMovement: 0,
+  running: false,
+  timer: null,
+  _sortedProcessed: false,
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  chartCanvas: document.getElementById('chartCanvas'),
+  chartHint: document.getElementById('chartHint'),
+  queueStrip: document.getElementById('queueStrip'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnRun: document.getElementById('btnRun'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnRandom: document.getElementById('btnRandom'),
+  btnClustered: document.getElementById('btnClustered'),
+  btnSorted: document.getElementById('btnSorted'),
+  btnCompare: document.getElementById('btnCompare'),
+  mHead: document.getElementById('mHead'),
+  mServed: document.getElementById('mServed'),
+  mMovement: document.getElementById('mMovement'),
+  mAvg: document.getElementById('mAvg'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg) {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.classList.add('show');
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 1800);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining disk scheduling.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   QUEUE PRESETS
+   ============================================================ */
+function randomQueue() {
+  STATE.queue = [];
+  for (let i = 0; i < 8; i++) {
+    STATE.queue.push(Math.floor(Math.random() * STATE.cylinderMax));
+  }
+  STATE.served = [];
+  STATE.totalMovement = 0;
+  STATE.currentPosition = 50;
+  STATE.direction = 'up';
+  renderQueue();
+  drawChart();
+  updateMetrics();
+  showStatus('🎲 Random queue loaded');
+  teach('RANDOM QUEUE',
+    `Generated 8 random disk requests: [${STATE.queue.join(', ')}]. The head starts at cylinder ${STATE.currentPosition}. The algorithm determines the order to service them.`,
+    'cyan'
+  );
+}
+
+function clusteredQueue() {
+  STATE.queue = [40, 45, 48, 55, 60, 62, 65, 70, 120, 125, 130];
+  STATE.served = [];
+  STATE.totalMovement = 0;
+  STATE.currentPosition = 50;
+  STATE.direction = 'up';
+  renderQueue();
+  drawChart();
+  updateMetrics();
+  showStatus('📍 Clustered queue loaded');
+  teach('CLUSTERED QUEUE',
+    `Queue with two clusters: [40-70] and [120-130]. Real workloads often have this shape (hot data localized on disk). Good algorithms service the near cluster efficiently before moving far.`,
+    'cyan'
+  );
+}
+
+function sortedQueue() {
+  STATE.queue = [10, 20, 30, 40, 60, 70, 80, 90];
+  STATE.served = [];
+  STATE.totalMovement = 0;
+  STATE.currentPosition = 50;
+  STATE.direction = 'up';
+  renderQueue();
+  drawChart();
+  updateMetrics();
+  showStatus('⬆️ Sorted queue loaded');
+}
+
+/* ============================================================
+   NEXT CYLINDER BY ALGORITHM
+   ============================================================ */
+function nextCylinder() {
+  if (STATE.queue.length === 0) return null;
+
+  switch (STATE.algorithm) {
+    case 'fifo':
+      return { idx: 0, target: STATE.queue[0] };
+
+    case 'sstf': {
+      // Closest to current position
+      let bestIdx = 0, bestDist = Infinity;
+      for (let i = 0; i < STATE.queue.length; i++) {
+        const d = Math.abs(STATE.queue[i] - STATE.currentPosition);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+      return { idx: bestIdx, target: STATE.queue[bestIdx] };
+    }
+
+    case 'scan':
+    case 'look': {
+      // Continue in current direction, servicing requests in that direction
+      const requests = STATE.queue.map((c, i) => ({ c, i }));
+      let candidates;
+      if (STATE.direction === 'up') {
+        candidates = requests.filter(r => r.c >= STATE.currentPosition).sort((a, b) => a.c - b.c);
+        if (candidates.length === 0) {
+          // Reverse direction, service highest first
+          STATE.direction = 'down';
+          candidates = requests.filter(r => r.c < STATE.currentPosition).sort((a, b) => b.c - a.c);
+        }
+      } else {
+        candidates = requests.filter(r => r.c <= STATE.currentPosition).sort((a, b) => b.c - a.c);
+        if (candidates.length === 0) {
+          STATE.direction = 'up';
+          candidates = requests.filter(r => r.c > STATE.currentPosition).sort((a, b) => a.c - b.c);
+        }
+      }
+      if (candidates.length > 0) return { idx: candidates[0].i, target: candidates[0].c };
+      return { idx: 0, target: STATE.queue[0] };
+    }
+
+    case 'cscan': {
+      // Service all requests in one direction, then jump back to low and continue
+      const requests = STATE.queue.map((c, i) => ({ c, i }));
+      const up = requests.filter(r => r.c >= STATE.currentPosition).sort((a, b) => a.c - b.c);
+      if (up.length > 0) return { idx: up[0].i, target: up[0].c };
+      // Jump to lowest
+      const sorted = [...requests].sort((a, b) => a.c - b.c);
+      return { idx: sorted[0].i, target: sorted[0].c };
+    }
+
+    case 'clook': {
+      // Like C-SCAN but doesn't go all the way to 0/199
+      const requests = STATE.queue.map((c, i) => ({ c, i }));
+      const up = requests.filter(r => r.c >= STATE.currentPosition).sort((a, b) => a.c - b.c);
+      if (up.length > 0) return { idx: up[0].i, target: up[0].c };
+      const sorted = [...requests].sort((a, b) => a.c - b.c);
+      return { idx: sorted[0].i, target: sorted[0].c };
+    }
+  }
+  return { idx: 0, target: STATE.queue[0] };
+}
+
+/* ============================================================
+   STEP
+   ============================================================ */
+function step() {
+  if (STATE.queue.length === 0) {
+    if (STATE.running) {
+      STATE.running = false;
+      clearInterval(STATE.timer);
+      STATE.timer = null;
+      DOM.btnRun.textContent = '▶ Run';
+    }
+    showStatus('✅ All requests served');
+    teach('DONE',
+      `All ${STATE.served.length} requests served. Total head movement: ${STATE.totalMovement} cylinders. Average seek: ${(STATE.totalMovement / STATE.served.length).toFixed(1)}. Compare this to other algorithms using the Compare button.`,
+      'ok'
+    );
+    return;
+  }
+
+  const next = nextCylinder();
+  if (!next) return;
+
+  const target = next.target;
+  const movement = Math.abs(target - STATE.currentPosition);
+  STATE.totalMovement += movement;
+
+  // For SCAN, if head is at start, add full sweep cost when direction reverses
+  if (STATE.algorithm === 'scan') {
+    // Simplification: we don't add full sweep in this simplified version
+  }
+  if (STATE.algorithm === 'cscan') {
+    // If we're jumping back to low, add the jump cost (199 + current - 0)
+    if (target < STATE.currentPosition && next.idx === 0) {
+      // Approximate: add 199 for the return sweep
+      const jumpCost = 199;
+      STATE.totalMovement += jumpCost;
+    }
+  }
+
+  STATE.currentPosition = target;
+  const served = STATE.queue.splice(next.idx, 1)[0];
+  STATE.served.push({ cylinder: served, position: STATE.currentPosition });
+
+  renderQueue();
+  drawChart();
+  updateMetrics();
+  showStatus(`🎯 Served cylinder ${served}`);
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderQueue() {
+  DOM.queueStrip.innerHTML = '<span class="queue-label">REQUESTS</span>';
+  for (const c of STATE.queue) {
+    const chip = document.createElement('div');
+    chip.className = 'req-chip pending';
+    chip.textContent = c;
+    DOM.queueStrip.appendChild(chip);
+  }
+  for (const s of STATE.served) {
+    const chip = document.createElement('div');
+    chip.className = 'req-chip served';
+    chip.textContent = s.cylinder;
+    DOM.queueStrip.appendChild(chip);
+  }
+  const cur = document.createElement('span');
+  cur.style.cssText = 'color:#fcd34d;font-size:0.55rem;font-family:monospace;margin-left:auto;padding-left:12px;border-left:1px solid #1e293b;';
+  cur.textContent = `head: ${STATE.currentPosition}`;
+  DOM.queueStrip.appendChild(cur);
+}
+
+function resizeCanvas() {
+  const canvas = DOM.chartCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawChart() {
+  const canvas = DOM.chartCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 50, padR = 30, padT = 30, padB = 30;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+
+  // Cylinder axis (vertical, 0 at top, 199 at bottom)
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padL, padT);
+  ctx.lineTo(padL, padT + chartH);
+  ctx.stroke();
+
+  // Cylinder labels
+  ctx.font = '9px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let c = 0; c <= 199; c += 50) {
+    const y = padT + (c / 199) * chartH;
+    ctx.fillText(c, padL - 6, y);
+    ctx.strokeStyle = 'rgba(51,65,85,0.4)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(padL + chartW, y);
+    ctx.stroke();
+  }
+
+  // X axis time
+  ctx.font = '9px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('time →', padL + chartW / 2, padT + chartH + 8);
+
+  if (STATE.served.length === 0 && STATE.queue.length === 0) {
+    ctx.font = '11px monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Click RUN or STEP to begin', padL + chartW / 2, padT + chartH / 2);
+    return;
+  }
+
+  // Plot the seek sequence
+  const allPoints = [
+    { cylinder: 50, isStart: true, idx: -1 },  // start
+    ...STATE.served.map(s => ({ cylinder: s.cylinder, isServed: true })),
+    ...(STATE.queue.length > 0 ? [{ cylinder: STATE.currentPosition, isCurrent: true }] : [])
+  ];
+
+  const maxPoints = Math.max(STATE.served.length + STATE.queue.length + 1, 8);
+  const stepX = chartW / maxPoints;
+
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  allPoints.forEach((p, i) => {
+    const x = padL + i * stepX + stepX / 2;
+    const y = padT + (p.cylinder / 199) * chartH;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Draw points
+  allPoints.forEach((p, i) => {
+    const x = padL + i * stepX + stepX / 2;
+    const y = padT + (p.cylinder / 199) * chartH;
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = p.isStart ? '#94a3b8' : p.isServed ? '#10b981' : p.isCurrent ? '#fcd34d' : '#3b82f6';
+    ctx.fill();
+    ctx.strokeStyle = '#02040a';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Cylinder number
+    if (stepX > 25) {
+      ctx.font = 'bold 8px monospace';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(p.cylinder, x, y - 7);
+    }
+  });
+
+  // Title
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#93c5fd';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`ALGO: ${STATE.algorithm.toUpperCase()}  ·  SERVED: ${STATE.served.length}`, padL, 10);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText(`MOVEMENT: ${STATE.totalMovement}`, W - padR, 10);
+
+  DOM.chartHint.textContent = `— ${STATE.served.length} served, head at ${STATE.currentPosition} —`;
+}
+
+function animate() {
+  drawChart();
+  requestAnimationFrame(animate);
+}
+
+function updateMetrics() {
+  DOM.mHead.textContent = STATE.currentPosition;
+  DOM.mServed.textContent = `${STATE.served.length}/${STATE.served.length + STATE.queue.length}`;
+  DOM.mMovement.textContent = STATE.totalMovement;
+  const avg = STATE.served.length > 0 ? (STATE.totalMovement / STATE.served.length).toFixed(1) : 0;
+  DOM.mAvg.textContent = avg;
+}
+
+/* ============================================================
+   RUN / RESET / METHOD
+   ============================================================ */
+function runSimulation() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.timer);
+    STATE.timer = null;
+    DOM.btnRun.textContent = '▶ Run';
+    return;
+  }
+  STATE.running = true;
+  DOM.btnRun.textContent = '⏸ Pause';
+  showStatus('▶ Running ' + STATE.algorithm);
+  STATE.timer = setInterval(step, 500);
+}
+
+function setAlgorithm(algo) {
+  STATE.algorithm = algo;
+  document.querySelectorAll('.algo-btn').forEach(b => b.classList.toggle('active', b.dataset.algo === algo));
+  STATE.served = [];
+  STATE.totalMovement = 0;
+  STATE.currentPosition = 50;
+  STATE.direction = 'up';
+  drawChart();
+  updateMetrics();
+  renderQueue();
+
+  const descs = {
+    fifo: 'FIFO: service requests in the order they arrive. Fair, but if requests jump around the disk, the head thrashes back and forth. Total movement can be very high.',
+    sstf: 'SSTF (Shortest Seek Time First): service the request closest to the current head position. Dramatically reduces total movement, but can STARVE distant requests if a constant stream of near requests keeps arriving.',
+    scan: 'SCAN (Elevator Algorithm): the head sweeps from one end to the other, servicing requests along the way, then reverses. Bounded wait time for every request — no starvation. But the head goes to the very edge even if no requests exist there.',
+    cscan: 'C-SCAN (Circular SCAN): sweep in one direction only, servicing requests. When you reach the end, jump back to the start without servicing. This gives uniform wait time — no cylinder is unfairly favored by the reversal.',
+    look: 'LOOK: same as SCAN, but the head stops at the last request instead of going all the way to the edge. Saves the wasted travel to cylinders with no requests.',
+    clook: 'C-LOOK: same as C-SCAN, but jumps back only to the lowest outstanding request. This is what most modern systems use — it eliminates the wasted travel in both directions.'
+  };
+  teach('ALGO: ' + algo.toUpperCase(), descs[algo], 'purple');
+}
+
+function resetAll() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.timer = null;
+  STATE.running = false;
+  DOM.btnRun.textContent = '▶ Run';
+  STATE.served = [];
+  STATE.totalMovement = 0;
+  STATE.currentPosition = 50;
+  STATE.direction = 'up';
+  renderQueue();
+  drawChart();
+  updateMetrics();
+  teach('RESET', 'Simulation reset. Head back at cylinder 50.', 'info', false);
+}
+
+function compareAll() {
+  // Save state
+  const savedQueue = [...STATE.queue];
+  const savedAlgo = STATE.algorithm;
+
+  const results = [];
+  const algos = ['fifo', 'sstf', 'scan', 'cscan', 'look', 'clook'];
+
+  for (const algo of algos) {
+    // Reset
+    STATE.queue = [...savedQueue];
+    STATE.served = [];
+    STATE.totalMovement = 0;
+    STATE.currentPosition = 50;
+    STATE.direction = 'up';
+    STATE.algorithm = algo;
+
+    // Run to completion
+    let guard = 0;
+    while (STATE.queue.length > 0 && guard < 100) {
+      // Move
+      const next = nextCylinder();
+      if (!next) break;
+      const target = next.target;
+      STATE.totalMovement += Math.abs(target - STATE.currentPosition);
+      // C-SCAN jump
+      if (algo === 'cscan' && target < STATE.currentPosition && next.idx === 0) {
+        STATE.totalMovement += 199;
+      }
+      STATE.currentPosition = target;
+      STATE.queue.splice(next.idx, 1);
+      STATE.served.push(target);
+      guard++;
+    }
+
+    results.push({ algo, movement: STATE.totalMovement, count: STATE.served.length });
+  }
+
+  // Restore
+  STATE.algorithm = savedAlgo;
+  STATE.queue = savedQueue;
+  STATE.served = [];
+  STATE.totalMovement = 0;
+  STATE.currentPosition = 50;
+  STATE.direction = 'up';
+  drawChart();
+  updateMetrics();
+  renderQueue();
+
+  const best = results.reduce((a, b) => a.movement < b.movement ? a : b);
+  const worst = results.reduce((a, b) => a.movement > b.movement ? a : b);
+
+  const lines = results.sort((a, b) => a.movement - b.movement)
+    .map(r => `${r.algo.toUpperCase()}: ${r.movement}`)
+    .join('  ·  ');
+
+  teach('COMPARISON',
+    `Compared all 6 algorithms on the same queue. Total movement (lower is better): ${lines}. Best: ${best.algo.toUpperCase()} (${best.movement}), Worst: ${worst.algo.toUpperCase()} (${worst.movement}). SCAN/LOOK family is usually near-optimal; SSTF can beat it on some patterns but risks starvation.`,
+    'purple'
+  );
+  showToast('📊 Compared all 6 algorithms');
+}
+
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+document.querySelectorAll('.algo-btn').forEach(btn => {
+  btn.addEventListener('click', () => setAlgorithm(btn.dataset.algo));
+});
+
+DOM.btnRun.addEventListener('click', runSimulation);
+DOM.btnStep.addEventListener('click', step);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnRandom.addEventListener('click', randomQueue);
+DOM.btnClustered.addEventListener('click', clusteredQueue);
+DOM.btnSorted.addEventListener('click', sortedQueue);
+DOM.btnCompare.addEventListener('click', compareAll);
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+randomQueue();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Disk Scheduling. A hard disk's read head must physically move to the right cylinder (track) before reading data. Moving the head is called seeking and it's slow — typically 5-10 ms. The scheduling algorithm decides which pending request to service next, to minimize total seek time.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE ALGORITHMS',
+      `FIFO is fair but thrashes. SSTF is greedy — always pick the nearest request. This is great on average but can starve distant requests indefinitely. SCAN (elevator) sweeps back and forth, bounded wait for everyone. C-SCAN does one-way sweeps for uniform wait. LOOK and C-LOOK improve on SCAN by not traveling beyond the outermost request.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('WHY IT MATTERS',
+      `For HDDs, disk scheduling has huge impact — a poorly scheduled workload can be 10x slower. For SSDs, seek time is essentially zero, so scheduling matters far less. That's why modern Linux kernels use simple algorithms like mq-deadline for SSDs, and BFQ or Kyber for HDDs.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Step through a run with each algorithm. Watch the total movement counter. Then click COMPARE ALL to see the summary — FIFO is usually worst, SCAN-family is usually best. Click CLUSTERED QUEUE to see how algorithms handle realistic clustered workloads.`,
+      'warn'
+    );
+  }, 13000);
+  showToast('👋 Run each algorithm, then COMPARE ALL', 4500);
+}, 500);
+</script>
+</body>
+</html>

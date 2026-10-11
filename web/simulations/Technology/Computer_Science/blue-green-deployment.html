@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blue-Green Deployment Routing — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #3b82f6, #22d3ee, #14b8a6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(59,130,246,0.15);
+    color: #93c5fd;
+    border-color: #3b82f6;
+  }
+  .teaching-toggle:hover { background: rgba(59,130,246,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #93c5fd;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #3b82f6; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .btn.primary:hover { background: #2563eb; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #93c5fd; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #3b82f6; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(59,130,246,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* ROUTER BAR */
+  .router-bar {
+    background: #070a14;
+    border: 2px solid #a855f7;
+    border-radius: 12px;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 0 25px rgba(168,85,247,0.15);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .router-label {
+    font-family: monospace;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #c4b5fd;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+  .router-split {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .router-to-blue, .router-to-green {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: monospace;
+    font-size: 0.68rem;
+    font-weight: 800;
+  }
+  .router-to-blue { color: #60a5fa; }
+  .router-to-green { color: #6ee7b7; }
+
+  .traffic-pct {
+    font-size: 1.2rem;
+    font-weight: 900;
+    letter-spacing: 1px;
+    padding: 4px 12px;
+    border-radius: 6px;
+    background: rgba(0,0,0,0.3);
+  }
+  .router-to-blue .traffic-pct { color: #93c5fd; border: 2px solid #3b82f6; }
+  .router-to-green .traffic-pct { color: #86efac; border: 2px solid #10b981; }
+
+  /* LIVE TRAFFIC VISUALIZER */
+  .traffic-canvas-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(139,92,246,0.15);
+    min-height: 0;
+    position: relative;
+  }
+  .traffic-title {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  #trafficCanvas {
+    flex: 1;
+    width: 100%;
+    display: block;
+    background: #02040a;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+  }
+
+  /* ENVIRONMENT CARD */
+  .env-stack {
+    display: flex;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .env-card {
+    flex: 1;
+    background: #070a14;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.4s;
+    min-height: 0;
+  }
+  .env-card.blue {
+    border: 2px solid #3b82f6;
+    box-shadow: 0 0 20px rgba(59,130,246,0.2);
+  }
+  .env-card.green {
+    border: 2px solid #10b981;
+    box-shadow: 0 0 20px rgba(16,185,129,0.2);
+  }
+  .env-card.active {
+    transform: scale(1.01);
+  }
+  .env-card.active.blue {
+    box-shadow: 0 0 35px rgba(59,130,246,0.7);
+    border-color: #60a5fa;
+  }
+  .env-card.active.green {
+    box-shadow: 0 0 35px rgba(16,185,129,0.7);
+    border-color: #34d399;
+  }
+
+  .env-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .env-name {
+    font-size: 0.8rem;
+    font-weight: 900;
+    letter-spacing: 2px;
+    font-family: monospace;
+  }
+  .env-card.blue .env-name { color: #93c5fd; }
+  .env-card.green .env-name { color: #86efac; }
+
+  .env-badge {
+    font-size: 0.55rem;
+    font-weight: 900;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-family: monospace;
+  }
+  .env-badge.live { background: rgba(16,185,129,0.25); color: #6ee7b7; animation: livePulse 1.5s ease-in-out infinite; }
+  .env-badge.standby { background: rgba(100,116,139,0.25); color: #94a3b8; }
+  .env-badge.deploying { background: rgba(250,204,21,0.25); color: #fde047; animation: livePulse 0.8s ease-in-out infinite; }
+  .env-badge.error { background: rgba(239,68,68,0.25); color: #fca5a5; }
+  @keyframes livePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  .env-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .env-stat {
+    background: rgba(30,41,59,0.4);
+    border-radius: 4px;
+    padding: 4px 6px;
+  }
+  .env-stat .lbl {
+    color: #64748b;
+    font-size: 0.5rem;
+    letter-spacing: 0.3px;
+  }
+  .env-stat .val {
+    color: #cbd5e1;
+    font-size: 0.68rem;
+    font-weight: 900;
+    display: block;
+    margin-top: 1px;
+  }
+  .env-card.blue .env-stat .val { color: #93c5fd; }
+  .env-card.green .env-stat .val { color: #86efac; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(59,130,246,0.06);
+    border: 1px solid rgba(59,130,246,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #93c5fd;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #3b82f6;
+    background: rgba(59,130,246,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(59,130,246,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(59,130,246,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #93c5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #3b82f6;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(59,130,246,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #3b82f6;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #93c5fd;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(59,130,246,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.green { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+  .status-banner.rollback { border-color: #f59e0b; color: #fcd34d; box-shadow: 0 0 25px rgba(245,158,11,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>BLUE-GREEN DEPLOYMENT ROUTING</h1>
+    <span class="sub">DUPLICATE ENVIRONMENTS · ATOMIC SWITCHOVER · INSTANT ROLLBACK</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Traffic Control</h3>
+      <button class="btn primary" id="btnSwitch">🔄 Switch Traffic → GREEN</button>
+      <button class="btn warn" id="btnRollback">⏪ Rollback to BLUE</button>
+      <button class="btn ghost" id="btnBalance">⚖️ 50/50 Split</button>
+    </div>
+
+    <div class="panel">
+      <h3>Operations</h3>
+      <button class="btn success" id="btnDeploy">🚀 Deploy to Green</button>
+      <button class="btn danger" id="btnFailGreen">💥 Fail Green Health Check</button>
+      <button class="btn" id="btnSwap"><span>⟲</span> Swap Colors (Make Green the New Blue)</button>
+    </div>
+
+    <div class="panel">
+      <h3>Traffic Sim</h3>
+      <div class="slider-row"><span>Requests / sec</span><span class="value" id="rpsVal">40</span></div>
+      <input type="range" id="rpsRange" min="5" max="200" value="40">
+      <div class="slider-row"><span>Green error rate</span><span class="value" id="errVal">0%</span></div>
+      <input type="range" id="errRange" min="0" max="50" value="0">
+    </div>
+
+    <div class="panel">
+      <h3>Auto-Rollback</h3>
+      <div style="font-size:0.65rem; color:#94a3b8; line-height:1.6; margin-bottom:6px;">
+        When Green's error rate exceeds 5%, automatically roll back to Blue.
+      </div>
+      <button class="btn success" id="btnAutoOn">✓ Auto-Rollback: ON</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:3px;margin-right:6px;"></span>BLUE environment</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:3px;margin-right:6px;"></span>GREEN environment</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:3px;margin-right:6px;"></span>Error request</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">TWO IDENTICAL ENVIRONMENTS · ATOMIC TRAFFIC SWITCH · INSTANT ROLLBACK</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="router-bar">
+          <div class="router-label">🌐 LOAD BALANCER</div>
+          <div class="router-split">
+            <div class="router-to-blue">
+              <span>→ BLUE</span>
+              <span class="traffic-pct" id="pctBlue">100%</span>
+            </div>
+            <div class="router-to-green">
+              <span>→ GREEN</span>
+              <span class="traffic-pct" id="pctGreen">0%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="traffic-canvas-wrap">
+          <div class="traffic-title">
+            <span>📊 LIVE TRAFFIC FLOW</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="trafficHint">— 40 req/s —</span>
+          </div>
+          <canvas id="trafficCanvas"></canvas>
+        </div>
+
+        <div class="env-stack">
+          <div class="env-card blue active" id="envBlue">
+            <div class="env-header">
+              <span class="env-name">🔵 BLUE</span>
+              <span class="env-badge live" id="badgeBlue">LIVE</span>
+            </div>
+            <div class="env-body">
+              <div class="env-stat"><span class="lbl">VERSION</span><span class="val" id="verBlue">v1.4.2</span></div>
+              <div class="env-stat"><span class="lbl">INSTANCES</span><span class="val" id="instBlue">4/4</span></div>
+              <div class="env-stat"><span class="lbl">HEALTH</span><span class="val good" id="healthBlue">Healthy</span></div>
+              <div class="env-stat"><span class="lbl">ERROR RATE</span><span class="val" id="errBlue">0.02%</span></div>
+              <div class="env-stat"><span class="lbl">LATENCY p99</span><span class="val" id="latBlue">42ms</span></div>
+              <div class="env-stat"><span class="lbl">RPS</span><span class="val" id="rpsBlue">40</span></div>
+            </div>
+          </div>
+
+          <div class="env-card green" id="envGreen">
+            <div class="env-header">
+              <span class="env-name">🟢 GREEN</span>
+              <span class="env-badge standby" id="badgeGreen">STANDBY</span>
+            </div>
+            <div class="env-body">
+              <div class="env-stat"><span class="lbl">VERSION</span><span class="val" id="verGreen">v1.5.0</span></div>
+              <div class="env-stat"><span class="lbl">INSTANCES</span><span class="val" id="instGreen">4/4</span></div>
+              <div class="env-stat"><span class="lbl">HEALTH</span><span class="val good" id="healthGreen">Healthy</span></div>
+              <div class="env-stat"><span class="lbl">ERROR RATE</span><span class="val" id="errGreen">0.00%</span></div>
+              <div class="env-stat"><span class="lbl">LATENCY p99</span><span class="val" id="latGreen">38ms</span></div>
+              <div class="env-stat"><span class="lbl">RPS</span><span class="val" id="rpsGreen">0</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Blue Traffic</div>
+        <div class="metric-value" id="mBluePct">100%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Green Traffic</div>
+        <div class="metric-value" id="mGreenPct">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Total RPS</div>
+        <div class="metric-value" id="mRps">40</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Errors/sec</div>
+        <div class="metric-value good" id="mErrors">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Blue-Green Characteristics</div>
+      <div class="info-row"><span class="lbl">Deploy method</span><span class="val good">Atomic switch</span></div>
+      <div class="info-row"><span class="lbl">Downtime</span><span class="val good">Zero</span></div>
+      <div class="info-row"><span class="lbl">Rollback time</span><span class="val good">Instant (flip back)</span></div>
+      <div class="info-row"><span class="lbl">Infrastructure cost</span><span class="val bad">2x (both envs live)</span></div>
+      <div class="info-row"><span class="lbl">Data migration</span><span class="val warn">The hard part</span></div>
+      <div class="info-row"><span class="lbl">Best for</span><span class="val">Critical services</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  trafficToBlue: 100,
+  trafficToGreen: 0,
+  targetTrafficToBlue: 100,
+  targetTrafficToGreen: 0,
+  rps: 40,
+  greenErrorRate: 0,
+  blueVersion: 'v1.4.2',
+  greenVersion: 'v1.5.0',
+  blueHealth: 'Healthy',
+  greenHealth: 'Healthy',
+  autoRollback: true,
+  // Live particles
+  particles: [],
+  particleTimer: null,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  pctBlue: document.getElementById('pctBlue'),
+  pctGreen: document.getElementById('pctGreen'),
+  mBluePct: document.getElementById('mBluePct'),
+  mGreenPct: document.getElementById('mGreenPct'),
+  mRps: document.getElementById('mRps'),
+  mErrors: document.getElementById('mErrors'),
+  trafficCanvas: document.getElementById('trafficCanvas'),
+  trafficHint: document.getElementById('trafficHint'),
+  envBlue: document.getElementById('envBlue'),
+  envGreen: document.getElementById('envGreen'),
+  badgeBlue: document.getElementById('badgeBlue'),
+  badgeGreen: document.getElementById('badgeGreen'),
+  verBlue: document.getElementById('verBlue'),
+  verGreen: document.getElementById('verGreen'),
+  healthBlue: document.getElementById('healthBlue'),
+  healthGreen: document.getElementById('healthGreen'),
+  errBlue: document.getElementById('errBlue'),
+  errGreen: document.getElementById('errGreen'),
+  latBlue: document.getElementById('latBlue'),
+  latGreen: document.getElementById('latGreen'),
+  rpsBlue: document.getElementById('rpsBlue'),
+  rpsGreen: document.getElementById('rpsGreen'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Controls
+  btnSwitch: document.getElementById('btnSwitch'),
+  btnRollback: document.getElementById('btnRollback'),
+  btnBalance: document.getElementById('btnBalance'),
+  btnDeploy: document.getElementById('btnDeploy'),
+  btnFailGreen: document.getElementById('btnFailGreen'),
+  btnSwap: document.getElementById('btnSwap'),
+  btnAutoOn: document.getElementById('btnAutoOn'),
+  rpsRange: document.getElementById('rpsRange'),
+  rpsVal: document.getElementById('rpsVal'),
+  errRange: document.getElementById('errRange'),
+  errVal: document.getElementById('errVal'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2800);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining blue green deployment routing.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   TRAFFIC PARTICLE SYSTEM
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.trafficCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function spawnParticle() {
+  const canvas = DOM.trafficCanvas;
+  if (!canvas._w) return;
+  // Source: left middle
+  const startX = 20;
+  const startY = canvas._h / 2;
+
+  // Decide target: blue (top) or green (bottom)
+  const toBlue = Math.random() * 100 < STATE.trafficToBlue;
+
+  // Target positions
+  const targetX = canvas._w - 20;
+  const targetY = toBlue ? canvas._h * 0.25 : canvas._h * 0.75;
+
+  // Determine if this is an error
+  const isError = !toBlue && Math.random() * 100 < STATE.greenErrorRate;
+
+  STATE.particles.push({
+    x: startX,
+    y: startY,
+    startX,
+    startY,
+    targetX,
+    targetY,
+    progress: 0,
+    speed: 0.02 + Math.random() * 0.015,
+    isBlue: toBlue,
+    isError,
+    curve: (Math.random() - 0.5) * 40
+  });
+}
+
+function updateParticles() {
+  // Update positions
+  for (let i = STATE.particles.length - 1; i >= 0; i--) {
+    const p = STATE.particles[i];
+    p.progress += p.speed;
+    if (p.progress >= 1) {
+      STATE.particles.splice(i, 1);
+      continue;
+    }
+    // Bezier curve
+    const t = p.progress;
+    const ctrlX = (p.startX + p.targetX) / 2;
+    const ctrlY = (p.startY + p.targetY) / 2 + p.curve;
+    // Quadratic bezier
+    const mt = 1 - t;
+    p.x = mt * mt * p.startX + 2 * mt * t * ctrlX + t * t * p.targetX;
+    p.y = mt * mt * p.startY + 2 * mt * t * ctrlY + t * t * p.targetY;
+  }
+
+  // Spawn new particles based on RPS
+  const spawnRate = STATE.rps / 60; // spawn per frame at 60fps
+  if (Math.random() < spawnRate) spawnParticle();
+}
+
+function drawParticles() {
+  const canvas = DOM.trafficCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Background lanes
+  ctx.strokeStyle = 'rgba(59,130,246,0.15)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(20, H * 0.25);
+  ctx.lineTo(W - 20, H * 0.25);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(16,185,129,0.15)';
+  ctx.beginPath();
+  ctx.moveTo(20, H * 0.75);
+  ctx.lineTo(W - 20, H * 0.75);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = 'rgba(147,197,253,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('BLUE', 25, H * 0.25 - 8);
+  ctx.fillStyle = 'rgba(134,239,172,0.6)';
+  ctx.fillText('GREEN', 25, H * 0.75 - 8);
+
+  // Particles
+  for (const p of STATE.particles) {
+    ctx.beginPath();
+    if (p.isError) {
+      ctx.fillStyle = '#ef4444';
+      ctx.shadowColor = '#ef4444';
+      ctx.shadowBlur = 10;
+    } else if (p.isBlue) {
+      ctx.fillStyle = '#60a5fa';
+      ctx.shadowColor = '#3b82f6';
+      ctx.shadowBlur = 6;
+    } else {
+      ctx.fillStyle = '#34d399';
+      ctx.shadowColor = '#10b981';
+      ctx.shadowBlur = 6;
+    }
+    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+function renderParticles() {
+  updateParticles();
+  drawParticles();
+}
+
+/* ============================================================
+   TRAFFIC CONTROLS
+   ============================================================ */
+function switchToGreen() {
+  STATE.targetTrafficToBlue = 0;
+  STATE.targetTrafficToGreen = 100;
+  showStatus('🔄 SWITCHING TRAFFIC → GREEN', 'green');
+  teach('SWITCH TO GREEN',
+    `Traffic shifted to GREEN. This is the moment of truth — new version now handles all production traffic. If something goes wrong, switching back is instant: just flip the router. No deployment needed. This is the whole point of blue-green: the "deployment" is a routing change, and the rollback is also just a routing change.`,
+    'ok'
+  );
+  DOM.envGreen.classList.add('active');
+  DOM.envBlue.classList.remove('active');
+  DOM.badgeGreen.className = 'env-badge live';
+  DOM.badgeGreen.textContent = 'LIVE';
+  DOM.badgeBlue.className = 'env-badge standby';
+  DOM.badgeBlue.textContent = 'STANDBY';
+}
+
+function rollbackToBlue() {
+  STATE.targetTrafficToBlue = 100;
+  STATE.targetTrafficToGreen = 0;
+  showStatus('⏪ ROLLING BACK TO BLUE', 'rollback');
+  teach('ROLLBACK',
+    `Rollback to BLUE initiated. Because BLUE is still running the previous version, this is instant — no deployment, no data loss. Rollback time: ~1 second. Compare to traditional deployment, where rollback means redeploying the old version (minutes). This is blue-green's superpower.`,
+    'warn'
+  );
+  DOM.envBlue.classList.add('active');
+  DOM.envGreen.classList.remove('active');
+  DOM.badgeBlue.className = 'env-badge live';
+  DOM.badgeBlue.textContent = 'LIVE';
+  DOM.badgeGreen.className = 'env-badge standby';
+  DOM.badgeGreen.textContent = 'STANDBY';
+}
+
+function balanceTraffic() {
+  STATE.targetTrafficToBlue = 50;
+  STATE.targetTrafficToGreen = 50;
+  showStatus('⚖️ 50/50 TRAFFIC SPLIT');
+  teach('SPLIT TRAFFIC',
+    `Traffic split 50/50 between BLUE and GREEN. This is like a canary deployment: half the users get the new version, half stay on the old. If GREEN misbehaves, you see the error rate spike in GREEN's metrics but BLUE keeps working for the other half. Note: this state is not a true blue-green — it's a hybrid approach.`,
+    'purple'
+  );
+}
+
+function deployToGreen() {
+  STATE.greenVersion = 'v1.' + (5 + Math.floor(Math.random() * 3)) + '.' + Math.floor(Math.random() * 10);
+  DOM.verGreen.textContent = STATE.greenVersion;
+  DOM.badgeGreen.className = 'env-badge deploying';
+  DOM.badgeGreen.textContent = 'DEPLOYING';
+
+  showStatus(`🚀 DEPLOYING ${STATE.greenVersion} TO GREEN`);
+  teach('DEPLOY TO GREEN',
+    `Deploying ${STATE.greenVersion} to the GREEN environment. Users are unaffected — GREEN isn't serving production traffic yet. This is the key advantage: you can deploy, test, and validate without any user impact. Only when GREEN is verified healthy do you switch traffic.`,
+    'info'
+  );
+
+  setTimeout(() => {
+    DOM.badgeGreen.className = 'env-badge standby';
+    DOM.badgeGreen.textContent = 'STANDBY';
+    teach('DEPLOY COMPLETE',
+      `Deploy to GREEN complete. ${STATE.greenVersion} is running but idle. The next step is to switch traffic — but only after health checks pass. Real systems run automated verification: smoke tests, SLO checks, and metric comparisons before the switch.`,
+      'ok'
+    );
+  }, 2000);
+}
+
+function failGreen() {
+  STATE.greenErrorRate = 40;
+  DOM.errRange.value = 40;
+  DOM.errVal.textContent = '40%';
+  DOM.healthGreen.textContent = 'Degraded';
+  DOM.healthGreen.className = 'val bad';
+  DOM.errGreen.textContent = '40.0%';
+  DOM.errGreen.className = 'val bad';
+
+  showStatus('💥 GREEN HEALTH CHECK FAILED', 'rollback');
+  teach('HEALTH CHECK FAILED',
+    `GREEN is failing. Error rate jumped to 40%. In a real system, this triggers automated rollback: metrics from GREEN are compared to BLUE, and if GREEN's error rate exceeds a threshold (typically 1-5%), traffic is switched back to BLUE automatically. Human intervention isn't even needed.`,
+    'error'
+  );
+
+  if (STATE.autoRollback) {
+    setTimeout(() => {
+      if (STATE.greenErrorRate > 5) {
+        rollbackToBlue();
+        teach('AUTO-ROLLBACK TRIGGERED',
+          `Auto-rollback fired. GREEN's error rate exceeded the 5% threshold — the router switched all traffic back to BLUE. Users experienced a brief blip, and the bad version was never released. This is the safety net of blue-green: bad deployments self-heal in seconds.`,
+          'warn'
+        );
+        // Reset green
+        STATE.greenErrorRate = 0;
+        DOM.errRange.value = 0;
+        DOM.errVal.textContent = '0%';
+        DOM.healthGreen.textContent = 'Healthy';
+        DOM.healthGreen.className = 'val good';
+        DOM.errGreen.textContent = '0.00%';
+        DOM.errGreen.className = 'val good';
+      }
+    }, 2000);
+  }
+}
+
+function swapColors() {
+  // Green becomes Blue
+  const oldBlueVersion = STATE.blueVersion;
+  STATE.blueVersion = STATE.greenVersion;
+  STATE.greenVersion = 'v1.' + (5 + Math.floor(Math.random() * 5)) + '.0';
+  DOM.verBlue.textContent = STATE.blueVersion;
+  DOM.verGreen.textContent = STATE.greenVersion;
+
+  showToast('🔄 Green is now the new Blue');
+  teach('COLOR SWAP',
+    `Green promoted to Blue. The old BLUE (${oldBlueVersion}) is torn down. Now GREEN is idle and BLUE runs the current version — ready for the next deploy cycle. This is what "blue-green" really means: the colors rotate. Old GREEN becomes new BLUE, next release lands in new GREEN, and the cycle repeats.`,
+    'purple'
+  );
+}
+
+/* ============================================================
+   ANIMATION LOOP
+   ============================================================ */
+function animate() {
+  requestAnimationFrame(animate);
+
+  // Smoothly interpolate traffic percentages
+  const deltaBlue = STATE.targetTrafficToBlue - STATE.trafficToBlue;
+  const deltaGreen = STATE.targetTrafficToGreen - STATE.trafficToGreen;
+  STATE.trafficToBlue += deltaBlue * 0.08;
+  STATE.trafficToGreen += deltaGreen * 0.08;
+
+  if (Math.abs(deltaBlue) < 0.5) STATE.trafficToBlue = STATE.targetTrafficToBlue;
+  if (Math.abs(deltaGreen) < 0.5) STATE.trafficToGreen = STATE.targetTrafficToGreen;
+
+  // Render traffic percentages
+  DOM.pctBlue.textContent = Math.round(STATE.trafficToBlue) + '%';
+  DOM.pctGreen.textContent = Math.round(STATE.trafficToGreen) + '%';
+  DOM.mBluePct.textContent = Math.round(STATE.trafficToBlue) + '%';
+  DOM.mGreenPct.textContent = Math.round(STATE.trafficToGreen) + '%';
+
+  // Compute actual RPS
+  const blueRps = Math.round(STATE.rps * STATE.trafficToBlue / 100);
+  const greenRps = Math.round(STATE.rps * STATE.trafficToGreen / 100);
+  DOM.rpsBlue.textContent = blueRps;
+  DOM.rpsGreen.textContent = greenRps;
+  DOM.mRps.textContent = STATE.rps;
+
+  // Errors
+  const errorsPerSec = (greenRps * STATE.greenErrorRate / 100).toFixed(1);
+  DOM.mErrors.textContent = errorsPerSec;
+  DOM.mErrors.className = 'metric-value ' + (STATE.greenErrorRate > 5 ? 'bad' : STATE.greenErrorRate > 0 ? 'warn' : 'good');
+
+  // Update traffic hint
+  DOM.trafficHint.textContent = `— ${STATE.rps} req/s (${blueRps} → BLUE · ${greenRps} → GREEN) —`;
+
+  renderParticles();
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnSwitch.addEventListener('click', switchToGreen);
+DOM.btnRollback.addEventListener('click', rollbackToBlue);
+DOM.btnBalance.addEventListener('click', balanceTraffic);
+DOM.btnDeploy.addEventListener('click', deployToGreen);
+DOM.btnFailGreen.addEventListener('click', failGreen);
+DOM.btnSwap.addEventListener('click', swapColors);
+
+DOM.btnAutoOn.addEventListener('click', () => {
+  STATE.autoRollback = !STATE.autoRollback;
+  DOM.btnAutoOn.textContent = STATE.autoRollback ? '✓ Auto-Rollback: ON' : '✗ Auto-Rollback: OFF';
+  DOM.btnAutoOn.className = STATE.autoRollback ? 'btn success' : 'btn';
+  teach('AUTO-ROLLBACK',
+    STATE.autoRollback
+      ? 'Auto-rollback is enabled. If GREEN exceeds 5% error rate, traffic automatically reverts to BLUE.'
+      : 'Auto-rollback is disabled. Rollbacks must be triggered manually. This is riskier but sometimes useful during planned cutovers.',
+    'info', false
+  );
+});
+
+DOM.rpsRange.addEventListener('input', e => {
+  STATE.rps = parseInt(e.target.value);
+  DOM.rpsVal.textContent = STATE.rps;
+});
+
+DOM.errRange.addEventListener('input', e => {
+  STATE.greenErrorRate = parseInt(e.target.value);
+  DOM.errVal.textContent = STATE.errRange.value + '%';
+  DOM.errGreen.textContent = STATE.greenErrorRate.toFixed(2) + '%';
+  DOM.errGreen.className = 'val ' + (STATE.greenErrorRate > 5 ? 'bad' : STATE.greenErrorRate > 0 ? 'warn' : 'good');
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+resizeCanvas();
+animate();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Blue-Green Deployment. The idea: maintain two identical production environments — BLUE (live) and GREEN (idle). Deploy the new version to GREEN, test it, then switch traffic at the load balancer. Rollback is instant: switch back.`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE SWITCH',
+      `The moment of "deployment" is just a routing change. The load balancer flips from sending 100% to BLUE, to sending 100% to GREEN. This takes milliseconds. Users don't see a restart, a dropped connection, or a version mismatch.`,
+      'ok'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE COST',
+      `Blue-green costs 2x infrastructure: both environments must run simultaneously during the transition. This is the trade-off for zero-downtime deploys with instant rollback. Cheaper alternatives: rolling updates (slower rollback, 1x cost), canary (slow ramp, 1.1x cost).`,
+      'warn'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('THE HARD PART: DATA',
+      `The tricky part of blue-green isn't the deploy — it's the DATA. If the new version changes the database schema, both versions must be compatible with the schema during the transition. This is called "expand-contract" or "parallel change": expand the schema first (add columns), migrate data, then contract (remove old columns) in a later release.`,
+      'purple'
+    );
+  }, 13500);
+
+  showToast('👋 Deploy to GREEN, then switch traffic', 4500);
+}, 500);
+</script>
+</body>
+</html>

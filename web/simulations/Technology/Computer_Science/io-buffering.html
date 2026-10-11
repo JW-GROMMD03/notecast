@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>I/O Buffering &amp; Interrupt Handling — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #f59e0b, #ef4444, #ec4899);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(245,158,11,0.15); color: #fcd34d; border-color: #f59e0b; }
+  .teaching-toggle:hover { background: rgba(245,158,11,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #fcd34d;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #f59e0b; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #f59e0b; color: #2a1503; border-color: #f59e0b; }
+  .btn.primary:hover { background: #d97706; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #f59e0b; color: #2a1503; border-color: #f59e0b; }
+  .slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;
+  }
+  .slider-row .value { color: #fcd34d; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #f59e0b; margin-bottom: 9px; }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(245,158,11,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .io-wrap {
+    flex: 1; background: #070a14; border: 2px solid #f59e0b; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(245,158,11,0.15); min-height: 0;
+  }
+  .io-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #fcd34d; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #ioCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .mode-grid {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; flex-shrink: 0;
+  }
+  .mode-card {
+    background: #070a14; border: 2px solid; border-radius: 10px;
+    padding: 8px 12px; cursor: pointer; transition: all 0.3s;
+  }
+  .mode-card.polling { border-color: #ef4444; }
+  .mode-card.interrupt { border-color: #f59e0b; }
+  .mode-card.dma { border-color: #10b981; }
+  .mode-card.active.polling { box-shadow: 0 0 20px rgba(239,68,68,0.6); background: rgba(239,68,68,0.1); }
+  .mode-card.active.interrupt { box-shadow: 0 0 20px rgba(245,158,11,0.6); background: rgba(245,158,11,0.1); }
+  .mode-card.active.dma { box-shadow: 0 0 20px rgba(16,185,129,0.6); background: rgba(16,185,129,0.1); }
+  .mode-head {
+    font-family: monospace; font-size: 0.62rem; font-weight: 900;
+    letter-spacing: 1px; margin-bottom: 4px; display: flex; justify-content: space-between;
+  }
+  .mode-card.polling .mode-head { color: #fca5a5; }
+  .mode-card.interrupt .mode-head { color: #fcd34d; }
+  .mode-card.dma .mode-head { color: #86efac; }
+  .mode-desc {
+    font-family: monospace; font-size: 0.5rem; color: #94a3b8; line-height: 1.4;
+  }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(245,158,11,0.06); border: 1px solid rgba(245,158,11,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #fcd34d; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #f59e0b;
+    background: rgba(245,158,11,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(245,158,11,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(245,158,11,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #fcd34d;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #f59e0b; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(245,158,11,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #f59e0b; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #fcd34d; z-index: 12;
+    box-shadow: 0 0 20px rgba(245,158,11,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>I/O BUFFERING &amp; INTERRUPTS</h1>
+    <span class="sub">POLLING · INTERRUPT · DMA · DOUBLE BUFFERING</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Transfer Mode</h3>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <button class="btn danger active" id="btnPolling" data-mode="polling">🔄 Polling</button>
+        <button class="btn warn" id="btnInterrupt" data-mode="interrupt">⚡ Interrupt-driven</button>
+        <button class="btn success" id="btnDMA" data-mode="dma">🚀 DMA</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Operations</h3>
+      <button class="btn primary" id="btnStart">▶ Start Transfer</button>
+      <button class="btn" id="btnStep">⏭ Step</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Buffering</h3>
+      <button class="btn" id="btnSingle">Single Buffer</button>
+      <button class="btn" id="btnDouble">Double Buffer</button>
+      <button class="btn" id="btnCircular">Circular Buffer</button>
+    </div>
+
+    <div class="panel">
+      <h3>Config</h3>
+      <div class="slider-row"><span>Data size (KB)</span><span class="value" id="sizeVal">32</span></div>
+      <input type="range" id="sizeRange" min="8" max="128" step="8" value="32">
+      <div class="slider-row"><span>Device speed</span><span class="value" id="speedVal">1x</span></div>
+      <input type="range" id="speedRange" min="1" max="10" value="1">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:50%;margin-right:6px;"></span>CPU busy</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:50%;margin-right:6px;"></span>CPU waiting (polling)</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:50%;margin-right:6px;"></span>Device active</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">HOW DOES THE CPU KNOW WHEN I/O IS DONE?</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="io-wrap">
+          <div class="io-title">
+            <span>🖥️ CPU &amp; DEVICE TIMELINE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="ioHint">— click Start —</span>
+          </div>
+          <canvas id="ioCanvas"></canvas>
+        </div>
+
+        <div class="mode-grid">
+          <div class="mode-card polling active" data-mode="polling">
+            <div class="mode-head"><span>🔄 POLLING</span><span id="pollStat">active</span></div>
+            <div class="mode-desc">CPU spins asking "ready yet?". Wastes CPU cycles. Simple but inefficient.</div>
+          </div>
+          <div class="mode-card interrupt" data-mode="interrupt">
+            <div class="mode-head"><span>⚡ INTERRUPT</span><span id="intStat">idle</span></div>
+            <div class="mode-desc">CPU does other work. Device signals via interrupt when done. One interrupt per byte or per word.</div>
+          </div>
+          <div class="mode-card dma" data-mode="dma">
+            <div class="mode-head"><span>🚀 DMA</span><span id="dmaStat">idle</span></div>
+            <div class="mode-desc">DMA controller transfers data directly to memory. ONE interrupt at the end.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Mode</div>
+        <div class="metric-value warn" id="mMode" style="font-size:0.7rem;">Polling</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">CPU Used</div>
+        <div class="metric-value bad" id="mCPU">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Progress</div>
+        <div class="metric-value" id="mProgress">0%</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Interrupts</div>
+        <div class="metric-value warn" id="mInts">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 I/O Techniques</div>
+      <div class="info-row"><span class="lbl">Polling</span><span class="val bad">CPU spin-waits</span></div>
+      <div class="info-row"><span class="lbl">Interrupt</span><span class="val warn">CPU notified</span></div>
+      <div class="info-row"><span class="lbl">DMA</span><span class="val good">Device → memory direct</span></div>
+      <div class="info-row"><span class="lbl">Buffering</span><span class="val">Smooth speed mismatch</span></div>
+      <div class="info-row"><span class="lbl">Double buffer</span><span class="val good">Overlap I/O & compute</span></div>
+      <div class="info-row"><span class="lbl">Interrupt cost</span><span class="val">~1000 cycles</span></div>
+      <div class="info-row"><span class="lbl">DMA cost</span><span class="val good">1 interrupt per block</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  mode: 'polling',
+  bufferMode: 'single',
+  dataSize: 32,
+  deviceSpeed: 1,
+  running: false,
+  progress: 0,
+  cpuUsed: 0,
+  interruptCount: 0,
+  timer: null,
+  history: [],  // {cpuState, deviceState, progress}
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  ioCanvas: document.getElementById('ioCanvas'),
+  ioHint: document.getElementById('ioHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnPolling: document.getElementById('btnPolling'),
+  btnInterrupt: document.getElementById('btnInterrupt'),
+  btnDMA: document.getElementById('btnDMA'),
+  btnStart: document.getElementById('btnStart'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  btnSingle: document.getElementById('btnSingle'),
+  btnDouble: document.getElementById('btnDouble'),
+  btnCircular: document.getElementById('btnCircular'),
+  sizeRange: document.getElementById('sizeRange'),
+  sizeVal: document.getElementById('sizeVal'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  mMode: document.getElementById('mMode'),
+  mCPU: document.getElementById('mCPU'),
+  mProgress: document.getElementById('mProgress'),
+  mInts: document.getElementById('mInts'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg) {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.classList.add('show');
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 1800);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining IO buffering and interrupts.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   IO OPERATION
+   ============================================================ */
+function ioStep() {
+  if (STATE.progress >= 100) {
+    if (STATE.running) {
+      STATE.running = false;
+      clearInterval(STATE.timer);
+      STATE.timer = null;
+      DOM.btnStart.textContent = '▶ Start Transfer';
+    }
+    showStatus('✅ I/O complete');
+    return;
+  }
+
+  const chunk = 100 / (STATE.dataSize / (STATE.deviceSpeed * 2));
+  STATE.progress = Math.min(100, STATE.progress + chunk);
+
+  // Update CPU usage and interrupts by mode
+  let cpuState, deviceState;
+
+  if (STATE.mode === 'polling') {
+    cpuState = 'busy';
+    STATE.cpuUsed = Math.min(100, STATE.cpuUsed + chunk);
+    deviceState = 'active';
+  } else if (STATE.mode === 'interrupt') {
+    // Device active; CPU mostly idle but interrupted periodically
+    deviceState = 'active';
+    if (Math.random() < 0.4) {
+      STATE.interruptCount++;
+      cpuState = 'interrupt';
+      STATE.cpuUsed += 5;
+    } else {
+      cpuState = 'idle';
+    }
+  } else if (STATE.mode === 'dma') {
+    deviceState = 'active';
+    cpuState = 'idle';
+    // DMA fires one interrupt at the very end
+    if (STATE.progress >= 100 && !STATE._dmaFired) {
+      STATE._dmaFired = true;
+      STATE.interruptCount++;
+      cpuState = 'interrupt';
+      STATE.cpuUsed += 5;
+      teach('DMA DONE',
+        `DMA transfer complete. ONE interrupt fired — the DMA controller moved all ${STATE.dataSize} KB without CPU involvement. Compare to interrupt mode which fires hundreds. This is why DMA is essential for high-throughput I/O.`,
+        'ok'
+      );
+    }
+  }
+
+  STATE.history.push({ cpuState, deviceState, progress: STATE.progress });
+  if (STATE.history.length > 60) STATE.history.shift();
+
+  updateUI();
+  drawTimeline();
+
+  if (STATE.progress >= 100 && !STATE._completionTaught) {
+    STATE._completionTaught = true;
+    const msgs = {
+      polling: `Polling complete. CPU was busy 100% of the time — every cycle was spent asking "done yet?". That's the price of polling: simple but wastes the CPU. Real systems use polling only for very fast devices.`,
+      interrupt: `Interrupt-driven I/O complete. CPU was mostly idle, doing other work. It got interrupted ${STATE.interruptCount} times — one per data word. Each interrupt costs ~1000 cycles of overhead. For big transfers, this is a lot.`,
+      dma: `DMA transfer complete. CPU used almost nothing. Only ${STATE.interruptCount} interrupt fired (at the end). The DMA controller did all the work. This is how modern disk controllers, network cards, and GPUs move data.`
+    };
+    teach('COMPLETE', msgs[STATE.mode], 'ok');
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.ioCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawTimeline() {
+  const canvas = DOM.ioCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const padX = 60;
+  const padY = 40;
+  const cpuY = padY + 20;
+  const devY = padY + 80;
+  const laneH = 40;
+  const chartW = W - padX - 20;
+
+  // Labels
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#cbd5e1';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('CPU', padX - 10, cpuY + laneH / 2);
+  ctx.fillText('DEVICE', padX - 10, devY + laneH / 2);
+
+  // CPU lane background
+  ctx.fillStyle = 'rgba(30,41,59,0.3)';
+  ctx.fillRect(padX, cpuY, chartW, laneH);
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(padX, cpuY, chartW, laneH);
+
+  // Device lane background
+  ctx.fillStyle = 'rgba(30,41,59,0.3)';
+  ctx.fillRect(padX, devY, chartW, laneH);
+  ctx.strokeRect(padX, devY, chartW, laneH);
+
+  // Draw history as blocks
+  const stepW = Math.max(2, chartW / Math.max(STATE.history.length, 20));
+  STATE.history.forEach((h, i) => {
+    const x = padX + i * stepW;
+    const w = stepW;
+
+    // CPU
+    if (h.cpuState === 'busy') ctx.fillStyle = '#ef4444';
+    else if (h.cpuState === 'interrupt') ctx.fillStyle = '#f59e0b';
+    else ctx.fillStyle = 'rgba(100,116,139,0.3)';
+    ctx.fillRect(x, cpuY + 2, w - 1, laneH - 4);
+
+    // Device
+    if (h.deviceState === 'active') ctx.fillStyle = '#10b981';
+    else ctx.fillStyle = 'rgba(100,116,139,0.3)';
+    ctx.fillRect(x, devY + 2, w - 1, laneH - 4);
+  });
+
+  // Progress marker
+  if (STATE.progress > 0) {
+    const x = padX + (STATE.progress / 100) * chartW;
+    ctx.strokeStyle = '#fcd34d';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, cpuY - 5);
+    ctx.lineTo(x, devY + laneH + 5);
+    ctx.stroke();
+  }
+
+  // Info bar at bottom
+  ctx.font = '10px monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`Progress: ${STATE.progress.toFixed(0)}%  ·  CPU used: ${STATE.cpuUsed.toFixed(0)}%  ·  Interrupts: ${STATE.interruptCount}`, padX, H - 20);
+
+  DOM.ioHint.textContent = `— mode: ${STATE.mode} · ${STATE.progress.toFixed(0)}% —`;
+}
+
+function animate() {
+  drawTimeline();
+  requestAnimationFrame(animate);
+}
+
+function updateUI() {
+  DOM.mMode.textContent = STATE.mode.charAt(0).toUpperCase() + STATE.mode.slice(1);
+  DOM.mCPU.textContent = STATE.cpuUsed.toFixed(0) + '%';
+  DOM.mCPU.className = 'metric-value ' + (STATE.cpuUsed > 80 ? 'bad' : STATE.cpuUsed > 30 ? 'warn' : 'good');
+  DOM.mProgress.textContent = STATE.progress.toFixed(0) + '%';
+  DOM.mInts.textContent = STATE.interruptCount;
+  DOM.mInts.className = 'metric-value ' + (STATE.mode === 'dma' ? 'good' : STATE.mode === 'interrupt' ? 'warn' : '');
+}
+
+/* ============================================================
+   CONTROL
+   ============================================================ */
+function startTransfer() {
+  if (STATE.running) {
+    STATE.running = false;
+    clearInterval(STATE.timer);
+    STATE.timer = null;
+    DOM.btnStart.textContent = '▶ Start Transfer';
+    return;
+  }
+  if (STATE.progress >= 100) resetAll();
+
+  STATE.running = true;
+  DOM.btnStart.textContent = '⏸ Pause';
+  STATE._completionTaught = false;
+  STATE._dmaFired = false;
+  showStatus('▶ Transfer started');
+
+  // Step speed based on deviceSpeed
+  const interval = Math.max(50, 300 / STATE.deviceSpeed);
+  STATE.timer = setInterval(ioStep, interval);
+}
+
+function setMode(mode) {
+  STATE.mode = mode;
+  document.querySelectorAll('[data-mode]').forEach(c => {
+    c.classList.toggle('active', c.dataset.mode === mode);
+  });
+  document.getElementById('pollStat').textContent = mode === 'polling' ? 'active' : 'idle';
+  document.getElementById('intStat').textContent = mode === 'interrupt' ? 'active' : 'idle';
+  document.getElementById('dmaStat').textContent = mode === 'dma' ? 'active' : 'idle';
+
+  const descs = {
+    polling: 'POLLING: the CPU repeatedly reads the device status register until it says "ready". Simple, no interrupt hardware needed. But the CPU is busy 100% of the time it\'s waiting — useless for slow devices. Used today mainly for very fast devices (SSD, NVMe) where interrupt overhead would dominate.',
+    interrupt: 'INTERRUPT-DRIVEN: the CPU issues the I/O command then does other work. When the device has data ready (or finishes), it raises an interrupt line. The CPU saves state, runs the interrupt handler, then resumes. Overhead: ~1000 cycles per interrupt. For per-byte interrupts, this is expensive.',
+    dma: 'DMA (DIRECT MEMORY ACCESS): a DMA controller transfers data directly between the device and memory without CPU involvement. The CPU just tells it where to put the data and how much. ONE interrupt fires at the end. Modern storage, network, and graphics controllers all use DMA.'
+  };
+  teach('MODE: ' + mode.toUpperCase(), descs[mode], mode === 'polling' ? 'error' : mode === 'interrupt' ? 'warn' : 'ok');
+}
+
+function setBufferMode(mode) {
+  STATE.bufferMode = mode;
+  const descs = {
+    single: 'SINGLE BUFFER: The device writes into one buffer; the CPU reads from it. When full, the device waits while the CPU empties it. No overlap — either the device or the CPU is idle at any moment.',
+    double: 'DOUBLE BUFFERING: Two buffers. While the device fills buffer A, the CPU processes buffer B. When done, they swap. This overlaps I/O with compute — throughput can be nearly 2x. This is the classic producer-consumer pattern.',
+    circular: 'CIRCULAR BUFFER (RING): N buffers arranged in a ring. Device writes at head, CPU reads at tail. Handles bursty producers and consumers smoothly. Used by keyboard input queues, audio streams, network sockets.'
+  };
+  teach('BUFFER: ' + mode.toUpperCase(), descs[mode], 'purple');
+}
+
+function resetAll() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.timer = null;
+  STATE.running = false;
+  DOM.btnStart.textContent = '▶ Start Transfer';
+  STATE.progress = 0;
+  STATE.cpuUsed = 0;
+  STATE.interruptCount = 0;
+  STATE.history = [];
+  STATE._completionTaught = false;
+  STATE._dmaFired = false;
+  updateUI();
+  drawTimeline();
+  teach('RESET', 'Transfer state cleared.', 'info', false);
+}
+
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnPolling.addEventListener('click', () => setMode('polling'));
+DOM.btnInterrupt.addEventListener('click', () => setMode('interrupt'));
+DOM.btnDMA.addEventListener('click', () => setMode('dma'));
+DOM.btnStart.addEventListener('click', startTransfer);
+DOM.btnStep.addEventListener('click', ioStep);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnSingle.addEventListener('click', () => setBufferMode('single'));
+DOM.btnDouble.addEventListener('click', () => setBufferMode('double'));
+DOM.btnCircular.addEventListener('click', () => setBufferMode('circular'));
+
+DOM.sizeRange.addEventListener('input', e => {
+  STATE.dataSize = parseInt(e.target.value);
+  DOM.sizeVal.textContent = STATE.dataSize;
+});
+DOM.speedRange.addEventListener('input', e => {
+  STATE.deviceSpeed = parseInt(e.target.value);
+  DOM.speedVal.textContent = STATE.deviceSpeed + 'x';
+});
+
+document.querySelectorAll('.mode-card').forEach(card => {
+  card.addEventListener('click', () => setMode(card.dataset.mode));
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+animate();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to I/O Buffering and Interrupts. The CPU is orders of magnitude faster than I/O devices. So the OS needs strategies to keep the CPU busy while waiting for slow I/O — and to smooth over speed mismatches with buffers.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THREE TECHNIQUES',
+      `Polling: CPU asks the device in a loop "are you ready?". Simple, but wastes CPU. Interrupt-driven: CPU does other work; device raises an interrupt when done. DMA: a DMA controller handles the transfer directly to memory; CPU is interrupted only at the end. Each technique trades hardware complexity for CPU efficiency.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('BUFFERING STRATEGIES',
+      `Single buffer: no overlap — the device waits while CPU reads. Double buffer: device fills A while CPU reads B — 2x throughput. Circular buffer: N buffers in a ring for bursty workloads. Modern OSes use all three: keyboard has a circular buffer, disks use DMA + double buffering, network stacks have multi-level rings.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click START with each mode selected. Watch the timeline: polling shows the CPU red (100% busy), interrupt shows brief orange spikes, and DMA shows the CPU idle almost the whole time. Compare CPU-used percentages — the difference is dramatic.`,
+      'warn'
+    );
+  }, 13000);
+  showToast('👋 Try each mode and compare CPU usage', 4500);
+}, 500);
+</script>
+</body>
+</html>

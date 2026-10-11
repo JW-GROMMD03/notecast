@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Microkernel vs Monolithic Kernel — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    padding: 11px 22px; border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95); backdrop-filter: blur(12px);
+    display: flex; justify-content: space-between; align-items: center; z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 800; letter-spacing: 1px;
+    background: linear-gradient(90deg, #a855f7, #6366f1, #3b82f6);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { font-size: 0.64rem; color: #64748b; letter-spacing: 2px; margin-left: 10px; }
+  .header-actions { display: flex; gap: 8px; }
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    padding: 6px 13px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s;
+    display: flex; align-items: center; gap: 7px; font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #475569; transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981; box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle { background: rgba(168,85,247,0.15); color: #c4b5fd; border-color: #a855f7; }
+  .teaching-toggle:hover { background: rgba(168,85,247,0.25); }
+  .layout { display: flex; height: calc(100vh - 54px); }
+  .controls-pane {
+    width: 320px; background: #070a14; border-right: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel { background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 11px; }
+  .panel h3 {
+    font-size: 0.66rem; letter-spacing: 2px; color: #c4b5fd;
+    text-transform: uppercase; margin-bottom: 9px; font-weight: 700;
+  }
+  .btn {
+    width: 100%; padding: 8px 12px; background: #1e293b; color: #cbd5e1;
+    border: 1px solid #334155; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #a855f7; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #a855f7; color: #fff; border-color: #a855f7; }
+  .btn.primary:hover { background: #9333ea; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+  .btn.active { background: #a855f7; color: #fff; border-color: #a855f7; }
+  .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .mode-btn {
+    padding: 8px 6px; background: #02040a; border: 1.5px solid #334155;
+    border-radius: 6px; font-family: monospace; font-size: 0.6rem;
+    font-weight: 800; color: #94a3b8; cursor: pointer;
+    letter-spacing: 0.5px; transition: all 0.2s;
+  }
+  .mode-btn:hover { border-color: #a855f7; color: #c4b5fd; }
+  .mode-btn.active {
+    background: rgba(168,85,247,0.2); border-color: #a855f7;
+    color: #c4b5fd; box-shadow: 0 0 10px rgba(168,85,247,0.4);
+  }
+  .canvas-pane {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 40%, rgba(168,85,247,0.05) 0%, transparent 60%), #02040a;
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; }
+  .stage-label {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 0.64rem; letter-spacing: 3px; color: #475569;
+    text-transform: uppercase; pointer-events: none; z-index: 6;
+  }
+  .main-split {
+    position: absolute; top: 44px; left: 0; right: 0; bottom: 20px;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .kernel-wrap {
+    flex: 1; background: #070a14; border: 2px solid #a855f7; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column;
+    box-shadow: 0 0 25px rgba(168,85,247,0.15); min-height: 0;
+  }
+  .kernel-title {
+    font-size: 0.62rem; letter-spacing: 2px; color: #c4b5fd; font-weight: 800;
+    text-transform: uppercase; font-family: monospace; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #kernelCanvas { flex: 1; width: 100%; display: block; background: #02040a; border-radius: 8px; border: 1px solid #1e293b; }
+  .stats-strip {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; flex-shrink: 0;
+  }
+  .stat-card {
+    background: #070a14; border: 2px solid; border-radius: 10px;
+    padding: 10px 12px; text-align: center;
+  }
+  .stat-card.ipc { border-color: #3b82f6; box-shadow: 0 0 15px rgba(59,130,246,0.15); }
+  .stat-card.speed { border-color: #10b981; box-shadow: 0 0 15px rgba(16,185,129,0.15); }
+  .stat-card.crash { border-color: #ef4444; box-shadow: 0 0 15px rgba(239,68,68,0.15); }
+  .stat-card.tcb { border-color: #f59e0b; box-shadow: 0 0 15px rgba(245,158,11,0.15); }
+  .stat-card .lbl {
+    font-family: monospace; font-size: 0.5rem; color: #64748b;
+    letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 4px;
+  }
+  .stat-card .val {
+    font-family: monospace; font-size: 1.05rem; font-weight: 900;
+  }
+  .stat-card.ipc .val { color: #93c5fd; }
+  .stat-card.speed .val { color: #6ee7b7; }
+  .stat-card.crash .val { color: #fca5a5; }
+  .stat-card.tcb .val { color: #fcd34d; }
+  .teaching-pane {
+    width: 340px; background: #070a14; border-left: 1px solid #1e293b;
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  }
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-box {
+    background: rgba(168,85,247,0.06); border: 1px solid rgba(168,85,247,0.2);
+    padding: 8px; border-radius: 8px; text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem; color: #c4b5fd; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem; font-weight: 900; color: #10b981;
+    font-family: monospace; text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .teaching-feed {
+    background: #02040a; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 8px; height: 320px; overflow-y: auto; font-size: 0.68rem;
+    line-height: 1.5; flex: 1;
+  }
+  .teach-entry {
+    padding: 6px 8px; margin-bottom: 5px; border-left: 3px solid #a855f7;
+    background: rgba(168,85,247,0.05); border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .teach-entry.info { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+  .teach-entry .tag {
+    display: inline-block; font-size: 0.55rem; font-weight: 800;
+    letter-spacing: 1.2px; padding: 1px 6px; border-radius: 3px;
+    margin-bottom: 3px; font-family: monospace;
+  }
+  .teach-entry .tag.info { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan { background: rgba(6,182,212,0.15); color: #67e8f9; }
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+  .info-card {
+    background: linear-gradient(145deg, rgba(168,85,247,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(168,85,247,0.3); border-radius: 10px;
+    padding: 10px; font-family: monospace; font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem; letter-spacing: 2px; color: #c4b5fd;
+    font-weight: 800; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #0f172a; border: 1px solid #a855f7; color: #e0e6f0;
+    padding: 11px 22px; border-radius: 30px; font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(168,85,247,0.5); z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .status-banner {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,14,25,0.95); border: 2px solid #a855f7; border-radius: 30px;
+    padding: 6px 20px; font-family: monospace; font-size: 0.65rem;
+    letter-spacing: 1.5px; font-weight: 800; color: #c4b5fd; z-index: 12;
+    box-shadow: 0 0 20px rgba(168,85,247,0.5); display: none;
+    text-align: center; max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.ok { border-color: #10b981; color: #6ee7b7; box-shadow: 0 0 25px rgba(16,185,129,0.6); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>MICROKERNEL vs MONOLITHIC</h1>
+    <span class="sub">IPC · ISOLATION · PERFORMANCE · FAULT TOLERANCE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Kernel Architecture</h3>
+      <div class="mode-grid">
+        <button class="mode-btn active" data-mode="monolithic">MONOLITHIC</button>
+        <button class="mode-btn" data-mode="micro">MICROKERNEL</button>
+      </div>
+      <div style="font-size:0.6rem; color:#64748b; margin-top:6px; line-height:1.5;">
+        Switch architecture and re-run the same workload.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Workload</h3>
+      <button class="btn primary" id="btnRunFs">📁 File Read</button>
+      <button class="btn" id="btnRunNet">🌐 Network Packet</button>
+      <button class="btn" id="btnRunGpu">🎮 GPU Draw Call</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Fault Injection</h3>
+      <button class="btn warn" id="btnCrashFs">💥 Crash FS Driver</button>
+      <button class="btn warn" id="btnCrashNet">💥 Crash Net Driver</button>
+      <button class="btn success" id="btnRecover">✅ Recover</button>
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;background:#a855f7;border-radius:2px;margin-right:6px;"></span>Kernel space</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:2px;margin-right:6px;"></span>User space</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:6px;"></span>Driver server</div>
+        <div><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:2px;margin-right:6px;"></span>Crashed</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">WHERE DOES THE CODE RUN? USER SPACE VS KERNEL SPACE</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="kernel-wrap">
+          <div class="kernel-title">
+            <span>🏛️ KERNEL ARCHITECTURE</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="kernelHint">— monolithic —</span>
+          </div>
+          <canvas id="kernelCanvas"></canvas>
+        </div>
+
+        <div class="stats-strip">
+          <div class="stat-card ipc">
+            <div class="lbl">IPC Messages</div>
+            <div class="val" id="statIpc">—</div>
+          </div>
+          <div class="stat-card speed">
+            <div class="lbl">Context Switches</div>
+            <div class="val" id="statSwitches">—</div>
+          </div>
+          <div class="stat-card crash">
+            <div class="lbl">Blast Radius</div>
+            <div class="val" id="statBlast">—</div>
+          </div>
+          <div class="stat-card tcb">
+            <div class="lbl">Code in Kernel</div>
+            <div class="val" id="statCode">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">Mode</div>
+        <div class="metric-value warn" id="mMode" style="font-size:0.7rem;">Monolithic</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Latency</div>
+        <div class="metric-value" id="mLatency">0 μs</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">IPC Count</div>
+        <div class="metric-value warn" id="mIpc">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Crashes</div>
+        <div class="metric-value bad" id="mCrashes">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Two Philosophies</div>
+      <div class="info-row"><span class="lbl">Monolithic</span><span class="val good">Everything in kernel</span></div>
+      <div class="info-row"><span class="lbl">Microkernel</span><span class="val">Minimal kernel + servers</span></div>
+      <div class="info-row"><span class="lbl">Monolithic speed</span><span class="val good">Fast (no IPC)</span></div>
+      <div class="info-row"><span class="lbl">Microkernel speed</span><span class="val warn">Slower (IPC overhead)</span></div>
+      <div class="info-row"><span class="lbl">Monolithic fault</span><span class="val bad">Whole kernel can crash</span></div>
+      <div class="info-row"><span class="lbl">Microkernel fault</span><span class="val good">Isolated to server</span></div>
+      <div class="info-row"><span class="lbl">Examples</span><span class="val">Linux, Windows vs QNX, seL4</span></div>
+      <div class="info-row"><span class="lbl">Hybrid</span><span class="val">macOS XNU, Windows NT</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  mode: 'monolithic',
+  // Simulated state
+  ipcCount: 0,
+  contextSwitches: 0,
+  crashes: 0,
+  latency: 0,
+  progress: 0,
+  running: false,
+  timer: null,
+  // Driver servers (micro mode)
+  servers: {
+    fs: 'healthy',
+    net: 'healthy',
+    gpu: 'healthy'
+  },
+  // Animation
+  particles: [],
+  teaching: true,
+  voiceEnabled: false
+};
+
+const DOM = {
+  kernelCanvas: document.getElementById('kernelCanvas'),
+  kernelHint: document.getElementById('kernelHint'),
+  statusBanner: document.getElementById('statusBanner'),
+  btnRunFs: document.getElementById('btnRunFs'),
+  btnRunNet: document.getElementById('btnRunNet'),
+  btnRunGpu: document.getElementById('btnRunGpu'),
+  btnReset: document.getElementById('btnReset'),
+  btnCrashFs: document.getElementById('btnCrashFs'),
+  btnCrashNet: document.getElementById('btnCrashNet'),
+  btnRecover: document.getElementById('btnRecover'),
+  statIpc: document.getElementById('statIpc'),
+  statSwitches: document.getElementById('statSwitches'),
+  statBlast: document.getElementById('statBlast'),
+  statCode: document.getElementById('statCode'),
+  mMode: document.getElementById('mMode'),
+  mLatency: document.getElementById('mLatency'),
+  mIpc: document.getElementById('mIpc'),
+  mCrashes: document.getElementById('mCrashes'),
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg, type = '') {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.className = 'status-banner show ' + type;
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2000);
+}
+
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) this.say("Voice teaching enabled. Explaining microkernel vs monolithic kernels.");
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US') || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   SIMULATE A WORKLOAD
+   ============================================================ */
+function runWorkload(kind) {
+  if (STATE.running) return;
+  STATE.running = true;
+  STATE.progress = 0;
+
+  const server = kind === 'fs' ? 'fs' : kind === 'net' ? 'net' : 'gpu';
+
+  // Check server health (micro mode only)
+  if (STATE.mode === 'micro' && STATE.servers[server] === 'crashed') {
+    showStatus(`❌ ${server.toUpperCase()} server crashed — request failed`);
+    teach('SERVICE DOWN',
+      `The ${server.toUpperCase()} server is down. With a microkernel, the OS can restart it or route around it. But you can't have a file system running in user space if the server process crashed — the request just fails.`,
+      'error'
+    );
+    STATE.running = false;
+    return;
+  }
+
+  showStatus(`▶ Running ${kind.toUpperCase()} workload`);
+  teach('WORKLOAD START',
+    `Running a ${kind.toUpperCase()} operation in ${STATE.mode === 'monolithic' ? 'MONOLITHIC' : 'MICROKERNEL'} mode. Watch the diagram — ${STATE.mode === 'monolithic' ? 'everything happens inside the kernel (fast, no crossings)' : 'user process sends IPC to the driver server, which does the work and replies (multiple context switches)'}.`,
+    'cyan'
+  );
+
+  // Animation
+  let step = 0;
+  STATE.timer = setInterval(() => {
+    step++;
+    if (step >= 20) {
+      clearInterval(STATE.timer);
+      STATE.timer = null;
+      STATE.running = false;
+      stateFinish(kind);
+      return;
+    }
+    STATE.progress = (step / 20) * 100;
+
+    // Accumulate cost
+    if (STATE.mode === 'micro') {
+      STATE.ipcCount += 2;
+      STATE.contextSwitches += 4;
+      STATE.latency += 25;
+    } else {
+      STATE.contextSwitches += 1;
+      STATE.latency += 3;
+    }
+
+    drawCanvas();
+    updateUI();
+  }, 80);
+}
+
+function stateFinish(kind) {
+  if (STATE.mode === 'micro') {
+    showStatus(`✅ Done (${STATE.ipcCount} IPCs, ${STATE.latency} μs)`);
+    teach('DONE',
+      `Workload complete in MICROKERNEL mode. Total: ${STATE.ipcCount} IPC messages and ${STATE.contextSwitches} context switches. Latency overhead: ${STATE.latency} μs. Every device operation requires a user-space server to receive an IPC, do the work (often needing system calls itself), then reply. This cost is the price of isolation.`,
+      'warn'
+    );
+  } else {
+    showStatus(`✅ Done (${STATE.latency} μs)`);
+    teach('DONE',
+      `Workload complete in MONOLITHIC mode. Total: ${STATE.contextSwitches} context switches, ${STATE.latency} μs latency. Because the driver runs in kernel space, an application's system call jumps directly into the code — no IPC needed. This is why Linux, despite its size, is very fast.`,
+      'ok'
+    );
+  }
+}
+
+function crashServer(server) {
+  if (STATE.mode === 'micro') {
+    STATE.servers[server] = 'crashed';
+    STATE.crashes++;
+    showStatus(`💥 ${server.toUpperCase()} server crashed`);
+    teach('CRASH (MICROKERNEL)',
+      `${server.toUpperCase()} driver server crashed. In a microkernel, the crash is CONTAINED — it only affects users of that server. The kernel itself is untouched. The OS can restart the driver process, or a supervisor can route around it. Only ~3% of the system is affected.`,
+      'warn'
+    );
+  } else {
+    // Monolithic — crash takes down the kernel
+    STATE.crashes++;
+    showStatus(`💀 KERNEL PANIC — ${server} driver crashed kernel`);
+    teach('KERNEL PANIC',
+      `The ${server} driver crashed while running in KERNEL MODE. Any bug in kernel-space code — a null pointer, a buffer overflow, a race — can corrupt the entire kernel. The machine panics: BSOD, kernel oops, or silent reboot. In a monolithic kernel, ALL driver code runs in the same address space as the scheduler, memory manager, and everything else. One bug can take down the entire OS.`,
+      'error'
+    );
+  }
+  drawCanvas();
+  updateUI();
+}
+
+function recoverAll() {
+  STATE.servers.fs = 'healthy';
+  STATE.servers.net = 'healthy';
+  STATE.servers.gpu = 'healthy';
+  showStatus('✅ All servers recovered');
+  teach('RECOVERY',
+    STATE.mode === 'micro'
+      ? `All driver servers restarted. The kernel never even noticed — it was just supervising. This is a microkernel's superpower: resilience. QNX runs cars and medical devices precisely because a driver crash never kills the system.`
+      : `Kernel panic recovered (in simulation). In reality, a kernel panic requires a full reboot. Modern Linux uses things like kdump to save crash dumps, and some subsystems can restart individual modules, but true in-kernel crashes are usually fatal.`,
+    'ok'
+  );
+  drawCanvas();
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function resizeCanvas() {
+  const canvas = DOM.kernelCanvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx = ctx;
+  canvas._w = rect.width;
+  canvas._h = rect.height;
+}
+
+function drawCanvas() {
+  const canvas = DOM.kernelCanvas;
+  const ctx = canvas._ctx;
+  if (!ctx) return;
+  const W = canvas._w;
+  const H = canvas._h;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const padX = 40;
+  const padY = 40;
+
+  if (STATE.mode === 'monolithic') {
+    drawMonolithic(ctx, W, H, padX, padY);
+  } else {
+    drawMicro(ctx, W, H, padX, padY);
+  }
+
+  DOM.kernelHint.textContent = `— ${STATE.mode} · ${STATE.progress.toFixed(0)}% —`;
+}
+
+function drawMonolithic(ctx, W, H, padX, padY) {
+  // Big kernel rectangle — almost everything is inside
+  const kw = W - padX * 2;
+  const kh = H - padY * 2;
+
+  // Kernel space box
+  ctx.fillStyle = 'rgba(168,85,247,0.08)';
+  ctx.strokeStyle = '#a855f7';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(padX, padY, kw, kh, 12);
+  ctx.fill();
+  ctx.stroke();
+
+  // Label
+  ctx.font = 'bold 12px monospace';
+  ctx.fillStyle = '#c4b5fd';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('KERNEL SPACE (protected, one address space)', padX + 15, padY + 15);
+
+  // Modules inside kernel
+  const modules = [
+    { name: 'Scheduler', color: '#a855f7' },
+    { name: 'Memory', color: '#a855f7' },
+    { name: 'VFS', color: '#a855f7' },
+    { name: 'FS Driver', color: STATE.crashes > 0 ? '#ef4444' : '#a855f7', key: 'fs' },
+    { name: 'Net Stack', color: STATE.crashes > 0 ? '#ef4444' : '#a855f7', key: 'net' },
+    { name: 'GPU Driver', color: STATE.crashes > 0 ? '#ef4444' : '#a855f7', key: 'gpu' },
+    { name: 'IPC', color: '#a855f7' },
+    { name: 'Syscall', color: '#a855f7' },
+    { name: 'Device Drv', color: '#a855f7' }
+  ];
+
+  const cols = 3;
+  const rows = 3;
+  const modW = (kw - 40) / cols - 10;
+  const modH = 50;
+  const startX = padX + 15;
+  const startY = padY + 50;
+
+  modules.forEach((m, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = startX + col * (modW + 10);
+    const y = startY + row * (modH + 15);
+
+    ctx.fillStyle = m.color;
+    ctx.globalAlpha = 0.15;
+    ctx.fillRect(x, y, modW, modH);
+    ctx.globalAlpha = 1;
+
+    ctx.strokeStyle = m.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, modW, modH);
+
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = m.color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(m.name, x + modW / 2, y + modH / 2);
+  });
+
+  // User process box (top-right, small)
+  ctx.fillStyle = 'rgba(59,130,246,0.15)';
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(W - padX - 130, padY - 25, 130, 30, 6);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = 'bold 9px monospace';
+  ctx.fillStyle = '#93c5fd';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('👤 USER PROCESS', W - padX - 65, padY - 10);
+
+  // Syscall arrow
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(W - padX - 65, padY - 5);
+  ctx.lineTo(W - padX - 65, padY + 15);
+  ctx.stroke();
+  // Arrowhead
+  ctx.beginPath();
+  ctx.moveTo(W - padX - 65, padY + 15);
+  ctx.lineTo(W - padX - 72, padY + 8);
+  ctx.lineTo(W - padX - 58, padY + 8);
+  ctx.closePath();
+  ctx.fillStyle = '#3b82f6';
+  ctx.fill();
+
+  // Progress indicator (only if running)
+  if (STATE.progress > 0 && STATE.running) {
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = '#fcd34d';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`▶ processing... ${STATE.progress.toFixed(0)}%`, W / 2, H - 10);
+  }
+
+  // Kernal panic alert
+  if (STATE.crashes > 0) {
+    ctx.fillStyle = 'rgba(239,68,68,0.15)';
+    ctx.fillRect(padX, padY, kw, kh);
+    ctx.font = 'bold 20px monospace';
+    ctx.fillStyle = '#fca5a5';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⚠ KERNEL PANIC ⚠', W / 2, H / 2);
+  }
+}
+
+function drawMicro(ctx, W, H, padX, padY) {
+  // Small kernel box at bottom
+  const kw = W - padX * 2;
+  const kh = 90;
+  const ky = H - padY - kh;
+
+  ctx.fillStyle = 'rgba(168,85,247,0.12)';
+  ctx.strokeStyle = '#a855f7';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(padX, ky, kw, kh, 12);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.font = 'bold 12px monospace';
+  ctx.fillStyle = '#c4b5fd';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('MICROKERNEL (small, verified)', padX + 15, ky + 12);
+
+  // Minimal kernel contents
+  const kernelBits = ['IPC', 'Scheduler', 'Memory', 'Syscall'];
+  kernelBits.forEach((name, i) => {
+    const x = padX + 20 + i * 120;
+    const y = ky + 42;
+    ctx.fillStyle = 'rgba(168,85,247,0.25)';
+    ctx.fillRect(x, y, 100, 30);
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, 100, 30);
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = '#c4b5fd';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name, x + 50, y + 15);
+  });
+
+  // User-space driver servers (top)
+  const servers = [
+    { key: 'fs', name: 'FS Server', color: '#10b981', x: padX + 20 },
+    { key: 'net', name: 'Net Server', color: '#10b981', x: padX + 20 + (W - padX * 2 - 60) / 3 },
+    { key: 'gpu', name: 'GPU Server', color: '#10b981', x: padX + 20 + 2 * (W - padX * 2 - 60) / 3 }
+  ];
+
+  servers.forEach(s => {
+    const crashed = STATE.servers[s.key] === 'crashed';
+    const color = crashed ? '#ef4444' : s.color;
+    const w = 160;
+    const h = 90;
+    const x = s.x;
+    const y = padY + 10;
+
+    // Glow for active
+    if (STATE.running && crashed === false) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 15;
+    }
+
+    ctx.fillStyle = crashed ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.12)';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 10);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(crashed ? '💀' : '🔧', x + w / 2, y + 30);
+
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText(s.name, x + w / 2, y + 55);
+
+    ctx.font = '9px monospace';
+    ctx.fillStyle = crashed ? '#fca5a5' : '#6ee7b7';
+    ctx.fillText(crashed ? 'CRASHED' : 'running', x + w / 2, y + 72);
+
+    // IPC lines from kernel to server
+    ctx.strokeStyle = crashed ? '#7f1d1d' : '#6366f1';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(x + w / 2, y + h);
+    ctx.lineTo(x + w / 2, ky);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Arrow
+    ctx.beginPath();
+    ctx.moveTo(x + w / 2, y + h + 10);
+    ctx.lineTo(x + w / 2 - 5, y + h + 2);
+    ctx.lineTo(x + w / 2 + 5, y + h + 2);
+    ctx.closePath();
+    ctx.fillStyle = crashed ? '#7f1d1d' : '#6366f1';
+    ctx.fill();
+  });
+
+  // User process on top-left
+  ctx.fillStyle = 'rgba(59,130,246,0.15)';
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(padX + 20, padY - 30, 130, 30, 6);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = 'bold 9px monospace';
+  ctx.fillStyle = '#93c5fd';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('👤 USER PROCESS', padX + 85, padY - 15);
+
+  // Progress
+  if (STATE.progress > 0 && STATE.running) {
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = '#fcd34d';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`▶ IPC in flight... ${STATE.progress.toFixed(0)}%`, W / 2, ky - 20);
+  }
+}
+
+function animate() {
+  drawCanvas();
+  requestAnimationFrame(animate);
+}
+
+function updateUI() {
+  DOM.mMode.textContent = STATE.mode === 'micro' ? 'Microkernel' : 'Monolithic';
+  DOM.mLatency.textContent = STATE.latency + ' μs';
+  DOM.mIpc.textContent = STATE.ipcCount;
+  DOM.mCrashes.textContent = STATE.crashes;
+  DOM.mCrashes.className = 'metric-value ' + (STATE.crashes === 0 ? 'good' : 'bad');
+
+  DOM.statIpc.textContent = STATE.ipcCount;
+  DOM.statSwitches.textContent = STATE.contextSwitches;
+
+  const blast = STATE.mode === 'monolithic'
+    ? (STATE.crashes > 0 ? 'KERNEL' : '—')
+    : (STATE.crashes > 0 ? '1 server' : '—');
+  DOM.statBlast.textContent = blast;
+
+  DOM.statCode.textContent = STATE.mode === 'monolithic' ? '~25M LOC' : '~10K LOC';
+}
+
+function setMode(mode) {
+  STATE.mode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+
+  // Reset stats when switching
+  STATE.ipcCount = 0;
+  STATE.contextSwitches = 0;
+  STATE.latency = 0;
+  STATE.crashes = 0;
+  STATE.progress = 0;
+  STATE.servers = { fs: 'healthy', net: 'healthy', gpu: 'healthy' };
+
+  drawCanvas();
+  updateUI();
+
+  const descs = {
+    monolithic: 'MONOLITHIC: Everything — scheduler, memory, drivers, filesystem, network — runs in a single kernel address space. Pros: extremely fast (no IPC), tight integration. Cons: any bug in any component can crash the whole OS; large and complex (~25M lines of code in Linux).',
+    micro: 'MICROKERNEL: Kernel contains only the bare minimum — IPC, basic scheduling, memory protection. Drivers and filesystems run as user-space server processes. Pros: resilient (driver crash doesn\'t kill kernel), easier to verify, more modular. Cons: slower (IPC overhead per operation), harder to design.'
+  };
+  teach('MODE: ' + mode.toUpperCase(), descs[mode], 'purple');
+}
+
+function resetAll() {
+  if (STATE.timer) clearInterval(STATE.timer);
+  STATE.timer = null;
+  STATE.running = false;
+  STATE.ipcCount = 0;
+  STATE.contextSwitches = 0;
+  STATE.latency = 0;
+  STATE.crashes = 0;
+  STATE.progress = 0;
+  STATE.servers = { fs: 'healthy', net: 'healthy', gpu: 'healthy' };
+  drawCanvas();
+  updateUI();
+  teach('RESET', 'Simulation reset.', 'info', false);
+}
+
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => setMode(btn.dataset.mode));
+});
+
+DOM.btnRunFs.addEventListener('click', () => runWorkload('fs'));
+DOM.btnRunNet.addEventListener('click', () => runWorkload('net'));
+DOM.btnRunGpu.addEventListener('click', () => runWorkload('gpu'));
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnCrashFs.addEventListener('click', () => crashServer('fs'));
+DOM.btnCrashNet.addEventListener('click', () => crashServer('net'));
+DOM.btnRecover.addEventListener('click', recoverAll);
+
+window.addEventListener('resize', resizeCanvas);
+
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+    return this;
+  };
+}
+
+resizeCanvas();
+animate();
+updateUI();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Microkernel vs Monolithic Kernel. A kernel's architecture determines how much code runs in privileged mode and how components communicate. Monolithic kernels (Linux, Windows) put everything in kernel space. Microkernels (QNX, seL4) keep only the bare essentials there and run drivers as user-space servers.`,
+    'cyan'
+  );
+  setTimeout(() => {
+    teach('THE TRADE-OFF',
+      `Monolithic kernels are FAST — a system call jumps directly into driver code, no context switch. But a driver bug can crash the whole system. Microkernels are RESILIENT — a driver crash kills one user-space process, not the OS. But every operation costs IPC round-trips. This is a classic engineering trade-off.`,
+      'purple'
+    );
+  }, 4500);
+  setTimeout(() => {
+    teach('REAL-WORLD EXAMPLES',
+      `QNX microkernel runs car infotainment and medical devices — a crash in the radio code cannot take down the brake controller. seL4 is formally verified (mathematically proven correct). Linux is monolithic — the biggest driver ecosystem because writing a driver is relatively easy, but a single bug can panick the system. macOS XNU is a hybrid: Mach microkernel + BSD kernel + IOKit drivers, blended for practical trade-offs.`,
+      'ok'
+    );
+  }, 9000);
+  setTimeout(() => {
+    teach('TRY IT',
+      `Run a file read with each architecture. Compare the IPC count and latency. Then CRASH the FS driver — in monolithic mode, you get a kernel panic. In microkernel mode, just one server goes down and can be restarted. Click RECOVER to see the difference.`,
+      'warn'
+    );
+  }, 13000);
+  showToast('👋 Try each mode, then crash a driver', 4500);
+}, 500);
+</script>
+</body>
+</html>

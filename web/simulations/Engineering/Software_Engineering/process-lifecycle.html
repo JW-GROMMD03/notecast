@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Process Lifecycle State Transitions — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at top, #0a0e1a 0%, #05070d 70%);
+    color: #e0e6f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 11px 22px;
+    border-bottom: 1px solid #1e293b;
+    background: rgba(7, 10, 20, 0.95);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #a855f7, #3b82f6, #06b6d4);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .sub {
+    font-size: 0.64rem;
+    color: #64748b;
+    letter-spacing: 2px;
+    margin-left: 10px;
+  }
+  .header-actions { display: flex; gap: 8px; }
+
+  .voice-toggle, .teaching-toggle {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .voice-toggle.on {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 0 15px rgba(16,185,129,0.4);
+  }
+  .voice-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+  .voice-toggle.on .dot {
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .teaching-toggle {
+    background: rgba(168,85,247,0.15);
+    color: #c4b5fd;
+    border-color: #a855f7;
+  }
+  .teaching-toggle:hover { background: rgba(168,85,247,0.25); }
+
+  .layout { display: flex; height: calc(100vh - 54px); }
+
+  .controls-pane {
+    width: 320px;
+    background: #070a14;
+    border-right: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel {
+    background: #0b0f19;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 11px;
+  }
+  .panel h3 {
+    font-size: 0.66rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .btn:hover { border-color: #a855f7; color: #fff; }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: #a855f7; color: #fff; border-color: #a855f7; }
+  .btn.primary:hover { background: #9333ea; }
+  .btn.danger { background: #7f1d1d; border-color: #991b1b; color: #fecaca; }
+  .btn.danger:hover { background: #991b1b; }
+  .btn.success { background: #065f46; border-color: #059669; color: #d1fae5; }
+  .btn.success:hover { background: #047857; }
+  .btn.warn { background: #78350f; border-color: #b45309; color: #fed7aa; }
+  .btn.warn:hover { background: #92400e; }
+  .btn.ghost { background: transparent; color: #94a3b8; border-color: #475569; }
+  .btn.ghost:hover { border-color: #94a3b8; color: #fff; }
+
+  .slider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .slider-row .value { color: #c4b5fd; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: #a855f7; margin-bottom: 9px; }
+
+  .canvas-pane {
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(168,85,247,0.05) 0%, transparent 60%),
+      #02040a;
+    overflow: hidden;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  .stage-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.64rem;
+    letter-spacing: 3px;
+    color: #475569;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .main-split {
+    position: absolute;
+    top: 44px;
+    left: 0; right: 0; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* STATE DIAGRAM */
+  .state-wrap {
+    flex: 1;
+    background: #070a14;
+    border: 2px solid #a855f7;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 25px rgba(168,85,247,0.15);
+    min-height: 0;
+  }
+  .state-title {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: monospace;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #stateSvg {
+    flex: 1;
+    width: 100%;
+    display: block;
+  }
+
+  /* SVG STYLES */
+  .state-node {
+    cursor: pointer;
+    transition: all 0.4s;
+  }
+  .state-node circle,
+  .state-node rect {
+    fill: #0f172a;
+    stroke-width: 3;
+    transition: all 0.4s;
+  }
+  .state-node text {
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 900;
+    fill: #cbd5e1;
+    text-anchor: middle;
+    pointer-events: none;
+    letter-spacing: 0.5px;
+  }
+  .state-node .sub {
+    font-size: 8px;
+    font-weight: 500;
+    fill: #64748b;
+    letter-spacing: 0;
+  }
+  .state-node.new circle { stroke: #94a3b8; }
+  .state-node.ready circle { stroke: #3b82f6; }
+  .state-node.running circle {
+    stroke: #10b981;
+    animation: runningPulse 1s ease-in-out infinite;
+  }
+  @keyframes runningPulse {
+    0%, 100% { filter: drop-shadow(0 0 8px rgba(16,185,129,0.6)); }
+    50% { filter: drop-shadow(0 0 20px rgba(16,185,129,1)); }
+  }
+  .state-node.blocked circle { stroke: #f59e0b; }
+  .state-node.terminated circle { stroke: #ef4444; opacity: 0.6; }
+  .state-node.active circle {
+    stroke-width: 5;
+    transform-origin: center;
+  }
+
+  .state-edge {
+    stroke: #334155;
+    stroke-width: 2;
+    fill: none;
+    transition: all 0.3s;
+    marker-end: url(#arrow-default);
+  }
+  .state-edge.active {
+    stroke: #fcd34d;
+    stroke-width: 4;
+    filter: drop-shadow(0 0 8px rgba(252,211,77,0.8));
+    marker-end: url(#arrow-active);
+  }
+
+  .edge-label {
+    font-family: monospace;
+    font-size: 9px;
+    font-weight: 700;
+    fill: #64748b;
+    text-anchor: middle;
+    letter-spacing: 0.3px;
+  }
+  .edge-label.active {
+    fill: #fcd34d;
+    font-weight: 900;
+  }
+
+  /* PROCESS INFO */
+  .proc-info {
+    background: #070a14;
+    border: 2px solid #06b6d4;
+    border-radius: 12px;
+    padding: 10px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 0 20px rgba(6,182,212,0.15);
+    flex-shrink: 0;
+    font-family: monospace;
+  }
+  .proc-item {
+    text-align: center;
+  }
+  .proc-item .lbl {
+    font-size: 0.5rem;
+    color: #64748b;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 3px;
+  }
+  .proc-item .val {
+    font-size: 0.9rem;
+    font-weight: 900;
+    color: #67e8f9;
+    letter-spacing: 0.5px;
+  }
+  .proc-item .val.state {
+    padding: 3px 12px;
+    border-radius: 12px;
+    background: rgba(16,185,129,0.2);
+    color: #6ee7b7;
+  }
+  .proc-item .val.state.ready { background: rgba(59,130,246,0.2); color: #93c5fd; }
+  .proc-item .val.state.new { background: rgba(100,116,139,0.2); color: #94a3b8; }
+  .proc-item .val.state.blocked { background: rgba(245,158,11,0.2); color: #fcd34d; }
+  .proc-item .val.state.terminated { background: rgba(239,68,68,0.2); color: #fca5a5; }
+
+  /* RIGHT: Teaching */
+  .teaching-pane {
+    width: 340px;
+    background: #070a14;
+    border-left: 1px solid #1e293b;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .metric-box {
+    background: rgba(168,85,247,0.06);
+    border: 1px solid rgba(168,85,247,0.2);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .metric-title {
+    font-size: 0.55rem;
+    color: #c4b5fd;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #10b981;
+    font-family: monospace;
+    text-shadow: 0 0 10px rgba(16,185,129,0.5);
+  }
+  .metric-value.warn { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .metric-value.bad  { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+
+  .teaching-feed {
+    background: #02040a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .teach-entry {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid #a855f7;
+    background: rgba(168,85,247,0.05);
+    border-radius: 0 5px 5px 0;
+    animation: teachSlide 0.35s ease;
+  }
+  @keyframes teachSlide {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+  .teach-entry.info   { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+  .teach-entry.ok     { border-color: #10b981; background: rgba(16,185,129,0.05); }
+  .teach-entry.warn   { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+  .teach-entry.error  { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+  .teach-entry.purple { border-color: #a855f7; background: rgba(168,85,247,0.05); }
+  .teach-entry.cyan   { border-color: #06b6d4; background: rgba(6,182,212,0.06); }
+
+  .teach-entry .tag {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    font-family: monospace;
+  }
+  .teach-entry .tag.info   { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .teach-entry .tag.ok     { background: rgba(16,185,129,0.15); color: #10b981; }
+  .teach-entry .tag.warn   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .teach-entry .tag.error  { background: rgba(239,68,68,0.15); color: #f87171; }
+  .teach-entry .tag.purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .teach-entry .tag.cyan   { background: rgba(6,182,212,0.15); color: #67e8f9; }
+
+  .teach-entry .msg { color: #cbd5e1; font-size: 0.68rem; }
+
+  .info-card {
+    background: linear-gradient(145deg, rgba(168,85,247,0.06), rgba(30,41,59,0.2));
+    border: 1px solid rgba(168,85,247,0.3);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 0.55rem;
+  }
+  .info-card-title {
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #c4b5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.5);
+    font-size: 0.55rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .lbl { color: #94a3b8; }
+  .info-row .val { color: #cbd5e1; font-weight: 800; }
+  .info-row .val.good { color: #6ee7b7; }
+  .info-row .val.warn { color: #fcd34d; }
+  .info-row .val.bad { color: #fca5a5; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #070a14; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    border: 1px solid #a855f7;
+    color: #e0e6f0;
+    padding: 11px 22px;
+    border-radius: 30px;
+    font-size: 0.78rem;
+    box-shadow: 0 10px 40px rgba(168,85,247,0.5);
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(.68,-0.55,.27,1.55);
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .status-banner {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,14,25,0.95);
+    border: 2px solid #a855f7;
+    border-radius: 30px;
+    padding: 6px 20px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+    color: #c4b5fd;
+    z-index: 12;
+    box-shadow: 0 0 20px rgba(168,85,247,0.5);
+    display: none;
+    text-align: center;
+    max-width: 90%;
+  }
+  .status-banner.show { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center;">
+    <h1>PROCESS LIFECYCLE</h1>
+    <span class="sub">NEW · READY · RUNNING · BLOCKED · TERMINATED</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">
+      <span class="dot"></span>
+      <span id="voiceLabel">VOICE: OFF</span>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="controls-pane">
+    <div class="panel">
+      <h3>Simulation</h3>
+      <button class="btn primary" id="btnFork">🌱 Fork New Process</button>
+      <button class="btn danger" id="btnKill">💀 Kill Process (SIGKILL)</button>
+      <button class="btn ghost" id="btnReset">⟲ Reset</button>
+    </div>
+
+    <div class="panel">
+      <h3>Transitions</h3>
+      <button class="btn success" id="btnDispatch">▶ Dispatch (ready → running)</button>
+      <button class="btn warn" id="btnPreempt">⏸ Preempt (running → ready)</button>
+      <button class="btn warn" id="btnBlock">🚫 Block on I/O (running → blocked)</button>
+      <button class="btn success" id="btnWake">🔔 I/O Complete (blocked → ready)</button>
+      <button class="btn danger" id="btnTerminate">⛔ Exit (running → terminated)</button>
+    </div>
+
+    <div class="panel">
+      <h3>Auto-Flow</h3>
+      <button class="btn" id="btnAuto">▶ Auto Simulate Lifecycle</button>
+      <div class="slider-row"><span>Speed</span><span class="value" id="speedVal">1.0×</span></div>
+      <input type="range" id="speedRange" min="1" max="8" value="3">
+    </div>
+
+    <div class="panel">
+      <h3>Legend</h3>
+      <div style="font-size:0.62rem; color:#94a3b8; line-height:1.9;">
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #94a3b8;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>New</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #3b82f6;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Ready</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #10b981;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Running</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #f59e0b;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Blocked</div>
+        <div><span style="display:inline-block;width:10px;height:10px;border:2px solid #ef4444;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Terminated</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <div id="stage">
+      <div class="stage-label">A PROCESS MOVES BETWEEN STATES BASED ON EVENTS</div>
+
+      <div class="status-banner" id="statusBanner"></div>
+
+      <div class="main-split">
+        <div class="state-wrap">
+          <div class="state-title">
+            <span>🔄 STATE TRANSITION DIAGRAM</span>
+            <span style="font-size:0.5rem; color:#64748b;" id="stateHint">— click a state to inspect —</span>
+          </div>
+          <svg id="stateSvg" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+
+        <div class="proc-info">
+          <div class="proc-item">
+            <span class="lbl">PID</span>
+            <span class="val" id="procPid">—</span>
+          </div>
+          <div class="proc-item">
+            <span class="lbl">STATE</span>
+            <span class="val state new" id="procState">NEW</span>
+          </div>
+          <div class="proc-item">
+            <span class="lbl">CPU Time</span>
+            <span class="val" id="procCpu">0 ms</span>
+          </div>
+          <div class="proc-item">
+            <span class="lbl">I/O Wait</span>
+            <span class="val" id="procIo">0 ms</span>
+          </div>
+          <div class="proc-item">
+            <span class="lbl">Transitions</span>
+            <span class="val" id="procTrans">0</span>
+          </div>
+          <div class="proc-item">
+            <span class="lbl">Age</span>
+            <span class="val" id="procAge">0 ms</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-title">State</div>
+        <div class="metric-value" id="mState">NEW</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Forked</div>
+        <div class="metric-value" id="mForks">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Blocked</div>
+        <div class="metric-value warn" id="mBlocked">0</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-title">Terminated</div>
+        <div class="metric-value bad" id="mTerm">0</div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-card-title">🎓 Process States</div>
+      <div class="info-row"><span class="lbl">New</span><span class="val">Being created</span></div>
+      <div class="info-row"><span class="lbl">Ready</span><span class="val good">Waiting for CPU</span></div>
+      <div class="info-row"><span class="lbl">Running</span><span class="val good">On CPU now</span></div>
+      <div class="info-row"><span class="lbl">Blocked</span><span class="val warn">Waiting for I/O</span></div>
+      <div class="info-row"><span class="lbl">Terminated</span><span class="val bad">Exited</span></div>
+      <div class="info-row"><span class="lbl">PCB</span><span class="val">Process Control Block</span></div>
+      <div class="info-row"><span class="lbl">Fork/Exec</span><span class="val">Unix process creation</span></div>
+    </div>
+
+    <div class="panel" style="padding:10px; flex:1; display:flex; flex-direction:column; min-height:0;">
+      <h3 style="margin-bottom:6px;">📖 Live Teaching Feed</h3>
+      <div class="teaching-feed" id="teachingFeed"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const STATE = {
+  currentProcess: null,
+  processes: [],
+  nextPid: 1,
+  speed: 3,
+  autoRunning: false,
+  autoTimer: null,
+  activeEdge: null,
+  activeState: null,
+  forkedCount: 0,
+  blockedCount: 0,
+  terminatedCount: 0,
+  // Teaching
+  teaching: true,
+  voiceEnabled: false
+};
+
+/* ============================================================
+   STATES + TRANSITIONS
+   ============================================================ */
+const STATES = [
+  { id: 'new',        label: 'NEW',        x: 100, y: 200, r: 45, color: '#94a3b8' },
+  { id: 'ready',      label: 'READY',      x: 300, y: 100, r: 45, color: '#3b82f6' },
+  { id: 'running',    label: 'RUNNING',    x: 500, y: 100, r: 45, color: '#10b981' },
+  { id: 'blocked',    label: 'BLOCKED',    x: 500, y: 320, r: 45, color: '#f59e0b' },
+  { id: 'terminated', label: 'TERMINATED', x: 700, y: 200, r: 45, color: '#ef4444' }
+];
+
+const TRANSITIONS = [
+  { from: 'new',        to: 'ready',      label: 'admit',        curved: false },
+  { from: 'ready',      to: 'running',    label: 'dispatch',     curved: false, vertical: true },
+  { from: 'running',    to: 'ready',      label: 'preempt',      curved: false, vertical: true },
+  { from: 'running',    to: 'blocked',    label: 'I/O wait',     curved: true },
+  { from: 'blocked',    to: 'ready',      label: 'I/O done',     curved: true },
+  { from: 'running',    to: 'terminated', label: 'exit',         curved: false }
+];
+
+/* ============================================================
+   DOM
+   ============================================================ */
+const DOM = {
+  stateSvg: document.getElementById('stateSvg'),
+  stateHint: document.getElementById('stateHint'),
+  procPid: document.getElementById('procPid'),
+  procState: document.getElementById('procState'),
+  procCpu: document.getElementById('procCpu'),
+  procIo: document.getElementById('procIo'),
+  procTrans: document.getElementById('procTrans'),
+  procAge: document.getElementById('procAge'),
+  statusBanner: document.getElementById('statusBanner'),
+  // Buttons
+  btnFork: document.getElementById('btnFork'),
+  btnKill: document.getElementById('btnKill'),
+  btnReset: document.getElementById('btnReset'),
+  btnDispatch: document.getElementById('btnDispatch'),
+  btnPreempt: document.getElementById('btnPreempt'),
+  btnBlock: document.getElementById('btnBlock'),
+  btnWake: document.getElementById('btnWake'),
+  btnTerminate: document.getElementById('btnTerminate'),
+  btnAuto: document.getElementById('btnAuto'),
+  speedRange: document.getElementById('speedRange'),
+  speedVal: document.getElementById('speedVal'),
+  // Metrics
+  mState: document.getElementById('mState'),
+  mForks: document.getElementById('mForks'),
+  mBlocked: document.getElementById('mBlocked'),
+  mTerm: document.getElementById('mTerm'),
+  // Teaching
+  teachingFeed: document.getElementById('teachingFeed'),
+  toast: document.getElementById('toast'),
+  voiceToggle: document.getElementById('voiceToggle'),
+  voiceLabel: document.getElementById('voiceLabel'),
+  teachingToggle: document.getElementById('teachingToggle')
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function showToast(msg, ms = 2400) {
+  DOM.toast.textContent = msg;
+  DOM.toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => DOM.toast.classList.remove('show'), ms);
+}
+
+function showStatus(msg) {
+  DOM.statusBanner.textContent = msg;
+  DOM.statusBanner.classList.add('show');
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(() => DOM.statusBanner.classList.remove('show'), 2200);
+}
+
+/* ============================================================
+   VOICE
+   ============================================================ */
+const Voice = {
+  enabled: false, queue: [], speaking: false,
+  lastSpoken: '', lastSpokenAt: 0, maxQueue: 4,
+  toggle() {
+    this.enabled = !this.enabled;
+    DOM.voiceToggle.classList.toggle('on', this.enabled);
+    DOM.voiceLabel.textContent = this.enabled ? 'VOICE: ON' : 'VOICE: OFF';
+    if (!this.enabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); this.queue = []; this.speaking = false;
+    } else if (this.enabled) {
+      this.say("Voice teaching enabled. Explaining process lifecycle states.");
+    }
+  },
+  say(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    const now = Date.now();
+    if (text === this.lastSpoken && now - this.lastSpokenAt < 4000) return;
+    if (this.queue.length > this.maxQueue) this.queue.shift();
+    this.lastSpoken = text; this.lastSpokenAt = now;
+    this.queue.push(text);
+    if (!this.speaking) this._drain();
+  },
+  _drain() {
+    if (this.queue.length === 0) { this.speaking = false; return; }
+    this.speaking = true;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pref = voices.find(v => v.lang === 'en-US' && /Google|Microsoft|Samantha/i.test(v.name))
+              || voices.find(v => v.lang === 'en-US')
+              || voices.find(v => v.lang.startsWith('en'));
+    if (pref) u.voice = pref;
+    u.onend = () => this._drain();
+    u.onerror = () => this._drain();
+    window.speechSynthesis.speak(u);
+  }
+};
+
+/* ============================================================
+   TEACHING
+   ============================================================ */
+function teach(tag, msg, kind = 'info', speak = true) {
+  if (!STATE.teaching) return;
+  const el = document.createElement('div');
+  el.className = `teach-entry ${kind}`;
+  el.innerHTML = `<div class="tag ${kind}">${tag}</div><div class="msg">${msg}</div>`;
+  DOM.teachingFeed.prepend(el);
+  while (DOM.teachingFeed.children.length > 60) DOM.teachingFeed.lastChild.remove();
+  if (speak) Voice.say(msg);
+}
+
+/* ============================================================
+   SVG DIAGRAM
+   ============================================================ */
+function drawDiagram() {
+  const svg = DOM.stateSvg;
+  const W = 800, H = 400;
+
+  let html = `
+    <defs>
+      <marker id="arrow-default" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+      </marker>
+      <marker id="arrow-active" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#fcd34d"/>
+      </marker>
+    </defs>
+  `;
+
+  // Draw edges first
+  for (const t of TRANSITIONS) {
+    const from = STATES.find(s => s.id === t.from);
+    const to = STATES.find(s => s.id === t.to);
+    if (!from || !to) continue;
+
+    const isActive = STATE.activeEdge === t.from + '->' + t.to;
+    const edgeClass = `state-edge ${isActive ? 'active' : ''}`;
+
+    // Compute edge endpoints on circle boundaries
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const ux = dx / dist;
+    const uy = dy / dist;
+    const x1 = from.x + ux * from.r;
+    const y1 = from.y + uy * from.r;
+    const x2 = to.x - ux * (to.r + 8);
+    const y2 = to.y - uy * (to.r + 8);
+
+    if (t.curved) {
+      // Curved edge for running <-> blocked
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      const offset = t.from === 'running' ? 50 : -50;
+      const cx = mx + offset;
+      const cy = my;
+      html += `<path class="${edgeClass}" d="M ${x1} ${y1} Q ${cx} ${cy}, ${x2} ${y2}"/>`;
+      // Edge label
+      const lx = mx + offset * 0.5;
+      const ly = my + (t.from === 'running' ? 15 : -15);
+      html += `<text class="edge-label ${isActive ? 'active' : ''}" x="${lx}" y="${ly}">${t.label}</text>`;
+    } else if (t.vertical) {
+      // Vertical edge (ready <-> running), draw as curved arc
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      const arcOffset = t.from === 'ready' ? -40 : 40;
+      const cx = mx;
+      const cy = my + arcOffset;
+      html += `<path class="${edgeClass}" d="M ${x1} ${y1} Q ${cx} ${cy}, ${x2} ${y2}"/>`;
+      const lx = mx;
+      const ly = my + arcOffset * 0.6;
+      html += `<text class="edge-label ${isActive ? 'active' : ''}" x="${lx}" y="${ly}">${t.label}</text>`;
+    } else {
+      // Straight edge
+      html += `<line class="${edgeClass}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+      const lx = (x1 + x2) / 2;
+      const ly = (y1 + y2) / 2 - 8;
+      html += `<text class="edge-label ${isActive ? 'active' : ''}" x="${lx}" y="${ly}">${t.label}</text>`;
+    }
+  }
+
+  // Draw state nodes
+  for (const s of STATES) {
+    const isActive = STATE.currentProcess && STATE.currentProcess.state === s.id;
+    const cls = `state-node ${s.id} ${isActive ? 'active' : ''}`;
+    html += `<g class="${cls}" data-state="${s.id}">`;
+    html += `<circle cx="${s.x}" cy="${s.y}" r="${s.r}" style="stroke: ${s.color}"/>`;
+    html += `<text x="${s.x}" y="${s.y + 4}">${s.label}</text>`;
+    // Current process indicator
+    if (isActive && STATE.currentProcess) {
+      html += `<circle cx="${s.x}" cy="${s.y}" r="${s.r + 8}" fill="none" stroke="${s.color}" stroke-width="2" opacity="0.4"/>`;
+    }
+    html += `</g>`;
+  }
+
+  // Title
+  html += `<text x="400" y="30" text-anchor="middle" font-family="monospace" font-size="12" font-weight="800" fill="#64748b">PROCESS STATE MACHINE</text>`;
+
+  svg.innerHTML = html;
+
+  // Click handlers
+  svg.querySelectorAll('.state-node').forEach(el => {
+    el.addEventListener('click', () => {
+      const stateId = el.dataset.state;
+      const s = STATES.find(x => x.id === stateId);
+      teach('STATE: ' + s.label,
+        getStateDescription(s.id),
+        s.id === 'running' ? 'ok' : s.id === 'blocked' ? 'warn' : s.id === 'terminated' ? 'error' : 'info'
+      );
+    });
+  });
+}
+
+function getStateDescription(id) {
+  const descs = {
+    new: 'NEW — The process is being created. The OS is allocating the PCB (Process Control Block), setting up memory, and preparing the address space. No CPU time yet.',
+    ready: 'READY — The process is loaded in memory and waiting for a CPU. It\'s in the ready queue, waiting for the scheduler to pick it. This can last microseconds or seconds depending on load.',
+    running: 'RUNNING — The process is executing on the CPU. Only one process runs per core at a time. On a multi-core system, multiple processes can be in the RUNNING state simultaneously (one per core).',
+    blocked: 'BLOCKED — The process is waiting for an external event (I/O, lock, signal). It cannot run even if a CPU is available. The scheduler skips it. When the event completes, the process moves to READY (not directly to RUNNING).',
+    terminated: 'TERMINATED — The process has finished executing (or was killed). Its PCB, memory, and file descriptors are released. Zombie processes are ones that exited but whose parent hasn\'t read the exit code yet.'
+  };
+  return descs[id] || '';
+}
+
+/* ============================================================
+   PROCESS MANAGEMENT
+   ============================================================ */
+function forkProcess() {
+  if (STATE.currentProcess && STATE.currentProcess.state !== 'terminated') {
+    showToast('⚠ Kill current process first');
+    return;
+  }
+
+  const pid = STATE.nextPid++;
+  STATE.currentProcess = {
+    pid,
+    state: 'new',
+    cpuTime: 0,
+    ioWait: 0,
+    transitions: 0,
+    createdAt: performance.now()
+  };
+  STATE.processes.push(STATE.currentProcess);
+  STATE.forkedCount++;
+
+  showStatus(`🌱 fork() → PID ${pid}`);
+  teach('FORK',
+    `Process PID ${pid} created via fork(). Its initial state is NEW. The OS is setting up the PCB (Process Control Board) — recording the PID, parent PID, memory map, open files, and register state. Once fully initialized, it moves to READY.`,
+    'cyan'
+  );
+
+  updateProcessInfo();
+  drawDiagram();
+  updateMetrics();
+
+  // Auto-transition to READY after a moment
+  setTimeout(() => {
+    if (STATE.currentProcess && STATE.currentProcess.state === 'new') {
+      transitionTo('ready', 'admit');
+    }
+  }, 1000);
+}
+
+function transitionTo(newState, edgeName) {
+  if (!STATE.currentProcess) {
+    showToast('⚠ No process — fork one first');
+    return;
+  }
+
+  const fromState = STATE.currentProcess.state;
+  if (fromState === newState) {
+    showToast('⚠ Already in that state');
+    return;
+  }
+
+  // Validate transition
+  const valid = TRANSITIONS.some(t => t.from === fromState && t.to === newState);
+  if (!valid) {
+    showToast(`⚠ Invalid transition: ${fromState} → ${newState}`);
+    teach('INVALID TRANSITION',
+      `Cannot go directly from ${fromState.toUpperCase()} to ${newState.toUpperCase()}. Processes must follow the state machine. For example, a NEW process must first be admitted (become READY), and a BLOCKED process must wake up (become READY) before running again.`,
+      'error'
+    );
+    return;
+  }
+
+  STATE.activeEdge = fromState + '->' + newState;
+  STATE.currentProcess.state = newState;
+  STATE.currentProcess.transitions++;
+
+  if (newState === 'running') STATE.currentProcess.firstRun = performance.now();
+  if (newState === 'blocked') STATE.blockedCount++;
+  if (newState === 'terminated') STATE.terminatedCount++;
+
+  showStatus(`${edgeName} → ${newState.toUpperCase()}`);
+  teach('TRANSITION',
+    `${edgeName}: ${fromState.toUpperCase()} → ${newState.toUpperCase()}. ${getTransitionReason(fromState, newState)}`,
+    newState === 'terminated' ? 'error' : newState === 'blocked' ? 'warn' : 'ok'
+  );
+
+  updateProcessInfo();
+  drawDiagram();
+  updateMetrics();
+
+  // Clear edge highlight after a moment
+  setTimeout(() => {
+    STATE.activeEdge = null;
+    drawDiagram();
+  }, 1200);
+
+  // Auto-transition for running → terminated (via exit)
+  if (newState === 'blocked') {
+    // Auto-wake after 2 seconds
+    setTimeout(() => {
+      if (STATE.currentProcess && STATE.currentProcess.state === 'blocked') {
+        teach('I/O COMPLETE',
+          `I/O event completed. The blocked process moves to READY — it does NOT go directly to RUNNING. It must re-enter the ready queue and wait for the scheduler to pick it again. This is important: even after I/O completes, the process may not run immediately.`,
+          'cyan', false
+        );
+        transitionTo('ready', 'I/O done');
+      }
+    }, 2500);
+  }
+}
+
+function getTransitionReason(from, to) {
+  const key = `${from}-${to}`;
+  const reasons = {
+    'new-ready': 'The PCB is initialized and the process is placed in the ready queue.',
+    'ready-running': 'The scheduler dispatched this process to a CPU core. Registers are restored from the PCB.',
+    'running-ready': 'The process was preempted — either its time quantum expired or a higher-priority process needs the CPU.',
+    'running-blocked': 'The process made a blocking system call (like reading a file) and must wait for I/O.',
+    'blocked-ready': 'The I/O event completed. The process is now runnable again.',
+    'running-terminated': 'The process exited (via exit() or was killed). Its resources are being released.'
+  };
+  return reasons[key] || '';
+}
+
+function killProcess() {
+  if (!STATE.currentProcess) {
+    showToast('⚠ No process to kill');
+    return;
+  }
+  STATE.currentProcess.state = 'terminated';
+  STATE.terminatedCount++;
+  showStatus('💀 SIGKILL delivered');
+  teach('SIGKILL',
+    `Sent SIGKILL to PID ${STATE.currentProcess.pid}. This signal cannot be caught or ignored — the process terminates immediately, no cleanup. Compare to SIGTERM, which politely asks the process to exit; well-behaved processes save state and close files. SIGKILL is the emergency brake.`,
+    'error'
+  );
+  updateProcessInfo();
+  drawDiagram();
+  updateMetrics();
+}
+
+/* ============================================================
+   INFO + METRICS
+   ============================================================ */
+function updateProcessInfo() {
+  if (!STATE.currentProcess) {
+    DOM.procPid.textContent = '—';
+    DOM.procState.textContent = 'NEW';
+    DOM.procState.className = 'val state new';
+    DOM.procCpu.textContent = '0 ms';
+    DOM.procIo.textContent = '0 ms';
+    DOM.procTrans.textContent = '0';
+    DOM.procAge.textContent = '0 ms';
+    return;
+  }
+
+  const p = STATE.currentProcess;
+  DOM.procPid.textContent = p.pid;
+  DOM.procState.textContent = p.state.toUpperCase();
+  DOM.procState.className = `val state ${p.state}`;
+  DOM.procCpu.textContent = p.cpuTime + ' ms';
+  DOM.procIo.textContent = p.ioWait + ' ms';
+  DOM.procTrans.textContent = p.transitions;
+  DOM.procAge.textContent = Math.floor(performance.now() - p.createdAt) + ' ms';
+}
+
+function updateMetrics() {
+  if (STATE.currentProcess) {
+    DOM.mState.textContent = STATE.currentProcess.state.toUpperCase();
+    DOM.mState.className = 'metric-value ' + (STATE.currentProcess.state === 'running' ? 'good' : STATE.currentProcess.state === 'terminated' ? 'bad' : STATE.currentProcess.state === 'blocked' ? 'warn' : '');
+  } else {
+    DOM.mState.textContent = '—';
+  }
+  DOM.mForks.textContent = STATE.forkedCount;
+  DOM.mBlocked.textContent = STATE.blockedCount;
+  DOM.mTerm.textContent = STATE.terminatedCount;
+}
+
+/* ============================================================
+   AUTO SIMULATE
+   ============================================================ */
+function autoSimulate() {
+  if (STATE.autoRunning) {
+    STATE.autoRunning = false;
+    clearInterval(STATE.autoTimer);
+    STATE.autoTimer = null;
+    DOM.btnAuto.textContent = '▶ Auto Simulate Lifecycle';
+    return;
+  }
+
+  // Fork if needed
+  if (!STATE.currentProcess || STATE.currentProcess.state === 'terminated') {
+    forkProcess();
+  }
+
+  STATE.autoRunning = true;
+  DOM.btnAuto.textContent = '⏸ Stop Auto';
+
+  STATE.autoTimer = setInterval(() => {
+    if (!STATE.currentProcess) return;
+    const p = STATE.currentProcess;
+    p.cpuTime += Math.floor(Math.random() * 30) + 10;
+    p.ioWait += Math.floor(Math.random() * 15);
+
+    // Random transitions
+    const r = Math.random();
+    if (p.state === 'new' && r < 0.5) transitionTo('ready', 'admit');
+    else if (p.state === 'ready' && r < 0.4) transitionTo('running', 'dispatch');
+    else if (p.state === 'running' && r < 0.15) transitionTo('blocked', 'I/O wait');
+    else if (p.state === 'running' && r < 0.2) transitionTo('ready', 'preempt');
+    else if (p.state === 'running' && r < 0.25) transitionTo('terminated', 'exit');
+    else if (p.state === 'blocked' && r < 0.5) transitionTo('ready', 'I/O done');
+    else if (p.state === 'terminated') {
+      // Fork a new one
+      forkProcess();
+    }
+
+    updateProcessInfo();
+  }, 1000 / STATE.speed);
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetAll() {
+  if (STATE.autoTimer) clearInterval(STATE.autoTimer);
+  STATE.autoTimer = null;
+  STATE.autoRunning = false;
+  DOM.btnAuto.textContent = '▶ Auto Simulate Lifecycle';
+  STATE.currentProcess = null;
+  STATE.processes = [];
+  STATE.nextPid = 1;
+  STATE.activeEdge = null;
+  STATE.forkedCount = 0;
+  STATE.blockedCount = 0;
+  STATE.terminatedCount = 0;
+  DOM.statusBanner.classList.remove('show');
+  updateProcessInfo();
+  drawDiagram();
+  updateMetrics();
+  teach('RESET', 'All processes cleared.', 'info', false);
+}
+
+/* ============================================================
+   EVENT BINDINGS
+   ============================================================ */
+DOM.voiceToggle.addEventListener('click', () => Voice.toggle());
+DOM.teachingToggle.addEventListener('click', () => {
+  STATE.teaching = !STATE.teaching;
+  DOM.teachingToggle.textContent = STATE.teaching ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+  DOM.teachingToggle.style.opacity = STATE.teaching ? '1' : '0.5';
+});
+
+DOM.btnFork.addEventListener('click', forkProcess);
+DOM.btnKill.addEventListener('click', killProcess);
+DOM.btnReset.addEventListener('click', resetAll);
+DOM.btnDispatch.addEventListener('click', () => transitionTo('running', 'dispatch'));
+DOM.btnPreempt.addEventListener('click', () => transitionTo('ready', 'preempt'));
+DOM.btnBlock.addEventListener('click', () => transitionTo('blocked', 'I/O wait'));
+DOM.btnWake.addEventListener('click', () => transitionTo('ready', 'I/O done'));
+DOM.btnTerminate.addEventListener('click', () => transitionTo('terminated', 'exit'));
+DOM.btnAuto.addEventListener('click', autoSimulate);
+
+DOM.speedRange.addEventListener('input', e => {
+  STATE.speed = parseInt(e.target.value);
+  DOM.speedVal.textContent = STATE.speed.toFixed(1) + '×';
+  if (STATE.autoRunning) {
+    clearInterval(STATE.autoTimer);
+    STATE.autoTimer = setInterval(() => {
+      const btn = DOM.btnAuto;
+      const wasRunning = STATE.autoRunning;
+      STATE.autoRunning = false;
+      autoSimulate();
+      STATE.autoRunning = wasRunning;
+    }, 1000 / STATE.speed);
+  }
+});
+
+// Update process info every 200ms
+setInterval(updateProcessInfo, 200);
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+drawDiagram();
+updateMetrics();
+
+setTimeout(() => {
+  teach('WELCOME',
+    `Welcome to Process Lifecycle. A process is an executing instance of a program. Throughout its life, it moves between five states: NEW, READY, RUNNING, BLOCKED, and TERMINATED. The OS kernel manages these transitions using the scheduler and PCB (Process Control Block).`,
+    'cyan'
+  );
+
+  setTimeout(() => {
+    teach('THE FIVE STATES',
+      `NEW: process being created. READY: waiting for CPU. RUNNING: executing on CPU. BLOCKED: waiting for I/O or event. TERMINATED: done. Crucially, a BLOCKED process cannot be scheduled — even if a CPU is idle, the scheduler skips it. And a process that was blocked must go back through READY, never directly to RUNNING.`,
+      'purple'
+    );
+  }, 4500);
+
+  setTimeout(() => {
+    teach('THE PCB',
+      `Every process has a Process Control Block (PCB) in the kernel — the data structure that holds all its metadata: PID, state, program counter, register values, memory limits, open file descriptors, priority, and accounting info. When a process is preempted, the CPU registers are saved to the PCB; when rescheduled, they're restored. This is what makes multitasking possible.`,
+      'ok'
+    );
+  }, 9000);
+
+  setTimeout(() => {
+    teach('TRY IT',
+      `Click FORK NEW PROCESS to create a process. Then step through the transitions: admit → dispatch → I/O wait → I/O done → dispatch → exit. Or click AUTO SIMULATE LIFECYCLE to watch the process cycle through states automatically.`,
+      'warn'
+    );
+  }, 13500);
+
+  showToast('👋 Fork a process, then click transitions', 4500);
+}, 500);
+</script>
+</body>
+</html>
