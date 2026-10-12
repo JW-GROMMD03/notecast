@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privilege Escalation — Linux & Windows Interactive Teaching Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--green-lt);
+    text-shadow:0 0 8px rgba(34,197,94,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--green); color:var(--green-lt); }
+  .header-actions button.active{
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--green); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--green); cursor:pointer; box-shadow:0 0 7px rgba(34,197,94,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--green); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:var(--green-lt); font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--green); color:var(--green-lt); }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f2a18,#0a1a10);
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(34,197,94,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.danger:hover{ background:#2a0f0f; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.warn:hover{ background:#2a1f0f; }
+  button.act.pulse{ animation:pulseBtn 1.4s infinite; }
+  @keyframes pulseBtn{
+    0%,100%{ box-shadow:0 0 6px rgba(34,197,94,.3); }
+    50%{ box-shadow:0 0 18px rgba(34,197,94,.7); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--green-lt); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .pe-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .pe-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .pe-phase.done{ border-color:var(--green); color:var(--green-lt);
+    background:rgba(34,197,94,.12); }
+  .pe-phase.active{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.15); box-shadow:0 0 10px rgba(34,211,238,.4);
+    animation:kcPulse 1.2s infinite; }
+  @keyframes kcPulse{ 50%{ box-shadow:0 0 16px rgba(34,211,238,.7); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>PRIVILEGE ESCALATION</h1>
+    <span class="sub">LINUX · WINDOWS · SUID · SUDO · KERNEL · TOKEN THEFT · MITRE TA0004</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Target Platform</h3>
+      <select id="platformSelect">
+        <option value="linux">Linux (Ubuntu 22.04)</option>
+        <option value="windows">Windows Server 2019</option>
+        <option value="container">Container (Docker)</option>
+      </select>
+      <label class="ctl-label">Technique</label>
+      <select id="techSelect">
+        <option value="suid">SUID binary (find / -perm -4000)</option>
+        <option value="sudo">Sudo misconfiguration</option>
+        <option value="cron">Cron job hijack</option>
+        <option value="kernel">Kernel exploit (DirtyPipe)</option>
+        <option value="tokens">Windows token impersonation</option>
+        <option value="unquoted">Unquoted service path</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Current Access</h3>
+      <label class="ctl-label">Shell user</label>
+      <input type="text" id="userInput" value="www-data">
+      <label class="ctl-label">Technique payload</label>
+      <textarea id="payloadInput" placeholder="e.g. find / -perm -4000 -type f 2>/dev/null">/usr/bin/find / -perm -4000 -type f 2>/dev/null</textarea>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Enumeration depth <span class="slider-val" id="depthVal">80</span></label>
+      <input type="range" id="depthSlider" min="0" max="100" value="80">
+      <label class="ctl-label">Exploit reliability <span class="slider-val" id="relVal">70%</span></label>
+      <input type="range" id="relSlider" min="0" max="100" value="70">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ ESCALATE</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="patchBtn">🛡 PATCH</button>
+        <button type="button" class="act" id="selinuxBtn">🔒 SELINUX</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">www-data@target:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Privilege escalation on unauthorized systems is a felony under CFAA/CMA.</div>
+    <div class="status-badges">
+      <div class="status-badge">PLATFORM: <b id="badgePlatform">LINUX</b></div>
+      <div class="status-badge">TECHNIQUE: <b id="badgeTech">SUID</b></div>
+      <div class="status-badge">USER: <b id="badgeUser">www-data</b></div>
+      <div class="status-badge">PRIVILEGE: <b id="badgePriv">user</b></div>
+    </div>
+    <div class="pe-chain" id="peChain">
+      <div class="pe-phase" id="pp-ENUM">ENUMERATE</div>
+      <div class="pe-phase" id="pp-FIND">FIND VULN</div>
+      <div class="pe-phase" id="pp-EXPLOIT">EXPLOIT</div>
+      <div class="pe-phase" id="pp-ROOT">ROOT</div>
+      <div class="pe-phase" id="pp-PERSIST">PERSIST</div>
+      <div class="pe-phase" id="pp-EXFIL">EXFIL</div>
+    </div>
+    <div class="footer-overlay">MITRE TA0004 · T1548 · T1068 · T1078 · OWASP · GTFOBins · LOLBAS</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric" id="mSuid"><div class="m-label">SUID Bins</div><div class="m-value" id="mSuidVal">0</div></div>
+      <div class="metric" id="mSudo"><div class="m-label">Sudo Rules</div><div class="m-value" id="mSudoVal">0</div></div>
+      <div class="metric" id="mCron"><div class="m-label">Cron Jobs</div><div class="m-value" id="mCronVal">0</div></div>
+      <div class="metric" id="mKernel"><div class="m-label">Kernel Ver</div><div class="m-value" id="mKernelVal">5.15.0</div></div>
+      <div class="metric" id="mAttempts"><div class="m-label">Attempts</div><div class="m-value" id="mAttemptsVal">0</div></div>
+      <div class="metric" id="mSuccess"><div class="m-label">Success</div><div class="m-value" id="mSuccessVal">NO</div></div>
+      <div class="metric" id="mPriv"><div class="m-label">Privilege</div><div class="m-value" id="mPrivVal">user</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Defense</div><div class="m-value" id="mDefenseVal">OFF</div></div>
+    </div>
+    <div class="info-card">
+      <b>Privilege escalation — user → admin/root (TA0004).</b><br>
+      <span class="eq">Linux: SUID, sudo -l, cron, capabilities, kernel exploit</span><br>
+      <span class="eq">Windows: unquoted paths, token impersonation, AlwaysInstallElevated</span><br>
+      <span class="eq">Reference: GTFOBins (Linux), LOLBAS (Windows)</span><br>
+      <span style="color:var(--purple)">MITRE TA0004 · T1548 · T1068 · T1078</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  platform:'linux',
+  tech:'suid',
+  user:'www-data',
+  payload:'/usr/bin/find / -perm -4000 -type f 2>/dev/null',
+  depth:80,
+  reliability:70,
+  suid:0,
+  sudoRules:0,
+  cronJobs:0,
+  kernel:'5.15.0',
+  attempts:0,
+  success:false,
+  privilege:'user',
+  patched:false,
+  selinux:false,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['ENUM','FIND','EXPLOIT','ROOT','PERSIST','EXFIL'];
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'attacker', label:'attacker', ip:'203.0.113.66', x:0.12*W, y:0.20*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'target', label:'target (www-data)', ip:'10.0.0.50', x:0.45*W, y:0.50*H, icon:'server', color:'#3b82f6', glow:0, blink:0},
+    {id:'root', label:'root shell', ip:'—', x:0.75*W, y:0.50*H, icon:'server', color:'#22c55e', glow:0, blink:0},
+    {id:'kernel', label:'kernel', ip:'Linux 5.15.0', x:0.45*W, y:0.80*H, icon:'cloud', color:'#a855f7', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(34,197,94,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.01, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">' + escapeHtml(STATE.user) + '@target:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Privilege escalation is a critical phase of every authorized penetration test. However, escalating privileges on systems you do not own or lack written authorization to test is illegal under CFAA (US), CMA (UK), and equivalent laws. In bug bounties, only test within the defined scope. Never use privileged access to read data beyond the agreed scope. Report findings with clear reproduction steps and remediation guidance.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Privilege escalation (MITRE TA0004) is the process of gaining higher-level permissions than initially granted. On Linux: SUID binaries, sudo misconfigurations, world-writable cron scripts, kernel exploits, Linux capabilities. On Windows: unquoted service paths, weak service permissions, token impersonation, AlwaysInstallElevated. Reference: GTFOBins (Linux), LOLBAS (Windows).',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('id\nuid=33(www-data) gid=33(www-data) groups=33(www-data)\n\nuname -a\nLinux target 5.15.0-91-generic #101-Ubuntu SMP x86_64 GNU/Linux');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Platform: ' + STATE.platform.toUpperCase() + '. Technique: ' + STATE.tech.toUpperCase() + '. Current user: ' + STATE.user + '. Click ESCALATE to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.30*W, 0.30*H, 'ATTACKER', '#ef4444');
+  drawZone(0.35*W, 0.08*H, 0.60*W, 0.80*H, 'TARGET SYSTEM', '#22c55e');
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+  });
+
+  // Privilege bar
+  ctx.save();
+  var barX = 0.35*W, barY = 0.85*H, barW = 0.60*W, barH = 12;
+  ctx.fillStyle = 'rgba(7,10,20,0.9)';
+  ctx.fillRect(barX, barY, barW, barH);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(barX, barY, barW, barH);
+  var fillPct = STATE.privilege === 'root' ? 1 : (STATE.privilege === 'sudo' ? 0.6 : 0.2);
+  ctx.fillStyle = STATE.privilege === 'root' ? '#22c55e' : (STATE.privilege === 'sudo' ? '#f59e0b' : '#3b82f6');
+  ctx.fillRect(barX, barY, barW * fillPct, barH);
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = '#cbd5e1';
+  ctx.textAlign = 'left';
+  ctx.fillText('PRIVILEGE: ' + STATE.privilege.toUpperCase(), barX + 6, barY - 4);
+  ctx.restore();
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Linux: find / -perm -4000 -type f 2>/dev/null', 12, H - 62);
+  ctx.fillText('Windows: whoami /priv ; sc qc <service>', 12, H - 50);
+  ctx.fillText('Reference: GTFOBins (Linux) · LOLBAS (Windows)', 12, H - 38);
+  ctx.fillText('MITRE TA0004 · T1548 (Abuse Elevation Control)', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgePlatform').textContent = STATE.platform.toUpperCase();
+  document.getElementById('badgeTech').textContent = STATE.tech.toUpperCase();
+  document.getElementById('badgeUser').textContent = STATE.user;
+  document.getElementById('badgePriv').textContent = STATE.privilege;
+
+  document.getElementById('mSuidVal').textContent = STATE.suid;
+  document.getElementById('mSudoVal').textContent = STATE.sudoRules;
+  document.getElementById('mCronVal').textContent = STATE.cronJobs;
+  document.getElementById('mKernelVal').textContent = STATE.kernel;
+  document.getElementById('mAttemptsVal').textContent = STATE.attempts;
+  document.getElementById('mSuccessVal').textContent = STATE.success ? 'YES' : 'NO';
+  document.getElementById('mPrivVal').textContent = STATE.privilege;
+  document.getElementById('mDefenseVal').textContent = STATE.patched ? 'PATCHED' : (STATE.selinux ? 'SELINUX' : 'OFF');
+
+  document.getElementById('mSuccess').className = 'metric' + (STATE.success ? ' bad' : '');
+  document.getElementById('mPriv').className = 'metric' + (STATE.privilege === 'root' ? ' bad' : STATE.privilege === 'sudo' ? ' warn' : '');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('pp-' + p);
+    if(!el) return;
+    el.className = 'pe-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  switch(phase){
+    case 'ENUM':
+      STATE.attempts++;
+      addFeed('ENUM', 'Running enumeration. On Linux, standard checks: id, sudo -l, find / -perm -4000, uname -a (kernel), cat /etc/crontab, getcap -r /. On Windows: whoami /priv, whoami /groups, sc query, icacls, systeminfo.', 'info');
+      addCommandFeed('id; uname -a; sudo -l 2>/dev/null', 'uid=33(www-data) gid=33(www-data)\nLinux target 5.15.0-91-generic\nMatching Defaults entries for www-data on target\nUser www-data may run the following commands:\n    (ALL) NOPASSWD: /usr/bin/find');
+      STATE.suid = Math.floor(Math.random() * 8) + 2;
+      STATE.sudoRules = Math.floor(Math.random() * 3) + 1;
+      STATE.cronJobs = Math.floor(Math.random() * 4) + 1;
+      break;
+    case 'FIND':
+      if(STATE.patched){
+        addFeed('DEFENSE', 'All known misconfigurations patched. SUID binaries removed, sudo rules cleaned up, cron scripts secured, kernel updated. No obvious escalation path.', 'ok');
+        STATE.running = false;
+        return;
+      }
+      var findings = [];
+      if(STATE.tech === 'suid') findings.push('/usr/bin/find (SUID) — GTFOBins: find . -exec /bin/sh -p \\; -quit');
+      if(STATE.tech === 'sudo') findings.push('sudo -l → (ALL) NOPASSWD: /usr/bin/find — can run find as root');
+      if(STATE.tech === 'cron') findings.push('/etc/cron.d/backup runs /opt/backup.sh (world-writable) as root');
+      if(STATE.tech === 'kernel') findings.push('Kernel 5.15.0 vulnerable to CVE-2022-0847 (DirtyPipe)');
+      if(STATE.tech === 'tokens') findings.push('SeImpersonatePrivilege enabled — can impersonate SYSTEM via JuicyPotato');
+      if(STATE.tech === 'unquoted') findings.push('Service "C:\\Program Files\\My App\\service.exe" — unquoted path allows DLL hijack at C:\\Program.exe');
+      addFeed('FIND', 'Vulnerable misconfiguration identified! ' + findings[0] + ' This is the escalation vector.', 'warn');
+      break;
+    case 'EXPLOIT':
+      if(STATE.selinux){
+        addFeed('DEFENSE', 'SELinux ENFORCING blocked the exploitation attempt. Even with SUID bit set, SELinux type enforcement prevents the binary from transitioning to unconfined_t. Defense in depth.', 'ok');
+        STATE.running = false;
+        return;
+      }
+      var reliability = STATE.reliability / 100;
+      if(Math.random() < reliability){
+        addFeed('EXPLOIT', 'Exploitation successful! ' + STATE.tech.toUpperCase() + ' vector worked. ' +
+          (STATE.tech === 'suid' ? 'find / -exec /bin/sh -p \\; -quit → euid=0(root)' :
+           STATE.tech === 'sudo' ? 'sudo find / -exec /bin/sh \\; → root shell' :
+           STATE.tech === 'cron' ? 'Overwrote /opt/backup.sh with reverse shell; cron executed it as root' :
+           STATE.tech === 'kernel' ? 'DirtyPipe (CVE-2022-0847) wrote to /etc/passwd; added root user' :
+           STATE.tech === 'tokens' ? 'JuicyPotato impersonated SYSTEM token' :
+           'DLL hijack placed evil.dll at C:\\Program.exe; service restart loaded it as SYSTEM'),
+          'error');
+        STATE.privilege = 'root';
+        STATE.nodes.find(function(n){return n.id==='root';}).glow = 1;
+        spawnPacket('target','root','#22c55e','ROOT',0.02);
+        addCommandFeed(STATE.tech === 'suid' ? 'find . -exec /bin/sh -p \\; -quit' : 'sudo -i',
+          '# id\nuid=0(root) gid=0(root) groups=0(root)\n# whoami\nroot');
+      } else {
+        addFeed('EXPLOIT', 'Exploitation FAILED (reliability ' + STATE.reliability + '%). Race condition lost, or ASLR/kernel randomization. Retry with adjusted parameters, or try alternative vector.', 'error');
+      }
+      break;
+    case 'ROOT':
+      if(STATE.privilege !== 'root'){
+        addFeed('ROOT', 'Not root yet. Cannot proceed to persistence.', 'warn');
+        STATE.running = false;
+        return;
+      }
+      STATE.success = true;
+      addFeed('ROOT', 'Privilege escalated to ROOT. Full system control: read /etc/shadow, modify kernel modules, install rootkit, exfiltrate any file. This is a critical finding in any pentest.', 'error');
+      break;
+    case 'PERSIST':
+      addFeed('PERSIST', 'Establishing persistence: adding SSH authorized key for root, cron job for reverse shell, or systemd service. On Windows: registry Run key, scheduled task, or new admin user. Persistence ensures attacker survives reboot.', 'error');
+      addCommandFeed('echo "ssh-rsa AAAA...attacker" >> /root/.ssh/authorized_keys',
+        '[+] Root SSH key added\n[+] Persistence established');
+      break;
+    case 'EXFIL':
+      addFeed('EXFIL', 'Exfiltrating /etc/shadow, SSH keys, and database credentials. Full compromise. Detection would require: integrity monitoring on /root/.ssh, auditd rules on privileged file access, or EDR alerting on LSASS/shadow reads.', 'error');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.suid = 0;
+  STATE.sudoRules = 0;
+  STATE.cronJobs = 0;
+  STATE.attempts = 0;
+  STATE.success = false;
+  STATE.privilege = 'user';
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('pp-' + p); if(el) el.className = 'pe-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'Privilege state reset. User back to www-data.', 'info');
+  termWrite('reset --all\n[+] Privilege state cleared.');
+}
+
+document.getElementById('platformSelect').addEventListener('change', function(e){
+  STATE.platform = e.target.value;
+  if(STATE.platform === 'windows'){ STATE.user = 'iis apppool\\defaultapppool'; STATE.kernel = '10.0.17763'; }
+  else if(STATE.platform === 'container'){ STATE.user = 'appuser'; STATE.kernel = '5.15.0'; }
+  else { STATE.user = 'www-data'; STATE.kernel = '5.15.0'; }
+  document.getElementById('userInput').value = STATE.user;
+  addFeed('PLATFORM', 'Target platform: ' + STATE.platform.toUpperCase() + '. Current user: ' + STATE.user + '.', 'info');
+});
+
+document.getElementById('techSelect').addEventListener('change', function(e){
+  STATE.tech = e.target.value;
+  var info = {
+    suid:'SUID binary: file has setuid bit; runs as owner (root). GTFOBins catalogs exploitable binaries.',
+    sudo:'Sudo misconfiguration: /etc/sudoers grants NOPASSWD for a binary that can spawn a shell.',
+    cron:'Cron job hijack: script run by root is writable by lower-privileged user, or PATH hijack.',
+    kernel:'Kernel exploit: outdated kernel vulnerable to local privesc (DirtyPipe, DirtyCow, PwnKit).',
+    tokens:'Windows token impersonation: SeImpersonatePrivilege allows impersonating SYSTEM via named pipe.',
+    unquoted:'Unquoted service path: Windows service path with spaces unquoted → attacker drops .exe earlier in path.'
+  };
+  addFeed('TECH', 'Technique: ' + STATE.tech.toUpperCase() + '. ' + info[STATE.tech], 'warn');
+});
+
+document.getElementById('userInput').addEventListener('input', function(e){ STATE.user = e.target.value; });
+document.getElementById('payloadInput').addEventListener('input', function(e){ STATE.payload = e.target.value; });
+
+document.getElementById('depthSlider').addEventListener('input', function(e){
+  STATE.depth = parseInt(e.target.value);
+  document.getElementById('depthVal').textContent = e.target.value;
+});
+document.getElementById('relSlider').addEventListener('input', function(e){
+  STATE.reliability = parseInt(e.target.value);
+  document.getElementById('relVal').textContent = e.target.value + '%';
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.attempts = 0;
+  STATE.success = false;
+  STATE.privilege = 'user';
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('ESCALATE', 'Starting privilege escalation on ' + STATE.platform.toUpperCase() + '. Technique: ' + STATE.tech.toUpperCase() + '. Reliability: ' + STATE.reliability + '%.', 'warn');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1300);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('patchBtn').addEventListener('click', function(){
+  STATE.patched = !STATE.patched;
+  this.classList.toggle('active', STATE.patched);
+  if(STATE.patched){
+    addFeed('DEFENSE', 'System patched. All SUID binaries audited, sudo rules cleaned, cron scripts restricted to root, kernel updated. Attack vector eliminated. Patch management is the #1 defense against privesc.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'System unpatched. Vulnerable to privilege escalation.', 'warn');
+  }
+});
+
+document.getElementById('selinuxBtn').addEventListener('click', function(){
+  STATE.selinux = !STATE.selinux;
+  this.classList.toggle('active', STATE.selinux);
+  if(STATE.selinux){
+    addFeed('DEFENSE', 'SELinux ENFORCING. Mandatory Access Control confines processes to their type, even root. A SUID root binary spawned from www-data context runs as httpd_t — cannot read /etc/shadow or write kernel modules. Defense-in-depth beyond DAC.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'SELinux DISABLED. Process confined only by DAC.', 'warn');
+  }
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

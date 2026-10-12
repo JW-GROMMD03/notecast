@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HVAC &amp; Psychrometrics — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>HVAC &amp; PSYCHROMETRICS</h1>
+    <span class="sub">MOIST AIR · RH · ENTHALPY · COOLING COIL · DUCT</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Process</div>
+    <div class="control-group">
+      <label>HVAC Process</label>
+      <select id="processSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="cool">Cooling Coil</option>
+        <option value="heat">Heating Coil</option>
+        <option value="humidify">Humidification</option>
+        <option value="mix">Air Mixing</option>
+      </select>
+    </div>
+
+    <div class="section-title">Outdoor / Inlet Air</div>
+    <div class="control-group">
+      <label>Dry-Bulb Temp T <span class="val" id="tVal">35 °C</span></label>
+      <input type="range" id="tSlider" min="-10" max="50" value="35" step="0.5">
+    </div>
+    <div class="control-group">
+      <label>Relative Humidity φ <span class="val" id="rhVal">60%</span></label>
+      <input type="range" id="rhSlider" min="5" max="100" value="60" step="1">
+    </div>
+    <div class="control-group">
+      <label>Mass Flow ṁ_air <span class="val" id="mVal">1.0 kg/s</span></label>
+      <input type="range" id="mSlider" min="0.1" max="10" value="1" step="0.1">
+    </div>
+
+    <div class="section-title">Process Target</div>
+    <div class="control-group">
+      <label>Supply Temp T_supply <span class="val" id="tsVal">13 °C</span></label>
+      <input type="range" id="tsSlider" min="-10" max="40" value="13" step="0.5">
+    </div>
+    <div class="control-group">
+      <label>Supply RH φ_supply <span class="val" id="rhsVal">90%</span></label>
+      <input type="range" id="rhsSlider" min="10" max="100" value="90" step="1">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ RUN HVAC</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="condBtn">⚠ CONDENSATION</button>
+    <button class="btn warn" id="dryBtn">⚠ LOW HUMIDITY</button>
+    <button class="btn warn" id="overBtn">⚠ OVERCOOL</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="summer">Summer Cooling</button>
+    <button class="btn" data-preset="winter">Winter Heating</button>
+    <button class="btn" data-preset="cleanroom">Cleanroom</button>
+    <button class="btn" data-preset="data">Data Center</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      Q̇ = ṁ·Δh &nbsp;|&nbsp; h = 1.006·T + w·(2501 + 1.86·T) &nbsp;|&nbsp; <span class="hl">w_sat(T) from psychrometric tables</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mW">
+          <div class="mlabel">HUMIDITY RATIO w</div>
+          <div class="mvalue">0<span class="munit">g/kg</span></div>
+        </div>
+        <div class="metric" id="mH">
+          <div class="mlabel">ENTHALPY h</div>
+          <div class="mvalue">0<span class="munit">kJ/kg</span></div>
+        </div>
+        <div class="metric" id="mTdp">
+          <div class="mlabel">DEW POINT</div>
+          <div class="mvalue">0<span class="munit">°C</span></div>
+        </div>
+        <div class="metric" id="mTwb">
+          <div class="mlabel">WET-BULB</div>
+          <div class="mvalue">0<span class="munit">°C</span></div>
+        </div>
+        <div class="metric" id="mQ">
+          <div class="mlabel">COIL LOAD</div>
+          <div class="mvalue">0<span class="munit">kW</span></div>
+        </div>
+        <div class="metric" id="mSHR">
+          <div class="mlabel">SHR</div>
+          <div class="mvalue">0.00</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">h = 1.006·T + w·(2501 + 1.86·T)</div>
+      <div class="eq">Q̇_sensible = ṁ·cp·ΔT</div>
+      <div class="eq">Q̇_total = ṁ·Δh</div>
+      <div class="def">
+        Psychrometrics describes moist air properties. Dry-bulb, wet-bulb, 
+        dew point, relative humidity, humidity ratio, and enthalpy are 
+        linked. HVAC coils cool air, often below dew point — moisture 
+        condenses out. SHR (sensible heat ratio) tells how much cooling 
+        goes to temperature vs. dehumidification.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const P_ATM = 101.325; // kPa
+
+const S = {
+  process: 'cool',
+  T: 35,
+  RH: 60,
+  mdot: 1.0,
+  T_supply: 13,
+  RH_supply: 90,
+  running: false,
+  time: 0,
+  history: []
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const processSel = document.getElementById('processSelect');
+const tSlider = document.getElementById('tSlider');
+const rhSlider = document.getElementById('rhSlider');
+const mSlider = document.getElementById('mSlider');
+const tsSlider = document.getElementById('tsSlider');
+const rhsSlider = document.getElementById('rhsSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── PSYCHROMETRIC MATH ────────────────────────────────────
+// Saturation pressure of water vapor (Antoine equation)
+function pSat(T_C){
+  // T in °C, returns kPa
+  // For -20 to 100 °C
+  const T = T_C + 273.15;
+  if(T_C > 0){
+    return 0.61078 * Math.exp(17.2694 * T_C / (T_C + 237.29));
+  } else {
+    return 0.61078 * Math.exp(21.875 * T_C / (T_C + 265.5));
+  }
+}
+
+// Humidity ratio w = 0.622·p_v/(p_atm − p_v)
+function humidityRatio(T, RH){
+  const pv = RH / 100 * pSat(T);
+  return 0.622 * pv / (P_ATM - pv) * 1000; // g/kg
+}
+
+// Enthalpy
+function enthalpy(T, w_g_per_kg){
+  const w = w_g_per_kg / 1000;
+  return 1.006 * T + w * (2501 + 1.86 * T);
+}
+
+// Dew point (approximate)
+function dewPoint(T, RH){
+  const pv = RH / 100 * pSat(T);
+  const alpha = Math.log(pv / 0.61078);
+  return 243.04 * alpha / (17.625 - alpha);
+}
+
+// Wet-bulb (iterative approximation)
+function wetBulb(T, RH){
+  let Twb = T;
+  for(let i=0;i<20;i++){
+    const w = humidityRatio(T, RH);
+    const ws = humidityRatio(Twb, 100);
+    const h = 1.006 * T + w/1000 * (2501 + 1.86 * T);
+    const hs = 1.006 * Twb + ws/1000 * (2501 + 1.86 * Twb);
+    const err = h - hs;
+    Twb -= err / (1.006 + ws/1000 * 1.86 + 2501/1000 * 0.001);
+    if(Math.abs(err) < 0.01) break;
+  }
+  return Twb;
+}
+
+function computePsychro(){
+  const pv = S.RH / 100 * pSat(S.T);
+  const w = humidityRatio(S.T, S.RH);
+  const h = enthalpy(S.T, w);
+  const Tdp = dewPoint(S.T, S.RH);
+  const Twb = wetBulb(S.T, S.RH);
+
+  // Supply air
+  const w_s = humidityRatio(S.T_supply, S.RH_supply);
+  const h_s = enthalpy(S.T_supply, w_s);
+
+  // Coil load
+  const Q_total = S.mdot * Math.abs(h - h_s); // kW
+  const Q_sensible = S.mdot * 1.006 * Math.abs(S.T - S.T_supply); // kW
+  const SHR = Q_total > 0 ? Q_sensible / Q_total : 1;
+
+  // Condensation check: if supply T < dew point of inlet
+  const condensing = S.T_supply < Tdp;
+
+  return { pv, w, h, Tdp, Twb, w_s, h_s, Q_total, Q_sensible, SHR, condensing };
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawPsychrometricChart(W, H);
+  drawSystemDiagram(W, H);
+  drawLoadChart(W, H);
+}
+
+function drawPsychrometricChart(W, H){
+  const ox = 60;
+  const oy = 40;
+  const w = W * 0.55;
+  const h = H * 0.55;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('PSYCHROMETRIC CHART', ox, oy - 8);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(ox, oy, w, h);
+
+  const pad = { l:50, r:20, t:20, b:40 };
+  const gw = w - pad.l - pad.r;
+  const gh = h - pad.t - pad.b;
+
+  const Tmin = -10, Tmax = 50;
+  const wMax = 30; // g/kg
+
+  const xOf = T => ox + pad.l + (T - Tmin) / (Tmax - Tmin) * gw;
+  const yOf = wv => oy + h - pad.b - (wv / wMax) * gh;
+
+  // Grid
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  for(let i=0;i<=6;i++){
+    const y = oy + pad.t + gh * i / 6;
+    ctx.beginPath(); ctx.moveTo(ox + pad.l, y); ctx.lineTo(ox + pad.l + gw, y); ctx.stroke();
+  }
+  for(let i=0;i<=12;i++){
+    const x = ox + pad.l + gw * i / 12;
+    ctx.beginPath(); ctx.moveTo(x, oy + pad.t); ctx.lineTo(x, oy + pad.t + gh); ctx.stroke();
+  }
+  ctx.restore();
+
+  // Saturation curve (100% RH)
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let i=0;i<=60;i++){
+    const T = Tmin + (i / 60) * (Tmax - Tmin);
+    const w_s = humidityRatio(T, 100);
+    const x = xOf(T);
+    const y = yOf(Math.min(wMax, w_s));
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Constant RH curves
+  [20, 40, 60, 80].forEach(rh => {
+    ctx.strokeStyle = 'rgba(100,116,139,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(let i=0;i<=60;i++){
+      const T = Tmin + (i / 60) * (Tmax - Tmin);
+      const w_rh = humidityRatio(T, rh);
+      if(w_rh > wMax) continue;
+      const x = xOf(T);
+      const y = yOf(w_rh);
+      if(i===0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  });
+
+  // Labels
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('100% RH', xOf(15) + 5, yOf(humidityRatio(15, 100)) - 4);
+
+  // State point
+  const info = computePsychro();
+  const px = xOf(S.T);
+  const py = yOf(Math.min(wMax, info.w));
+  ctx.beginPath();
+  ctx.arc(px, py, 7, 0, Math.PI * 2);
+  ctx.fillStyle = '#f87171';
+  ctx.shadowColor = '#f87171';
+  ctx.shadowBlur = 12;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#f87171';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.fillText('Inlet', px + 10, py - 8);
+
+  // Supply point
+  const pxs = xOf(S.T_supply);
+  const pys = yOf(Math.min(wMax, info.w_s));
+  ctx.beginPath();
+  ctx.arc(pxs, pys, 7, 0, Math.PI * 2);
+  ctx.fillStyle = '#22d3ee';
+  ctx.shadowColor = '#22d3ee';
+  ctx.shadowBlur = 12;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#22d3ee';
+  ctx.fillText('Supply', pxs + 10, pys + 15);
+
+  // Process line
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  ctx.moveTo(px, py);
+  ctx.lineTo(pxs, pys);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Axes
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  for(let i=0;i<=6;i++){
+    ctx.fillText((Tmin + i * (Tmax - Tmin) / 6).toFixed(0), ox + pad.l + gw * i / 6, oy + h - pad.b + 14);
+  }
+  ctx.fillText('Dry-Bulb Temperature (°C)', ox + w/2, oy + h - 8);
+  ctx.textAlign = 'left';
+  ctx.textAlign = 'right';
+  for(let i=0;i<=6;i++){
+    ctx.fillText((i * wMax / 6).toFixed(0), ox + pad.l - 6, oy + h - pad.b - gh * i / 6 + 3);
+  }
+  ctx.textAlign = 'left';
+  ctx.save();
+  ctx.translate(ox + 15, oy + h/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign = 'center';
+  ctx.fillText('Humidity Ratio (g/kg)', 0, 0);
+  ctx.restore();
+  ctx.textAlign = 'left';
+}
+
+function drawSystemDiagram(W, H){
+  const cx = W - 240;
+  const cy = 110;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('AIR HANDLING UNIT', cx - 80, cy - 40);
+
+  // Duct
+  const ductW = 200;
+  const ductH = 60;
+  const dx = cx - ductW/2;
+  const dy = cy;
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(dx, dy, ductW, ductH);
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(dx, dy, ductW, ductH);
+
+  // Inlet arrow
+  ctx.fillStyle = '#f87171';
+  ctx.beginPath();
+  ctx.moveTo(dx - 25, dy + ductH/2);
+  ctx.lineTo(dx, dy + ductH/2);
+  ctx.lineTo(dx, dy + ductH/2 - 8);
+  ctx.lineTo(dx - 25, dy + ductH/2);
+  ctx.fill();
+  ctx.fillStyle = '#f87171';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.fillText('Inlet', dx - 55, dy - 5);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText(S.T.toFixed(1) + '°C, ' + S.RH + '%', dx - 65, dy + 12);
+
+  // Coil (zigzag lines)
+  const coilX = dx + 80;
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2;
+  for(let i=0;i<6;i++){
+    ctx.beginPath();
+    ctx.moveTo(coilX + i * 6, dy + 5);
+    ctx.lineTo(coilX + i * 6 + 6, dy + ductH - 5);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('COIL', coilX + 20, dy + ductH + 15);
+  ctx.textAlign = 'left';
+
+  // Outlet arrow
+  ctx.fillStyle = '#4ade80';
+  ctx.beginPath();
+  ctx.moveTo(dx + ductW + 25, dy + ductH/2);
+  ctx.lineTo(dx + ductW, dy + ductH/2);
+  ctx.lineTo(dx + ductW, dy + ductH/2 - 8);
+  ctx.lineTo(dx + ductW + 25, dy + ductH/2);
+  ctx.fill();
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.fillText('Supply', dx + ductW + 10, dy - 5);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText(S.T_supply.toFixed(1) + '°C, ' + S.RH_supply + '%', dx + ductW + 5, dy + 12);
+
+  // Condensate drain (if condensing)
+  const info = computePsychro();
+  if(info.condensing){
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(coilX + 20, dy + ductH);
+    ctx.lineTo(coilX + 20, dy + ductH + 25);
+    ctx.stroke();
+    // Droplets
+    for(let i=0;i<5;i++){
+      ctx.beginPath();
+      ctx.arc(coilX + 20 + (Math.random() - 0.5) * 6, dy + ductH + 30 + i * 5, 2, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(34,211,238,0.6)';
+      ctx.fill();
+    }
+    ctx.fillStyle = '#22d3ee';
+    ctx.font = 'bold 9px Consolas, monospace';
+    ctx.fillText('condensate', coilX + 30, dy + ductH + 55);
+  }
+}
+
+function drawLoadChart(W, H){
+  const ox = W - 280;
+  const oy = H - 200;
+  const w = 260;
+  const h = 180;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('COIL LOAD BREAKDOWN', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const info = computePsychro();
+
+  // Stacked bar: sensible + latent
+  const barW = w - 60;
+  const barH = 40;
+  const barX = ox + 30;
+  const barY = oy + 50;
+
+  const Q_sens = info.Q_sensible;
+  const Q_lat = Math.max(0, info.Q_total - info.Q_sensible);
+  const Q_total = Q_sens + Q_lat;
+
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(barX, barY, barW, barH);
+
+  // Sensible (red)
+  const sensFrac = Q_total > 0 ? Q_sens / Q_total : 1;
+  ctx.fillStyle = '#f87171';
+  ctx.fillRect(barX, barY, barW * sensFrac, barH);
+  // Latent (blue)
+  ctx.fillStyle = '#22d3ee';
+  ctx.fillRect(barX + barW * sensFrac, barY, barW * (1 - sensFrac), barH);
+  ctx.strokeStyle = '#0a0e1a';
+  ctx.strokeRect(barX, barY, barW, barH);
+
+  // Labels
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('Sensible', barX, barY - 8);
+  ctx.fillStyle = '#f87171';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.fillText(Q_sens.toFixed(2) + ' kW', barX, barY + 25);
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('Latent', barX + barW * sensFrac + 5, barY - 8);
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = 'bold 10px Consolas, monospace';
+  if(sensFrac < 0.7){
+    ctx.fillText(Q_lat.toFixed(2) + ' kW', barX + barW * sensFrac + 5, barY + 25);
+  }
+
+  // SHR
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 14px Consolas, monospace';
+  ctx.fillText('SHR = ' + info.SHR.toFixed(3), barX, barY + barH + 30);
+
+  // Total
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText('Total: ' + info.Q_total.toFixed(2) + ' kW', barX, barY + barH + 55);
+
+  // Note
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('SHR > 0.75 = mostly cooling', barX, barY + barH + 75);
+  ctx.fillText('SHR < 0.6 = mostly dehumidifying', barX, barY + barH + 90);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const info = computePsychro();
+  document.querySelector('#mW .mvalue').innerHTML = info.w.toFixed(2) + '<span class="munit">g/kg</span>';
+  document.querySelector('#mH .mvalue').innerHTML = info.h.toFixed(1) + '<span class="munit">kJ/kg</span>';
+  document.querySelector('#mTdp .mvalue').innerHTML = info.Tdp.toFixed(1) + '<span class="munit">°C</span>';
+  document.querySelector('#mTwb .mvalue').innerHTML = info.Twb.toFixed(1) + '<span class="munit">°C</span>';
+  document.querySelector('#mQ .mvalue').innerHTML = info.Q_total.toFixed(2) + '<span class="munit">kW</span>';
+  document.querySelector('#mSHR .mvalue').textContent = info.SHR.toFixed(3);
+
+  document.getElementById('mTdp').className = 'metric' + (info.condensing ? ' warn' : ' ok');
+  document.getElementById('mSHR').className = 'metric' + (info.SHR < 0.6 ? ' warn' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  if(S.running){
+    S.time += 1/60;
+  }
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+processSel.addEventListener('change', e => {
+  S.process = e.target.value;
+  teach('PROCESS', 'HVAC process: ' + S.process + '. ' + 
+    (S.process === 'cool' ? 'Cooling coil removes heat AND moisture if below dew point.' :
+     S.process === 'heat' ? 'Heating coil raises dry-bulb, lowers RH.' :
+     S.process === 'humidify' ? 'Adds moisture via steam or evaporative pad.' :
+     'Mixing two air streams — important for economizer control.'), 'concept');
+});
+
+tSlider.addEventListener('input', e => {
+  S.T = parseFloat(e.target.value);
+  document.getElementById('tVal').textContent = S.T.toFixed(1) + ' °C';
+});
+
+rhSlider.addEventListener('input', e => {
+  S.RH = parseFloat(e.target.value);
+  document.getElementById('rhVal').textContent = S.RH + '%';
+});
+
+mSlider.addEventListener('input', e => {
+  S.mdot = parseFloat(e.target.value);
+  document.getElementById('mVal').textContent = S.mdot.toFixed(1) + ' kg/s';
+});
+
+tsSlider.addEventListener('input', e => {
+  S.T_supply = parseFloat(e.target.value);
+  document.getElementById('tsVal').textContent = S.T_supply.toFixed(1) + ' °C';
+});
+
+rhsSlider.addEventListener('input', e => {
+  S.RH_supply = parseFloat(e.target.value);
+  document.getElementById('rhsVal').textContent = S.RH_supply + '%';
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ RUN HVAC';
+  if(S.running){
+    const info = computePsychro();
+    teach('RUN', 'HVAC system running. Coil load ' + info.Q_total.toFixed(2) + ' kW, SHR = ' + info.SHR.toFixed(2) + '.', 'info');
+    if(info.condensing){
+      teach('CONDENSING', 'Supply temperature ' + S.T_supply + '°C is below dew point ' + info.Tdp.toFixed(1) + '°C — coil is condensing moisture. Latent load = ' + (info.Q_total - info.Q_sensible).toFixed(2) + ' kW.', 'warn');
+    }
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  const info = computePsychro();
+  teach('STEP', 'Dry-bulb: ' + S.T + '°C, RH: ' + S.RH + '%, w = ' + info.w.toFixed(2) + ' g/kg, h = ' + info.h.toFixed(1) + ' kJ/kg.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.process = 'cool'; S.T = 35; S.RH = 60; S.mdot = 1.0;
+  S.T_supply = 13; S.RH_supply = 90;
+  S.running = false; S.time = 0;
+  processSel.value = 'cool';
+  tSlider.value = 35; rhSlider.value = 60; mSlider.value = 1;
+  tsSlider.value = 13; rhsSlider.value = 90;
+  document.getElementById('tVal').textContent = '35.0 °C';
+  document.getElementById('rhVal').textContent = '60%';
+  document.getElementById('mVal').textContent = '1.0 kg/s';
+  document.getElementById('tsVal').textContent = '13.0 °C';
+  document.getElementById('rhsVal').textContent = '90%';
+  playBtn.textContent = '▶ RUN HVAC';
+  teach('RESET', 'HVAC system reset to defaults.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('condBtn').addEventListener('click', () => {
+  S.T_supply = 5;
+  tsSlider.value = 5;
+  document.getElementById('tsVal').textContent = '5.0 °C';
+  const info = computePsychro();
+  teach('CONDENSING', 'Supply temperature 5°C is well below dew point ' + info.Tdp.toFixed(1) + '°C — coil is dehumidifying. Condensate drains away. This is how air conditioning removes humidity.', 'warn');
+});
+
+document.getElementById('dryBtn').addEventListener('click', () => {
+  S.RH = 15;
+  rhSlider.value = 15;
+  document.getElementById('rhVal').textContent = '15%';
+  teach('DRY', 'Very low humidity — dry, uncomfortable air. Static electricity, dry skin, respiratory irritation. Humidification needed. Ideal RH is 40-60%.', 'warn');
+});
+
+document.getElementById('overBtn').addEventListener('click', () => {
+  S.T_supply = -5;
+  tsSlider.value = -5;
+  document.getElementById('tsVal').textContent = '-5.0 °C';
+  const info = computePsychro();
+  teach('OVERCOOL', 'Supply at -5°C — far below target. Wastes energy and may freeze the coil. Real systems avoid going below 0°C unless using glycol. Latent load = ' + (info.Q_total - info.Q_sensible).toFixed(2) + ' kW.', 'warn');
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'summer'){
+      S.process = 'cool'; S.T = 35; S.RH = 60; S.mdot = 2.0; S.T_supply = 12; S.RH_supply = 90;
+      processSel.value = 'cool';
+      tSlider.value = 35; rhSlider.value = 60; mSlider.value = 2;
+      tsSlider.value = 12; rhsSlider.value = 90;
+      updateLabels(); resetState();
+      teach('SUMMER', 'Summer cooling: hot humid outdoor air (35°C, 60% RH) cooled to 12°C. Both sensible and latent loads. Condensate drains away.', 'concept');
+    } else if(p === 'winter'){
+      S.process = 'heat'; S.T = 0; S.RH = 40; S.mdot = 2.0; S.T_supply = 22; S.RH_supply = 30;
+      processSel.value = 'heat';
+      tSlider.value = 0; rhSlider.value = 40; mSlider.value = 2;
+      tsSlider.value = 22; rhsSlider.value = 30;
+      updateLabels(); resetState();
+      teach('WINTER', 'Winter heating: cold dry outdoor air (0°C, 40% RH) heated to 22°C. RH drops — often needs humidification. No condensation.', 'concept');
+    } else if(p === 'cleanroom'){
+      S.process = 'cool'; S.T = 30; S.RH = 70; S.mdot = 5.0; S.T_supply = 18; S.RH_supply = 45;
+      processSel.value = 'cool';
+      tSlider.value = 30; rhSlider.value = 70; mSlider.value = 5;
+      tsSlider.value = 18; rhsSlider.value = 45;
+      updateLabels(); resetState();
+      teach('CLEANROOM', 'Cleanroom HVAC: strict RH control (45% ±5%), temperature 20-22°C. High air changes (60+/hour), HEPA filters. All heat is carefully tracked.', 'concept');
+    } else {
+      S.process = 'cool'; S.T = 38; S.RH = 30; S.mdot = 10.0; S.T_supply = 20; S.RH_supply = 40;
+      processSelect.value = 'cool';
+      tSlider.value = 38; rhSlider.value = 30; mSlider.value = 10;
+      tsSlider.value = 20; rhsSlider.value = 40;
+      updateLabels(); resetState();
+      teach('DATA CENTER', 'Data center cooling: high heat density (30-50 kW/rack), supply 20°C. Often no humidification — servers don\'t care. High mass flow is key.', 'concept');
+    }
+  });
+});
+
+function updateLabels(){
+  document.getElementById('tVal').textContent = S.T.toFixed(1) + ' °C';
+  document.getElementById('rhVal').textContent = S.RH + '%';
+  document.getElementById('mVal').textContent = S.mdot.toFixed(1) + ' kg/s';
+  document.getElementById('tsVal').textContent = S.T_supply.toFixed(1) + ' °C';
+  document.getElementById('rhsVal').textContent = S.RH_supply + '%';
+}
+
+function resetState(){
+  S.running = false; S.time = 0;
+  playBtn.textContent = '▶ RUN HVAC';
+}
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to HVAC and Psychrometrics. Psychrometrics describes moist air — the medium of every HVAC system. Understanding humidity is key to comfort and efficiency.', 'concept');
+  teach('TERMS', 'Dry-bulb: air temperature. Wet-bulb: lowest temperature by evaporation. Dew point: temperature at which moisture condenses. RH: ratio of actual vapor to saturation.', 'concept');
+  teach('HOWTO', 'Set outdoor conditions and supply target. Press RUN HVAC. Watch the psychrometric chart and coil load. Try the fault buttons for condensation and overcooling.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

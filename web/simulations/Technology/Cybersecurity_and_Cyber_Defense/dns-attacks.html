@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNS Attacks — Spoofing & Cache Poisoning Interactive Teaching Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--green-lt);
+    text-shadow:0 0 8px rgba(34,197,94,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--green); color:var(--green-lt); }
+  .header-actions button.active{
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--green); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--green); cursor:pointer; box-shadow:0 0 7px rgba(34,197,94,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--green); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:var(--green-lt); font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--green); color:var(--green-lt); }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f2a18,#0a1a10);
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(34,197,94,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.danger:hover{ background:#2a0f0f; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.warn:hover{ background:#2a1f0f; }
+  button.act.pulse{ animation:pulseBtn 1.4s infinite; }
+  @keyframes pulseBtn{
+    0%,100%{ box-shadow:0 0 6px rgba(34,197,94,.3); }
+    50%{ box-shadow:0 0 18px rgba(34,197,94,.7); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:170px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--green-lt); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .dns-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .dns-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .dns-phase.done{ border-color:var(--green); color:var(--green-lt);
+    background:rgba(34,197,94,.12); }
+  .dns-phase.active{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.15); box-shadow:0 0 10px rgba(34,211,238,.4);
+    animation:kcPulse 1.2s infinite; }
+  @keyframes kcPulse{ 50%{ box-shadow:0 0 16px rgba(34,211,238,.7); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>DNS ATTACKS</h1>
+    <span class="sub">SPOOFING · CACHE POISONING · KAMINSKY · DNSSEC · RFC 1035/5452</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Attack Type</h3>
+      <select id="attackSelect">
+        <option value="spoof">DNS Spoofing (forged response)</option>
+        <option value="cache">Cache Poisoning</option>
+        <option value="kaminsky">Kaminsky Attack (2008)</option>
+        <option value="rebinding">DNS Rebinding</option>
+        <option value="tunnel">DNS Tunneling (exfil)</option>
+      </select>
+      <label class="ctl-label">Query domain</label>
+      <input type="text" id="domainInput" value="bank.example.com">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Forged Response</h3>
+      <label class="ctl-label">Spoofed A record IP</label>
+      <input type="text" id="spoofIP" value="203.0.113.66">
+      <label class="ctl-label">Transaction ID range</label>
+      <input type="text" id="txidRange" value="0-65535">
+      <label class="ctl-label">Source port range</label>
+      <input type="text" id="portRange" value="1024-65535">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Forged response rate <span class="slider-val" id="rateVal">5000/s</span></label>
+      <input type="range" id="rateSlider" min="0" max="100" value="70">
+      <label class="ctl-label">Guessing entropy <span class="slider-val" id="entropyVal">32 bits</span></label>
+      <input type="range" id="entropySlider" min="0" max="100" value="80">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ LAUNCH</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="dnssecBtn">🛡 DNSSEC</button>
+        <button type="button" class="act" id="dohBtn">🔒 DoH</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">kali@attacker:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — DNS attacks can redirect millions of users to attacker infrastructure.</div>
+    <div class="status-badges">
+      <div class="status-badge">ATTACK: <b id="badgeAttack">SPOOF</b></div>
+      <div class="status-badge">DOMAIN: <b id="badgeDomain">bank.example.com</b></div>
+      <div class="status-badge">CACHE: <b id="badgeCache">CLEAN</b></div>
+      <div class="status-badge">TXID GUESS: <b id="badgeTxid">0/65536</b></div>
+    </div>
+    <div class="dns-chain" id="dnsChain">
+      <div class="dns-phase" id="dp-QUERY">QUERY</div>
+      <div class="dns-phase" id="dp-UPSTREAM">UPSTREAM</div>
+      <div class="dns-phase" id="dp-FORGE">FORGE</div>
+      <div class="dns-phase" id="dp-POISON">POISON</div>
+      <div class="dns-phase" id="dp-RESOLVE">RESOLVE</div>
+      <div class="dns-phase" id="dp-CACHE">CACHE</div>
+    </div>
+    <div class="footer-overlay">RFC 1035 (DNS) · RFC 5452 (Forgery Resilience) · RFC 4033 (DNSSEC) · RFC 8484 (DoH)</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric" id="mRate"><div class="m-label">Forged/s</div><div class="m-value" id="mRateVal">0</div></div>
+      <div class="metric" id="mTxid"><div class="m-label">TxID Hit</div><div class="m-value" id="mTxidVal">0%</div></div>
+      <div class="metric" id="mPort"><div class="m-label">Port Hit</div><div class="m-value" id="mPortVal">0%</div></div>
+      <div class="metric" id="mSuccess"><div class="m-label">Poison %</div><div class="m-value" id="mSuccessVal">0%</div></div>
+      <div class="metric" id="mTTL"><div class="m-label">TTL</div><div class="m-value" id="mTTLVal">3600s</div></div>
+      <div class="metric" id="mCache"><div class="m-label">Cache Entries</div><div class="m-value" id="mCacheVal">0</div></div>
+      <div class="metric" id="mQueries"><div class="m-label">Queries/s</div><div class="m-value" id="mQueriesVal">0</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Defense</div><div class="m-value" id="mDefenseVal">OFF</div></div>
+    </div>
+    <div class="info-card">
+      <b>DNS — Domain Name System (RFC 1035).</b><br>
+      <span class="eq">Query: (txid, QNAME, QTYPE) → Response: (txid, A, TTL)</span><br>
+      <span class="eq">Kaminsky: force resolver to query random subdomain, flood forged responses</span><br>
+      <span class="eq">DNSSEC: RRSIG signs each RRset with a chain of trust to root</span><br>
+      <span style="color:var(--purple)">RFC 5452 · RFC 4033-4035 · RFC 8484 (DoH)</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  running:false,
+  attack:'spoof',
+  domain:'bank.example.com',
+  spoofIP:'203.0.113.66',
+  rate:5000,
+  entropy:32,
+  txidGuessed:0,
+  txidTotal:65536,
+  portGuessed:0,
+  success:0,
+  cacheEntries:0,
+  queriesPerSec:0,
+  dnssec:false,
+  doh:false,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+const DNS_PHASES = ['QUERY','UPSTREAM','FORGE','POISON','RESOLVE','CACHE'];
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const terminalContent = document.getElementById('termContent');
+const teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  const pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  const W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'victim', label:'victim user', ip:'10.0.0.50', x:0.10*W, y:0.30*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'resolver', label:'recursive resolver', ip:'10.0.0.53', x:0.35*W, y:0.30*H, icon:'server', color:'#22d3ee', glow:0, blink:0},
+    {id:'root', label:'root server', ip:'198.41.0.4', x:0.60*W, y:0.15*H, icon:'cloud', color:'#a855f7', glow:0, blink:0},
+    {id:'tld', label:'.com TLD', ip:'192.5.6.30', x:0.60*W, y:0.35*H, icon:'cloud', color:'#a855f7', glow:0, blink:0},
+    {id:'auth', label:'authoritative', ip:'203.0.113.20', x:0.60*W, y:0.55*H, icon:'server', color:'#22c55e', glow:0, blink:0},
+    {id:'attacker', label:'attacker.kali', ip:'203.0.113.66', x:0.10*W, y:0.70*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'fake', label:'fake resolver', ip:'203.0.113.66:53', x:0.35*W, y:0.70*H, icon:'server', color:'#ef4444', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    const g = ctx.createRadialGradient(0,0,2,0,0,38);
+    g.addColorStop(0, 'rgba(239,68,68,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,38,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(let i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(-10,-8+i*4); ctx.lineTo(8,-8+i*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(let i=0;i<5;i++){
+        const yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 28);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 38);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  const from = STATE.nodes.find(n=>n.id===fromId);
+  const to = STATE.nodes.find(n=>n.id===toId);
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.01, color, label, size:4});
+}
+function spawnExplosion(x, y, color){
+  STATE.events.push({type:'explosion', x, y, r:0, maxR:30, color, t:0});
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  const div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  const time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">'+tag+'</span> <span style="color:#475569">['+time+']</span> ' + text;
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+
+function addCommandFeed(cmd, output){
+  const div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br><span style="color:#4ade80">kali@attacker:~$ </span>'+cmd+'\n'+output;
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+let termQueue = []; let termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text, callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  const item = termQueue.shift();
+  let i = 0; const text = item.text;
+  terminalContent.textContent = '';
+  const interval = setInterval(()=>{
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+const VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  const now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  const text = VOICE.queue.shift();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  const voices = VOICE.synth.getVoices();
+  const pref = voices.find(v=>v.lang && v.lang.startsWith('en-US')) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = ()=>{ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = ()=>{ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'DNS poisoning can redirect millions of users to attacker-controlled servers, enabling credential theft, malware distribution, and censorship. Kaminsky (2008) demonstrated a critical flaw in DNS resolvers; his responsible disclosure prevented mass exploitation. Legal consequences for DNS attacks include CFAA (US), CMA (UK), and equivalent laws worldwide. Always obtain written authorization before testing DNS infrastructure.',
+    'ethics');
+  setTimeout(()=>{
+    addFeed('CONCEPT',
+      'DNS resolves human-readable names to IP addresses. A resolver receives a query with a 16-bit transaction ID and a random source port. If an attacker can forge a response that matches BOTH, the resolver accepts it. RFC 5452 recommends ≥32 bits of entropy (16 txid + 16 port). Kaminsky\'s attack forces the resolver to query unique subdomains, letting the attacker flood guesses without waiting for TTL.',
+      'concept');
+  }, 800);
+  setTimeout(()=>{
+    termWrite('dig @10.0.0.53 bank.example.com\n\n; <<>> DiG 9.18 <<>> @10.0.0.53 bank.example.com\n;; QUESTION SECTION:\n;bank.example.com.\t\tIN\tA\n\n;; ANSWER SECTION:\nbank.example.com.\t3600\tIN\tA\t203.0.113.20');
+  }, 1600);
+  setTimeout(()=>{
+    addFeed('INFO',
+      'Target: ' + STATE.domain + '. Resolver: 10.0.0.53. Click LAUNCH to flood forged responses.',
+      'info');
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  const dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(n=>{ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(let i = STATE.events.length - 1; i >= 0; i--){
+    const e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1){ spawnExplosion(e.to.x, e.to.y, e.color); STATE.events.splice(i,1); }
+    } else if(e.type === 'explosion'){
+      e.r += 0.7 * (dt/16);
+      if(e.r >= e.maxR) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(n=>{ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running){
+    STATE.queriesPerSec = Math.floor(50 + Math.random() * 200);
+    if(STATE.tick % Math.max(1, Math.floor(30 - STATE.rate/1000)) === 0){
+      // Victim → resolver query
+      spawnPacket('victim','resolver','#3b82f6','QUERY',0.015);
+      // Attacker floods forged responses
+      spawnPacket('fake','resolver','#ef4444','FORGED',0.02);
+      // Update success rate
+      const entropy = STATE.entropy;
+      const successChance = STATE.dnssec ? 0 : Math.min(0.95, (STATE.rate / 65536) * (32 / Math.max(8, entropy)));
+      if(Math.random() < successChance * 0.1){
+        STATE.success = Math.min(100, STATE.success + 2);
+        STATE.cacheEntries++;
+      }
+      STATE.txidGuessed = Math.min(65536, STATE.txidGuessed + Math.floor(STATE.rate / 100));
+    }
+    if(STATE.attack === 'kaminsky'){
+      // Additional subdomain queries
+      if(STATE.tick % 60 === 0){
+        spawnPacket('resolver','root','#22d3ee','NS?',0.01);
+        spawnPacket('resolver','tld','#22d3ee','NS?',0.01);
+        spawnPacket('resolver','auth','#22d3ee','A?',0.01);
+      }
+    }
+  } else {
+    STATE.queriesPerSec = 0;
+  }
+
+  // Update DNS chain
+  DNS_PHASES.forEach((p,i)=>{
+    const el = document.getElementById('dp-' + p);
+    el.className = 'dns-phase';
+    if(STATE.running && i <= 3) el.classList.add('done');
+    if(STATE.running && i === 3 && STATE.success > 50) el.classList.add('active');
+  });
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(let x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(let y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.45*W, 0.42*H, 'CORPORATE LAN', '#22c55e');
+  drawZone(0.55*W, 0.08*H, 0.40*W, 0.55*H, 'INTERNET · DNS HIERARCHY', '#a855f7');
+  drawZone(0.05*W, 0.58*H, 0.45*W, 0.35*H, 'ATTACKER INFRASTRUCTURE', '#ef4444');
+
+  // Links
+  const links = [
+    ['victim','resolver'],
+    ['resolver','root'],
+    ['resolver','tld'],
+    ['resolver','auth'],
+    ['attacker','fake'],
+    ['fake','resolver']
+  ];
+  links.forEach(([a,b])=>{
+    const na = STATE.nodes.find(n=>n.id===a);
+    const nb = STATE.nodes.find(n=>n.id===b);
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(51,65,85,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(e=>{
+    if(e.type === 'packet'){
+      const x = e.from.x + (e.to.x - e.from.x) * e.t;
+      const y = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(x, y, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, x, y - 7);
+      }
+      ctx.restore();
+    } else if(e.type === 'explosion'){
+      ctx.save();
+      ctx.globalAlpha = 1 - e.r/e.maxR;
+      ctx.strokeStyle = e.color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(n=>{
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  // Poison indicator on resolver
+  const resolver = STATE.nodes.find(n=>n.id==='resolver');
+  if(resolver && STATE.success > 50){
+    ctx.save();
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.arc(resolver.x, resolver.y, 30, 0, Math.PI*2); ctx.stroke();
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#ef4444';
+    ctx.textAlign = 'center';
+    ctx.fillText('POISONED', resolver.x, resolver.y - 42);
+    ctx.restore();
+  }
+
+  // Equations
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('DNS: query(txid, QNAME, QTYPE) → response(txid, A, TTL)', 12, H - 62);
+  ctx.fillText('Entropy = 16 bits (txid) + 16 bits (port) = 32 bits min (RFC 5452)', 12, H - 50);
+  ctx.fillText('Kaminsky: force random subdomain queries to avoid TTL wait', 12, H - 38);
+  ctx.fillText('DNSSEC: chain of trust from root KSK to zone ZSK', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeAttack').textContent = STATE.attack.toUpperCase();
+  document.getElementById('badgeDomain').textContent = STATE.domain;
+  document.getElementById('badgeCache').textContent = STATE.success > 50 ? 'POISONED' : (STATE.cacheEntries > 0 ? 'PARTIAL' : 'CLEAN');
+  document.getElementById('badgeTxid').textContent = STATE.txidGuessed + '/' + STATE.txidTotal;
+
+  document.getElementById('mRateVal').textContent = STATE.running ? STATE.rate : 0;
+  document.getElementById('mTxidVal').textContent = Math.round((STATE.txidGuessed / STATE.txidTotal) * 100) + '%';
+  document.getElementById('mPortVal').textContent = Math.round(Math.random() * 30) + '%';
+  document.getElementById('mSuccessVal').textContent = Math.round(STATE.success) + '%';
+  document.getElementById('mTTLVal').textContent = '3600s';
+  document.getElementById('mCacheVal').textContent = STATE.cacheEntries;
+  document.getElementById('mQueriesVal').textContent = STATE.queriesPerSec;
+  document.getElementById('mDefenseVal').textContent = STATE.dnssec ? 'DNSSEC' : (STATE.doh ? 'DoH' : 'OFF');
+
+  document.getElementById('mSuccess').className = 'metric' + (STATE.success > 70 ? ' bad' : STATE.success > 30 ? ' warn' : '');
+  document.getElementById('mTxid').className = 'metric' + (STATE.txidGuessed > 60000 ? ' bad' : '');
+}
+
+document.getElementById('attackSelect').addEventListener('change', e=>{
+  STATE.attack = e.target.value;
+  const info = {
+    spoof:'DNS Spoofing: race the legitimate response by sending a forged reply with the guessed txid and source port. Success requires winning the race.',
+    cache:'Cache Poisoning: inject a forged A record into the resolver\'s cache. All subsequent queries for the domain resolve to the attacker\'s IP.',
+    kaminsky:'Kaminsky (2008): force the resolver to query random subdomains (e.g., a1.example.com, a2.example.com), then flood forged NXDOMAIN responses with authority records. Bypasses TTL waiting.',
+    rebinding:'DNS Rebinding: attacker\'s domain resolves first to attacker IP, then to 127.0.0.1. Browser same-origin policy is bypassed, allowing internal network access.',
+    tunnel:'DNS Tunneling: encode data in DNS queries/responses (iodine, dnscat2). Exfiltrates data through port 53, often allowed by firewalls.'
+  };
+  addFeed('ATTACK', 'Attack: ' + STATE.attack.toUpperCase() + '. ' + info[STATE.attack], STATE.attack === 'spoof' || STATE.attack === 'cache' ? 'warn' : 'error');
+});
+
+document.getElementById('domainInput').addEventListener('input', e=>{
+  STATE.domain = e.target.value;
+  document.getElementById('badgeDomain').textContent = e.target.value;
+});
+
+document.getElementById('spoofIP').addEventListener('input', e=>{ STATE.spoofIP = e.target.value; });
+
+document.getElementById('rateSlider').addEventListener('input', e=>{
+  STATE.rate = 100 + parseInt(e.target.value) * 100;
+  document.getElementById('rateVal').textContent = STATE.rate + '/s';
+});
+
+document.getElementById('entropySlider').addEventListener('input', e=>{
+  STATE.entropy = 8 + parseInt(e.target.value) * 0.32;
+  document.getElementById('entropyVal').textContent = Math.round(STATE.entropy) + ' bits';
+});
+
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.success = 0;
+  STATE.txidGuessed = 0;
+  STATE.cacheEntries = 0;
+  addFeed('LAUNCH', 'Launching ' + STATE.attack.toUpperCase() + ' on ' + STATE.domain + '. Forged response rate: ' + STATE.rate + '/s. Resolver entropy: ' + Math.round(STATE.entropy) + ' bits.', 'warn');
+  addCommandFeed('python3 dns_spoof.py --target 10.0.0.53 --domain ' + STATE.domain + ' --spoof ' + STATE.spoofIP,
+    '[*] DNS spoofer started\n' +
+    '[*] Target resolver: 10.0.0.53\n' +
+    '[*] Forging responses for ' + STATE.domain + '\n' +
+    '[*] Spoofed A record: ' + STATE.spoofIP + '\n' +
+    '[+] Sending forged responses at ' + STATE.rate + ' pps');
+});
+
+document.getElementById('stepBtn').addEventListener('click', ()=>{
+  if(!STATE.running) STATE.running = true;
+  // Query
+  spawnPacket('victim','resolver','#3b82f6','QUERY',0.015);
+  setTimeout(()=>spawnPacket('resolver','root','#22d3ee','A?',0.01), 200);
+  // Forge
+  setTimeout(()=>spawnPacket('fake','resolver','#ef4444','FORGED',0.02), 250);
+  // Update
+  STATE.txidGuessed = Math.min(65536, STATE.txidGuessed + 500);
+  if(Math.random() < 0.3){
+    STATE.success = Math.min(100, STATE.success + 5);
+    STATE.cacheEntries++;
+    addFeed('POISON', 'Forged response accepted! Resolver cache now maps ' + STATE.domain + ' → ' + STATE.spoofIP + '. TTL: 3600s.', 'error');
+  } else {
+    addFeed('STEP', 'Forged response dropped (txid mismatch). Guessed ' + STATE.txidGuessed + '/65536 so far.', 'info');
+  }
+});
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  STATE.running = false;
+  STATE.success = 0;
+  STATE.txidGuessed = 0;
+  STATE.cacheEntries = 0;
+  STATE.events = [];
+  addFeed('RESET', 'Cache cleared. Resolver restored to clean state.', 'info');
+  termWrite('reset --all\n[+] DNS cache flushed.');
+});
+
+document.getElementById('dnssecBtn').addEventListener('click', ()=>{
+  STATE.dnssec = !STATE.dnssec;
+  this.classList.toggle('active', STATE.dnssec);
+  if(STATE.dnssec){
+    addFeed('DEFENSE', 'DNSSEC ENABLED. Every DNS response is cryptographically signed (RRSIG) with a chain of trust from the root KSK. Forged responses without valid signatures are rejected. RFC 4033-4035. Deployed for .gov, .edu, and many TLDs. Does NOT provide confidentiality (that requires DoH/DoT).', 'ok');
+  } else {
+    addFeed('DEFENSE', 'DNSSEC DISABLED. Vulnerable to cache poisoning.', 'warn');
+  }
+});
+
+document.getElementById('dohBtn').addEventListener('click', ()=>{
+  STATE.doh = !STATE.doh;
+  this.classList.toggle('active', STATE.doh);
+  if(STATE.doh){
+    addFeed('DEFENSE', 'DNS-over-HTTPS (DoH) ENABLED. Queries sent over HTTPS (port 443) to a resolver like 1.1.1.1 or 8.8.8.8. Provides confidentiality against on-path attackers, but centralizes DNS trust. RFC 8484.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'DoH DISABLED. DNS queries visible to network observers.', 'warn');
+  }
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  const on = this.classList.toggle('active');
+  this.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '🔊 VOICE: ON' : 'VOICE: OFF';
+});
+
+updateBadges();
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

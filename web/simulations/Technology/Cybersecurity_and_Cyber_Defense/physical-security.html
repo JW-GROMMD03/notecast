@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Physical Security — Locks, Badges, Tailgating &amp; Bypass Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:#fcd34d;
+    text-shadow:0 0 8px rgba(245,158,11,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:#fcd34d; color:#fcd34d; }
+  .header-actions button.active{
+    border-color:#fcd34d; color:#fcd34d;
+    box-shadow:0 0 10px rgba(245,158,11,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:#fcd34d; }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; font-size:10px; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:#fcd34d; cursor:pointer; box-shadow:0 0 7px rgba(245,158,11,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:#fcd34d; cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#fcd34d; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:#fcd34d; color:#fcd34d; }
+  button.act.primary{
+    background:linear-gradient(180deg,#2a1f0f,#1a1406);
+    border-color:#fcd34d; color:#fcd34d;
+    box-shadow:0 0 10px rgba(245,158,11,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(245,158,11,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulseAmber 1.4s infinite; }
+  @keyframes pulseAmber{
+    0%,100%{ box-shadow:0 0 6px rgba(245,158,11,.3); }
+    50%{ box-shadow:0 0 18px rgba(245,158,11,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.amber .m-value{ color:#fcd34d; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#fcd34d; }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .ps-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .ps-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .ps-phase.done{ border-color:#fcd34d; color:#fcd34d;
+    background:rgba(245,158,11,.12); }
+  .ps-phase.active{ border-color:#fcd34d; color:#fcd34d;
+    background:rgba(245,158,11,.2); box-shadow:0 0 10px rgba(245,158,11,.6);
+    animation:kcAmber 1.2s infinite; }
+  @keyframes kcAmber{ 50%{ box-shadow:0 0 16px rgba(245,158,11,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>PHYSICAL SECURITY</h1>
+    <span class="sub">LOCKS · BADGES · TAILGATING · ASIS · MITRE T1200 · CPTED</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Attack Type</h3>
+      <select id="attackSelect">
+        <option value="tailgate">Tailgating (follow employee)</option>
+        <option value="badge-clone">Badge cloning (HID iClass, MIFARE)</option>
+        <option value="lockpick">Lock picking (pin tumbler)</option>
+        <option value="bump">Lock bumping</option>
+        <option value="bypass">Door bypass (under-cut, latch slip)</option>
+        <option value="alarm">Alarm defeat</option>
+        <option value="camera">Camera evasion</option>
+        <option value="dumpster">Dumpster diving</option>
+        <option value="shoulder">Shoulder surfing</option>
+        <option value="usb">USB drop</option>
+        <option value="wifi-probe">Wi-Fi probe + GPS tracking</option>
+        <option value="access-control">Access control bypass (REX sensor)</option>
+      </select>
+      <label class="ctl-label">Target facility</label>
+      <select id="facilitySelect">
+        <option value="office">Corporate office (badge access)</option>
+        <option value="datacenter">Data center (multi-layer)</option>
+        <option value="hospital">Hospital (public access)</option>
+        <option value="bank">Bank branch (vault)</option>
+        <option value="govt">Government facility (SCIF)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Credentials / Tools</h3>
+      <label class="ctl-label">Pretext</label>
+      <input type="text" id="pretextInput" value="IT contractor delivering equipment">
+      <label class="ctl-label">Tools carried</label>
+      <textarea id="toolsInput">- Clipboard with fake work order
+- Cardboard boxes (occupies both hands)
+- Hi-vis vest
+- Cloneable badge (Proxmark3)</textarea>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Confidence <span class="slider-val" id="confVal">70%</span></label>
+      <input type="range" id="confSlider" min="0" max="100" value="70">
+      <label class="ctl-label">Staff training <span class="slider-val" id="trainVal">30%</span></label>
+      <input type="range" id="trainSlider" min="0" max="100" value="30">
+      <label class="ctl-label">Time of day</label>
+      <select id="timeSelect">
+        <option value="morning">Morning rush (8-9am)</option>
+        <option value="lunch">Lunch (12-1pm)</option>
+        <option value="evening">Evening (6-7pm)</option>
+        <option value="night">Night shift (2am)</option>
+        <option value="weekend">Weekend</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Defense</h3>
+      <div class="btn-row">
+        <button type="button" class="act ok" id="mantrapBtn">🚪 MANTRAP</button>
+        <button type="button" class="act ok" id="guardBtn">💂 GUARD</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act" id="cctvBtn">📹 CCTV</button>
+        <button type="button" class="act" id="awareBtn">🧠 AWARENESS</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ EXECUTE</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">operator@kali:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Physical intrusion on unauthorized premises is a criminal offense (trespass + burglary).</div>
+    <div class="status-badges">
+      <div class="status-badge">ATTACK: <b id="badgeAttack">TAILGATE</b></div>
+      <div class="status-badge">FACILITY: <b id="badgeFacility">OFFICE</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+      <div class="status-badge">ACCESS: <b id="badgeAccess">—</b></div>
+    </div>
+    <div class="ps-chain" id="psChain">
+      <div class="ps-phase" id="psp-RECON">RECON</div>
+      <div class="ps-phase" id="psp-APPROACH">APPROACH</div>
+      <div class="ps-phase" id="psp-BYPASS">BYPASS</div>
+      <div class="ps-phase" id="psp-ACCESS">ACCESS</div>
+      <div class="ps-phase" id="psp-OBJECTIVE">OBJECTIVE</div>
+      <div class="ps-phase" id="psp-EXFIL">EXIT</div>
+    </div>
+    <div class="footer-overlay">ASIS International · CPTED · ISO 27001 A.11 (Physical) · NIST SP 800-53 PE controls</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric amber" id="mAttempts"><div class="m-label">Attempts</div><div class="m-value" id="mAttemptsVal">0</div></div>
+      <div class="metric" id="mSuccess"><div class="m-label">Success Rate</div><div class="m-value" id="mSuccessVal">0%</div></div>
+      <div class="metric" id="mDetection"><div class="m-label">Detection</div><div class="m-value" id="mDetectionVal">0%</div></div>
+      <div class="metric" id="mDwell"><div class="m-label">Dwell Time</div><div class="m-value" id="mDwellVal">0m</div></div>
+      <div class="metric" id="mBarriers"><div class="m-label">Barriers</div><div class="m-value" id="mBarriersVal">0</div></div>
+      <div class="metric" id="mBypassed"><div class="m-label">Bypassed</div><div class="m-value" id="mBypassedVal">0</div></div>
+      <div class="metric" id="mCCTV"><div class="m-label">CCTV Coverage</div><div class="m-value" id="mCCTVVal">0%</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Posture</div><div class="m-value" id="mDefenseVal">WEAK</div></div>
+    </div>
+    <div class="info-card">
+      <b>Physical security — the foundation layer of security.</b><br>
+      <span class="eq">Deterrence: visible guards, cameras, lighting</span><br>
+      <span class="eq">Detection: alarms, CCTV, access logs</span><br>
+      <span class="eq">Delay: doors, mantrap, bollards</span><br>
+      <span class="eq">Response: guards, police, lockdown</span><br>
+      <span style="color:var(--purple)">ASIS · CPTED · ISO 27001 A.11 · NIST SP 800-53 PE</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  attack:'tailgate',
+  facility:'office',
+  pretext:'IT contractor delivering equipment',
+  tools:'- Clipboard with fake work order\n- Cardboard boxes\n- Hi-vis vest\n- Proxmark3',
+  confidence:0.7,
+  training:0.3,
+  timeOfDay:'morning',
+  attempts:0,
+  successRate:0,
+  detection:0,
+  dwell:0,
+  barriers:0,
+  bypassed:0,
+  cctv:0,
+  mantrap:false,
+  guard:false,
+  cctvOn:false,
+  awareness:false,
+  posture:'WEAK',
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['RECON','APPROACH','BYPASS','ACCESS','OBJECTIVE','EXFIL'];
+
+var ATTACKS = {
+  tailgate:{
+    title:'Tailgating',
+    detail:'Follow an authorized employee through a badge-protected door. Exploits politeness (people hold doors). Hands-full pretext ("Can you get the door?") is extremely effective. Success rate 60-90% in unaware orgs.',
+    difficulty:0.2,
+    detectability:0.3
+  },
+  'badge-clone':{
+    title:'Badge cloning',
+    detail:'Copy 125kHz proximity cards (HID Prox, EM4100) with a Proxmark3 or Flipper Zero from 30cm away. 13.56MHz (MIFARE Classic, iClass) requires crypto attack — iClass SE / DESFire EV2 much harder.',
+    difficulty:0.5,
+    detectability:0.4
+  },
+  lockpick:{
+    title:'Lock picking',
+    detail:'Pin tumbler lock picking: tension wrench + hook pick. Skill-based. Simple locks in seconds, high-security (Medeco, ASSA) in minutes+ or not at all. Bypass tools: pick gun, rake, comb.',
+    difficulty:0.6,
+    detectability:0.2
+  },
+  bump:{
+    title:'Lock bumping',
+    detail:'Bump key (cut to 999) + bump hammer. Works on many pin tumbler locks. Silent, fast (seconds). Defeated by security pins + restricted keyways.',
+    difficulty:0.3,
+    detectability:0.3
+  },
+  bypass:{
+    title:'Door bypass',
+    detail:'Non-destructive bypass: latch slip (credit card under latch), under-door tool (coat hanger for crash bars), REX sensor defeat (air canister). Some doors have design flaws.',
+    difficulty:0.4,
+    detectability:0.25
+  },
+  alarm:{
+    title:'Alarm defeat',
+    detail:'Disable alarm: cut phone line (legacy), jam wireless (RF jammer), cover motion sensor, remove battery from bell box. Modern alarms monitor phone + cellular + tamper.',
+    difficulty:0.5,
+    detectability:0.6
+  },
+  camera:{
+    title:'Camera evasion',
+    detail:'Map camera coverage + blind spots + fields of view. Wear hat/hood, avoid gaze. Spray paint on lens (caught on other cameras). Route through blind spots.',
+    difficulty:0.5,
+    detectability:0.7
+  },
+  dumpster:{
+    title:'Dumpster diving',
+    detail:'Retrieve discarded documents: payroll spreadsheets, org charts, credentials (post-it notes), hardware (hard drives, USB). Legal gray area on trash, but corporate espionage risk.',
+    difficulty:0.1,
+    detectability:0.1
+  },
+  shoulder:{
+    title:'Shoulder surfing',
+    detail:'Observe victim typing PIN / password at workstation, ATM, badge reader. Distance 3-5m with clear view. Defeated by privacy screens + awareness.',
+    difficulty:0.2,
+    detectability:0.4
+  },
+  usb:{
+    title:'USB drop',
+    detail:'Leave USB drives with enticing labels ("Payroll 2024", "Bonus Q4") in parking lot, lobby, bathroom. 45-98% of dropped USBs are plugged in (University of Illinois study). Malware executes on autorun or on user click.',
+    difficulty:0.1,
+    detectability:0.15
+  },
+  'wifi-probe':{
+    title:'Wi-Fi probe + GPS',
+    detail:'Rogue AP captures Wi-Fi probe requests (SSID + MAC). With GPS, track employee movements (home, gym, other offices). Enables follow-up attacks + physical recon.',
+    difficulty:0.3,
+    detectability:0.4
+  },
+  'access-control':{
+    title:'Access control bypass',
+    detail:'REX (Request-to-Exit) sensor defeat: slide a "pic" or ballon under door, or spray air duster at sensor. Bypasses badge requirement from inside. Defeated by dual-verification (badge + REX).',
+    difficulty:0.4,
+    detectability:0.35
+  }
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'outside', label:'public area', ip:'sidewalk/parking', x:0.10*W, y:0.40*H, icon:'cloud', color:'#a855f7', glow:0, blink:0},
+    {id:'reception', label:'reception', ip:'lobby + guard', x:0.30*W, y:0.40*H, icon:'server', color:'#fcd34d', glow:0, blink:0},
+    {id:'door1', label:'badge door', ip:'access control', x:0.50*W, y:0.20*H, icon:'firewall', color:'#22c55e', glow:0, blink:0},
+    {id:'door2', label:'inner door', ip:'mantrap', x:0.50*W, y:0.60*H, icon:'firewall', color:'#22c55e', glow:0, blink:0},
+    {id:'secure', label:'secure area', ip:'target', x:0.72*W, y:0.40*H, icon:'database', color:'#ef4444', glow:0, blink:0},
+    {id:'cctv', label:'CCTV / SOC', ip:'monitoring', x:0.88*W, y:0.40*H, icon:'server', color:'#3b82f6', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(245,158,11,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'firewall': {
+      ctx.lineWidth = 1.2;
+      for(var row=0;row<3;row++){
+        var y2 = -10 + row*7;
+        var off = row%2===0 ? 0 : 5;
+        for(var col=0;col<4;col++) ctx.strokeRect(-16+col*9+off, y2, 8, 6);
+      }
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(0,-4); ctx.quadraticCurveTo(4,0,0,5); ctx.quadraticCurveTo(-4,0,0,-4);
+      ctx.fill();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(n => n.id===fromId);
+  var to = STATE.nodes.find(n => n.id===toId);
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:5});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">operator@kali:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(()=>{
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(v => v.lang && v.lang.startsWith('en-US')) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Physical intrusion is a CRIMINAL offense in every jurisdiction. Trespass, burglary, breaking and entering — felonies carrying prison time. Even "just walking around" a building you do not own is trespass. Legal use: (1) Authorized physical penetration test — requires WRITTEN authorization from building owner AND tenant, with clear scope (which doors, which hours, who to notify). (2) Red team with physical component under signed ROE. (3) Security assessment of YOUR OWN facility. (4) Research in your own lab/office. NEVER: someone else building, "just curious," after-hours without permission, bypassing a lock you do not own. In authorized tests, carry the authorization letter at all times — police may respond to an alarm. Also: employees can be traumatized by intrusion tests — coordinate with HR + security leadership.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Physical security is the foundation layer. If an attacker reaches the physical device, most logical controls are defeatable (evil maid, cold boot, USB, JTAG). The 4 D\'s: DETERRENCE (visible cameras, guards, signage, lighting), DETECTION (alarms, sensors, CCTV, access logs), DELAY (mantrap, reinforced doors, bollards, cages), RESPONSE (guards, police, lockdown). Layers: perimeter (fence, gate) → building (doors, windows) → floor (reception, badge access) → zone (mantrap, biometric) → room (server cage, vault) → device (lock, tamper seal). CPTED (Crime Prevention Through Environmental Design): natural surveillance, natural access control, territorial reinforcement. ISO 27001 Annex A.11 covers physical controls; NIST SP 800-53 PE family has 20+ controls. Attacks: tailgating (politeness), badge cloning (Proxmark3), lock picking (skill), bumping, door bypass (REX sensor), alarm defeat, camera evasion, dumpster diving, shoulder surfing, USB drop, Wi-Fi probe tracking.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('proxmark3 --read --125khz --em4100\n' +
+      '[+] Reading...\n' +
+      '[+] Card detected: EM4100 ID 0x0A1B2C3D\n' +
+      '[+] Saved to card.eml\n' +
+      '[+] Writing to blank T5577...\n' +
+      '[+] Clone complete');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Attack: ' + ATTACKS[STATE.attack].title + '. Facility: ' + STATE.facility.toUpperCase() + '. Pretext: "' + STATE.pretext + '". Click EXECUTE to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(n => { n.blink = Math.floor(STATE.tick / 20); });
+
+  for(let i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(n => { if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running && STATE.tick % 30 === 0){
+    STATE.dwell++;
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.30*W, 0.75*H, 'PUBLIC', '#a855f7');
+  drawZone(0.40*W, 0.08*H, 0.25*W, 0.75*H, 'PERIMETER', '#fcd34d');
+  drawZone(0.70*W, 0.08*H, 0.25*W, 0.75*H, 'SECURE', '#ef4444');
+
+  var links = [
+    ['outside','reception'], ['reception','door1'], ['door1','door2'],
+    ['door2','secure'], ['door1','cctv'], ['secure','cctv']
+  ];
+  links.forEach(pair => {
+    var na = STATE.nodes.find(n => n.id===pair[0]);
+    var nb = STATE.nodes.find(n => n.id===pair[1]);
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(245,158,11,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(e => {
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 10;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '8px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 10);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(n => {
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  if(STATE.phaseIdx > 0){
+    var a = ATTACKS[STATE.attack];
+    ctx.save();
+    var ax = 0.05*W, ay = H - 150, aw = 0.55*W, ah = 120;
+    ctx.fillStyle = 'rgba(40,30,5,0.9)';
+    ctx.strokeStyle = '#fcd34d';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#fcd34d';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 ' + a.title, ax + 8, ay + 16);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('Facility: ' + STATE.facility.toUpperCase() + ' | Time: ' + STATE.timeOfDay.toUpperCase(), ax + 8, ay + 36);
+    ctx.fillText('Barriers: ' + STATE.barriers + ' | Bypassed: ' + STATE.bypassed, ax + 8, ay + 52);
+    ctx.fillText('Attempts: ' + STATE.attempts + ' | Detection: ' + STATE.detection + '%', ax + 8, ay + 68);
+    ctx.fillText('Dwell time: ' + STATE.dwell + 's | CCTV coverage: ' + STATE.cctv + '%', ax + 8, ay + 84);
+    ctx.fillStyle = STATE.posture === 'STRONG' ? '#4ade80' : '#fcd34d';
+    ctx.fillText('Posture: ' + STATE.posture + ' | Success: ' + STATE.successRate + '%', ax + 8, ay + 100);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('4 Ds: Deter, Detect, Delay, Respond', 12, H - 74);
+  ctx.fillText('Layers: perimeter → building → floor → zone → room → device', 12, H - 62);
+  ctx.fillText('Tailgating exploits politeness — awareness is #1 defense', 12, H - 50);
+  ctx.fillText('CPTED: natural surveillance, access control, territoriality', 12, H - 38);
+  ctx.fillText('ASIS \u00B7 CPTED \u00B7 ISO 27001 A.11 \u00B7 NIST SP 800-53 PE', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeAttack').textContent = STATE.attack.toUpperCase();
+  document.getElementById('badgeFacility').textContent = STATE.facility.toUpperCase();
+  document.getElementById('badgeStatus').textContent = STATE.running ? 'EXECUTING' : (STATE.phaseIdx >= 6 ? 'COMPLETE' : 'IDLE');
+  document.getElementById('badgeAccess').textContent = STATE.bypassed > 0 ? 'BREACHED' : '—';
+
+  document.getElementById('mAttemptsVal').textContent = STATE.attempts;
+  document.getElementById('mSuccessVal').textContent = STATE.successRate + '%';
+  document.getElementById('mDetectionVal').textContent = STATE.detection + '%';
+  document.getElementById('mDwellVal').textContent = STATE.dwell + 's';
+  document.getElementById('mBarriersVal').textContent = STATE.barriers;
+  document.getElementById('mBypassedVal').textContent = STATE.bypassed;
+  document.getElementById('mCCTVVal').textContent = STATE.cctv + '%';
+  document.getElementById('mDefenseVal').textContent = STATE.posture;
+
+  document.getElementById('mSuccess').className = 'metric' + (STATE.successRate > 70 ? ' bad' : STATE.successRate > 40 ? ' warn' : '');
+  document.getElementById('mDetection').className = 'metric' + (STATE.detection > 70 ? ' ok' : STATE.detection > 40 ? ' warn' : ' bad');
+  document.getElementById('mDefense').className = 'metric' + (STATE.posture === 'STRONG' ? ' ok' : STATE.posture === 'MEDIUM' ? ' warn' : ' bad');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach((p,i) => {
+    var el = document.getElementById('psp-' + p);
+    if(!el) return;
+    el.className = 'ps-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var a = ATTACKS[STATE.attack];
+
+  switch(phase){
+    case 'RECON':
+      STATE.barriers = STATE.facility === 'datacenter' ? 5 : STATE.facility === 'govt' ? 6 : STATE.facility === 'bank' ? 4 : 3;
+      STATE.cctv = STATE.cctvOn ? 80 : 30;
+      addFeed('RECON', 'Reconnaissance: walk-around, google maps, LinkedIn for org chart, social engineering reception by phone. Facility: ' + STATE.facility + ', ' + STATE.barriers + ' visible barriers, ' + STATE.cctv + '% CCTV coverage (estimated). Pretext: "' + STATE.pretext + '". Time: ' + STATE.timeOfDay + '.', 'info');
+      addCommandFeed('osint-target --facility ' + STATE.facility + ' --type physical',
+        'Facility: ' + STATE.facility + '\n' +
+        'Barriers identified: ' + STATE.barriers + '\n' +
+        'CCTV coverage estimate: ' + STATE.cctv + '%\n' +
+        'Guard posted at reception: ' + (STATE.guard ? 'yes' : 'no') + '\n' +
+        'Mantrap: ' + (STATE.mantrap ? 'yes' : 'no'));
+      break;
+
+    case 'APPROACH':
+      addFeed('APPROACH', 'Approach: ' + STATE.pretext + '. Hands full (boxes), hi-vis vest, clipboard with work order. Blend in with morning rush. Body language: confident, purposeful. Avoid eye contact with cameras. ' + (STATE.timeOfDay === 'morning' ? 'Morning rush = easy to blend.' : STATE.timeOfDay === 'lunch' ? 'Lunch = lobby less staffed.' : STATE.timeOfDay === 'night' ? 'Night = minimal staff but guard more attentive.' : 'Weekend = empty but alarm active.'), 'warn');
+      break;
+
+    case 'BYPASS':
+      STATE.attempts++;
+      var success = false;
+      // Calculate success
+      if(STATE.mantrap && STATE.attack === 'tailgate') success = false;
+      else if(STATE.guard && STATE.attack === 'tailgate') success = Math.random() < 0.3;
+      else if(STATE.attack === 'tailgate') success = Math.random() < 0.7;
+      else if(STATE.attack === 'badge-clone') success = Math.random() < 0.6;
+      else if(STATE.attack === 'lockpick') success = Math.random() < 0.5;
+      else if(STATE.attack === 'bump') success = Math.random() < 0.7;
+      else if(STATE.attack === 'usb') success = Math.random() < 0.9;
+      else success = Math.random() < 0.5;
+
+      if(success){
+        STATE.bypassed++;
+        spawnPacket('outside','reception','#ef4444','ACCESS',0.03);
+        addFeed('BYPASS', 'BYPASS SUCCESSFUL: ' + a.title + '. ' + a.detail + ' ' + (STATE.mantrap ? 'Mantrap was in place but ' : '') + (STATE.guard ? 'Guard distracted by pretext. ' : ''), 'error');
+        if(STATE.attack === 'badge-clone'){
+          addCommandFeed('proxmark3 --clone --from card.eml --to t5577',
+            '[+] Writing EM4100 ID 0x0A1B2C3D to T5577\n[+] Verify: OK\n[+] Badge cloned successfully');
+        } else if(STATE.attack === 'lockpick'){
+          addCommandFeed('cat <<EOF\nPIN 1: set\nPIN 2: set\nPIN 3: set\nPIN 4: set (security pin - spool)\nPIN 5: set\nEOF',
+            'Lock picked in 45 seconds');
+        } else if(STATE.attack === 'tailgate'){
+          addFeed('TAILGATE', '"Could you hold the door? My hands are full." Employee smiles, holds door. You are inside. This exploit works 70%+ of the time because people are polite.', 'error');
+        } else if(STATE.attack === 'usb'){
+          addFeed('USB', 'USB drive dropped in parking lot with "Payroll 2024" label. Within 6 hours, someone picks it up. Within 24 hours, someone plugs it in. 45-98% success rate in studies.', 'error');
+        }
+      } else {
+        spawnPacket('outside','reception','#22c55e','DENIED',0.03);
+        addFeed('BYPASS', 'BYPASS FAILED: ' + a.title + '. ' + (STATE.mantrap ? 'Mantrap prevented tailgating — one person per entry, second door requires separate authentication. ' : '') + (STATE.guard ? 'Guard attentive, asked for badge + authorization. ' : '') + 'Attempt aborted.', 'ok');
+      }
+      break;
+
+    case 'ACCESS':
+      if(STATE.bypassed > 0){
+        STATE.successRate = Math.round(STATE.bypassed / STATE.attempts * 100);
+        addFeed('ACCESS', 'Inside facility. Now on internal network — physical access often means network port + ability to plug in hardware implant. Badge reader data, drop point servers, workstations accessible. Physically placing an implant (Wi-Fi Pineapple, LAN Turtle) achieves persistent internal access.', 'error');
+      } else {
+        addFeed('ACCESS', 'No access gained. Attack failed at perimeter.', 'ok');
+      }
+      break;
+
+    case 'OBJECTIVE':
+      if(STATE.bypassed > 0){
+        addFeed('OBJECTIVE', 'Objective achieved: placed rogue device on internal network, cloned badge for repeat access, photographed sensitive areas, retrieved paper documents from unlocked printer. Any of these enables further logical attacks.', 'error');
+      } else {
+        addFeed('OBJECTIVE', 'No objective achieved — perimeter held.', 'ok');
+      }
+      break;
+
+    case 'EXFIL':
+      if(STATE.bypassed > 0){
+        // Detection at exfil
+        var detected = STATE.guard && Math.random() < 0.4;
+        if(detected){
+          STATE.detection = 90;
+          addFeed('DETECT', 'DETECTED during exit: guard noticed unfamiliar person, checked badge, called police. Physical intrusion often detected late (on exit, not entry). Prevented further compromise.', 'warn');
+        } else {
+          STATE.detection = 30;
+          addFeed('EXFIL', 'Egress undetected. Attacker leaves with cloned badge, photos, and rogue device in place. In real-world tests, 60-80% of physical intrusions are never detected.', 'error');
+        }
+      }
+      addFeed('DEFENSE', 'Physical security defense in depth: (1) Mantrap — anti-tailgating vestibule with interlocking doors. (2) Trained guards — visible, attentive, rotate posts. (3) CCTV with human monitoring (not just recording). (4) Employee awareness — challenge unfamiliar people, never hold doors for unbadged people. (5) Visitor management — sign-in, escort, badge expiry, distinctive color. (6) Turnstiles/full-height — physical barrier to tailgating. (7) Anti-cloning badges — iClass SE, DESFire EV2, mobile credentials. (8) High-security locks — Medeco, ASSA, restricted keyways (deters picking/bumping). (9) Clean desk policy — no documents left in printers. (10) Lock screens, cable locks, secure USB ports. (11) Dumpster policy — shredding, locked dumpsters. (12) Two-person rule for sensitive areas.', 'ok');
+      STATE.posture = (STATE.mantrap ? 30 : 0) + (STATE.guard ? 25 : 0) + (STATE.cctvOn ? 20 : 0) + (STATE.awareness ? 25 : 0);
+      STATE.posture = STATE.posture >= 70 ? 'STRONG' : STATE.posture >= 40 ? 'MEDIUM' : 'WEAK';
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.attempts = 0;
+  STATE.successRate = 0;
+  STATE.detection = 0;
+  STATE.dwell = 0;
+  STATE.barriers = 0;
+  STATE.bypassed = 0;
+  STATE.cctv = 0;
+  STATE.posture = 'WEAK';
+  STATE.events = [];
+  PHASES.forEach(p => { var el = document.getElementById('psp-' + p); if(el) el.className = 'ps-phase'; });
+  STATE.nodes.forEach(n => { n.glow = 0; });
+  addFeed('RESET', 'Physical security state cleared.', 'info');
+  termWrite('reset --all\n[+] Run aborted\n[+] Objective reset');
+}
+
+document.getElementById('attackSelect').addEventListener('change', e => {
+  STATE.attack = e.target.value;
+  var a = ATTACKS[STATE.attack];
+  addFeed('ATTACK', a.title + '. ' + a.detail, 'warn');
+});
+document.getElementById('facilitySelect').addEventListener('change', e => { STATE.facility = e.target.value; });
+document.getElementById('pretextInput').addEventListener('input', e => { STATE.pretext = e.target.value; });
+document.getElementById('toolsInput').addEventListener('input', e => { STATE.tools = e.target.value; });
+document.getElementById('timeSelect').addEventListener('change', e => { STATE.timeOfDay = e.target.value; });
+
+document.getElementById('confSlider').addEventListener('input', e => {
+  STATE.confidence = parseInt(e.target.value) / 100;
+  document.getElementById('confVal').textContent = e.target.value + '%';
+});
+document.getElementById('trainSlider').addEventListener('input', e => {
+  STATE.training = parseInt(e.target.value) / 100;
+  document.getElementById('trainVal').textContent = e.target.value + '%';
+});
+
+document.getElementById('mantrapBtn').addEventListener('click', function(){
+  STATE.mantrap = !STATE.mantrap;
+  this.classList.toggle('active', STATE.mantrap);
+  if(STATE.mantrap){
+    addFeed('DEFENSE', 'Mantrap ENABLED: interlocking doors — first door must close before second opens. One person at a time. Detects tailgating via weight/presence sensors. Cost ~$15K per vestibule but the single most effective anti-tailgating control.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Mantrap disabled.', 'warn');
+  }
+});
+document.getElementById('guardBtn').addEventListener('click', function(){
+  STATE.guard = !STATE.guard;
+  this.classList.toggle('active', STATE.guard);
+  if(STATE.guard){
+    addFeed('DEFENSE', 'Guard ENABLED: trained security officer at reception. Verifies badges, challenges unbadged visitors, spot-checks. Key: guard must be attentive, not just present.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Guard removed.', 'warn');
+  }
+});
+document.getElementById('cctvBtn').addEventListener('click', function(){
+  STATE.cctvOn = !STATE.cctvOn;
+  this.classList.toggle('active', STATE.cctvOn);
+  if(STATE.cctvOn){
+    addFeed('DEFENSE', 'CCTV ENABLED: cameras cover entrances + critical corridors. Recorded + monitored. Deters casual attackers, provides evidence.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'CCTV disabled.', 'warn');
+  }
+});
+document.getElementById('awareBtn').addEventListener('click', function(){
+  STATE.awareness = !STATE.awareness;
+  this.classList.toggle('active', STATE.awareness);
+  if(STATE.awareness){
+    addFeed('DEFENSE', 'Employee AWARENESS ENABLED: "Challenge unfamiliar people," "Do not hold doors for unbadged persons," "Report suspicious packages" — most impactful control at lowest cost. Requires periodic reinforcement.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Awareness training removed.', 'warn');
+  }
+});
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.attempts = 0;
+  STATE.successRate = 0;
+  STATE.detection = 0;
+  STATE.dwell = 0;
+  STATE.barriers = 0;
+  STATE.bypassed = 0;
+  STATE.cctv = 0;
+  STATE.nodes.forEach(n => { n.glow = 0; });
+  addFeed('EXECUTE', 'Starting physical intrusion: ' + ATTACKS[STATE.attack].title + ' against ' + STATE.facility.toUpperCase(), 'warn');
+  var interval = setInterval(() => {
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+    if(STATE.phaseIdx >= 6){ clearInterval(interval); STATE.running = false; }
+  }, 1300);
+});
+
+document.getElementById('stepBtn').addEventListener('click', () => {
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

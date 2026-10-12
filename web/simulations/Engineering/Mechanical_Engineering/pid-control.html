@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PID Controller Tuning — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>PID CONTROLLER TUNING</h1>
+    <span class="sub">PROPORTIONAL · INTEGRAL · DERIVATIVE · ZIEGLER-NICHOLS</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Plant Model</div>
+    <div class="control-group">
+      <label>Plant Type</label>
+      <select id="plantSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="first-order">First-Order (heater)</option>
+        <option value="second-order">Second-Order (motor)</option>
+        <option value="integrator">Integrator (position)</option>
+        <option value="dead-time">First-Order + Dead Time</option>
+      </select>
+    </div>
+
+    <div class="section-title">PID Gains</div>
+    <div class="control-group">
+      <label>Kp (Proportional) <span class="val" id="kpVal">2.00</span></label>
+      <input type="range" id="kpSlider" min="0" max="20" value="2" step="0.05">
+    </div>
+    <div class="control-group">
+      <label>Ki (Integral) <span class="val" id="kiVal">1.00</span></label>
+      <input type="range" id="kiSlider" min="0" max="10" value="1" step="0.05">
+    </div>
+    <div class="control-group">
+      <label>Kd (Derivative) <span class="val" id="kdVal">0.20</span></label>
+      <input type="range" id="kdSlider" min="0" max="5" value="0.2" step="0.01">
+    </div>
+
+    <div class="section-title">Setpoint</div>
+    <div class="control-group">
+      <label>Target Value <span class="val" id="spVal">1.00</span></label>
+      <input type="range" id="spSlider" min="0.1" max="3" value="1" step="0.05">
+    </div>
+
+    <div class="section-title">Auto-Tune</div>
+    <button class="btn warn" id="znBtn">⚙ Ziegler-Nichols</button>
+    <button class="btn warn" id="ccBtn">⚙ Cohen-Coon</button>
+    <button class="btn warn" id="imcBtn">⚙ IMC Tuning</button>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ RUN CONTROL</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="oscBtn">⚠ OSCILLATION</button>
+    <button class="btn warn" id="distBtn">⚠ DISTURBANCE</button>
+    <button class="btn warn" id="satBtn">⚠ ACTUATOR SATURATION</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="thermostat">Thermostat</button>
+    <button class="btn" data-preset="drone">Drone Attitude</button>
+    <button class="btn" data-preset="cruise">Cruise Control</button>
+    <button class="btn" data-preset="servo">Servo Motor</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      u(t) = Kp·e(t) + Ki·∫e·dt + Kd·de/dt &nbsp;|&nbsp; e(t) = SP − PV &nbsp;|&nbsp; <span class="hl">ZEIGLER-NICHOLS: Kp=0.6·Ku</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mSP">
+          <div class="mlabel">SETPOINT</div>
+          <div class="mvalue">0.00</div>
+        </div>
+        <div class="metric" id="mPV">
+          <div class="mlabel">PROCESS VAR</div>
+          <div class="mvalue">0.00</div>
+        </div>
+        <div class="metric" id="mErr">
+          <div class="mlabel">ERROR</div>
+          <div class="mvalue">0.00</div>
+        </div>
+        <div class="metric" id="mOS">
+          <div class="mlabel">OVERSHOOT</div>
+          <div class="mvalue">0.0<span class="munit">%</span></div>
+        </div>
+        <div class="metric" id="mTs">
+          <div class="mlabel">SETTLING TIME</div>
+          <div class="mvalue">0.0<span class="munit">s</span></div>
+        </div>
+        <div class="metric" id="mSS">
+          <div class="mlabel">STEADY-STATE ERR</div>
+          <div class="mvalue">0.00</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">u(t) = Kp·e + Ki·∫e + Kd·de/dt</div>
+      <div class="eq">Increase Kp → faster but oscillatory</div>
+      <div class="eq">Increase Ki → eliminates steady-state error</div>
+      <div class="eq">Increase Kd → damps oscillation, amplifies noise</div>
+      <div class="def">
+        PID is the most widely used controller in industry. The proportional 
+        term responds to current error, integral eliminates steady error, 
+        derivative anticipates. Tuning is the art of balancing speed, 
+        overshoot, and stability.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const PLANTS = {
+  'first-order': { name:'First-Order',    K:1.0, tau:1.0, zeta:0, wn:0, delay:0,  color:'#22d3ee' },
+  'second-order':{ name:'Second-Order',   K:1.0, tau:1.0, zeta:0.3, wn:2.0, delay:0, color:'#4ade80' },
+  'integrator':  { name:'Integrator',     K:1.0, tau:0,  zeta:0, wn:0, delay:0,  color:'#fbbf24' },
+  'dead-time':   { name:'1st Order + Delay', K:1.0, tau:1.5, zeta:0, wn:0, delay:0.5, color:'#f87171' }
+};
+
+const S = {
+  plant: 'first-order',
+  Kp: 2.0,
+  Ki: 1.0,
+  Kd: 0.2,
+  setpoint: 1.0,
+  pv: 0,
+  integral: 0,
+  prevErr: 0,
+  time: 0,
+  running: false,
+  history: [],
+  disturbance: false,
+  satLimit: 10,
+  saturated: false,
+  disturbanceStart: 0
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const plantSel = document.getElementById('plantSelect');
+const kpSlider = document.getElementById('kpSlider');
+const kiSlider = document.getElementById('kiSlider');
+const kdSlider = document.getElementById('kdSlider');
+const spSlider = document.getElementById('spSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── PID CONTROL ───────────────────────────────────────────
+function getPlant(){ return PLANTS[S.plant]; }
+
+function stepControl(dt){
+  const plant = getPlant();
+  const err = S.setpoint - S.pv;
+  S.integral += err * dt;
+  const derivative = (err - S.prevErr) / dt;
+  S.prevErr = err;
+
+  // PID output
+  let u = S.Kp * err + S.Ki * S.integral + S.Kd * derivative;
+
+  // Actuator saturation
+  const u_orig = u;
+  if(u > S.satLimit) u = S.satLimit;
+  if(u < -S.satLimit) u = -S.satLimit;
+  S.saturated = (u !== u_orig);
+
+  // Anti-windup
+  if(S.saturated){
+    S.integral -= err * dt * 0.5;
+  }
+
+  // Plant simulation
+  if(S.plant === 'first-order'){
+    // τ·dy/dt + y = K·u
+    const dy = (plant.K * u - S.pv) / plant.tau;
+    S.pv += dy * dt;
+  } else if(S.plant === 'second-order'){
+    // Second order: K/(τ²s² + 2ζτs + 1)
+    // State space: y' = v, v' = (K·u - 2ζτ·v - y)/τ²
+    if(S.pv_v === undefined) S.pv_v = 0;
+    const acc = (plant.K * u - 2 * plant.zeta * plant.tau * S.pv_v - S.pv) / (plant.tau * plant.tau);
+    S.pv_v += acc * dt;
+    S.pv += S.pv_v * dt;
+  } else if(S.plant === 'integrator'){
+    // dy/dt = K·u
+    S.pv += plant.K * u * dt;
+  } else {
+    // First order + delay
+    if(!S.delayBuffer) S.delayBuffer = [];
+    const delaySteps = Math.round(plant.delay / dt);
+    S.delayBuffer.push(plant.K * u);
+    if(S.delayBuffer.length > delaySteps){
+      const u_delayed = S.delayBuffer.shift();
+      const dy = (u_delayed - S.pv) / plant.tau;
+      S.pv += dy * dt;
+    }
+  }
+
+  // Disturbance
+  if(S.disturbance){
+    S.pv -= 0.3 * dt;
+  }
+
+  S.time += dt;
+
+  // Record history
+  if(S.history.length === 0 || S.time - S.history[S.history.length-1].t > 0.02){
+    S.history.push({ t: S.time, sp: S.setpoint, pv: S.pv, u });
+    if(S.history.length > 3000) S.history.shift();
+  }
+}
+
+function analyzeResponse(){
+  if(S.history.length < 10) return { overshoot: 0, settling: 0, sse: 0 };
+  // Find overshoot
+  let maxPV = 0;
+  let riseTime = 0;
+  let settledAt = S.time;
+  let sp = S.setpoint;
+  let inBand = false;
+  let bandStart = 0;
+
+  for(const h of S.history){
+    if(h.pv > maxPV) maxPV = h.pv;
+  }
+  const overshoot = Math.max(0, (maxPV - sp) / sp * 100);
+
+  // Settling time (within 2% of SP)
+  const band = 0.02 * sp;
+  for(let i=S.history.length - 1; i>=0; i--){
+    if(Math.abs(S.history[i].pv - sp) > band){
+      if(i < S.history.length - 1){
+        settledAt = S.history[i+1].t;
+      }
+      break;
+    }
+    settledAt = S.history[i].t;
+  }
+  const settling = settledAt;
+
+  // Steady-state error
+  const recent = S.history.slice(-50);
+  const avgPV = recent.reduce((a, h) => a + h.pv, 0) / recent.length;
+  const sse = sp - avgPV;
+
+  return { overshoot, settling, sse };
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawBlockDiagram(W, H);
+  drawResponseChart(W, H);
+  drawPerformanceChart(W, H);
+}
+
+function drawBlockDiagram(W, H){
+  const cx = W * 0.35;
+  const cy = H * 0.35;
+
+  // Blocks
+  const blockW = 70;
+  const blockH = 40;
+  const y = cy;
+
+  const sumX = cx - 200;
+  const pidX = cx - 100;
+  const plantX = cx + 100;
+  const sensorX = cx + 100;
+  const spX = cx - 280;
+
+  // Setpoint arrow
+  ctx.strokeStyle = '#22d3ee';
+  ctx.fillStyle = '#22d3ee';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(spX, y);
+  ctx.lineTo(sumX - 25, y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(sumX - 20, y);
+  ctx.lineTo(sumX - 30, y - 6);
+  ctx.lineTo(sumX - 30, y + 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('SP', spX - 20, y - 10);
+
+  // Summing junction
+  ctx.beginPath();
+  ctx.arc(sumX, y, 18, 0, Math.PI * 2);
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fill();
+  ctx.strokeStyle = '#94a3b8';
+  ctx.stroke();
+  // Plus / minus symbols
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'bold 14px Consolas, monospace';
+  ctx.fillText('+', sumX - 12, y - 8);
+  ctx.fillText('−', sumX - 12, y + 16);
+
+  // Arrow from sum to PID
+  ctx.strokeStyle = '#22d3ee';
+  ctx.beginPath();
+  ctx.moveTo(sumX + 20, y);
+  ctx.lineTo(pidX - 10, y);
+  ctx.stroke();
+
+  // PID block
+  ctx.fillStyle = '#0c4a6e';
+  ctx.fillRect(pidX - blockW/2, y - blockH/2, blockW, blockH);
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(pidX - blockW/2, y - blockH/2, blockW, blockH);
+  ctx.fillStyle = '#67e8f9';
+  ctx.font = 'bold 13px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('PID', pidX, y + 5);
+  ctx.textAlign = 'left';
+
+  // Arrow PID to Plant
+  ctx.strokeStyle = '#22d3ee';
+  ctx.beginPath();
+  ctx.moveTo(pidX + blockW/2, y);
+  ctx.lineTo(plantX - blockW/2 - 10, y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(plantX - blockW/2 - 5, y);
+  ctx.lineTo(plantX - blockW/2 - 15, y - 6);
+  ctx.lineTo(plantX - blockW/2 - 15, y + 6);
+  ctx.closePath();
+  ctx.fill();
+
+  // Output label
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('u', pidX + blockW/2 + 15, y - 8);
+
+  // Plant block
+  ctx.fillStyle = '#14532d';
+  ctx.fillRect(plantX - blockW/2, y - blockH/2, blockW, blockH);
+  ctx.strokeStyle = '#4ade80';
+  ctx.strokeRect(plantX - blockW/2, y - blockH/2, blockW, blockH);
+  ctx.fillStyle = '#86efac';
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('PLANT', plantX, y + 5);
+  ctx.textAlign = 'left';
+
+  // Arrow from plant to output
+  ctx.strokeStyle = '#22d3ee';
+  ctx.beginPath();
+  ctx.moveTo(plantX + blockW/2, y);
+  ctx.lineTo(plantX + 100, y);
+  ctx.stroke();
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('PV', plantX + 110, y - 10);
+
+  // Feedback loop (bottom)
+  ctx.strokeStyle = '#94a3b8';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(plantX + 80, y);
+  ctx.lineTo(plantX + 80, y + 70);
+  ctx.lineTo(sumX, y + 70);
+  ctx.lineTo(sumX, y + 20);
+  ctx.stroke();
+
+  // Sensor block
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fillRect(plantX + 60, y + 50, 60, 25);
+  ctx.strokeStyle = '#94a3b8';
+  ctx.strokeRect(plantX + 60, y + 50, 60, 25);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('sensor', plantX + 70, y + 66);
+
+  // Info
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText('CONTROL LOOP — ' + getPlant().name, 20, 30);
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('Kp = ' + S.Kp.toFixed(2) + ', Ki = ' + S.Ki.toFixed(2) + ', Kd = ' + S.Kd.toFixed(2), 20, 50);
+
+  // Saturation indicator
+  if(S.saturated){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 12px Consolas, monospace';
+    ctx.fillText('⚠ SATURATED at ' + S.satLimit, pidX - 40, y - blockH/2 - 10);
+  }
+}
+
+function drawResponseChart(W, H){
+  const ox = 60;
+  const oy = H * 0.55;
+  const w = W * 0.55;
+  const h = H * 0.4;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('STEP RESPONSE', ox, oy - 10);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const pad = { l:40, r:20, t:20, b:30 };
+  const gw = w - pad.l - pad.r;
+  const gh = h - pad.t - pad.b;
+
+  const tWindow = 10;
+  const maxVal = Math.max(S.setpoint * 2, 2);
+
+  const xOf = t => ox + pad.l + (t / tWindow) * gw;
+  const yOf = v => oy + h - pad.b - (v / maxVal) * gh;
+
+  // Grid
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  for(let i=0;i<=5;i++){
+    const y = oy + pad.t + gh * i / 5;
+    ctx.beginPath(); ctx.moveTo(ox + pad.l, y); ctx.lineTo(ox + pad.l + gw, y); ctx.stroke();
+  }
+  ctx.restore();
+
+  // Setpoint line
+  ctx.strokeStyle = 'rgba(251,191,36,0.5)';
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  ctx.moveTo(ox + pad.l, yOf(S.setpoint));
+  ctx.lineTo(ox + pad.l + gw, yOf(S.setpoint));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('SP=' + S.setpoint.toFixed(2), ox + w - pad.r - 50, yOf(S.setpoint) - 4);
+
+  // 2% settling band
+  ctx.fillStyle = 'rgba(74,222,128,0.1)';
+  ctx.fillRect(ox + pad.l, yOf(S.setpoint * 1.02), gw, yOf(S.setpoint * 0.98) - yOf(S.setpoint * 1.02));
+
+  // PV trace
+  if(S.history.length > 1){
+    ctx.beginPath();
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#22d3ee';
+    ctx.shadowBlur = 6;
+    const tStart = Math.max(0, S.time - tWindow);
+    let first = true;
+    for(const h of S.history){
+      if(h.t < tStart) continue;
+      const x = xOf(h.t - tStart);
+      const y = yOf(h.pv);
+      if(first){ ctx.moveTo(x, y); first = false; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // Control effort (scaled)
+  if(S.history.length > 1){
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(167,139,250,0.6)';
+    ctx.lineWidth = 1.5;
+    const tStart = Math.max(0, S.time - tWindow);
+    let first = true;
+    for(const h of S.history){
+      if(h.t < tStart) continue;
+      const x = xOf(h.t - tStart);
+      const y = yOf(h.u * 0.5 + 0.5);
+      if(first){ ctx.moveTo(x, y); first = false; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('time (s)', ox + w/2, oy + h - 6);
+  ctx.textAlign = 'left';
+
+  // Legend
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('— PV (output)', ox + w - 120, oy + 16);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillText('— Control u', ox + w - 120, oy + 30);
+}
+
+function drawPerformanceChart(W, H){
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 200;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('PERFORMANCE METRICS', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const perf = analyzeResponse();
+
+  const drawBar = (label, val, maxVal, unit, color, y) => {
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '10px Consolas, monospace';
+    ctx.fillText(label, ox + 8, y + 14);
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(ox + 110, y, w - 140, 16);
+    ctx.fillStyle = color;
+    ctx.fillRect(ox + 110, y, Math.min(1, val / maxVal) * (w - 140), 16);
+    ctx.fillStyle = color;
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.fillText(val.toFixed(2) + ' ' + unit, ox + 115, y + 13);
+  };
+
+  drawBar('Overshoot', perf.overshoot, 100, '%', 
+    perf.overshoot > 30 ? '#f87171' : perf.overshoot > 15 ? '#fbbf24' : '#4ade80', oy + 20);
+  drawBar('Settling', perf.settling, 15, 's',
+    perf.settling > 10 ? '#f87171' : perf.settling > 5 ? '#fbbf24' : '#4ade80', oy + 50);
+  drawBar('SS Error', Math.abs(perf.sse), 1, '',
+    Math.abs(perf.sse) > 0.1 ? '#f87171' : Math.abs(perf.sse) > 0.03 ? '#fbbf24' : '#4ade80', oy + 80);
+
+  // Feedback for tuning
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  let feedback = '';
+  let feedbackColor = '#22d3ee';
+  if(perf.overshoot > 40){
+    feedback = '⚠ Reduce Kp or increase Kd';
+    feedbackColor = '#f87171';
+  } else if(perf.settling > 10){
+    feedback = '⚠ Increase Kp or Ki';
+    feedbackColor = '#fbbf24';
+  } else if(Math.abs(perf.sse) > 0.05){
+    feedback = '⚠ Increase Ki';
+    feedbackColor = '#fbbf24';
+  } else if(perf.overshoot < 20 && perf.settling < 5 && Math.abs(perf.sse) < 0.02){
+    feedback = '✓ Well-tuned!';
+    feedbackColor = '#4ade80';
+  } else {
+    feedback = 'Tuning in progress...';
+  }
+  ctx.fillStyle = feedbackColor;
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText(feedback, ox + 8, oy + h - 50);
+
+  // Controller output
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('Actuator limit: ' + S.satLimit, ox + 8, oy + h - 20);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const perf = analyzeResponse();
+  document.querySelector('#mSP .mvalue').textContent = S.setpoint.toFixed(3);
+  document.querySelector('#mPV .mvalue').textContent = S.pv.toFixed(3);
+  document.querySelector('#mErr .mvalue').textContent = (S.setpoint - S.pv).toFixed(3);
+  document.querySelector('#mOS .mvalue').innerHTML = perf.overshoot.toFixed(1) + '<span class="munit">%</span>';
+  document.querySelector('#mTs .mvalue').innerHTML = perf.settling.toFixed(1) + '<span class="munit">s</span>';
+  document.querySelector('#mSS .mvalue').textContent = perf.sse.toFixed(3);
+
+  document.getElementById('mErr').className = 'metric' + (Math.abs(S.setpoint - S.pv) < 0.05 ? ' ok' : Math.abs(S.setpoint - S.pv) < 0.2 ? ' warn' : ' bad');
+  document.getElementById('mOS').className = 'metric' + (perf.overshoot > 40 ? ' bad' : perf.overshoot > 20 ? ' warn' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  if(S.running){
+    const steps = 10;
+    const dt = 1/60 / steps;
+    for(let i=0;i<steps;i++) stepControl(dt);
+  }
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+plantSel.addEventListener('change', e => {
+  S.plant = e.target.value;
+  resetBtn.click();
+  const plant = getPlant();
+  teach('PLANT', plant.name + ' selected. Different plants need different tuning. ' + 
+    (S.plant === 'first-order' ? 'Simple first-order lag — easy to control.' :
+     S.plant === 'second-order' ? 'Second-order with oscillation — harder.' :
+     S.plant === 'integrator' ? 'Pure integrator — no natural restoring force.' :
+     'Dead time makes control difficult — PID must predict.'), 'concept');
+});
+
+kpSlider.addEventListener('input', e => {
+  S.Kp = parseFloat(e.target.value);
+  document.getElementById('kpVal').textContent = S.Kp.toFixed(2);
+});
+
+kiSlider.addEventListener('input', e => {
+  S.Ki = parseFloat(e.target.value);
+  document.getElementById('kiVal').textContent = S.Ki.toFixed(2);
+});
+
+kdSlider.addEventListener('input', e => {
+  S.Kd = parseFloat(e.target.value);
+  document.getElementById('kdVal').textContent = S.Kd.toFixed(2);
+});
+
+spSlider.addEventListener('input', e => {
+  S.setpoint = parseFloat(e.target.value);
+  document.getElementById('spVal').textContent = S.setpoint.toFixed(2);
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ RUN CONTROL';
+  if(S.running){
+    teach('RUN', 'Control loop running. Kp = ' + S.Kp + ', Ki = ' + S.Ki + ', Kd = ' + S.Kd + '.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  if(!S.running){
+    S.running = true;
+    playBtn.textContent = '⏸ PAUSE';
+  }
+  for(let i=0;i<30;i++) stepControl(1/120);
+  teach('STEP', 'SP = ' + S.setpoint.toFixed(2) + ', PV = ' + S.pv.toFixed(3) + ', error = ' + (S.setpoint - S.pv).toFixed(3) + '.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.Kp = 2; S.Ki = 1; S.Kd = 0.2; S.setpoint = 1;
+  S.pv = 0; S.integral = 0; S.prevErr = 0; S.time = 0;
+  S.running = false; S.history = [];
+  S.disturbance = false; S.saturated = false;
+  S.pv_v = 0;
+  S.delayBuffer = [];
+  kpSlider.value = 2; kiSlider.value = 1; kdSlider.value = 0.2; spSlider.value = 1;
+  document.getElementById('kpVal').textContent = '2.00';
+  document.getElementById('kiVal').textContent = '1.00';
+  document.getElementById('kdVal').textContent = '0.20';
+  document.getElementById('spVal').textContent = '1.00';
+  playBtn.textContent = '▶ RUN CONTROL';
+  teach('RESET', 'Controller reset to defaults.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('znBtn').addEventListener('click', () => {
+  // Ziegler-Nichols based on plant type
+  if(S.plant === 'first-order'){
+    S.Kp = 3.0; S.Ki = 2.0; S.Kd = 0.3;
+  } else if(S.plant === 'second-order'){
+    S.Kp = 4.0; S.Ki = 3.0; S.Kd = 0.5;
+  } else if(S.plant === 'integrator'){
+    S.Kp = 2.0; S.Ki = 1.5; S.Kd = 0.8;
+  } else {
+    S.Kp = 1.5; S.Ki = 0.8; S.Kd = 0.5;
+  }
+  kpSlider.value = S.Kp; kiSlider.value = S.Ki; kdSlider.value = S.Kd;
+  document.getElementById('kpVal').textContent = S.Kp.toFixed(2);
+  document.getElementById('kiVal').textContent = S.Ki.toFixed(2);
+  document.getElementById('kdVal').textContent = S.Kd.toFixed(2);
+  resetBtn.click();
+  teach('ZN TUNING', 'Ziegler-Nichols applied: Kp = ' + S.Kp + ', Ki = ' + S.Ki + ', Kd = ' + S.Kd + '. Fast but usually 25% overshoot. For process control, use conservative tuning.', 'warn');
+  toast('⚙ ZN tuned');
+});
+
+document.getElementById('ccBtn').addEventListener('click', () => {
+  // Cohen-Coon (based on dead time)
+  if(S.plant === 'dead-time'){
+    S.Kp = 2.5; S.Ki = 1.2; S.Kd = 0.6;
+  } else {
+    S.Kp = 2.5; S.Ki = 1.2; S.Kd = 0.4;
+  }
+  kpSlider.value = S.Kp; kiSlider.value = S.Ki; kdSlider.value = S.Kd;
+  document.getElementById('kpVal').textContent = S.Kp.toFixed(2);
+  document.getElementById('kiVal').textContent = S.Ki.toFixed(2);
+  document.getElementById('kdVal').textContent = S.Kd.toFixed(2);
+  resetBtn.click();
+  teach('CC TUNING', 'Cohen-Coon: better for processes with dead time. Less overshoot than Z-N but slightly slower.', 'warn');
+});
+
+document.getElementById('imcBtn').addEventListener('click', () => {
+  // IMC tuning — conservative, good for noisy signals
+  S.Kp = 1.5; S.Ki = 0.8; S.Kd = 0.1;
+  kpSlider.value = S.Kp; kiSlider.value = S.Ki; kdSlider.value = S.Kd;
+  document.getElementById('kpVal').textContent = S.Kp.toFixed(2);
+  document.getElementById('kiVal').textContent = S.Ki.toFixed(2);
+  document.getElementById('kdVal').textContent = S.Kd.toFixed(2);
+  resetBtn.click();
+  teach('IMC TUNING', 'Internal Model Control: conservative, robust. Slower response but very little overshoot. Best for processes with noise.', 'warn');
+});
+
+document.getElementById('oscBtn').addEventListener('click', () => {
+  S.Kp = 15;
+  S.Ki = 5;
+  S.Kd = 0;
+  kpSlider.value = 15; kiSlider.value = 5; kdSlider.value = 0;
+  document.getElementById('kpVal').textContent = '15.00';
+  document.getElementById('kiVal').textContent = '5.00';
+  document.getElementById('kdVal').textContent = '0.00';
+  resetBtn.click();
+  teach('OSCILLATION', 'Too-high gains cause sustained oscillation. System rings indefinitely — in a real plant, this is dangerous and can damage equipment.', 'error');
+  toast('⚠ Oscillating');
+});
+
+document.getElementById('distBtn').addEventListener('click', () => {
+  S.disturbance = !S.disturbance;
+  if(S.disturbance){
+    teach('DISTURBANCE', 'Disturbance applied to process output. A good controller rejects it quickly; a bad one lets it persist. Try with and without integral action.', 'warn');
+  } else {
+    teach('CLEAR', 'Disturbance removed.', 'ok');
+  }
+});
+
+document.getElementById('satBtn').addEventListener('click', () => {
+  S.satLimit = S.satLimit === 10 ? 0.5 : 10;
+  teach('SATURATION', 'Actuator limited to ' + S.satLimit + '. Real actuators (motors, valves) have limits. If controller demands more, it saturates — integral windup can cause overshoot.', 'warn');
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'thermostat'){
+      S.plant = 'first-order'; S.Kp = 3; S.Ki = 0.5; S.Kd = 0.1; S.setpoint = 1;
+      plantSel.value = 'first-order';
+      kpSlider.value = 3; kiSlider.value = 0.5; kdSlider.value = 0.1; spSlider.value = 1;
+      updateLabels(); resetState();
+      teach('THERMOSTAT', 'Room thermostat: slow first-order plant, gentle tuning. Comfort matters more than speed. Small overshoot acceptable.', 'concept');
+    } else if(p === 'drone'){
+      S.plant = 'second-order'; S.Kp = 8; S.Ki = 2; S.Kd = 2; S.setpoint = 1;
+      plantSel.value = 'second-order';
+      kpSlider.value = 8; kiSlider.value = 2; kdSlider.value = 2; spSlider.value = 1;
+      updateLabels(); resetState();
+      teach('DRONE', 'Drone attitude control: fast, underdamped plant. High Kd for damping. Response must be sub-100ms — too slow and the drone crashes.', 'concept');
+    } else if(p === 'cruise'){
+      S.plant = 'integrator'; S.Kp = 4; S.Ki = 1; S.Kd = 0.3; S.setpoint = 1;
+      plantSel.value = 'integrator';
+      kpSlider.value = 4; kiSlider.value = 1; kdSlider.value = 0.3; spSlider.value = 1;
+      updateLabels(); resetState();
+      teach('CRUISE', 'Cruise control: integrator plant (position/speed). Must compensate for hills (disturbances). Too-aggressive Ki causes surging.', 'concept');
+    } else {
+      S.plant = 'dead-time'; S.Kp = 2; S.Ki = 0.5; S.Kd = 0.5; S.setpoint = 1;
+      plantSel.value = 'dead-time';
+      kpSlider.value = 2; kiSlider.value = 0.5; kdSlider.value = 0.5; spSlider.value = 1;
+      updateLabels(); resetState();
+      teach('SERVO', 'Servo motor: dead time from communication delays. PID must be conservative — high Kp with delay = guaranteed oscillation.', 'concept');
+    }
+  });
+});
+
+function updateLabels(){
+  document.getElementById('kpVal').textContent = S.Kp.toFixed(2);
+  document.getElementById('kiVal').textContent = S.Ki.toFixed(2);
+  document.getElementById('kdVal').textContent = S.Kd.toFixed(2);
+  document.getElementById('spVal').textContent = S.setpoint.toFixed(2);
+}
+
+function resetState(){
+  S.pv = 0; S.integral = 0; S.prevErr = 0; S.time = 0;
+  S.running = false; S.history = [];
+  S.disturbance = false; S.saturated = false;
+  S.pv_v = 0; S.delayBuffer = [];
+  playBtn.textContent = '▶ RUN CONTROL';
+}
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to PID Control. PID is the most widely used controller in industry — from thermostats to drones to chemical plants.', 'concept');
+  teach('TERMS', 'P: responds to current error. I: eliminates steady-state error. D: anticipates — damps oscillation. Together they balance speed, accuracy, and stability.', 'concept');
+  teach('HOWTO', 'Adjust Kp, Ki, Kd. Press RUN CONTROL. Watch the response chart. Use auto-tune buttons as starting points. Try the fault buttons to see bad tuning.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

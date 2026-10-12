@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infrastructure as Code — Policy as Code &amp; IaC Security Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:#fcd34d;
+    text-shadow:0 0 8px rgba(245,158,11,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:#fcd34d; color:#fcd34d; }
+  .header-actions button.active{
+    border-color:#fcd34d; color:#fcd34d;
+    box-shadow:0 0 10px rgba(245,158,11,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:#fcd34d; }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; font-size:10px; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:#fcd34d; cursor:pointer; box-shadow:0 0 7px rgba(245,158,11,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:#fcd34d; cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#fcd34d; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:#fcd34d; color:#fcd34d; }
+  button.act.primary{
+    background:linear-gradient(180deg,#2a1f0f,#1a1406);
+    border-color:#fcd34d; color:#fcd34d;
+    box-shadow:0 0 10px rgba(245,158,11,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(245,158,11,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulseAmber 1.4s infinite; }
+  @keyframes pulseAmber{
+    0%,100%{ box-shadow:0 0 6px rgba(245,158,11,.3); }
+    50%{ box-shadow:0 0 18px rgba(245,158,11,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.amber .m-value{ color:#fcd34d; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#fcd34d; }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .iac-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .iac-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .iac-phase.done{ border-color:#fcd34d; color:#fcd34d;
+    background:rgba(245,158,11,.12); }
+  .iac-phase.active{ border-color:#fcd34d; color:#fcd34d;
+    background:rgba(245,158,11,.2); box-shadow:0 0 10px rgba(245,158,11,.6);
+    animation:kcAmber 1.2s infinite; }
+  @keyframes kcAmber{ 50%{ box-shadow:0 0 16px rgba(245,158,11,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>INFRASTRUCTURE AS CODE</h1>
+    <span class="sub">TERRAFORM · CLOUDFORMATION · POLICY AS CODE · OPA · CHECKOV</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ IaC Framework</h3>
+      <select id="fwSelect">
+        <option value="terraform">Terraform (HCL)</option>
+        <option value="cloudformation">AWS CloudFormation</option>
+        <option value="pulumi">Pulumi (TS/Python)</option>
+        <option value="ansible">Ansible playbooks</option>
+        <option value="k8s">Kubernetes manifests (YAML)</option>
+      </select>
+      <label class="ctl-label">Scan type</label>
+      <select id="scanSelect">
+        <option value="checkov">Checkov / Trivy / KICS</option>
+        <option value="opa">OPA / Conftest</option>
+        <option value="terrascan">Terrascan</option>
+        <option value="tfsec">tfsec</option>
+        <option value="custom">Custom org policy</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Misconfiguration</h3>
+      <select id="misconfigSelect">
+        <option value="s3-public">S3 bucket public + no encryption</option>
+        <option value="sg-open">Security group 0.0.0.0/0 on 22/3389</option>
+        <option value="iam-wild">IAM policy with Action: *</option>
+        <option value="rds-public">RDS publicly accessible</option>
+        <option value="unencrypted">EBS/RDS without encryption</option>
+        <option value="no-logging">No CloudTrail / VPC flow logs</option>
+        <option value="k8s-priv">K8s pod privileged: true</option>
+        <option value="secrets-code">Secrets hardcoded in IaC file</option>
+      </select>
+      <label class="ctl-label">Target resource</label>
+      <input type="text" id="resInput" value="aws_s3_bucket.backups">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Policy strictness <span class="slider-val" id="strictVal">medium</span></label>
+      <input type="range" id="strictSlider" min="0" max="100" value="50">
+      <label class="ctl-label">Fail-on-severity</label>
+      <select id="sevSelect">
+        <option value="critical">Critical only</option>
+        <option value="high" selected>High and above</option>
+        <option value="medium">Medium and above</option>
+        <option value="low">Low (all findings)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ SCAN</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="fixBtn">🔧 AUTO-FIX</button>
+        <button type="button" class="act ok" id="gateBtn">🚦 CI GATE</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">devops@cicd:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — IaC misconfigurations are the #1 cause of cloud data breaches. Scan your own repos.</div>
+    <div class="status-badges">
+      <div class="status-badge">FRAMEWORK: <b id="badgeFW">TERRAFORM</b></div>
+      <div class="status-badge">SCAN: <b id="badgeScan">CHECKOV</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+      <div class="status-badge">FINDINGS: <b id="badgeFindings">0</b></div>
+    </div>
+    <div class="iac-chain" id="iacChain">
+      <div class="iac-phase" id="iap-PARSE">PARSE</div>
+      <div class="iac-phase" id="iap-SCAN">SCAN</div>
+      <div class="iac-phase" id="iap-POLICY">POLICY</div>
+      <div class="iac-phase" id="iap-GATE">CI GATE</div>
+      <div class="iac-phase" id="iap-REPORT">REPORT</div>
+    </div>
+    <div class="footer-overlay">Open Policy Agent (OPA) · Checkov · Trivy · Terrascan · CIS Benchmarks · NIST SP 800-53 CM-6</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric amber" id="mFiles"><div class="m-label">Files</div><div class="m-value" id="mFilesVal">0</div></div>
+      <div class="metric" id="mResources"><div class="m-label">Resources</div><div class="m-value" id="mResourcesVal">0</div></div>
+      <div class="metric" id="mCritical"><div class="m-label">Critical</div><div class="m-value" id="mCriticalVal">0</div></div>
+      <div class="metric" id="mHigh"><div class="m-label">High</div><div class="m-value" id="mHighVal">0</div></div>
+      <div class="metric" id="mMedium"><div class="m-label">Medium</div><div class="m-value" id="mMediumVal">0</div></div>
+      <div class="metric" id="mLow"><div class="m-label">Low</div><div class="m-value" id="mLowVal">0</div></div>
+      <div class="metric" id="mFixed"><div class="m-label">Fixed</div><div class="m-value" id="mFixedVal">0</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Gate</div><div class="m-value" id="mDefenseVal">—</div></div>
+    </div>
+    <div class="info-card">
+      <b>Infrastructure as Code — security shifts left.</b><br>
+      <span class="eq">Terraform/CFN = cloud resources in code</span><br>
+      <span class="eq">Policy as Code = automated guardrails (OPA/Rego)</span><br>
+      <span class="eq">Shift-left: catch misconfigs BEFORE deploy</span><br>
+      <span class="eq">CI gate: fail the build if policy fails</span><br>
+      <span style="color:var(--purple)">OPA · Checkov · Trivy · CIS Benchmarks · NIST CM-6</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  fw:'terraform',
+  scan:'checkov',
+  misconfig:'s3-public',
+  res:'aws_s3_bucket.backups',
+  strictness:50,
+  failOn:'high',
+  files:0,
+  resources:0,
+  critical:0,
+  high:0,
+  medium:0,
+  low:0,
+  fixed:0,
+  gate:'—',
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['PARSE','SCAN','POLICY','GATE','REPORT'];
+
+var MISCONFIGS = {
+  's3-public':{
+    title:'S3 bucket public + no encryption',
+    severity:'CRITICAL',
+    res:'aws_s3_bucket.backups',
+    detail:'Bucket has acl="public-read" and no server_side_encryption_configuration block. Any internet user can list and read objects. Common cause of data breaches (Capital One 2019, Accenture 2017).',
+    fix:'Set acl="private", add server_side_encryption_configuration with AES256 or aws:kms, add block_public_acls + block_public_policy + ignore_public_acls + restrict_public_buckets.'
+  },
+  'sg-open':{
+    title:'Security group 0.0.0.0/0 on 22/3389',
+    severity:'HIGH',
+    res:'aws_security_group.web',
+    detail:'Ingress rule allows SSH (22) or RDP (3389) from anywhere. Enables brute-force, credential stuffing, and exploitation of unpatched services. Top attack vector for cloud breaches.',
+    fix:'Restrict to known CIDR blocks (bastion, VPN), use SSM Session Manager for admin access, enable SSH key-only auth, add fail2ban at OS layer.'
+  },
+  'iam-wild':{
+    title:'IAM policy with Action: *',
+    severity:'CRITICAL',
+    res:'aws_iam_policy.lambda_role',
+    detail:'Policy grants Action:* on Resource:*. Any compromise of the attached principal gives full account takeover. Violates least privilege and CIS AWS 1.16.',
+    fix:'Scope to specific actions (s3:GetObject, s3:PutObject), specific resources (arn:aws:s3:::my-bucket/*), add condition keys (aws:RequestedRegion, aws:SourceVpce).'
+  },
+  'rds-public':{
+    title:'RDS publicly accessible',
+    severity:'HIGH',
+    res:'aws_db_instance.prod',
+    detail:'publicly_accessible = true. Database reachable from internet. Even with strong password, exposed to scanning, CVE probes, and side-channel attacks.',
+    fix:'Set publicly_accessible = false, place in private subnets, use security groups + NACLs, access via VPN or bastion, use IAM database authentication.'
+  },
+  'unencrypted':{
+    title:'EBS/RDS without encryption',
+    severity:'HIGH',
+    res:'aws_ebs_volume.data',
+    detail:'Storage volume not encrypted at rest. If disk is stolen, snapshotted improperly, or backed up to unencrypted S3, data is readable. GDPR/HIPAA compliance violation.',
+    fix:'Set encrypted = true with KMS key. Enable account-level EBS encryption by default. For RDS: storage_encrypted = true, kms_key_id = arn:aws:kms:...'
+  },
+  'no-logging':{
+    title:'No CloudTrail / VPC flow logs',
+    severity:'MEDIUM',
+    res:'aws_cloudtrail.main',
+    detail:'No audit logging of API calls (CloudTrail) or network traffic (VPC flow logs). Forensic investigation impossible. Compliance violation (PCI DSS 10, HIPAA, SOC 2).',
+    fix:'Enable CloudTrail (multi-region, log file validation, KMS encryption, S3 bucket with MFA delete). Enable VPC flow logs to CloudWatch or S3.'
+  },
+  'k8s-priv':{
+    title:'K8s pod privileged: true',
+    severity:'CRITICAL',
+    res:'Deployment.web.securityContext',
+    detail:'Pod runs in privileged mode with all Linux capabilities. Container escape gives full node access. Violates Pod Security Standards (Restricted).',
+    fix:'Remove privileged: true. Drop ALL capabilities, add only needed ones. Set runAsNonRoot: true, readOnlyRootFilesystem: true, allowPrivilegeEscalation: false.'
+  },
+  'secrets-code':{
+    title:'Secrets hardcoded in IaC file',
+    severity:'CRITICAL',
+    res:'variables.tf',
+    detail:'AWS access keys or DB passwords committed to git. Even if removed later, git history retains them. Attackers scan public repos for leaked keys within minutes.',
+    fix:'Use AWS Secrets Manager or SSM Parameter Store with dynamic references. Add pre-commit hooks (gitleaks, trufflehog). Rotate leaked credentials immediately.'
+  }
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'repo', label:'git repo', ip:'main.tf', x:0.12*W, y:0.40*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'runner', label:'CI runner', ip:'GitHub Actions', x:0.32*W, y:0.40*H, icon:'server', color:'#22d3ee', glow:0, blink:0},
+    {id:'scanner', label:'IaC scanner', ip:'Checkov/OPA', x:0.52*W, y:0.40*H, icon:'server', color:'#fcd34d', glow:0, blink:0},
+    {id:'policy', label:'policy engine', ip:'Rego rules', x:0.72*W, y:0.20*H, icon:'firewall', color:'#a855f7', glow:0, blink:0},
+    {id:'cloud', label:'cloud provider', ip:'AWS/Azure/GCP', x:0.72*W, y:0.60*H, icon:'cloud', color:'#22c55e', glow:0, blink:0},
+    {id:'gate', label:'gate', ip:'PASS/BLOCK', x:0.88*W, y:0.40*H, icon:'firewall', color:'#ef4444', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(245,158,11,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(var j=0;j<3;j++){ ctx.beginPath(); ctx.moveTo(-10,-8+j*4); ctx.lineTo(8,-8+j*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'firewall': {
+      ctx.lineWidth = 1.2;
+      for(var row=0;row<3;row++){
+        var y2 = -10 + row*7;
+        var off = row%2===0 ? 0 : 5;
+        for(var col=0;col<4;col++) ctx.strokeRect(-16+col*9+off, y2, 8, 6);
+      }
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(0,-4); ctx.quadraticCurveTo(4,0,0,5); ctx.quadraticCurveTo(-4,0,0,-4);
+      ctx.fill();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">devops@cicd:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Infrastructure as Code misconfigurations are the leading cause of cloud data breaches (Capital One, Accenture, Pegasus). Scanning your own IaC is a mandatory security practice. When contributing to open source, never commit real credentials — even if removed later, git history retains them. Report IaC misconfigurations in public repos via responsible disclosure. Legal note: unauthorized scanning of third-party infrastructure is illegal. Policy as Code (OPA/Rego) should be reviewed by both security and dev teams.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Infrastructure as Code (IaC) defines cloud resources in version-controlled files (Terraform, CloudFormation, Pulumi, Ansible, K8s YAML). Security shifts LEFT: policy violations are caught in CI before resources are provisioned. Policy as Code tools (OPA/Rego, Checkov, Trivy, KICS, Terrascan, tfsec) scan IaC for misconfigurations: public buckets, wildcard IAM, unencrypted storage, open security groups, missing logging. CI gates fail the build if the finding severity exceeds a threshold. This is Defense in Depth applied to infrastructure. NIST SP 800-53 CM-6 (Configuration Settings) and CM-3 (Change Control) govern.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('terraform init && terraform plan -out=plan.out\n' +
+      'Initializing modules...\n' +
+      'Refreshing state...\n' +
+      'Plan: 3 to add, 0 to change, 0 to destroy.\n\n' +
+      'checkov -d . --framework terraform --output cli');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Framework: ' + STATE.fw.toUpperCase() + '. Scanner: ' + STATE.scan.toUpperCase() + '. Misconfig: ' + MISCONFIGS[STATE.misconfig].title + '. Click SCAN to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running && STATE.tick % 30 === 0){
+    spawnPacket('runner','scanner','#fcd34d','SCAN',0.03);
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.40*W, 0.75*H, 'DEVELOPER', '#3b82f6');
+  drawZone(0.48*W, 0.08*H, 0.48*W, 0.75*H, 'CI/CD + POLICY', '#fcd34d');
+
+  var links = [
+    ['repo','runner'], ['runner','scanner'],
+    ['scanner','policy'], ['policy','gate'],
+    ['gate','cloud']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(245,158,11,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+    if(n.id === 'gate' && STATE.gate === 'BLOCK'){
+      ctx.save();
+      ctx.font = 'bold 12px "Courier New",monospace';
+      ctx.fillStyle = '#ef4444';
+      ctx.textAlign = 'center';
+      ctx.fillText('BLOCKED', n.x, n.y - 30);
+      ctx.restore();
+    }
+    if(n.id === 'gate' && STATE.gate === 'PASS'){
+      ctx.save();
+      ctx.font = 'bold 12px "Courier New",monospace';
+      ctx.fillStyle = '#22c55e';
+      ctx.textAlign = 'center';
+      ctx.fillText('PASSED', n.x, n.y - 30);
+      ctx.restore();
+    }
+  });
+
+  // Info panel
+  if(STATE.phaseIdx > 0){
+    var m = MISCONFIGS[STATE.misconfig];
+    ctx.save();
+    var ax = 0.05*W, ay = H - 150, aw = 0.55*W, ah = 120;
+    ctx.fillStyle = 'rgba(40,30,5,0.9)';
+    ctx.strokeStyle = '#fcd34d';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = m.severity === 'CRITICAL' ? '#ef4444' : '#fcd34d';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 [' + m.severity + '] ' + m.title, ax + 8, ay + 16);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('Resource: ' + STATE.res, ax + 8, ay + 36);
+    ctx.fillText('Files scanned: ' + STATE.files + ' | Resources: ' + STATE.resources, ax + 8, ay + 52);
+    ctx.fillStyle = '#ef4444';
+    ctx.fillText('Critical: ' + STATE.critical + ' | High: ' + STATE.high, ax + 8, ay + 68);
+    ctx.fillStyle = '#fcd34d';
+    ctx.fillText('Medium: ' + STATE.medium + ' | Low: ' + STATE.low, ax + 8, ay + 84);
+    ctx.fillStyle = '#4ade80';
+    ctx.fillText('Auto-fixed: ' + STATE.fixed, ax + 8, ay + 100);
+    ctx.fillStyle = STATE.gate === 'BLOCK' ? '#ef4444' : (STATE.gate === 'PASS' ? '#4ade80' : '#fcd34d');
+    ctx.fillText('CI Gate: ' + STATE.gate, ax + 8, ay + 116);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Shift left: catch misconfigs in CI, not in production', 12, H - 74);
+  ctx.fillText('Policy as Code: Rego (OPA), Checkov custom rules', 12, H - 62);
+  ctx.fillText('Top misconfigs: public S3, wildcard IAM, open SG, no encryption', 12, H - 50);
+  ctx.fillText('CI gate: fail build if severity >= threshold', 12, H - 38);
+  ctx.fillText('OPA/Rego \u00B7 Checkov \u00B7 Trivy \u00B7 CIS Benchmarks \u00B7 NIST CM-6', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeFW').textContent = STATE.fw.toUpperCase();
+  document.getElementById('badgeScan').textContent = STATE.scan.toUpperCase();
+  document.getElementById('badgeStatus').textContent = STATE.running ? 'SCANNING' : (STATE.phaseIdx >= 5 ? 'COMPLETE' : 'IDLE');
+  document.getElementById('badgeFindings').textContent = STATE.critical + STATE.high + STATE.medium + STATE.low;
+
+  document.getElementById('mFilesVal').textContent = STATE.files;
+  document.getElementById('mResourcesVal').textContent = STATE.resources;
+  document.getElementById('mCriticalVal').textContent = STATE.critical;
+  document.getElementById('mHighVal').textContent = STATE.high;
+  document.getElementById('mMediumVal').textContent = STATE.medium;
+  document.getElementById('mLowVal').textContent = STATE.low;
+  document.getElementById('mFixedVal').textContent = STATE.fixed;
+  document.getElementById('mDefenseVal').textContent = STATE.gate;
+
+  document.getElementById('mCritical').className = 'metric' + (STATE.critical > 0 ? ' bad' : '');
+  document.getElementById('mHigh').className = 'metric' + (STATE.high > 0 ? ' warn' : '');
+  document.getElementById('mDefense').className = 'metric' + (STATE.gate === 'BLOCK' ? ' bad' : STATE.gate === 'PASS' ? ' ok' : '');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('iap-' + p);
+    if(!el) return;
+    el.className = 'iac-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var m = MISCONFIGS[STATE.misconfig];
+
+  switch(phase){
+    case 'PARSE':
+      STATE.files = 8;
+      STATE.resources = 47;
+      addFeed('PARSE', 'Parsing IaC files. Framework: ' + STATE.fw.toUpperCase() + '. Files: 8, Resources: 47. Building resource graph: dependencies, references, module boundaries.', 'info');
+      addCommandFeed(STATE.fw === 'terraform' ? 'terraform validate && terraform fmt -check' : 'cfn-lint template.yaml',
+        '[+] ' + STATE.fw.toUpperCase() + ' files valid\n[+] 47 resources parsed\n[+] Graph built');
+      break;
+
+    case 'SCAN':
+      STATE.critical = m.severity === 'CRITICAL' ? 1 : 0;
+      STATE.high = m.severity === 'HIGH' ? 2 : 0;
+      STATE.medium = m.severity === 'MEDIUM' ? 3 : 1;
+      STATE.low = 4;
+      spawnPacket('runner','scanner','#fcd34d','SCAN',0.02);
+      addFeed('SCAN', 'Scanning with ' + STATE.scan.toUpperCase() + '. ' + m.title + ' detected on ' + STATE.res + '. ' + m.detail, 'error');
+      addCommandFeed('checkov -d . --framework ' + STATE.fw + ' --output cli',
+        'Check: CKV_AWS_20: "S3 bucket should not be publicly readable"\n' +
+        '  FAILED for resource: ' + STATE.res + '\n' +
+        '  File: /main.tf:12-45\n' +
+        '  Guide: https://docs.bridgecrew.io/docs/s3_20\n\n' +
+        'Check: CKV_AWS_19: "S3 bucket should be encrypted"\n' +
+        '  FAILED for resource: ' + STATE.res + '\n\n' +
+        'Passed checks: 42, Failed checks: 6, Skipped checks: 0');
+      break;
+
+    case 'POLICY':
+      addFeed('POLICY', 'Evaluating OPA/Rego policies. Custom rules: (1) No public S3. (2) All IAM roles use specific actions. (3) Security groups restricted to allowlisted CIDRs. (4) All storage encrypted with KMS. (5) CloudTrail enabled in every region. ' + m.title + ' violates rule #' + (STATE.misconfig === 's3-public' ? '1' : STATE.misconfig === 'iam-wild' ? '2' : STATE.misconfig === 'sg-open' ? '3' : STATE.misconfig === 'unencrypted' ? '4' : '5') + '.', 'warn');
+      addCommandFeed('opa eval --data policy.rego --input plan.json "data.terraform.deny"',
+        '[\n' +
+        '  "' + m.title + ' on ' + STATE.res + '"\n' +
+        ']');
+      break;
+
+    case 'GATE':
+      var blocked = false;
+      if(STATE.failOn === 'critical' && STATE.critical > 0) blocked = true;
+      else if(STATE.failOn === 'high' && (STATE.critical > 0 || STATE.high > 0)) blocked = true;
+      else if(STATE.failOn === 'medium' && (STATE.critical + STATE.high + STATE.medium) > 0) blocked = true;
+      else if(STATE.failOn === 'low') blocked = true;
+      STATE.gate = blocked ? 'BLOCK' : 'PASS';
+      addFeed('GATE', 'CI gate: fail-on-severity=' + STATE.failOn.toUpperCase() + '. Findings: C=' + STATE.critical + ' H=' + STATE.high + ' M=' + STATE.medium + ' L=' + STATE.low + '. Gate: ' + STATE.gate + '. ' + (blocked ? 'Merge blocked until misconfig fixed.' : 'PR can merge.'), blocked ? 'error' : 'ok');
+      spawnPacket('policy','gate', blocked ? '#ef4444' : '#22c55e', STATE.gate, 0.02);
+      break;
+
+    case 'REPORT':
+      addFeed('REPORT', 'Scan report generated. Fixes: ' + m.fix, 'warn');
+      addFeed('DEFENSE', 'IaC security best practices: (1) Scan every PR (pre-commit + CI). (2) Policy as Code — reviewed by security. (3) Fail build on high+ findings. (4) Secrets scanning (gitleaks, trufflehog). (5) Signed commits + branch protection. (6) Use modules with security defaults. (7) Regular audit of deployed vs declared (drift detection). (8) Never commit state files (.tfstate contains secrets). (9) Rotate any credential exposed in git history immediately. (10) Least privilege for CI runner IAM role.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.files = 0;
+  STATE.resources = 0;
+  STATE.critical = 0;
+  STATE.high = 0;
+  STATE.medium = 0;
+  STATE.low = 0;
+  STATE.fixed = 0;
+  STATE.gate = '—';
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('iap-' + p); if(el) el.className = 'iac-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'IaC scan state cleared.', 'info');
+  termWrite('reset --all\n[+] Scan state reset');
+}
+
+document.getElementById('fwSelect').addEventListener('change', function(e){ STATE.fw = e.target.value; });
+document.getElementById('scanSelect').addEventListener('change', function(e){ STATE.scan = e.target.value; });
+document.getElementById('misconfigSelect').addEventListener('change', function(e){
+  STATE.misconfig = e.target.value;
+  STATE.res = MISCONFIGS[STATE.misconfig].res;
+  document.getElementById('resInput').value = STATE.res;
+  addFeed('MISCONFIG', MISCONFIGS[STATE.misconfig].title + '. ' + MISCONFIGS[STATE.misconfig].detail, 'warn');
+});
+document.getElementById('resInput').addEventListener('input', function(e){ STATE.res = e.target.value; });
+
+document.getElementById('strictSlider').addEventListener('input', function(e){
+  var v = parseInt(e.target.value);
+  STATE.strictness = v;
+  var label = v < 33 ? 'low' : v < 66 ? 'medium' : 'high';
+  document.getElementById('strictVal').textContent = label;
+});
+document.getElementById('sevSelect').addEventListener('change', function(e){ STATE.failOn = e.target.value; });
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.critical = 0;
+  STATE.high = 0;
+  STATE.medium = 0;
+  STATE.low = 0;
+  STATE.fixed = 0;
+  STATE.gate = '—';
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('SCAN', 'Starting IaC scan: ' + STATE.fw.toUpperCase() + ' with ' + STATE.scan.toUpperCase() + '. Misconfig: ' + MISCONFIGS[STATE.misconfig].title, 'warn');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1400);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('fixBtn').addEventListener('click', function(){
+  var m = MISCONFIGS[STATE.misconfig];
+  if(STATE.critical > 0){
+    STATE.critical--;
+    STATE.fixed++;
+    addFeed('FIX', 'Auto-fix applied to ' + STATE.res + '. ' + m.fix, 'ok');
+    addCommandFeed('checkov -d . --framework ' + STATE.fw + ' --fix',
+      '[+] Applied fix to ' + STATE.res + '\n' +
+      '[+] Re-scanning...\n' +
+      '[+] Finding resolved\n' +
+      '[+] Files modified: 1');
+  } else {
+    addFeed('FIX', 'No critical findings to fix.', 'info');
+  }
+});
+
+document.getElementById('gateBtn').addEventListener('click', function(){
+  STATE.gate = STATE.critical > 0 || STATE.high > 0 ? 'BLOCK' : 'PASS';
+  addFeed('GATE', 'CI gate re-evaluated: ' + STATE.gate + '. Policy: fail-on-' + STATE.failOn + '.', STATE.gate === 'BLOCK' ? 'error' : 'ok');
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ransomware — Kill Chain &amp; Encryption Mechanics Teaching Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--red);
+    text-shadow:0 0 8px rgba(239,68,68,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--green); color:var(--green-lt); }
+  .header-actions button.active{
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--green); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--red); cursor:pointer; box-shadow:0 0 7px rgba(239,68,68,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--red); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#fca5a5; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--green); color:var(--green-lt); }
+  button.act.primary{
+    background:linear-gradient(180deg,#2a0f0f,#1a0606);
+    border-color:var(--red); color:#fca5a5;
+    box-shadow:0 0 10px rgba(239,68,68,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(239,68,68,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.danger:hover{ background:#2a0f0f; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.warn:hover{ background:#2a1f0f; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulseRed 1.4s infinite; }
+  @keyframes pulseRed{
+    0%,100%{ box-shadow:0 0 6px rgba(239,68,68,.3); }
+    50%{ box-shadow:0 0 18px rgba(239,68,68,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--green-lt); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .rw-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .rw-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .rw-phase.done{ border-color:var(--red); color:#fca5a5;
+    background:rgba(239,68,68,.12); }
+  .rw-phase.active{ border-color:var(--red); color:#fca5a5;
+    background:rgba(239,68,68,.2); box-shadow:0 0 10px rgba(239,68,68,.6);
+    animation:kcRed 1.2s infinite; }
+  @keyframes kcRed{ 50%{ box-shadow:0 0 16px rgba(239,68,68,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>RANSOMWARE MECHANICS</h1>
+    <span class="sub">ENCRYPTION · DOUBLE EXTORTION · KILL CHAIN · MITRE T1486</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Ransomware Family</h3>
+      <select id="familySelect">
+        <option value="lockbit">LockBit 3.0 (RaaS)</option>
+        <option value="conti">Conti (leaked builder)</option>
+        <option value="revil">REvil / Sodinokibi</option>
+        <option value="ryuk">Ryuk (targeted)</option>
+        <option value="wannacry">WannaCry (worm + ransomware)</option>
+        <option value="blackcat">BlackCat / ALPHV (Rust)</option>
+      </select>
+      <label class="ctl-label">Encryption mode</label>
+      <select id="cryptoSelect">
+        <option value="hybrid">Hybrid (AES-256 + RSA-2048)</option>
+        <option value="aes">AES-256 only (symmetric)</option>
+        <option value="chacha">ChaCha20 (stream)</option>
+        <option value="intermittent">Intermittent encryption (fast)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Extortion Model</h3>
+      <select id="extortSelect">
+        <option value="single">Single extortion (encrypt only)</option>
+        <option value="double">Double extortion (encrypt + exfil)</option>
+        <option value="triple">Triple extortion (+ DDoS / calls)</option>
+        <option value="quad">Quad extortion (+ regulatory report)</option>
+      </select>
+      <label class="ctl-label">Ransom demand (BTC)</label>
+      <input type="text" id="ransomInput" value="50 BTC (~$3,000,000)">
+      <label class="ctl-label">Deadline (hours)</label>
+      <input type="text" id="deadlineInput" value="72">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Encryption speed (MB/s) <span class="slider-val" id="speedVal">250</span></label>
+      <input type="range" id="speedSlider" min="0" max="2000" value="250">
+      <label class="ctl-label">Threads <span class="slider-val" id="threadVal">16</span></label>
+      <input type="range" id="threadSlider" min="1" max="64" value="16">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ DEPLOY</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act ok" id="backupBtn">💾 BACKUPS</button>
+        <button type="button" class="act warn" id="edrBtn">🛡 EDR</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="segBtn">🧱 SEGMENT</button>
+        <button type="button" class="act" id="payBtn">💰 SIMULATE PAYMENT</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">analyst@ir:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Ransomware deployment is a federal crime under CFAA/CMA/18 USC 1030. Paying ransoms may violate OFAC sanctions.</div>
+    <div class="status-badges">
+      <div class="status-badge">FAMILY: <b id="badgeFamily">LOCKBIT</b></div>
+      <div class="status-badge">MODE: <b id="badgeMode">HYBRID</b></div>
+      <div class="status-badge">FILES ENC: <b id="badgeFiles">0</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+    </div>
+    <div class="rw-chain" id="rwChain">
+      <div class="rw-phase" id="rp-RECON">RECON</div>
+      <div class="rw-phase" id="rp-INITIAL">INITIAL ACCESS</div>
+      <div class="rw-phase" id="rp-PRIVESC">PRIVESC</div>
+      <div class="rw-phase" id="rp-LATERAL">LATERAL</div>
+      <div class="rw-phase" id="rp-EXFIL">EXFIL</div>
+      <div class="rw-phase" id="rp-ENCRYPT">ENCRYPT</div>
+      <div class="rw-phase" id="rp-DEMAND">DEMAND</div>
+    </div>
+    <div class="footer-overlay">MITRE T1486 (Data Encrypted for Impact) · T1490 (Inhibit Recovery) · T1657 (Financial Theft)</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric" id="mFiles"><div class="m-label">Files Encrypted</div><div class="m-value" id="mFilesVal">0</div></div>
+      <div class="metric" id="mHosts"><div class="m-label">Hosts Hit</div><div class="m-value" id="mHostsVal">0</div></div>
+      <div class="metric" id="mExfil"><div class="m-label">Exfil GB</div><div class="m-value" id="mExfilVal">0.0</div></div>
+      <div class="metric" id="mBackups"><div class="m-label">Backups</div><div class="m-value" id="mBackupsVal">INTACT</div></div>
+      <div class="metric" id="mShares"><div class="m-label">Shares Enc</div><div class="m-value" id="mSharesVal">0</div></div>
+      <div class="metric" id="mDemand"><div class="m-label">Demand</div><div class="m-value" id="mDemandVal">$0</div></div>
+      <div class="metric" id="mRecover"><div class="m-label">Recovery</div><div class="m-value" id="mRecoverVal">NO</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Defense</div><div class="m-value" id="mDefenseVal">OFF</div></div>
+    </div>
+    <div class="info-card">
+      <b>Ransomware — encrypt-for-pay (MITRE T1486).</b><br>
+      <span class="eq">Hybrid: AES-256 per file + RSA-2048 wraps AES key</span><br>
+      <span class="eq">Kill chain: initial access → privesc → lateral → exfil → encrypt</span><br>
+      <span class="eq">RaaS: affiliates pay 20-30% cut to developers</span><br>
+      <span style="color:var(--red)">MITRE T1486 · T1490 · T1657 · CISA #StopRansomware</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  family:'lockbit',
+  crypto:'hybrid',
+  extort:'double',
+  ransom:'50 BTC',
+  deadline:72,
+  speed:250,
+  threads:16,
+  filesEncrypted:0,
+  hostsHit:0,
+  exfilGB:0,
+  sharesEncrypted:0,
+  demandUSD:3000000,
+  recovered:false,
+  backups:true,
+  edr:false,
+  segmented:false,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['RECON','INITIAL','PRIVESC','LATERAL','EXFIL','ENCRYPT','DEMAND'];
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'attacker', label:'affiliate', ip:'203.0.113.66', x:0.10*W, y:0.20*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'ws1', label:'workstation-01', ip:'10.0.0.50', x:0.25*W, y:0.50*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'ws2', label:'workstation-02', ip:'10.0.0.51', x:0.42*W, y:0.50*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'file', label:'file-server', ip:'10.0.0.10', x:0.60*W, y:0.50*H, icon:'server', color:'#3b82f6', glow:0, blink:0},
+    {id:'db', label:'db-server', ip:'10.0.0.20', x:0.75*W, y:0.50*H, icon:'database', color:'#3b82f6', glow:0, blink:0},
+    {id:'backup', label:'backup server', ip:'10.0.0.30', x:0.50*W, y:0.78*H, icon:'server', color:'#22c55e', glow:0, blink:0},
+    {id:'c2', label:'leak site', ip:'lockbit-leaks.onion', x:0.88*W, y:0.20*H, icon:'cloud', color:'#ef4444', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,44);
+    g.addColorStop(0, 'rgba(239,68,68,'+(glow*0.65)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,44,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(var i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(-10,-8+i*4); ctx.lineTo(8,-8+i*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var j=0;j<5;j++){
+        var yy = -14 + j*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.01, color:color, label:label, size:5});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">analyst@ir:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Ransomware causes billions of dollars in damage each year and can cost lives when hospitals, utilities, or emergency services are hit. Creating, deploying, or knowingly distributing ransomware is a federal crime (CFAA in the US, CMA in the UK, equivalent statutes worldwide). Paying ransoms may also violate OFAC sanctions if the attacker is a sanctioned entity, and often funds further crime. This simulation is for DEFENSIVE education — understanding ransomware mechanics so defenders can detect and stop it.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Ransomware encrypts victim data and demands payment for the decryption key. Modern ransomware uses HYBRID encryption: a fast symmetric cipher (AES-256 or ChaCha20) encrypts each file, and an asymmetric cipher (RSA-2048/4096) protects the symmetric key. Double extortion adds exfiltration — even if you restore from backup, your data is published on the leak site. Triple extortion adds DDoS or calls to customers. LockBit, BlackCat, Cl0p, and Conti have been the most prolific families.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('strings lockbit.exe | grep -i "ransom"\nYOUR FILES HAVE BEEN ENCRYPTED\nReadme-LockBit.txt\nOnion site: lockbit-leaks.onion\n\nstrings lockbit.exe | grep -i "vssadmin"\nvssadmin delete shadows /all /quiet\nwbadmin delete catalog -quiet');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Family: ' + STATE.family.toUpperCase() + '. Mode: ' + STATE.crypto.toUpperCase() + '. Extortion: ' + STATE.extort.toUpperCase() + '. Click DEPLOY to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  // Continuous encryption when phase 6 reached
+  if(STATE.running && STATE.phaseIdx >= 6 && !STATE.recovered){
+    if(STATE.tick % 5 === 0){
+      var rate = STATE.speed * STATE.threads / 16;
+      STATE.filesEncrypted += rate;
+      if(STATE.tick % 30 === 0 && STATE.sharesEncrypted < 12){
+        STATE.sharesEncrypted++;
+      }
+    }
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.30*H, 'ATTACKER INFRASTRUCTURE', '#ef4444');
+  drawZone(0.05*W, 0.42*H, 0.90*W, 0.28*H, 'CORP NETWORK · 10.0.0.0/24', '#3b82f6');
+  drawZone(0.35*W, 0.72*H, 0.30*W, 0.15*H, 'BACKUP (OFFLINE)', '#22c55e');
+
+  var links = [
+    ['attacker','ws1'],
+    ['ws1','ws2'],
+    ['ws2','file'],
+    ['file','db'],
+    ['attacker','c2'],
+    ['file','backup']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(51,65,85,0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 10;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '8px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+    if(n.glow > 0.3 && n.id !== 'backup' && n.id !== 'c2'){
+      ctx.save();
+      ctx.font = 'bold 8px "Courier New",monospace';
+      ctx.fillStyle = '#ef4444';
+      ctx.textAlign = 'center';
+      ctx.fillText('ENCRYPTED', n.x, n.y - 25);
+      ctx.restore();
+    }
+  });
+
+  // Ransom note visualization
+  if(STATE.phaseIdx >= 7){
+    ctx.save();
+    var nx = 0.05*W, ny = 0.85*H, nw = 0.90*W, nh = 0.10*H;
+    ctx.fillStyle = 'rgba(60,10,10,0.85)';
+    ctx.fillRect(nx, ny, nw, nh);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(nx, ny, nw, nh);
+    ctx.font = 'bold 12px "Courier New",monospace';
+    ctx.fillStyle = '#fca5a5';
+    ctx.textAlign = 'center';
+    ctx.fillText('YOUR FILES HAVE BEEN ENCRYPTED — PAY ' + STATE.ransom + ' TO DECRYPT', nx + nw/2, ny + 22);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#fde68a';
+    ctx.fillText('Deadline: ' + STATE.deadline + ' hours | Leak site: lockbit-leaks.onion | Files: ' + Math.floor(STATE.filesEncrypted).toLocaleString(), nx + nw/2, ny + 42);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Hybrid: AES-256(file) + RSA-2048(key wrap)', 12, H - 62);
+  ctx.fillText('Kill chain: access → privesc → lateral → exfil → encrypt → demand', 12, H - 50);
+  ctx.fillText('3-2-1 backup rule: 3 copies, 2 media, 1 offline/immutable', 12, H - 38);
+  ctx.fillText('MITRE T1486 · T1490 (delete shadows) · T1657 (extortion)', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeFamily').textContent = STATE.family.toUpperCase();
+  document.getElementById('badgeMode').textContent = STATE.crypto.toUpperCase();
+  document.getElementById('badgeFiles').textContent = Math.floor(STATE.filesEncrypted).toLocaleString();
+  document.getElementById('badgeStatus').textContent = STATE.recovered ? 'RECOVERED' : (STATE.phaseIdx >= 7 ? 'ENCRYPTED' : (STATE.running ? 'ACTIVE' : 'IDLE'));
+
+  document.getElementById('mFilesVal').textContent = Math.floor(STATE.filesEncrypted).toLocaleString();
+  document.getElementById('mHostsVal').textContent = STATE.hostsHit;
+  document.getElementById('mExfilVal').textContent = STATE.exfilGB.toFixed(1);
+  document.getElementById('mBackupsVal').textContent = STATE.backups ? 'INTACT' : 'DELETED';
+  document.getElementById('mSharesVal').textContent = STATE.sharesEncrypted;
+  document.getElementById('mDemandVal').textContent = '$' + Math.floor(STATE.demandUSD/1000) + 'K';
+  document.getElementById('mRecoverVal').textContent = STATE.recovered ? 'YES' : 'NO';
+  document.getElementById('mDefenseVal').textContent = STATE.edr ? 'EDR' : (STATE.segmented ? 'SEGMENTED' : 'OFF');
+
+  document.getElementById('mFiles').className = 'metric' + (STATE.filesEncrypted > 5000 ? ' bad' : STATE.filesEncrypted > 0 ? ' warn' : '');
+  document.getElementById('mBackups').className = 'metric' + (STATE.backups ? ' ok' : ' bad');
+  document.getElementById('mRecover').className = 'metric' + (STATE.recovered ? ' ok' : (STATE.filesEncrypted > 0 ? ' bad' : ''));
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('rp-' + p);
+    if(!el) return;
+    el.className = 'rw-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  switch(phase){
+    case 'RECON':
+      addFeed('RECON', 'Affiliate recon: scanning for exposed RDP (3389), VPN appliances (Fortinet, Pulse, Citrix), and phishing targets. LockBit affiliates buy initial access from IABs (Initial Access Brokers) for $500-5000.', 'warn');
+      break;
+    case 'INITIAL':
+      addFeed('INITIAL', 'Initial access via ' + (STATE.family === 'wannacry' ? 'EternalBlue (MS17-010) — wormable SMB exploit' : 'phishing email with malicious ISO + shortener link, or VPN credentials from infostealer logs') + '. MITRE T1566, T1133.', 'error');
+      spawnPacket('attacker','ws1','#ef4444','LOADER',0.02);
+      STATE.hostsHit++;
+      break;
+    case 'PRIVESC':
+      addFeed('PRIVESC', 'Privilege escalation: Cobalt Strike beacon deployed → token theft → local admin. Common vectors: PrintNightmare, Zerologon, unpatched Windows. MITRE T1068.', 'error');
+      spawnPacket('ws1','ws2','#ef4444','BEACON',0.02);
+      STATE.hostsHit++;
+      STATE.nodes.find(function(n){return n.id==='ws1';}).glow = 1;
+      STATE.nodes.find(function(n){return n.id==='ws2';}).glow = 1;
+      break;
+    case 'LATERAL':
+      if(STATE.segmented){
+        addFeed('DEFENSE', 'Network SEGMENTATION blocked lateral movement. Workstations cannot reach servers directly. Tiered admin model prevents credential reuse. Defense in depth wins.', 'ok');
+        STATE.running = false;
+        return;
+      }
+      STATE.hostsHit += 2;
+      STATE.nodes.find(function(n){return n.id==='file';}).glow = 1;
+      STATE.nodes.find(function(n){return n.id==='db';}).glow = 1;
+      spawnPacket('ws2','file','#ef4444','SMB',0.02);
+      spawnPacket('file','db','#ef4444','SMB',0.02);
+      addFeed('LATERAL', 'Lateral movement via PsExec + SMB + stolen domain admin creds. Cobalt Strike psexec_psh loads beacon on each host. MITRE T1021.002.', 'error');
+      break;
+    case 'EXFIL':
+      if(STATE.extort === 'single'){
+        addFeed('EXFIL', 'Single extortion: no exfiltration. Only encryption. Cheaper for attackers but less leverage.', 'info');
+      } else {
+        STATE.exfilGB = 247.5;
+        spawnPacket('file','c2','#a855f7','EXFIL',0.02);
+        addFeed('EXFIL', 'EXFILTRATION: ' + STATE.exfilGB.toFixed(1) + ' GB uploaded to attacker Mega.nz / onion site. Rclone, MEGAsync, or custom C2 channels. Now double extortion — even with backups, your data will be published. MITRE T1567.', 'error');
+      }
+      break;
+    case 'ENCRYPT':
+      if(STATE.edr){
+        addFeed('DEFENSE', 'EDR BLOCKED encryption. Behavioral detection: 100+ file writes/sec + shadow copy deletion attempt + ransom note creation triggered alert. Process killed, host isolated. Modern EDR uses ETW kernel callbacks (Microsoft-Windows-Kernel-File).', 'ok');
+        STATE.running = false;
+        return;
+      }
+      // Delete backups first
+      if(!STATE.backups){
+        addFeed('ENCRYPT', 'Attackers already deleted shadow copies and backup catalog (vssadmin, wbadmin). No recovery possible.', 'error');
+      }
+      addFeed('ENCRYPT', 'Encryption started. Hybrid: AES-256 encrypts each file; the AES key is wrapped with RSA-2048 public key. Only attacker private key can decrypt. ' +
+        (STATE.crypto === 'intermittent' ? 'Intermittent mode: only first 1MB of each file encrypted for speed (LockBit 3.0 default). ' : '') +
+        'MITRE T1486.',
+        'error');
+      spawnPacket('file','backup','#ef4444','DELETE',0.02);
+      addCommandFeed('vssadmin delete shadows /all /quiet', 'Successfully deleted 47 shadow copies.');
+      addCommandFeed('wbadmin delete catalog -quiet', 'The backup catalog has been deleted.');
+      break;
+    case 'DEMAND':
+      addFeed('DEMAND', 'Ransom note dropped: Readme-' + STATE.family.toUpperCase() + '.txt. Demand: ' + STATE.ransom + ' payable in Bitcoin/Monero within ' + STATE.deadline + ' hours. ' +
+        (STATE.extort === 'double' ? 'Double extortion: full data dump promised if not paid. ' : '') +
+        (STATE.extort === 'triple' ? 'Triple extortion: DDoS on public infrastructure + calls to customers. ' : '') +
+        (STATE.extort === 'quad' ? 'Quad extortion: GDPR/HIPAA regulatory report threatened. ' : '') +
+        'CISA and FBI advise NOT paying — payment funds crime and does not guarantee decryption.',
+        'error');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.filesEncrypted = 0;
+  STATE.hostsHit = 0;
+  STATE.exfilGB = 0;
+  STATE.sharesEncrypted = 0;
+  STATE.recovered = false;
+  STATE.backups = true;
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('rp-' + p); if(el) el.className = 'rw-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'Environment restored from clean snapshot. All systems operational.', 'ok');
+  termWrite('reset --all\n[+] Snapshot restored.');
+}
+
+document.getElementById('familySelect').addEventListener('change', function(e){
+  STATE.family = e.target.value;
+  var info = {
+    lockbit:'LockBit 3.0 — RaaS (Ransomware-as-a-Service). Affiliates keep 70-80%, developers 20-30%. Emerged 2019, most prolific 2022-2024. Takedown Feb 2024 (Operation Cronos).',
+    conti:'Conti — leaked builder in 2021 after insider dispute. Source code now public, spawned many variants. Historically targeted healthcare and government.',
+    revil:'REvil / Sodinokibi — pioneered double extortion. Kaseya VSA supply chain attack (2021) hit 1000+ MSPs. Takedown by Russian FSB 2022.',
+    ryuk:'Ryuk — targeted manual deployment. Human-operated after initial access. Attributed to Wizard Spider (Russia). $150M+ in ransoms.',
+    wannacry:'WannaCry — worm + ransomware. EternalBlue (NSA leak) + kill switch. 200,000+ hosts in 150 countries, May 2017. Attributed to Lazarus (North Korea).',
+    blackcat:'BlackCat / ALPHV — first major Rust ransomware. Cross-platform (Windows, Linux, ESXi). Triple extortion. Takedown Feb 2024 after Change Healthcare attack.'
+  };
+  addFeed('FAMILY', 'Family: ' + STATE.family.toUpperCase() + '. ' + info[STATE.family], 'error');
+});
+
+document.getElementById('cryptoSelect').addEventListener('change', function(e){
+  STATE.crypto = e.target.value;
+  var info = {
+    hybrid:'Hybrid encryption: random AES-256 key per file, key wrapped with attacker RSA-2048 public key. Standard since CryptoLocker (2013).',
+    aes:'AES-256 only: single symmetric key for all files. Attacker must store key somewhere on victim (bad opsec) or send via C2.',
+    chacha:'ChaCha20 stream cipher: fast on any CPU, resistant to cache-timing. Used by BlackCat (Rust).',
+    intermittent:'Intermittent encryption: encrypt only first N bytes of each file. Faster, less CPU. LockBit 3.0 default — decrypts quickly, hard to recover beyond first block.'
+  };
+  addFeed('CRYPTO', 'Encryption mode: ' + STATE.crypto.toUpperCase() + '. ' + info[STATE.crypto], 'warn');
+});
+
+document.getElementById('extortSelect').addEventListener('change', function(e){
+  STATE.extort = e.target.value;
+  var info = {
+    single:'Single extortion: only encryption. Simple but attackers earn less if backups exist.',
+    double:'Double extortion: encrypt + exfiltrate. Published on leak site if not paid. Doubles pressure. Pioneered by Maze/REvil.',
+    triple:'Triple extortion: + DDoS on public infra + harassment calls to customers/partners. Used by REvil, BlackCat.',
+    quad:'Quad extortion: + threat to report GDPR/HIPAA/SEC violations to regulators. Adds legal pressure. Used against publicly traded companies.'
+  };
+  addFeed('EXTORT', 'Extortion model: ' + STATE.extort.toUpperCase() + '. ' + info[STATE.extort], 'warn');
+});
+
+document.getElementById('ransomInput').addEventListener('input', function(e){ STATE.ransom = e.target.value; });
+document.getElementById('deadlineInput').addEventListener('input', function(e){ STATE.deadline = e.target.value; });
+
+document.getElementById('speedSlider').addEventListener('input', function(e){
+  STATE.speed = parseInt(e.target.value);
+  document.getElementById('speedVal').textContent = e.target.value;
+});
+document.getElementById('threadSlider').addEventListener('input', function(e){
+  STATE.threads = parseInt(e.target.value);
+  document.getElementById('threadVal').textContent = e.target.value;
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.filesEncrypted = 0;
+  STATE.hostsHit = 0;
+  STATE.exfilGB = 0;
+  STATE.sharesEncrypted = 0;
+  STATE.recovered = false;
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('DEPLOY', 'Deploying ' + STATE.family.toUpperCase() + ' ransomware. Mode: ' + STATE.crypto.toUpperCase() + '. Extortion: ' + STATE.extort.toUpperCase() + '. Encryption speed: ' + STATE.speed + ' MB/s × ' + STATE.threads + ' threads.', 'error');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1400);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('backupBtn').addEventListener('click', function(){
+  STATE.backups = !STATE.backups;
+  this.classList.toggle('active', STATE.backups);
+  if(STATE.backups){
+    addFeed('DEFENSE', 'BACKUPS RESTORED/ENABLED. 3-2-1 rule: 3 copies, 2 different media, 1 offline/immutable. Air-gapped + offline = ransomware cannot reach them. Test restores quarterly. This is the #1 defense against ransomware.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Backups DISABLED/DELETED. No recovery path.', 'error');
+  }
+});
+
+document.getElementById('edrBtn').addEventListener('click', function(){
+  STATE.edr = !STATE.edr;
+  this.classList.toggle('active', STATE.edr);
+  if(STATE.edr){
+    addFeed('DEFENSE', 'EDR ENABLED. Behavioral detection: mass file writes, shadow copy deletion, ransom note creation, entropy spikes, unsanctioned crypto APIs. Modern EDR (CrowdStrike, SentinelOne, Defender ATP) has stopped many ransomware variants at the encryption phase.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'EDR DISABLED. Ransomware runs unimpeded.', 'error');
+  }
+});
+
+document.getElementById('segBtn').addEventListener('click', function(){
+  STATE.segmented = !STATE.segmented;
+  this.classList.toggle('active', STATE.segmented);
+  if(STATE.segmented){
+    addFeed('DEFENSE', 'Network SEGMENTATION enabled. Workstations cannot reach servers directly. East-west traffic filtered. Tiered admin model. Blocks lateral movement — which is where most ransomware detonates.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Segmentation DISABLED. Flat network, lateral movement unimpeded.', 'warn');
+  }
+});
+
+document.getElementById('payBtn').addEventListener('click', function(){
+  if(STATE.filesEncrypted < 100){
+    addFeed('PAYMENT', 'No ransom demand yet — no files encrypted.', 'warn');
+    return;
+  }
+  STATE.recovered = Math.random() < 0.65;
+  if(STATE.recovered){
+    addFeed('PAYMENT', 'Attacker provided decryptor. In reality: 35-50% of victims who pay NEVER get working decryptors. Many get re-targeted within 6 months. Payment funds organized crime and may violate OFAC sanctions.', 'warn');
+  } else {
+    addFeed('PAYMENT', 'Attacker took the money and vanished. No decryptor. This happens to ~35-50% of paying victims. Ransomware recovery from backups is the only reliable strategy.', 'error');
+  }
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

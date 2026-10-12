@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Port Scanning — SYN/FIN/XMAS/NULL/UDP Interactive Teaching Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--green-lt);
+    text-shadow:0 0 8px rgba(34,197,94,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--green); color:var(--green-lt); }
+  .header-actions button.active{
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--green); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--green); cursor:pointer; box-shadow:0 0 7px rgba(34,197,94,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--green); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:var(--green-lt); font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--green); color:var(--green-lt); }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f2a18,#0a1a10);
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(34,197,94,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.danger:hover{ background:#2a0f0f; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.warn:hover{ background:#2a1f0f; }
+  button.act.pulse{ animation:pulseBtn 1.4s infinite; }
+  @keyframes pulseBtn{
+    0%,100%{ box-shadow:0 0 6px rgba(34,197,94,.3); }
+    50%{ box-shadow:0 0 18px rgba(34,197,94,.7); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:170px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--green-lt); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .ps-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .ps-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .ps-phase.done{ border-color:var(--green); color:var(--green-lt);
+    background:rgba(34,197,94,.12); }
+  .ps-phase.active{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.15); box-shadow:0 0 10px rgba(34,211,238,.4);
+    animation:kcPulse 1.2s infinite; }
+  @keyframes kcPulse{ 50%{ box-shadow:0 0 16px rgba(34,211,238,.7); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>PORT SCANNING</h1>
+    <span class="sub">SYN · FIN · XMAS · NULL · UDP · ACK · MITRE T1046 · RFC 793</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Scan Type</h3>
+      <select id="scanSelect">
+        <option value="syn">SYN Stealth (-sS) — half-open</option>
+        <option value="connect">TCP Connect (-sT) — full handshake</option>
+        <option value="fin">FIN Scan (-sF) — stealthy</option>
+        <option value="xmas">XMAS Scan (-sX) — FIN+PSH+URG</option>
+        <option value="null">NULL Scan (-sN) — no flags</option>
+        <option value="ack">ACK Scan (-sA) — firewall mapping</option>
+        <option value="udp">UDP Scan (-sU) — connectionless</option>
+      </select>
+      <label class="ctl-label">Target host</label>
+      <input type="text" id="targetInput" value="10.0.0.10">
+      <label class="ctl-label">Port range</label>
+      <select id="rangeSelect">
+        <option value="top100">Top 100 ports</option>
+        <option value="top1000">Top 1000 ports</option>
+        <option value="all">1-65535 (full)</option>
+        <option value="custom">Custom range</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Scan Parameters</h3>
+      <label class="ctl-label">Timing template <span class="slider-val" id="timingVal">T4 (aggressive)</span></label>
+      <input type="range" id="timingSlider" min="0" max="5" value="4">
+      <div class="slider-row"><span>T0 paranoid</span><span>T5 insane</span></div>
+      <label class="ctl-label">Threads <span class="slider-val" id="threadVal">32</span></label>
+      <input type="range" id="threadSlider" min="1" max="128" value="32">
+      <label class="ctl-label">Source port (spoof)</label>
+      <input type="text" id="srcPortInput" value="random">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ SCAN</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="fwBtn">🛡 FIREWALL</button>
+        <button type="button" class="act" id="idsBtn">🔍 IDS</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">kali@attacker:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Port scanning systems you don't own is illegal in many jurisdictions.</div>
+    <div class="status-badges">
+      <div class="status-badge">SCAN: <b id="badgeScan">SYN</b></div>
+      <div class="status-badge">TARGET: <b id="badgeTarget">10.0.0.10</b></div>
+      <div class="status-badge">PROGRESS: <b id="badgeProgress">0%</b></div>
+      <div class="status-badge">OPEN: <b id="badgeOpen">0</b></div>
+    </div>
+    <div class="ps-chain" id="psChain">
+      <div class="ps-phase" id="ps-RESOLVE">RESOLVE</div>
+      <div class="ps-phase" id="ps-SCAN">SCAN</div>
+      <div class="ps-phase" id="ps-PARSE">PARSE</div>
+      <div class="ps-phase" id="ps-CLASSIFY">CLASSIFY</div>
+      <div class="ps-phase" id="ps-REPORT">REPORT</div>
+    </div>
+    <div class="footer-overlay">MITRE T1046 (Network Service Scanning) · RFC 793 (TCP) · RFC 768 (UDP)</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric" id="mSent"><div class="m-label">Packets Sent</div><div class="m-value" id="mSentVal">0</div></div>
+      <div class="metric" id="mRecv"><div class="m-label">Packets Recv</div><div class="m-value" id="mRecvVal">0</div></div>
+      <div class="metric" id="mOpen"><div class="m-label">Open Ports</div><div class="m-value" id="mOpenVal">0</div></div>
+      <div class="metric" id="mClosed"><div class="m-label">Closed</div><div class="m-value" id="mClosedVal">0</div></div>
+      <div class="metric" id="mFiltered"><div class="m-label">Filtered</div><div class="m-value" id="mFilteredVal">0</div></div>
+      <div class="metric" id="mRate"><div class="m-label">Rate pps</div><div class="m-value" id="mRateVal">0</div></div>
+      <div class="metric" id="mProgress"><div class="m-label">Progress</div><div class="m-value" id="mProgressVal">0%</div></div>
+      <div class="metric" id="mDetect"><div class="m-label">Detected</div><div class="m-value" id="mDetectVal">NO</div></div>
+    </div>
+    <div class="info-card">
+      <b>Port scanning — network service discovery (T1046).</b><br>
+      <span class="eq">SYN: send SYN, no ACK sent → half-open, stealthy</span><br>
+      <span class="eq">FIN/XMAS/NULL: closed → RST; open → no reply</span><br>
+      <span class="eq">ACK: maps firewall rules (filtered vs unfiltered)</span><br>
+      <span class="eq">UDP: no reply = open|filtered; ICMP port unreachable = closed</span><br>
+      <span style="color:var(--purple)">MITRE T1046 · RFC 793 · RFC 768</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  scan:'syn',
+  target:'10.0.0.10',
+  range:'top100',
+  timing:4,
+  threads:32,
+  srcPort:'random',
+  sent:0,
+  recv:0,
+  open:0,
+  closed:0,
+  filtered:0,
+  rate:0,
+  progress:0,
+  detected:false,
+  firewall:false,
+  ids:false,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  openPorts:[],
+  feedCount:0
+};
+
+var PHASES = ['RESOLVE','SCAN','PARSE','CLASSIFY','REPORT'];
+
+var COMMON_PORTS = [
+  {p:22, s:'ssh'}, {p:80, s:'http'}, {p:443, s:'https'},
+  {p:3306, s:'mysql'}, {p:5432, s:'postgresql'}, {p:6379, s:'redis'},
+  {p:8080, s:'http-proxy'}, {p:21, s:'ftp'}, {p:25, s:'smtp'},
+  {p:53, s:'domain'}, {p:135, s:'msrpc'}, {p:139, s:'netbios-ssn'},
+  {p:445, s:'microsoft-ds'}, {p:3389, s:'ms-wbt-server'},
+  {p:5900, s:'vnc'}, {p:27017, s:'mongodb'}, {p:9200, s:'elasticsearch'},
+  {p:2375, s:'docker'}, {p:6443, s:'kubernetes-api'}, {p:10250, s:'kubelet'}
+];
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'attacker', label:'attacker', ip:'203.0.113.66', x:0.12*W, y:0.42*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'router', label:'edge-router', ip:'—', x:0.34*W, y:0.42*H, icon:'router', color:'#22d3ee', glow:0, blink:0},
+    {id:'firewall', label:'firewall', ip:'10.0.0.254', x:0.54*W, y:0.42*H, icon:'firewall', color:'#22c55e', glow:0, blink:0},
+    {id:'target', label:'target', ip:'10.0.0.10', x:0.78*W, y:0.42*H, icon:'server', color:'#3b82f6', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(34,197,94,'+(glow*0.5)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'router': {
+      ctx.strokeRect(-14,-6,28,12);
+      for(var j=0;j<4;j++){
+        ctx.strokeStyle = '#334155'; ctx.lineWidth = 0.6;
+        ctx.strokeRect(-11+j*6, 0, 4, 4);
+        var on = (blink+j)%2===0;
+        ctx.fillStyle = on ? '#22c55e' : '#166534';
+        ctx.fillRect(-10.5+j*6, 1, 3, 2);
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-6,-6); ctx.lineTo(-9,-14); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(6,-6); ctx.lineTo(9,-14); ctx.stroke();
+      break;
+    }
+    case 'firewall': {
+      ctx.lineWidth = 1.2;
+      for(var row=0;row<3;row++){
+        var y2 = -10 + row*7;
+        var off = row%2===0 ? 0 : 5;
+        for(var col=0;col<4;col++) ctx.strokeRect(-16+col*9+off, y2, 8, 6);
+      }
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(0,-4); ctx.quadraticCurveTo(4,0,0,5); ctx.quadraticCurveTo(-4,0,0,-4);
+      ctx.fill();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">kali@attacker:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Port scanning is reconnaissance — the first phase of any authorized penetration test. However, actively scanning systems you do not own or lack written authorization to test is illegal under the CFAA (US), Computer Misuse Act (UK), and equivalent laws worldwide. Even benign scans can be logged, trigger IDS alerts, and violate terms of service. In authorized engagements, scope is defined in writing before scanning begins. Never scan beyond the agreed IP ranges.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Port scanning discovers which TCP/UDP ports are listening on a target. Techniques differ in stealth and what they reveal. SYN scan (half-open): send SYN, receive SYN/ACK (open) or RST (closed) — never complete the handshake, so no connection log. FIN/XMAS/NULL scans exploit RFC 793: closed ports reply with RST, open ports ignore — but Windows always replies RST regardless. ACK scans never find open ports but map firewall rules (filtered vs unfiltered).',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('nmap -sS -p 1-1000 --open -T4 10.0.0.10\nStarting Nmap 7.94\nNmap scan report for 10.0.0.10\nPORT     STATE SERVICE\n22/tcp   open  ssh\n80/tcp   open  http\n443/tcp  open  https\n3306/tcp open  mysql');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Scan type: ' + STATE.scan.toUpperCase() + '. Target: ' + STATE.target + '. Range: ' + STATE.range + '. Click SCAN to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1){
+        STATE.events.splice(i,1);
+        if(e.color === '#22c55e') STATE.recv++;
+      }
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running && STATE.progress < 100){
+    var speed = Math.max(50, STATE.threads * 30 + STATE.timing * 50);
+    STATE.rate = speed;
+    if(STATE.tick % Math.max(1, Math.floor(100 / (speed/100))) === 0){
+      STATE.sent++;
+      var scanLabel = STATE.scan === 'syn' ? 'SYN' : STATE.scan === 'fin' ? 'FIN' : STATE.scan === 'xmas' ? 'FPU' : STATE.scan === 'null' ? '0' : STATE.scan === 'ack' ? 'ACK' : 'UDP';
+      spawnPacket('attacker','firewall','#ef4444', scanLabel, 0.025);
+      if(!STATE.firewall){
+        setTimeout(function(){ spawnPacket('firewall','target', '#ef4444', scanLabel, 0.025); }, 120);
+        // Response
+        if(Math.random() < 0.25){
+          var open = Math.random() < 0.15;
+          if(!STATE.ids || Math.random() > 0.5){
+            setTimeout(function(){
+              spawnPacket('target','firewall', open ? '#22c55e' : '#f59e0b', open ? 'SYN/ACK' : 'RST', 0.025);
+              setTimeout(function(){ spawnPacket('firewall','attacker', open ? '#22c55e' : '#f59e0b', open ? 'SYN/ACK' : 'RST', 0.025); }, 120);
+            }, 250);
+          }
+        }
+      } else {
+        // Firewall drops
+        STATE.filtered++;
+      }
+      STATE.progress = Math.min(100, STATE.progress + 1.5);
+      STATE.detectProb = (STATE.detectProb || 0);
+    }
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.10*H, 0.22*W, 0.65*H, 'ATTACKER', '#ef4444');
+  drawZone(0.32*W, 0.10*H, 0.20*W, 0.65*H, 'TRANSIT', '#f59e0b');
+  drawZone(0.56*W, 0.10*H, 0.40*W, 0.65*H, 'TARGET NETWORK', '#22c55e');
+
+  var links = [
+    ['attacker','router'], ['router','firewall'], ['firewall','target']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(51,65,85,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  // Port grid visualization
+  var gridX = 0.58*W, gridY = 0.15*H;
+  var cols = 20, cell = 8, gap = 1;
+  for(var i=0;i<200;i++){
+    var px = gridX + (i % cols) * (cell + gap);
+    var py = gridY + Math.floor(i / cols) * (cell + gap);
+    var port = i + 1;
+    var isOpen = STATE.openPorts.indexOf(port) !== -1;
+    var scanned = (i / 200) * 100 <= STATE.progress;
+    if(isOpen){
+      ctx.fillStyle = '#22c55e';
+    } else if(scanned){
+      ctx.fillStyle = '#1e293b';
+    } else {
+      ctx.fillStyle = 'rgba(30,41,59,0.4)';
+    }
+    ctx.fillRect(px, py, cell, cell);
+  }
+  ctx.save();
+  ctx.font = 'bold 8px "Courier New",monospace';
+  ctx.fillStyle = '#22d3ee';
+  ctx.textAlign = 'left';
+  ctx.fillText('PORT MAP (1-200)', gridX, gridY - 6);
+  ctx.restore();
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('SYN: closed→RST, open→SYN/ACK (half-open)', 12, H - 62);
+  ctx.fillText('FIN/XMAS/NULL: closed→RST, open→no reply (RFC 793)', 12, H - 50);
+  ctx.fillText('ACK: maps firewall (filtered vs unfiltered), never open', 12, H - 38);
+  ctx.fillText('UDP: open|filtered → no reply; ICMP unreachable → closed', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeScan').textContent = STATE.scan.toUpperCase();
+  document.getElementById('badgeTarget').textContent = STATE.target;
+  document.getElementById('badgeProgress').textContent = Math.round(STATE.progress) + '%';
+  document.getElementById('badgeOpen').textContent = STATE.open;
+
+  document.getElementById('mSentVal').textContent = STATE.sent;
+  document.getElementById('mRecvVal').textContent = STATE.recv;
+  document.getElementById('mOpenVal').textContent = STATE.open;
+  document.getElementById('mClosedVal').textContent = STATE.closed;
+  document.getElementById('mFilteredVal').textContent = STATE.filtered;
+  document.getElementById('mRateVal').textContent = Math.round(STATE.rate);
+  document.getElementById('mProgressVal').textContent = Math.round(STATE.progress) + '%';
+  document.getElementById('mDetectVal').textContent = STATE.detected ? 'YES' : 'NO';
+
+  document.getElementById('mOpen').className = 'metric' + (STATE.open > 3 ? ' warn' : '');
+  document.getElementById('mFiltered').className = 'metric' + (STATE.filtered > 100 ? ' warn' : '');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('ps-' + p);
+    if(!el) return;
+    el.className = 'ps-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  switch(phase){
+    case 'RESOLVE':
+      addFeed('RESOLVE', 'Resolving target ' + STATE.target + '. Checking reachability with ICMP echo and TCP ACK to port 80. If host is down (no response to ARP/ICMP), skip with -Pn.', 'info');
+      addCommandFeed('ping -c 2 ' + STATE.target, 'PING ' + STATE.target + ': 56 data bytes\n64 bytes from ' + STATE.target + ': icmp_seq=1 ttl=64 time=0.42 ms\n64 bytes from ' + STATE.target + ': icmp_seq=2 ttl=64 time=0.38 ms\n--- ' + STATE.target + ' ping statistics ---\n2 packets transmitted, 2 received, 0% packet loss');
+      break;
+    case 'SCAN':
+      addFeed('SCAN', 'Scanning with ' + STATE.scan.toUpperCase() + ' technique. ' +
+        (STATE.scan === 'syn' ? 'Half-open: SYN sent, no ACK. Closed → RST, open → SYN/ACK. Stealthiest reliable scan.' :
+         STATE.scan === 'connect' ? 'Full TCP handshake. Logged by target. Use only when raw sockets unavailable.' :
+         STATE.scan === 'fin' ? 'FIN-only. Closed → RST, open → no reply. Windows always RST → false positives.' :
+         STATE.scan === 'xmas' ? 'FIN+PSH+URG (all "lit up"). Same semantics as FIN.' :
+         STATE.scan === 'null' ? 'No flags. Same semantics as FIN.' :
+         STATE.scan === 'ack' ? 'ACK only. Never finds open ports — maps firewall state (unfiltered vs filtered).' :
+         'UDP. Open|filtered → no reply; closed → ICMP port unreachable. Slow but necessary.'),
+        'warn');
+      break;
+    case 'PARSE':
+      addFeed('PARSE', 'Parsing responses: RST → closed, SYN/ACK → open, no reply → filtered. Nmap correlates state per port.', 'info');
+      // Generate open ports
+      var numOpen = Math.floor(Math.random() * 5) + 2;
+      STATE.openPorts = [];
+      for(var i=0;i<numOpen;i++){
+        var p = COMMON_PORTS[Math.floor(Math.random() * COMMON_PORTS.length)];
+        if(STATE.openPorts.indexOf(p.p) === -1) STATE.openPorts.push(p.p);
+      }
+      STATE.open = STATE.openPorts.length;
+      STATE.closed = Math.floor(Math.random() * 30) + 20;
+      break;
+    case 'CLASSIFY':
+      addFeed('CLASSIFY', 'Classified ' + STATE.open + ' open ports, ' + STATE.closed + ' closed, ' + STATE.filtered + ' filtered. Open ports: ' + STATE.openPorts.join(', ') + '. Next step: service/version enumeration (-sV) and OS detection (-O).', 'ok');
+      break;
+    case 'REPORT':
+      addFeed('REPORT', 'Scan complete in ' + (STATE.sent / STATE.rate).toFixed(1) + ' seconds. ' + STATE.sent + ' packets sent, ' + STATE.recv + ' received. ' +
+        (STATE.detected ? 'IDS DETECTED the scan — target might block further attempts.' : 'No detection — scan went unnoticed.'),
+        STATE.detected ? 'warn' : 'ok');
+      addCommandFeed('nmap -sS -sV -O -p ' + STATE.openPorts.join(',') + ' ' + STATE.target,
+        'PORT     STATE SERVICE     VERSION\n' + STATE.openPorts.map(function(p){
+          var s = COMMON_PORTS.find(function(cp){return cp.p === p;});
+          return p + '/tcp   open  ' + (s ? s.s : 'unknown') + '     ' + (s ? '' : '?');
+        }).join('\n') + '\nOS: Linux 5.x');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.sent = 0;
+  STATE.recv = 0;
+  STATE.open = 0;
+  STATE.closed = 0;
+  STATE.filtered = 0;
+  STATE.rate = 0;
+  STATE.progress = 0;
+  STATE.detected = false;
+  STATE.events = [];
+  STATE.openPorts = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('ps-' + p); if(el) el.className = 'ps-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'Scan state cleared. Ready for new run.', 'info');
+  termWrite('reset --all\n[+] Scan state cleared.');
+}
+
+document.getElementById('scanSelect').addEventListener('change', function(e){
+  STATE.scan = e.target.value;
+  var info = {
+    syn:'SYN stealth: half-open scan. Fastest reliable method. Requires raw sockets (root). Never completes handshake, so fewer logs.',
+    connect:'TCP Connect: full handshake via connect() syscall. Logged by target application. Works without root.',
+    fin:'FIN scan: send FIN to closed port → RST; open port ignores (RFC 793). Windows ignores RFC → false positives.',
+    xmas:'XMAS scan: FIN+PSH+URG flags. Named after "lit up" bits. Same semantics as FIN/NULL.',
+    null:'NULL scan: no flags set. Same semantics as FIN. Some firewalls drop silently.',
+    ack:'ACK scan: never finds open ports. Maps firewall: RST → unfiltered, no reply → filtered.',
+    udp:'UDP scan: slow (no handshake). Open|filtered → no reply; closed → ICMP port unreachable.'
+  };
+  addFeed('SCAN', 'Scan type: ' + STATE.scan.toUpperCase() + '. ' + info[STATE.scan], 'warn');
+});
+
+document.getElementById('targetInput').addEventListener('input', function(e){ STATE.target = e.target.value; });
+document.getElementById('rangeSelect').addEventListener('change', function(e){ STATE.range = e.target.value; });
+document.getElementById('srcPortInput').addEventListener('input', function(e){ STATE.srcPort = e.target.value; });
+
+document.getElementById('timingSlider').addEventListener('input', function(e){
+  STATE.timing = parseInt(e.target.value);
+  var names = ['T0 paranoid','T1 sneaky','T2 polite','T3 normal','T4 aggressive','T5 insane'];
+  document.getElementById('timingVal').textContent = names[STATE.timing];
+});
+document.getElementById('threadSlider').addEventListener('input', function(e){
+  STATE.threads = parseInt(e.target.value);
+  document.getElementById('threadVal').textContent = e.target.value;
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.sent = 0;
+  STATE.recv = 0;
+  STATE.open = 0;
+  STATE.closed = 0;
+  STATE.filtered = 0;
+  STATE.progress = 0;
+  STATE.detected = false;
+  STATE.openPorts = [];
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('SCAN', 'Starting ' + STATE.scan.toUpperCase() + ' scan of ' + STATE.target + '. Timing: T' + STATE.timing + '. Threads: ' + STATE.threads + '.', 'warn');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1600);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('fwBtn').addEventListener('click', function(){
+  STATE.firewall = !STATE.firewall;
+  this.classList.toggle('active', STATE.firewall);
+  if(STATE.firewall){
+    addFeed('DEFENSE', 'FIREWALL enabled. Inbound SYNs to non-allowed ports dropped (not RST). Attacker sees "filtered" for all closed ports. Combine with rate limiting: iptables -m limit --limit 10/s. Best practice: DROP (not REJECT), so scanner cannot distinguish closed from filtered.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Firewall DISABLED. Target responds to all scans.', 'warn');
+  }
+});
+
+document.getElementById('idsBtn').addEventListener('click', function(){
+  STATE.ids = !STATE.ids;
+  this.classList.toggle('active', STATE.ids);
+  if(STATE.ids){
+    addFeed('DEFENSE', 'IDS/IPS ENABLED. Snort/Suricata signature "SCAN-SYN" triggers. Threshold: 100 SYNs in 10s from one source. Actions: alert (IDS) or block (IPS). Modern attackers evade via: slow scan (T1/T2), fragmented packets, source port 53 spoof, decoy scans (-D RND:10).', 'ok');
+  } else {
+    addFeed('DEFENSE', 'IDS DISABLED. Scans go unlogged.', 'warn');
+  }
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

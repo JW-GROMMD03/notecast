@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Advanced Architecture — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:320px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:380px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .arch-btn {
+    width:100%; padding:8px 10px; margin-bottom:5px;
+    background:#0b1220; border:1px solid #1e293b; color:#94a3b8;
+    border-radius:3px; cursor:pointer; font-size:10px;
+    font-family:'Consolas',monospace; text-align:left;
+    transition:all 0.15s; display:flex; align-items:center; gap:8px;
+  }
+  .arch-btn:hover { border-color:#22d3ee; color:#22d3ee; }
+  .arch-btn.active { background:#082f49; border-color:#22d3ee; color:#67e8f9; }
+  .arch-btn .icon { font-size:14px; }
+  .arch-btn .name { flex:1; }
+  .arch-btn .badge {
+    font-size:8px; padding:1px 4px; border-radius:2px;
+    background:#1e293b; color:#64748b;
+  }
+  .arch-btn.active .badge { background:#0e4a6e; color:#67e8f9; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>ADVANCED ARCHITECTURE</h1>
+    <span class="sub">DISTRIBUTED SYSTEMS · MICROSERVICES · MESSAGE QUEUES · SCALING</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Architecture Pattern</div>
+    <div id="archList"></div>
+
+    <div class="section-title">System Parameters</div>
+    <div class="control-group">
+      <label>Traffic Load <span class="val" id="loadVal">1000 req/s</span></label>
+      <input type="range" id="loadSlider" min="10" max="100000" value="1000" step="10">
+    </div>
+    <div class="control-group">
+      <label>Number of Services <span class="val" id="svcVal">4</span></label>
+      <input type="range" id="svcSlider" min="1" max="16" value="4" step="1">
+    </div>
+    <div class="control-group">
+      <label>Replicas per Service <span class="val" id="repVal">3</span></label>
+      <input type="range" id="repSlider" min="1" max="20" value="3" step="1">
+    </div>
+    <div class="control-group">
+      <label>Network Latency <span class="val" id="latVal">20 ms</span></label>
+      <input type="range" id="latSlider" min="1" max="500" value="20" step="1">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ START SIMULATION</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Failure Injection</div>
+    <button class="btn danger" id="nodeFailBtn">⚠ NODE FAILURE</button>
+    <button class="btn warn" id="latencyBtn">⚠ LATENCY SPIKE</button>
+    <button class="btn warn" id="cascadeBtn">⚠ CASCADE FAILURE</button>
+    <button class="btn warn" id="trafficBtn">⚠ TRAFFIC SURGE</button>
+
+    <div class="section-title">Scenarios</div>
+    <button class="btn" data-preset="startup">Startup MVP</button>
+    <button class="btn" data-preset="scaleup">Scaling Up</button>
+    <button class="btn" data-preset="enterprise">Enterprise</button>
+    <button class="btn" data-preset="global">Global Scale</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      <span id="eqLine">Throughput = min(capacity) across chain &nbsp;|&nbsp; p99 latency = Σ latencies + retries</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mThroughput">
+          <div class="mlabel">THROUGHPUT</div>
+          <div class="mvalue">0<span class="munit">req/s</span></div>
+        </div>
+        <div class="metric" id="mLatency">
+          <div class="mlabel">P99 LATENCY</div>
+          <div class="mvalue">0<span class="munit">ms</span></div>
+        </div>
+        <div class="metric" id="mNodes">
+          <div class="mlabel">TOTAL NODES</div>
+          <div class="mvalue">0</div>
+        </div>
+        <div class="metric" id="mAvailability">
+          <div class="mlabel">AVAILABILITY</div>
+          <div class="mvalue">0<span class="munit">%</span></div>
+        </div>
+        <div class="metric" id="mErrors">
+          <div class="mlabel">ERROR RATE</div>
+          <div class="mvalue">0<span class="munit">%</span></div>
+        </div>
+        <div class="metric" id="mCost">
+          <div class="mlabel">COST/hour</div>
+          <div class="mvalue">$0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">Throughput = min(capacity) across chain</div>
+      <div class="eq">p99 = Σ(latencies) + retry overhead</div>
+      <div class="eq">Availability = (1 − MTTR/(MTBF+MTTR))·100</div>
+      <div class="def">
+        Advanced architecture is about trade-offs. Monoliths are simple but 
+        don't scale. Microservices scale but add network complexity. Message 
+        queues decouple systems. Each pattern solves some problems while 
+        creating others. The best architecture depends on your constraints.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const ARCHITECTURES = {
+  monolith: {
+    name: 'Monolith',
+    icon: '🏛',
+    badge: 'SIMPLE',
+    desc: 'Single deployable unit. Simple but hard to scale selectively.',
+    latencyMultiplier: 1.0,
+    throughputPerNode: 1000,
+    color: '#94a3b8',
+    overhead: 5,
+    complexity: 1
+  },
+  microservices: {
+    name: 'Microservices',
+    icon: '🧩',
+    badge: 'SCALABLE',
+    desc: 'Many small services communicating over network.',
+    latencyMultiplier: 3.0,
+    throughputPerNode: 800,
+    color: '#22d3ee',
+    overhead: 25,
+    complexity: 4
+  },
+  event_driven: {
+    name: 'Event-Driven',
+    icon: '📡',
+    badge: 'DECOUPLED',
+    desc: 'Services communicate via events and message queues.',
+    latencyMultiplier: 2.0,
+    throughputPerNode: 2000,
+    color: '#4ade80',
+    overhead: 15,
+    complexity: 3
+  },
+  serverless: {
+    name: 'Serverless',
+    icon: '☁️',
+    badge: 'ELASTIC',
+    desc: 'Functions as a service, auto-scaling, pay-per-use.',
+    latencyMultiplier: 5.0,
+    throughputPerNode: 500,
+    color: '#fbbf24',
+    overhead: 50,
+    complexity: 2
+  },
+  cqrs: {
+    name: 'CQRS',
+    icon: '⚖️',
+    badge: 'OPTIMIZED',
+    desc: 'Command Query Responsibility Segregation — separate read/write.',
+    latencyMultiplier: 2.5,
+    throughputPerNode: 1500,
+    color: '#a78bfa',
+    overhead: 20,
+    complexity: 4
+  },
+  edge: {
+    name: 'Edge Computing',
+    icon: '🌐',
+    badge: 'LOW-LATENCY',
+    desc: 'Compute near users, minimal round-trip.',
+    latencyMultiplier: 0.3,
+    throughputPerNode: 600,
+    color: '#f472b6',
+    overhead: 10,
+    complexity: 5
+  }
+};
+
+const S = {
+  arch: 'microservices',
+  load: 1000,
+  services: 4,
+  replicas: 3,
+  latency: 20,
+  running: false,
+  time: 0,
+  nodesFailed: 0,
+  latencyMultiplier: 1,
+  trafficSurge: false,
+  cascadeMode: false,
+  particles: [],
+  requests: [],
+  history: []
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const archList = document.getElementById('archList');
+const loadSlider = document.getElementById('loadSlider');
+const svcSlider = document.getElementById('svcSlider');
+const repSlider = document.getElementById('repSlider');
+const latSlider = document.getElementById('latSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── ARCHITECTURE MODEL ────────────────────────────────────
+function getArch(){ return ARCHITECTURES[S.arch]; }
+
+function computeSystem(){
+  const a = getArch();
+
+  // Total nodes
+  const totalNodes = S.services * S.replicas;
+  const activeNodes = Math.max(1, totalNodes - S.nodesFailed);
+
+  // Capacity: throughput per node × active nodes
+  const effectiveLoad = S.trafficSurge ? S.load * 3 : S.load;
+  const capacity = activeNodes * a.throughputPerNode;
+
+  // Throughput (bottleneck)
+  const throughput = Math.min(capacity, effectiveLoad);
+
+  // Latency: base + network hops × services + queue time
+  const networkHops = a === ARCHITECTURES.monolith ? 0 : S.services - 1;
+  const baseLatency = S.latency * a.latencyMultiplier + networkHops * S.latency;
+  const congestionFactor = effectiveLoad > capacity ? (effectiveLoad / capacity - 1) * 500 : 0;
+  const p99Latency = baseLatency + congestionFactor + (S.latencyMultiplier - 1) * 20;
+
+  // Availability: replica redundancy helps
+  const failureRate = 0.01; // 1% node failure probability
+  const redundancy = S.replicas > 1 ? 1 - Math.pow(failureRate, S.replicas) : 1 - failureRate;
+  const availability = S.nodesFailed > 0 
+    ? Math.max(0, 100 - S.nodesFailed / totalNodes * 100)
+    : 99.9 * redundancy + 0.09;
+
+  // Error rate: congestion + failures
+  let errorRate = 0;
+  if(effectiveLoad > capacity){
+    errorRate = Math.min(95, (effectiveLoad - capacity) / effectiveLoad * 100);
+  }
+  if(S.cascadeMode){
+    errorRate = Math.min(98, errorRate + 30);
+  }
+
+  // Cost: per node per hour + data transfer
+  const nodeCostPerHour = { monolith: 1.5, microservices: 0.8, event_driven: 1.0, serverless: 0.3, cqrs: 1.2, edge: 2.0 }[S.arch] || 1;
+  const dataCost = effectiveLoad * 0.00001 * S.services;
+  const cost = totalNodes * nodeCostPerHour + dataCost;
+
+  return {
+    totalNodes, activeNodes, capacity, effectiveLoad, throughput,
+    p99Latency, availability, errorRate, cost, arch: a,
+    utilization: Math.min(100, effectiveLoad / capacity * 100)
+  };
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawArchitecture(W, H);
+  drawMetricsChart(W, H);
+  drawNodeGrid(W, H);
+  drawParticles();
+}
+
+function drawArchitecture(W, H){
+  const a = getArch();
+  const sys = computeSystem();
+
+  const cx = W * 0.35;
+  const cy = H * 0.4;
+
+  // User/Client
+  drawUser(cx - 300, cy);
+
+  // Load balancer
+  drawLoadBalancer(cx - 180, cy, sys);
+
+  if(S.arch === 'monolith'){
+    drawMonolith(cx, cy, sys);
+  } else if(S.arch === 'microservices'){
+    drawMicroservices(cx, cy, sys);
+  } else if(S.arch === 'event_driven'){
+    drawEventDriven(cx, cy, sys);
+  } else if(S.arch === 'serverless'){
+    drawServerless(cx, cy, sys);
+  } else if(S.arch === 'cqrs'){
+    drawCQRS(cx, cy, sys);
+  } else {
+    drawEdge(cx, cy, sys);
+  }
+
+  // Data store
+  drawDatabase(cx + 300, cy, sys);
+
+  // Title
+  ctx.fillStyle = a.color;
+  ctx.font = 'bold 14px Consolas, monospace';
+  ctx.fillText(a.icon + ' ' + a.name, 20, 30);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText(a.desc, 20, 50);
+  ctx.fillStyle = a.color + '99';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('Complexity: ' + '★'.repeat(a.complexity) + '☆'.repeat(5 - a.complexity), 20, 70);
+}
+
+function drawUser(x, y){
+  ctx.beginPath();
+  ctx.arc(x, y - 10, 12, 0, Math.PI * 2);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x, y + 20, 22, 0, Math.PI);
+  ctx.fill();
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('USERS', x, y + 60);
+  ctx.textAlign = 'left';
+}
+
+function drawLoadBalancer(x, y, sys){
+  const a = getArch();
+  ctx.beginPath();
+  ctx.moveTo(x - 30, y - 30);
+  ctx.lineTo(x + 30, y - 30);
+  ctx.lineTo(x, y + 10);
+  ctx.closePath();
+  ctx.fillStyle = a.color + '44';
+  ctx.fill();
+  ctx.strokeStyle = a.color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = a.color;
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('LB', x, y - 5);
+  ctx.textAlign = 'left';
+
+  // Incoming arrow from user
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - 100, y - 10);
+  ctx.lineTo(x - 30, y - 10);
+  ctx.stroke();
+
+  // Load bar
+  const barW = 60;
+  const util = sys.utilization / 100;
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(x - barW/2, y + 20, barW, 6);
+  ctx.fillStyle = util > 0.9 ? '#f87171' : util > 0.7 ? '#fbbf24' : '#4ade80';
+  ctx.fillRect(x - barW/2, y + 20, barW * util, 6);
+}
+
+function drawMonolith(cx, cy, sys){
+  const a = getArch();
+  const boxW = 200;
+  const boxH = 140;
+
+  ctx.fillStyle = '#0a1220';
+  ctx.fillRect(cx - boxW/2, cy - boxH/2, boxW, boxH);
+  ctx.strokeStyle = a.color;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(cx - boxW/2, cy - boxH/2, boxW, boxH);
+
+  // Internal modules
+  const modules = ['UI', 'Auth', 'Logic', 'Data'];
+  for(let i=0;i<modules.length;i++){
+    const mx = cx - boxW/2 + 20 + (i % 2) * 100;
+    const my = cy - boxH/2 + 20 + Math.floor(i / 2) * 55;
+    ctx.fillStyle = a.color + '33';
+    ctx.fillRect(mx, my, 70, 40);
+    ctx.strokeStyle = a.color + '88';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mx, my, 70, 40);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(modules[i], mx + 35, my + 24);
+    ctx.textAlign = 'left';
+  }
+
+  // Single deploy badge
+  ctx.fillStyle = a.color;
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('1 DEPLOYMENT', cx, cy + boxH/2 + 20);
+  ctx.textAlign = 'left';
+
+  // Arrows from LB
+  drawArrow(cx - 130, cy, cx - boxW/2, cy, a.color);
+  drawArrow(cx + boxW/2, cy, cx + 130, cy, a.color);
+}
+
+function drawMicroservices(cx, cy, sys){
+  const a = getArch();
+  const svcCount = Math.min(S.services, 8);
+  const cols = 3;
+  const boxW = 70;
+  const boxH = 50;
+  const gapX = 30;
+  const gapY = 30;
+
+  for(let i=0;i<svcCount;i++){
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = cx - (cols-1) * (boxW+gapX)/2 + col * (boxW+gapX);
+    const y = cy - (Math.ceil(svcCount/cols)-1) * (boxH+gapY)/2 + row * (boxH+gapY);
+
+    const failed = i < S.nodesFailed && S.nodesFailed > 0;
+    const boxColor = failed ? '#7f1d1d' : a.color;
+
+    ctx.fillStyle = failed ? '#450a0a' : '#0a1220';
+    ctx.fillRect(x - boxW/2, y - boxH/2, boxW, boxH);
+    ctx.strokeStyle = boxColor;
+    ctx.lineWidth = failed ? 3 : 2;
+    ctx.strokeRect(x - boxW/2, y - boxH/2, boxW, boxH);
+
+    ctx.fillStyle = boxColor;
+    ctx.font = 'bold 9px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('SVC', x, y - 6);
+    ctx.fillText((i+1).toString(), x, y + 8);
+
+    // Replica count
+    ctx.fillStyle = '#64748b';
+    ctx.font = '8px Consolas, monospace';
+    ctx.fillText('×' + S.replicas, x, y + 22);
+    ctx.textAlign = 'left';
+
+    // Connecting lines
+    if(i > 0){
+      const prevCol = (i-1) % cols;
+      const prevRow = Math.floor((i-1) / cols);
+      const px = cx - (cols-1) * (boxW+gapX)/2 + prevCol * (boxW+gapX);
+      const py = cy - (Math.ceil(svcCount/cols)-1) * (boxH+gapY)/2 + prevRow * (boxH+gapY);
+      ctx.strokeStyle = a.color + '66';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3,2]);
+      ctx.beginPath();
+      ctx.moveTo(px + boxW/2, py);
+      ctx.lineTo(x - boxW/2, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // LB arrows
+  drawArrow(cx - 130, cy, cx - 100, cy, a.color);
+  drawArrow(cx + 100, cy, cx + 130, cy, a.color);
+}
+
+function drawEventDriven(cx, cy, sys){
+  const a = getArch();
+
+  // Services on left
+  for(let i=0;i<3;i++){
+    const y = cy - 60 + i * 60;
+    ctx.fillStyle = '#0a1220';
+    ctx.fillRect(cx - 150, y - 20, 70, 40);
+    ctx.strokeStyle = a.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cx - 150, y - 20, 70, 40);
+    ctx.fillStyle = a.color;
+    ctx.font = 'bold 9px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Producer', cx - 115, y + 4);
+    ctx.textAlign = 'left';
+  }
+
+  // Event bus in middle
+  ctx.fillStyle = a.color + '33';
+  ctx.fillRect(cx - 50, cy - 90, 40, 180);
+  ctx.strokeStyle = a.color;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(cx - 50, cy - 90, 40, 180);
+
+  ctx.save();
+  ctx.translate(cx - 30, cy);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = a.color;
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('EVENT BUS', 0, 4);
+  ctx.restore();
+  ctx.textAlign = 'left';
+
+  // Consumers on right
+  for(let i=0;i<3;i++){
+    const y = cy - 60 + i * 60;
+    ctx.fillStyle = '#0a1220';
+    ctx.fillRect(cx + 80, y - 20, 70, 40);
+    ctx.strokeStyle = a.color;
+    ctx.strokeRect(cx + 80, y - 20, 70, 40);
+    ctx.fillStyle = a.color;
+    ctx.font = 'bold 9px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Consumer', cx + 115, y + 4);
+    ctx.textAlign = 'left';
+  }
+
+  // Arrows into bus
+  for(let i=0;i<3;i++){
+    const y = cy - 60 + i * 60;
+    drawArrow(cx - 80, y, cx - 50, y, a.color);
+  }
+  // Arrows out of bus
+  for(let i=0;i<3;i++){
+    const y = cy - 60 + i * 60;
+    drawArrow(cx - 10, y, cx + 80, y, a.color);
+  }
+
+  // Animated events
+  if(S.running){
+    for(let i=0;i<6;i++){
+      const t = (S.time * 2 + i * 0.15) % 1;
+      const y = cy - 60 + (i % 3) * 60;
+      const x = cx - 50 + t * 60;
+      ctx.fillStyle = a.color;
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawServerless(cx, cy, sys){
+  const a = getArch();
+
+  // Cloud outline
+  ctx.beginPath();
+  ctx.arc(cx, cy, 90, 0, Math.PI * 2);
+  ctx.fillStyle = a.color + '11';
+  ctx.fill();
+  ctx.strokeStyle = a.color + '44';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5,4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = a.color;
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('☁ CLOUD', cx, cy - 70);
+  ctx.textAlign = 'left';
+
+  // Functions
+  const funcs = ['F1', 'F2', 'F3', 'F4'];
+  for(let i=0;i<funcs.length;i++){
+    const ang = (i / funcs.length) * Math.PI * 2 - Math.PI/2;
+    const r = 45;
+    const x = cx + Math.cos(ang) * r;
+    const y = cy + Math.sin(ang) * r;
+
+    ctx.beginPath();
+    ctx.arc(x, y, 20, 0, Math.PI * 2);
+    ctx.fillStyle = '#0a1220';
+    ctx.fill();
+    ctx.strokeStyle = a.color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = a.color;
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(funcs[i], x, y + 4);
+    ctx.textAlign = 'left';
+  }
+
+  // Auto-scale indicator
+  ctx.fillStyle = a.color;
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('AUTO-SCALE: ' + S.replicas + ' instances', cx, cy + 100);
+  ctx.textAlign = 'left';
+
+  // Arrows
+  drawArrow(cx - 130, cy, cx - 90, cy, a.color);
+  drawArrow(cx + 90, cy, cx + 130, cy, a.color);
+}
+
+function drawCQRS(cx, cy, sys){
+  const a = getArch();
+
+  // Command side (top)
+  ctx.fillStyle = '#0a1220';
+  ctx.fillRect(cx - 100, cy - 100, 90, 50);
+  ctx.strokeStyle = '#f87171';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(cx - 100, cy - 100, 90, 50);
+  ctx.fillStyle = '#f87171';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('WRITE', cx - 55, cy - 80);
+  ctx.fillText('MODEL', cx - 55, cy - 65);
+  ctx.textAlign = 'left';
+
+  // Query side (bottom)
+  ctx.fillStyle = '#0a1220';
+  ctx.fillRect(cx + 10, cy + 50, 90, 50);
+  ctx.strokeStyle = '#4ade80';
+  ctx.strokeRect(cx + 10, cy + 50, 90, 50);
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('READ', cx + 55, cy + 70);
+  ctx.fillText('MODEL', cx + 55, cy + 85);
+  ctx.textAlign = 'left';
+
+  // Event sync between
+  ctx.strokeStyle = a.color;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  ctx.moveTo(cx - 55, cy - 50);
+  ctx.lineTo(cx - 55, cy + 75);
+  ctx.lineTo(cx + 10, cy + 75);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Sync arrow
+  drawArrow(cx - 55, cy - 5, cx - 55, cy + 15, a.color, 'sync');
+
+  // Commands and Queries
+  ctx.fillStyle = '#f87171';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('← Commands', cx - 300, cy - 75);
+  ctx.fillStyle = '#4ade80';
+  ctx.fillText('→ Queries', cx - 300, cy + 75);
+
+  // Arrows from LB
+  drawArrow(cx - 130, cy - 75, cx - 100, cy - 75, '#f87171');
+  drawArrow(cx - 130, cy + 75, cx + 10, cy + 75, '#4ade80');
+}
+
+function drawEdge(cx, cy, sys){
+  const a = getArch();
+
+  // Central region
+  ctx.beginPath();
+  ctx.arc(cx, cy, 50, 0, Math.PI * 2);
+  ctx.fillStyle = '#0a1220';
+  ctx.fill();
+  ctx.strokeStyle = a.color;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.fillStyle = a.color;
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('CORE', cx, cy - 5);
+  ctx.fillText('DB', cx, cy + 10);
+  ctx.textAlign = 'left';
+
+  // Edge nodes around
+  const edges = 6;
+  for(let i=0;i<edges;i++){
+    const ang = (i / edges) * Math.PI * 2;
+    const r = 100;
+    const x = cx + Math.cos(ang) * r;
+    const y = cy + Math.sin(ang) * r;
+
+    ctx.beginPath();
+    ctx.arc(x, y, 15, 0, Math.PI * 2);
+    ctx.fillStyle = a.color + '33';
+    ctx.fill();
+    ctx.strokeStyle = a.color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = a.color;
+    ctx.font = 'bold 8px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('E' + (i+1), x, y + 3);
+    ctx.textAlign = 'left';
+
+    // Connection to core
+    ctx.strokeStyle = a.color + '44';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2,2]);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(cx, cy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Low latency badge
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('⚡ LOW LATENCY', cx, cy + 130);
+  ctx.textAlign = 'left';
+}
+
+function drawDatabase(x, y, sys){
+  const dbColor = '#4ade80';
+
+  // Database cylinder
+  const dbW = 70;
+  const dbH = 80;
+
+  ctx.fillStyle = dbColor + '22';
+  ctx.fillRect(x - dbW/2, y - dbH/2 + 15, dbW, dbH - 15);
+  ctx.beginPath();
+  ctx.ellipse(x, y - dbH/2 + 15, dbW/2, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(x, y + dbH/2, dbW/2, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = dbColor;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(x, y - dbH/2 + 15, dbW/2, 12, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Lines for cylinder sides
+  ctx.beginPath();
+  ctx.moveTo(x - dbW/2, y - dbH/2 + 15);
+  ctx.lineTo(x - dbW/2, y + dbH/2);
+  ctx.moveTo(x + dbW/2, y - dbH/2 + 15);
+  ctx.lineTo(x + dbW/2, y + dbH/2);
+  ctx.stroke();
+
+  ctx.fillStyle = dbColor;
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('DATA', x, y + 5);
+  ctx.fillText('STORE', x, y + 20);
+  ctx.textAlign = 'left';
+}
+
+function drawArrow(x1, y1, x2, y2, color, label){
+  if(Math.abs(x2-x1) < 1 && Math.abs(y2-y1) < 1) return;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  const ang = Math.atan2(y2-y1, x2-x1);
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - 10*Math.cos(ang-0.4), y2 - 10*Math.sin(ang-0.4));
+  ctx.lineTo(x2 - 10*Math.cos(ang+0.4), y2 - 10*Math.sin(ang+0.4));
+  ctx.closePath();
+  ctx.fill();
+  if(label){
+    ctx.font = 'bold 9px Consolas, monospace';
+    ctx.fillText(label, (x1+x2)/2 + 3, (y1+y2)/2 - 3);
+  }
+}
+
+function drawMetricsChart(W, H){
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 220;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('SYSTEM HEALTH', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const sys = computeSystem();
+
+  // Utilisation bar
+  const barW = w - 40;
+  const utilBarH = 25;
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('Utilization', ox + 20, oy + 20);
+
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(ox + 20, oy + 28, barW, utilBarH);
+
+  const util = sys.utilization / 100;
+  const utilColor = util > 0.9 ? '#f87171' : util > 0.7 ? '#fbbf24' : '#4ade80';
+  ctx.fillStyle = utilColor;
+  ctx.fillRect(ox + 20, oy + 28, barW * util, utilBarH);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText(sys.utilization.toFixed(0) + '%', ox + 25, oy + 44);
+
+  // Error rate bar
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('Error rate', ox + 20, oy + 75);
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(ox + 20, oy + 83, barW, utilBarH);
+
+  const err = Math.min(1, sys.errorRate / 100);
+  const errColor = err > 0.1 ? '#f87171' : err > 0.01 ? '#fbbf24' : '#4ade80';
+  ctx.fillStyle = errColor;
+  ctx.fillRect(ox + 20, oy + 83, barW * err, utilBarH);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.fillText(sys.errorRate.toFixed(2) + '%', ox + 25, oy + 99);
+
+  // Availability
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('Availability', ox + 20, oy + 130);
+  ctx.fillStyle = sys.availability > 99.9 ? '#4ade80' : sys.availability > 99 ? '#fbbf24' : '#f87171';
+  ctx.font = 'bold 16px Consolas, monospace';
+  ctx.fillText(sys.availability.toFixed(3) + '%', ox + 20, oy + 152);
+
+  // Latency
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('P99 Latency', ox + 20, oy + 180);
+  ctx.fillStyle = sys.p99Latency < 100 ? '#4ade80' : sys.p99Latency < 500 ? '#fbbf24' : '#f87171';
+  ctx.font = 'bold 14px Consolas, monospace';
+  ctx.fillText(sys.p99Latency.toFixed(0) + ' ms', ox + 20, oy + 200);
+}
+
+function drawNodeGrid(W, H){
+  const ox = W - 280;
+  const oy = H - 200;
+  const w = 260;
+  const h = 180;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('NODE STATUS GRID', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const sys = computeSystem();
+  const a = getArch();
+  const cols = 8;
+  const rows = Math.ceil(sys.totalNodes / cols);
+  const nodeW = 22;
+  const nodeH = 22;
+  const padX = 8;
+  const padY = 8;
+
+  for(let i=0;i<sys.totalNodes;i++){
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = ox + 20 + col * (nodeW + padX);
+    const y = oy + 20 + row * (nodeH + padY);
+
+    if(y + nodeH > oy + h - 20) break;
+
+    const failed = i < S.nodesFailed;
+    const color = failed ? '#f87171' : a.color;
+
+    ctx.fillStyle = failed ? '#450a0a' : color + '33';
+    ctx.fillRect(x, y, nodeW, nodeH);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x, y, nodeW, nodeH);
+
+    // Status dot
+    ctx.beginPath();
+    ctx.arc(x + nodeW/2, y + nodeH/2, 3, 0, Math.PI * 2);
+    ctx.fillStyle = failed ? '#f87171' : '#4ade80';
+    ctx.fill();
+  }
+
+  // Legend
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('● Healthy', ox + 20, oy + h - 30);
+  ctx.fillStyle = '#f87171';
+  ctx.fillText('● Failed', ox + 100, oy + h - 30);
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText('Total: ' + sys.totalNodes + ' nodes', ox + 20, oy + h - 12);
+}
+
+function drawParticles(){
+  // Traffic particles moving through the system
+  if(S.running){
+    const targetParticles = Math.min(50, Math.ceil(S.load / 100));
+    if(S.particles.length < targetParticles){
+      S.particles.push({
+        x: canvas.width/devicePixelRatio * 0.05,
+        y: canvas.height/devicePixelRatio * 0.4 + (Math.random() - 0.5) * 100,
+        vx: 3 + Math.random() * 2,
+        life: 1
+      });
+    }
+  }
+
+  for(let i=S.particles.length-1;i>=0;i--){
+    const p = S.particles[i];
+    p.x += p.vx;
+    p.life -= 0.005;
+    if(p.x > canvas.width/devicePixelRatio * 0.9 || p.life <= 0){
+      S.particles.splice(i, 1);
+    }
+  }
+
+  for(const p of S.particles){
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(34,211,238,${p.life * 0.8})`;
+    ctx.shadowColor = '#22d3ee';
+    ctx.shadowBlur = 5;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const sys = computeSystem();
+  document.querySelector('#mThroughput .mvalue').innerHTML = sys.throughput.toFixed(0) + '<span class="munit">req/s</span>';
+  document.querySelector('#mLatency .mvalue').innerHTML = sys.p99Latency.toFixed(0) + '<span class="munit">ms</span>';
+  document.querySelector('#mNodes .mvalue').textContent = sys.totalNodes;
+  document.querySelector('#mAvailability .mvalue').innerHTML = sys.availability.toFixed(2) + '<span class="munit">%</span>';
+  document.querySelector('#mErrors .mvalue').innerHTML = sys.errorRate.toFixed(2) + '<span class="munit">%</span>';
+  document.querySelector('#mCost .mvalue').textContent = '$' + sys.cost.toFixed(2);
+
+  document.getElementById('mThroughput').className = 'metric' + (sys.utilization > 95 ? ' warn' : ' ok');
+  document.getElementById('mLatency').className = 'metric' + (sys.p99Latency > 500 ? ' bad' : sys.p99Latency > 150 ? ' warn' : ' ok');
+  document.getElementById('mAvailability').className = 'metric' + (sys.availability < 99 ? ' bad' : sys.availability < 99.9 ? ' warn' : ' ok');
+  document.getElementById('mErrors').className = 'metric' + (sys.errorRate > 5 ? ' bad' : sys.errorRate > 1 ? ' warn' : ' ok');
+  document.getElementById('mCost').className = 'metric' + (sys.cost > 100 ? ' warn' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+let lastAlertTime = 0;
+function loop(ts){
+  if(S.running){
+    S.time += 1/60;
+
+    // Periodic health checks
+    if(ts - lastAlertTime > 3000){
+      lastAlertTime = ts;
+      const sys = computeSystem();
+      if(sys.utilization > 95 && S.time > 5){
+        teach('CONGESTION', 'System at ' + sys.utilization.toFixed(0) + '% utilization. Queue times exploding. Add replicas or reduce load.', 'warn');
+      }
+      if(sys.errorRate > 10){
+        teach('ERRORS', 'Error rate ' + sys.errorRate.toFixed(1) + '%. Users seeing failures. Check cascading failures.', 'error');
+      }
+    }
+  }
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+function buildArchList(){
+  archList.innerHTML = '';
+  for(const key in ARCHITECTURES){
+    const a = ARCHITECTURES[key];
+    const btn = document.createElement('button');
+    btn.className = 'arch-btn' + (key === S.arch ? ' active' : '');
+    btn.dataset.key = key;
+    btn.innerHTML = `<span class="icon">${a.icon}</span><span class="name">${a.name}</span><span class="badge">${a.badge}</span>`;
+    btn.addEventListener('click', () => switchArch(key));
+    archList.appendChild(btn);
+  }
+}
+
+function switchArch(key){
+  S.arch = key;
+  S.nodesFailed = 0;
+  S.running = false;
+  S.time = 0;
+  S.particles = [];
+  playBtn.textContent = '▶ START SIMULATION';
+
+  document.querySelectorAll('.arch-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.key === key);
+  });
+
+  const a = ARCHITECTURES[key];
+  feedEl.innerHTML = '';
+  teach('ARCHITECTURE', a.icon + ' ' + a.name + ': ' + a.desc, 'concept');
+
+  setTimeout(() => {
+    if(key === 'monolith'){
+      teach('MONOLITH', 'Monoliths are easy to develop and deploy. All code in one place, one deployment, simple debugging. But: can\'t scale parts independently, one bug can crash everything, tech stack lock-in.', 'info');
+    } else if(key === 'microservices'){
+      teach('MICROSERVICES', 'Microservices scale independently, use different tech per service, fault-isolate. But: network latency, distributed transactions, ops complexity, debugging nightmare.', 'info');
+    } else if(key === 'event_driven'){
+      teach('EVENT DRIVEN', 'Event-driven systems are naturally decoupled and async. Perfect for workflows, real-time updates. But: eventual consistency, event ordering issues, harder to reason about.', 'info');
+    } else if(key === 'serverless'){
+      teach('SERVERLESS', 'Serverless scales to zero, pay per use, no ops. But: cold starts, vendor lock-in, harder debugging, limited execution time. Great for spiky or intermittent workloads.', 'info');
+    } else if(key === 'cqrs'){
+      teach('CQRS', 'CQRS separates read and write models. Each optimized for its workload. Read replicas can scale independently. But: dual-model complexity, eventual consistency between them.', 'info');
+    } else {
+      teach('EDGE', 'Edge computing puts compute near users. Latency drops from 200ms to 20ms. Great for real-time apps, IoT. But: distributed data, sync complexity, more infrastructure.', 'info');
+    }
+  }, 500);
+}
+
+loadSlider.addEventListener('input', e => {
+  S.load = parseFloat(e.target.value);
+  const label = S.load >= 1000 ? (S.load/1000).toFixed(1) + 'k req/s' : S.load + ' req/s';
+  document.getElementById('loadVal').textContent = label;
+});
+
+svcSlider.addEventListener('input', e => {
+  S.services = parseInt(e.target.value);
+  document.getElementById('svcVal').textContent = S.services;
+});
+
+repSlider.addEventListener('input', e => {
+  S.replicas = parseInt(e.target.value);
+  document.getElementById('repVal').textContent = S.replicas;
+});
+
+latSlider.addEventListener('input', e => {
+  S.latency = parseFloat(e.target.value);
+  document.getElementById('latVal').textContent = S.latency + ' ms';
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ START SIMULATION';
+  if(S.running){
+    const sys = computeSystem();
+    teach('RUN', 'Simulating ' + sys.effectiveLoad.toFixed(0) + ' req/s through ' + sys.totalNodes + ' nodes. Capacity ' + sys.capacity.toFixed(0) + ' req/s.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  S.time += 1;
+  const sys = computeSystem();
+  teach('STEP', 't = ' + S.time.toFixed(0) + 's. Throughput ' + sys.throughput.toFixed(0) + ' req/s, P99 ' + sys.p99Latency.toFixed(0) + ' ms.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.arch = 'microservices'; S.load = 1000; S.services = 4; S.replicas = 3; S.latency = 20;
+  S.running = false; S.time = 0; S.nodesFailed = 0; S.latencyMultiplier = 1;
+  S.trafficSurge = false; S.cascadeMode = false;
+  S.particles = [];
+  loadSlider.value = 1000; svcSlider.value = 4; repSlider.value = 3; latSlider.value = 20;
+  document.getElementById('loadVal').textContent = '1000 req/s';
+  document.getElementById('svcVal').textContent = '4';
+  document.getElementById('repVal').textContent = '3';
+  document.getElementById('latVal').textContent = '20 ms';
+  playBtn.textContent = '▶ START SIMULATION';
+  buildArchList();
+  teach('RESET', 'System reset to defaults.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('nodeFailBtn').addEventListener('click', () => {
+  const total = S.services * S.replicas;
+  S.nodesFailed = Math.min(total - 1, S.nodesFailed + Math.ceil(total * 0.3));
+  const sys = computeSystem();
+  teach('NODE FAILURE', S.nodesFailed + ' of ' + total + ' nodes failed. ' + 
+    (S.replicas > 1 ? 'Replicas absorbed the loss — availability still ' + sys.availability.toFixed(2) + '%.' : 'No redundancy! Service degraded.') , S.replicas > 1 ? 'warn' : 'error');
+});
+
+document.getElementById('latencyBtn').addEventListener('click', () => {
+  S.latencyMultiplier = 5;
+  teach('LATENCY SPIKE', 'Network latency multiplied 5×. p99 latency now over ' + computeSystem().p99Latency.toFixed(0) + ' ms. Real cause: cross-AZ traffic, DNS issues, or packet loss. Timeouts will trigger retries, making it worse.', 'warn');
+  setTimeout(() => { S.latencyMultiplier = 1; }, 5000);
+});
+
+document.getElementById('cascadeBtn').addEventListener('click', () => {
+  S.cascadeMode = !S.cascadeMode;
+  if(S.cascadeMode){
+    teach('CASCADE', 'Cascading failure enabled. When one service fails, its callers retry, exhausting their threads. Backpressure propagates. Circuit breakers and bulkheads prevent this.', 'error');
+  } else {
+    teach('RECOVER', 'Cascade stopped.', 'ok');
+  }
+});
+
+document.getElementById('trafficBtn').addEventListener('click', () => {
+  S.trafficSurge = !S.trafficSurge;
+  if(S.trafficSurge){
+    teach('SURGE', 'Traffic tripled! Auto-scaling kicks in, but takes 30-60s to add capacity. In the meantime, latency spikes and errors climb.', 'warn');
+  } else {
+    teach('NORMAL', 'Traffic back to normal.', 'ok');
+  }
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'startup'){
+      S.arch = 'monolith'; S.load = 100; S.services = 1; S.replicas = 1; S.latency = 10;
+      updateSliders(); switchArch('monolith');
+      teach('STARTUP', 'Startup MVP: monolith, 100 req/s, single node. Simple, cheap ($2/hr), perfect for early validation. Don\'t over-engineer for scale you don\'t have.', 'concept');
+    } else if(p === 'scaleup'){
+      S.arch = 'microservices'; S.load = 10000; S.services = 6; S.replicas = 3; S.latency = 20;
+      updateSliders(); switchArch('microservices');
+      teach('SCALE UP', 'Scaling up: microservices, 10k req/s, 18 nodes. This is where patterns matter — you need load balancing, service discovery, health checks.', 'concept');
+    } else if(p === 'enterprise'){
+      S.arch = 'event_driven'; S.load = 50000; S.services = 10; S.replicas = 5; S.latency = 30;
+      updateSliders(); switchArch('event_driven');
+      teach('ENTERPRISE', 'Enterprise: event-driven, 50k req/s, 50 nodes. Async workflows, message queues, eventual consistency. Complexity is high but resilience is too.', 'concept');
+    } else {
+      S.arch = 'edge'; S.load = 100000; S.services = 8; S.replicas = 10; S.latency = 5;
+      updateSliders(); switchArch('edge');
+      teach('GLOBAL', 'Global scale: edge computing, 100k req/s, 80 edge nodes + core. Latency near users worldwide. Cost $200+/hr but user experience is best-in-class.', 'concept');
+    }
+  });
+});
+
+function updateSliders(){
+  loadSlider.value = S.load; svcSlider.value = S.services;
+  repSlider.value = S.replicas; latSlider.value = S.latency;
+  document.getElementById('loadVal').textContent = S.load >= 1000 ? (S.load/1000).toFixed(0) + 'k req/s' : S.load + ' req/s';
+  document.getElementById('svcVal').textContent = S.services;
+  document.getElementById('repVal').textContent = S.replicas;
+  document.getElementById('latVal').textContent = S.latency + ' ms';
+}
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  buildArchList();
+  teach('WELCOME', 'Welcome to Advanced Architecture. Every architectural choice is a trade-off. Monoliths are simple but don\'t scale selectively. Microservices scale but add network complexity. Event-driven systems are resilient but harder to debug.', 'concept');
+  teach('PRINCIPLE', 'The best architecture is the simplest one that meets your requirements. Avoid premature optimization. Start simple, evolve as constraints demand.', 'concept');
+  teach('HOWTO', 'Choose an architecture pattern. Adjust traffic load, services, and replicas. Press START SIMULATION to see the system respond. Try failure injection to test resilience.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

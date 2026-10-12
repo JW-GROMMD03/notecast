@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robot Forward &amp; Inverse Kinematics — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>ROBOT KINEMATICS</h1>
+    <span class="sub">FORWARD · INVERSE · 2R PLANAR · DH · WORKSPACE</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Robot Configuration</div>
+    <div class="control-group">
+      <label>Robot Type</label>
+      <select id="robotSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="2r">2R Planar Arm</option>
+        <option value="3r">3R Planar Arm</option>
+        <option value="scara">SCARA</option>
+        <option value="rp">R-P Cylindrical</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Link 1 Length L₁ <span class="val" id="l1Val">150 mm</span></label>
+      <input type="range" id="l1Slider" min="50" max="300" value="150" step="5">
+    </div>
+    <div class="control-group">
+      <label>Link 2 Length L₂ <span class="val" id="l2Val">120 mm</span></label>
+      <input type="range" id="l2Slider" min="50" max="300" value="120" step="5">
+    </div>
+
+    <div class="section-title">Forward Kinematics</div>
+    <div class="control-group">
+      <label>Joint 1 Angle θ₁ <span class="val" id="th1Val">45°</span></label>
+      <input type="range" id="th1Slider" min="-180" max="180" value="45" step="1">
+    </div>
+    <div class="control-group">
+      <label>Joint 2 Angle θ₂ <span class="val" id="th2Val">-30°</span></label>
+      <input type="range" id="th2Slider" min="-180" max="180" value="-30" step="1">
+    </div>
+    <div class="control-group">
+      <label>Joint 3 Angle θ₃ <span class="val" id="th3Val">0°</span></label>
+      <input type="range" id="th3Slider" min="-180" max="180" value="0" step="1">
+    </div>
+
+    <div class="section-title">Inverse Kinematics</div>
+    <button class="btn primary" id="ikBtn">▶ SOLVE IK</button>
+    <button class="btn warn" id="fkBtn">↺ SHOW FK</button>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ ANIMATE</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="singBtn">⚠ SINGULARITY</button>
+    <button class="btn warn" id="unreachBtn">⚠ UNREACHABLE</button>
+    <button class="btn warn" id="jointLimBtn">⚠ JOINT LIMITS</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="pick">Pick & Place</button>
+    <button class="btn" data-preset="draw">Drawing Robot</button>
+    <button class="btn" data-preset="scara">Assembly SCARA</button>
+    <button class="btn" data-preset="wafer">Wafer Handling</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      x = L₁·cos(θ₁) + L₂·cos(θ₁+θ₂) &nbsp;|&nbsp; y = L₁·sin(θ₁) + L₂·sin(θ₁+θ₂) &nbsp;|&nbsp; <span class="hl">θ₂ = ±acos((x²+y²−L₁²−L₂²)/(2·L₁·L₂))</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mPos">
+          <div class="mlabel">END EFFECTOR</div>
+          <div class="mvalue" style="font-size:11px;">(0, 0)</div>
+        </div>
+        <div class="metric" id="mReach">
+          <div class="mlabel">REACH</div>
+          <div class="mvalue">0<span class="munit">mm</span></div>
+        </div>
+        <div class="metric" id="mTh1">
+          <div class="mlabel">θ₁</div>
+          <div class="mvalue">0<span class="munit">°</span></div>
+        </div>
+        <div class="metric" id="mTh2">
+          <div class="mlabel">θ₂</div>
+          <div class="mvalue">0<span class="munit">°</span></div>
+        </div>
+        <div class="metric" id="mJacob">
+          <div class="mlabel">JACOBIAN |J|</div>
+          <div class="mvalue">0.00</div>
+        </div>
+        <div class="metric" id="mSol">
+          <div class="mlabel">SOLUTIONS</div>
+          <div class="mvalue">2</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">FK: x = L₁c₁ + L₂c₁₂</div>
+      <div class="eq">IK: θ₂ = ±acos((r²−L₁²−L₂²)/(2L₁L₂))</div>
+      <div class="eq">Jacobian: [∂x/∂θ, ∂y/∂θ]</div>
+      <div class="def">
+        Forward kinematics: joint angles → end effector position. 
+        Inverse kinematics: desired position → joint angles. IK has 
+        two solutions (elbow-up/elbow-down) for a 2R arm. At singularities 
+        (fully extended or folded), the Jacobian loses rank — velocity 
+        becomes infinite.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const ROBOTS = {
+  '2r':   { name:'2R Planar',   links:2, hasPrismatic:false, color:'#22d3ee' },
+  '3r':   { name:'3R Planar',   links:3, hasPrismatic:false, color:'#4ade80' },
+  'scara':{ name:'SCARA',       links:2, hasPrismatic:true,  color:'#fbbf24' },
+  'rp':   { name:'R-P Cylindrical', links:1, hasPrismatic:true, color:'#a78bfa' }
+};
+
+const S = {
+  robot: '2r',
+  L1: 150,
+  L2: 120,
+  th1: 45,
+  th2: -30,
+  th3: 0,
+  running: false,
+  time: 0,
+  theta1: 45,
+  theta2: -30,
+  theta3: 0,
+  showIK: false,
+  target: { x: 200, y: 100 },
+  animPath: [],
+  animationT: 0,
+  singularity: false,
+  unreachable: false,
+  jointLimits: false,
+  prevTheta1: 0,
+  prevTheta2: 0
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const robotSel = document.getElementById('robotSelect');
+const l1Slider = document.getElementById('l1Slider');
+const l2Slider = document.getElementById('l2Slider');
+const th1Slider = document.getElementById('th1Slider');
+const th2Slider = document.getElementById('th2Slider');
+const th3Slider = document.getElementById('th3Slider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── KINEMATICS MATH ───────────────────────────────────────
+function getRobot(){ return ROBOTS[S.robot]; }
+
+function forwardKinematics(th1, th2, th3){
+  const t1 = th1 * Math.PI / 180;
+  const t2 = th2 * Math.PI / 180;
+  const t3 = th3 * Math.PI / 180;
+  const L1 = S.L1;
+  const L2 = S.L2;
+  const L3 = S.L2; // reuse for 3R
+
+  // Joint positions
+  const j0 = { x: 0, y: 0 };
+  const j1 = { x: L1 * Math.cos(t1), y: L1 * Math.sin(t1) };
+  const j2 = {
+    x: j1.x + L2 * Math.cos(t1 + t2),
+    y: j1.y + L2 * Math.sin(t1 + t2)
+  };
+  const j3 = {
+    x: j2.x + L3 * Math.cos(t1 + t2 + t3),
+    y: j2.y + L3 * Math.sin(t1 + t2 + t3)
+  };
+
+  // End effector is last joint
+  const ee = S.robot === '3r' ? j3 : j2;
+
+  // Jacobian determinant
+  const J = L1 * L2 * Math.sin(t2);
+
+  return { j0, j1, j2, j3, ee, J, t1, t2 };
+}
+
+function inverseKinematics(targetX, targetY, elbowUp){
+  const L1 = S.L1;
+  const L2 = S.L2;
+  const r2 = targetX * targetX + targetY * targetY;
+  const r = Math.sqrt(r2);
+
+  // Check reachability
+  if(r > L1 + L2 || r < Math.abs(L1 - L2)){
+    return null;
+  }
+
+  // θ₂ via law of cosines
+  const cosT2 = (r2 - L1*L1 - L2*L2) / (2 * L1 * L2);
+  const t2 = (elbowUp ? 1 : -1) * Math.acos(Math.max(-1, Math.min(1, cosT2)));
+
+  // θ₁
+  const t1 = Math.atan2(targetY, targetX) - Math.atan2(L2 * Math.sin(t2), L1 + L2 * Math.cos(t2));
+
+  return {
+    th1: t1 * 180 / Math.PI,
+    th2: t2 * 180 / Math.PI,
+    th1_rad: t1,
+    th2_rad: t2
+  };
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawWorkspace(W, H);
+  drawRobot(W, H);
+  drawJacobianChart(W, H);
+}
+
+function drawWorkspace(W, H){
+  const cx = W * 0.35;
+  const cy = H * 0.55;
+
+  // Convert (x,y) mm to canvas coordinates
+  const scale = 1.3;
+  const xOf = x => cx + x * scale;
+  const yOf = y => cy - y * scale;
+
+  // Workspace boundary (annulus)
+  const L1 = S.L1;
+  const L2 = S.L2;
+  const rMax = L1 + L2;
+  const rMin = Math.abs(L1 - L2);
+
+  // Outer circle
+  ctx.beginPath();
+  ctx.arc(cx, cy, rMax * scale, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(74,222,128,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4,3]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Inner circle (hole)
+  if(rMin > 5){
+    ctx.beginPath();
+    ctx.arc(cx, cy, rMin * scale, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(248,113,113,0.3)';
+    ctx.stroke();
+  }
+
+  // Workspace fill
+  ctx.beginPath();
+  ctx.arc(cx, cy, rMax * scale, 0, Math.PI * 2);
+  ctx.arc(cx, cy, rMin * scale, 0, Math.PI * 2, true);
+  ctx.fillStyle = 'rgba(34,211,238,0.05)';
+  ctx.fill();
+
+  // Grid
+  ctx.save();
+  ctx.globalAlpha = 0.15;
+  ctx.strokeStyle = '#1e293b';
+  for(let x=-400;x<=400;x+=50){
+    ctx.beginPath();
+    ctx.moveTo(xOf(x), 40);
+    ctx.lineTo(xOf(x), H - 40);
+    ctx.stroke();
+  }
+  for(let y=-300;y<=300;y+=50){
+    ctx.beginPath();
+    ctx.moveTo(40, yOf(y));
+    ctx.lineTo(W * 0.75, yOf(y));
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Axes
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(40, cy);
+  ctx.lineTo(W * 0.72, cy);
+  ctx.moveTo(cx, 40);
+  ctx.lineTo(cx, H - 40);
+  ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('X (mm)', W * 0.7, cy - 8);
+  ctx.fillText('Y (mm)', cx + 8, 55);
+
+  // Scale tick marks
+  for(let x=100;x<=300;x+=100){
+    ctx.fillText(x, xOf(x) - 10, cy + 15);
+  }
+
+  // Base marker
+  ctx.fillStyle = '#94a3b8';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fillRect(cx - 20, cy, 40, 10);
+  ctx.fillStyle = '#64748b';
+  ctx.fillRect(cx - 20, cy + 10, 40, 4);
+}
+
+function drawRobot(W, H){
+  const cx = W * 0.35;
+  const cy = H * 0.55;
+  const scale = 1.3;
+  const xOf = x => cx + x * scale;
+  const yOf = y => cy - y * scale;
+
+  const robot = getRobot();
+  const fk = forwardKinematics(S.theta1, S.theta2, S.theta3);
+
+  // Draw links
+  ctx.strokeStyle = robot.color;
+  ctx.lineWidth = 14;
+  ctx.lineCap = 'round';
+
+  // Link 1
+  ctx.beginPath();
+  ctx.moveTo(xOf(fk.j0.x), yOf(fk.j0.y));
+  ctx.lineTo(xOf(fk.j1.x), yOf(fk.j1.y));
+  ctx.stroke();
+
+  // Link 2
+  ctx.strokeStyle = robot.color + 'cc';
+  ctx.beginPath();
+  ctx.moveTo(xOf(fk.j1.x), yOf(fk.j1.y));
+  ctx.lineTo(xOf(fk.j2.x), yOf(fk.j2.y));
+  ctx.stroke();
+
+  // Link 3 (3R)
+  if(S.robot === '3r'){
+    ctx.strokeStyle = robot.color + '88';
+    ctx.beginPath();
+    ctx.moveTo(xOf(fk.j2.x), yOf(fk.j2.y));
+    ctx.lineTo(xOf(fk.j3.x), yOf(fk.j3.y));
+    ctx.stroke();
+  }
+
+  // Joints
+  const drawJoint = (x, y, label) => {
+    ctx.beginPath();
+    ctx.arc(xOf(x), yOf(y), 10, 0, Math.PI * 2);
+    ctx.fillStyle = '#0a0e1a';
+    ctx.fill();
+    ctx.strokeStyle = robot.color;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    // Rotation marker
+    ctx.beginPath();
+    ctx.arc(xOf(x), yOf(y), 6, 0, Math.PI * 1.5);
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  };
+
+  drawJoint(fk.j0.x, fk.j0.y);
+  drawJoint(fk.j1.x, fk.j1.y);
+  drawJoint(fk.j2.x, fk.j2.y);
+  if(S.robot === '3r') drawJoint(fk.j3.x, fk.j3.y);
+
+  // End effector marker
+  ctx.beginPath();
+  ctx.arc(xOf(fk.ee.x), yOf(fk.ee.y), 8, 0, Math.PI * 2);
+  ctx.fillStyle = '#4ade80';
+  ctx.shadowColor = '#4ade80';
+  ctx.shadowBlur = 12;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Trace the end-effector path
+  if(S.animPath.length > 1){
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(74,222,128,0.5)';
+    ctx.lineWidth = 1.5;
+    for(let i=0;i<S.animPath.length;i++){
+      const p = S.animPath[i];
+      const x = xOf(p.x);
+      const y = yOf(p.y);
+      if(i===0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Target (IK goal)
+  if(S.showIK){
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(xOf(S.target.x), yOf(S.target.y), 12, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(xOf(S.target.x) - 15, yOf(S.target.y));
+    ctx.lineTo(xOf(S.target.x) + 15, yOf(S.target.y));
+    ctx.moveTo(xOf(S.target.x), yOf(S.target.y) - 15);
+    ctx.lineTo(xOf(S.target.x), yOf(S.target.y) + 15);
+    ctx.stroke();
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = '10px Consolas, monospace';
+    ctx.fillText('TARGET', xOf(S.target.x) + 15, yOf(S.target.y) - 10);
+  }
+
+  // Info
+  ctx.fillStyle = robot.color;
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText(robot.name, 20, 30);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('L₁ = ' + S.L1 + ' mm, L₂ = ' + S.L2 + ' mm', 20, 50);
+
+  // EE coords
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText('EE: (' + fk.ee.x.toFixed(0) + ', ' + fk.ee.y.toFixed(0) + ')', 20, 68);
+
+  // Singularity warning
+  if(Math.abs(fk.J) < 1 && !S.singularity){
+    S.singularity = true;
+    teach('SINGULARITY', 'Jacobian determinant ≈ 0 — at a singular configuration. Fully extended or folded arm. Velocity amplification → ∞. Robot cannot move in some directions here.', 'error');
+  } else if(Math.abs(fk.J) > 100){
+    S.singularity = false;
+  }
+
+  if(S.singularity){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 14px Consolas, monospace';
+    ctx.fillText('⚠ SINGULARITY', cx - 60, cy + 130);
+  }
+  if(S.unreachable){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 14px Consolas, monospace';
+    ctx.fillText('⚠ UNREACHABLE', cx - 60, cy + 150);
+  }
+}
+
+function drawJacobianChart(W, H){
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 220;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('JACOBIAN DETERMINANT vs θ₂', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const pad = { l:40, r:15, t:20, b:30 };
+  const gw = w - pad.l - pad.r;
+  const gh = h - pad.t - pad.b;
+
+  // Plot |J| = L1·L2·sin(θ₂)
+  const Jmax = S.L1 * S.L2;
+
+  const xOf = t => ox + pad.l + (t + 180) / 360 * gw;
+  const yOf = j => oy + h - pad.b - (j / Jmax * 0.5 + 0.5) * gh;
+
+  // Zero line
+  ctx.strokeStyle = '#334155';
+  ctx.beginPath();
+  ctx.moveTo(ox + pad.l, yOf(0));
+  ctx.lineTo(ox + pad.l + gw, yOf(0));
+  ctx.stroke();
+
+  // Curve
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#4ade80';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  for(let i=0;i<=72;i++){
+    const t = -180 + i * 5;
+    const tRad = t * Math.PI / 180;
+    const J = S.L1 * S.L2 * Math.sin(tRad);
+    const x = xOf(t);
+    const y = yOf(J);
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Current point
+  const Jcur = S.L1 * S.L2 * Math.sin(S.theta2 * Math.PI / 180);
+  const px = xOf(Math.max(-180, Math.min(180, S.theta2)));
+  const py = yOf(Jcur);
+  ctx.beginPath();
+  ctx.arc(px, py, 6, 0, Math.PI * 2);
+  ctx.fillStyle = Math.abs(Jcur) < 100 ? '#f87171' : '#fbbf24';
+  ctx.shadowColor = ctx.fillStyle;
+  ctx.shadowBlur = 12;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('θ₂ (°)', ox + w/2, oy + h - 6);
+  ctx.textAlign = 'left';
+  ctx.fillText('|J|', ox + 8, oy + 14);
+
+  // Info
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('|J| = ' + Jcur.toFixed(0), ox + 8, oy + h - 20);
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('J = L₁·L₂·sin(θ₂)', ox + 8, oy + h - 5);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const fk = forwardKinematics(S.theta1, S.theta2, S.theta3);
+  document.querySelector('#mPos .mvalue').textContent = '(' + fk.ee.x.toFixed(0) + ', ' + fk.ee.y.toFixed(0) + ')';
+  const r = Math.sqrt(fk.ee.x*fk.ee.x + fk.ee.y*fk.ee.y);
+  document.querySelector('#mReach .mvalue').innerHTML = r.toFixed(0) + '<span class="munit">mm</span>';
+  document.querySelector('#mTh1 .mvalue').innerHTML = S.theta1.toFixed(0) + '<span class="munit">°</span>';
+  document.querySelector('#mTh2 .mvalue').innerHTML = S.theta2.toFixed(0) + '<span class="munit">°</span>';
+  document.querySelector('#mJacob .mvalue').textContent = Math.abs(fk.J).toFixed(0);
+  const rMin = Math.abs(S.L1 - S.L2);
+  const rMax = S.L1 + S.L2;
+  const sols = (r <= rMax && r >= rMin) ? 2 : 0;
+  document.querySelector('#mSol .mvalue').textContent = sols;
+
+  document.getElementById('mJacob').className = 'metric' + (Math.abs(fk.J) < 100 ? ' bad' : Math.abs(fk.J) < 500 ? ' warn' : ' ok');
+  document.getElementById('mReach').className = 'metric' + (r > rMax || r < rMin ? ' bad' : ' ok');
+  document.getElementById('mSol').className = 'metric' + (sols === 0 ? ' bad' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  if(S.running){
+    S.time += 1/60;
+    // Animate along the path if any
+    if(S.animPath.length > 1){
+      S.animationT += 0.01;
+      if(S.animationT >= 1){
+        S.animationT = 0;
+      }
+      // Find position along the path
+      const totalLen = S.animPath.length - 1;
+      const idx = S.animationT * totalLen;
+      const i0 = Math.floor(idx);
+      const i1 = Math.min(totalLen, i0 + 1);
+      const t = idx - i0;
+      const p0 = S.animPath[i0];
+      const p1 = S.animPath[i1];
+      const targetX = p0.x + (p1.x - p0.x) * t;
+      const targetY = p0.y + (p1.y - p0.y) * t;
+
+      const ik = inverseKinematics(targetX, targetY, false);
+      if(ik){
+        S.theta1 = ik.th1;
+        S.theta2 = ik.th2;
+        th1Slider.value = S.theta1;
+        th2Slider.value = S.theta2;
+        document.getElementById('th1Val').textContent = S.theta1.toFixed(0) + '°';
+        document.getElementById('th2Val').textContent = S.theta2.toFixed(0) + '°';
+      }
+    }
+  }
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+robotSel.addEventListener('change', e => {
+  S.robot = e.target.value;
+  const robot = getRobot();
+  resetState();
+  teach('ROBOT', robot.name + ' selected. ' + 
+    (S.robot === '2r' ? 'Two revolute joints — classic planar arm. Simple IK.' :
+     S.robot === '3r' ? 'Three revolute joints — more flexibility, complex IK.' :
+     S.robot === 'scara' ? 'Selective Compliance Assembly Robot Arm — horizontal revolute + vertical prismatic.' :
+     'Revolute + prismatic — cylindrical workspace.'), 'concept');
+});
+
+l1Slider.addEventListener('input', e => {
+  S.L1 = parseFloat(e.target.value);
+  document.getElementById('l1Val').textContent = S.L1 + ' mm';
+});
+
+l2Slider.addEventListener('input', e => {
+  S.L2 = parseFloat(e.target.value);
+  document.getElementById('l2Val').textContent = S.L2 + ' mm';
+});
+
+th1Slider.addEventListener('input', e => {
+  S.theta1 = parseFloat(e.target.value);
+  document.getElementById('th1Val').textContent = S.theta1 + '°';
+});
+
+th2Slider.addEventListener('input', e => {
+  S.theta2 = parseFloat(e.target.value);
+  document.getElementById('th2Val').textContent = S.theta2 + '°';
+});
+
+th3Slider.addEventListener('input', e => {
+  S.theta3 = parseFloat(e.target.value);
+  document.getElementById('th3Val').textContent = S.theta3 + '°';
+});
+
+document.getElementById('ikBtn').addEventListener('click', () => {
+  S.showIK = true;
+  // Set a random reachable target
+  const angle = Math.random() * Math.PI * 2;
+  const rMin = Math.abs(S.L1 - S.L2) + 20;
+  const rMax = S.L1 + S.L2 - 20;
+  const r = rMin + Math.random() * (rMax - rMin);
+  S.target.x = Math.cos(angle) * r;
+  S.target.y = Math.sin(angle) * r;
+
+  const ik = inverseKinematics(S.target.x, S.target.y, false);
+  if(ik){
+    S.theta1 = ik.th1;
+    S.theta2 = ik.th2;
+    th1Slider.value = S.theta1;
+    th2Slider.value = S.theta2;
+    document.getElementById('th1Val').textContent = S.theta1.toFixed(0) + '°';
+    document.getElementById('th2Val').textContent = S.theta2.toFixed(0) + '°';
+    teach('IK SOLVED', 'Target (' + S.target.x.toFixed(0) + ', ' + S.target.y.toFixed(0) + '). Joint angles: θ₁ = ' + ik.th1.toFixed(1) + '°, θ₂ = ' + ik.th2.toFixed(1) + '°.', 'ok');
+  } else {
+    teach('UNREACHABLE', 'Target is outside workspace. Robot cannot reach it.', 'error');
+  }
+});
+
+document.getElementById('fkBtn').addEventListener('click', () => {
+  S.showIK = false;
+  const fk = forwardKinematics(S.theta1, S.theta2, S.theta3);
+  teach('FK', 'Forward kinematics: joint angles (θ₁=' + S.theta1 + '°, θ₂=' + S.theta2 + '°) → EE position (' + fk.ee.x.toFixed(1) + ', ' + fk.ee.y.toFixed(1) + ').', 'info');
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ ANIMATE';
+  if(S.running){
+    teach('RUN', 'Animation running. ' + (S.animPath.length > 0 ? 'Following path via IK.' : 'Move joint sliders to see FK update.'), 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  if(!S.running){
+    // Create a circular path
+    if(S.animPath.length === 0){
+      const rMin = Math.abs(S.L1 - S.L2) + 40;
+      const rMax = S.L1 + S.L2 - 40;
+      const r = (rMin + rMax) / 2;
+      for(let i=0;i<=60;i++){
+        const angle = (i / 60) * Math.PI * 2;
+        S.animPath.push({
+          x: Math.cos(angle) * r,
+          y: Math.sin(angle) * r
+        });
+      }
+      S.running = true;
+      playBtn.textContent = '⏸ PAUSE';
+    }
+  }
+  S.animationT = Math.min(1, S.animationT + 0.1);
+});
+
+resetBtn.addEventListener('click', () => {
+  S.robot = '2r'; S.L1 = 150; S.L2 = 120;
+  S.theta1 = 45; S.theta2 = -30; S.theta3 = 0;
+  S.running = false; S.time = 0; S.animationT = 0;
+  S.showIK = false; S.animPath = [];
+  S.singularity = false; S.unreachable = false; S.jointLimits = false;
+  robotSel.value = '2r';
+  l1Slider.value = 150; l2Slider.value = 120;
+  th1Slider.value = 45; th2Slider.value = -30; th3Slider.value = 0;
+  document.getElementById('l1Val').textContent = '150 mm';
+  document.getElementById('l2Val').textContent = '120 mm';
+  document.getElementById('th1Val').textContent = '45°';
+  document.getElementById('th2Val').textContent = '-30°';
+  document.getElementById('th3Val').textContent = '0°';
+  playBtn.textContent = '▶ ANIMATE';
+  teach('RESET', 'Robot reset to defaults.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('singBtn').addEventListener('click', () => {
+  S.theta2 = 0;
+  th2Slider.value = 0;
+  document.getElementById('th2Val').textContent = '0°';
+  S.singularity = true;
+  teach('SINGULARITY', 'Set θ₂ = 0 — fully extended. Jacobian determinant = 0. Robot cannot move radially. Near singularities, joint velocities blow up. Avoid in path planning.', 'error');
+  toast('⚠ Singularity');
+});
+
+document.getElementById('unreachBtn').addEventListener('click', () => {
+  S.unreachable = true;
+  S.showIK = true;
+  S.target.x = S.L1 + S.L2 + 100;
+  S.target.y = 0;
+  teach('UNREACHABLE', 'Target at (' + S.target.x + ', 0) exceeds max reach ' + (S.L1 + S.L2) + ' mm. No IK solution exists. Move target inside workspace.', 'error');
+  toast('⚠ Out of reach');
+});
+
+document.getElementById('jointLimBtn').addEventListener('click', () => {
+  S.jointLimits = !S.jointLimits;
+  if(S.jointLimits){
+    teach('JOINT LIMITS', 'Joint limits applied: θ₁, θ₂ limited to ±90°. Real robots have cable routing, mechanical stops, and safety limits. Path planning must respect these.', 'warn');
+  } else {
+    teach('CLEAR', 'Joint limits removed.', 'ok');
+  }
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'pick'){
+      S.robot = '2r'; S.L1 = 200; S.L2 = 150; S.theta1 = 30; S.theta2 = -60;
+      robotSel.value = '2r';
+      l1Slider.value = 200; l2Slider.value = 150;
+      th1Slider.value = 30; th2Slider.value = -60;
+      updateLabels(); resetState();
+      teach('PICK & PLACE', 'Pick-and-place arm: 200+150 mm reach, moderate speed, moderate precision. Common in electronics assembly.', 'concept');
+    } else if(p === 'draw'){
+      S.robot = '2r'; S.L1 = 250; S.L2 = 200; S.theta1 = 60; S.theta2 = -90;
+      robotSel.value = '2r';
+      l1Slider.value = 250; l2Slider.value = 200;
+      th1Slider.value = 60; th2Slider.value = -90;
+      updateLabels(); resetState();
+      teach('DRAWING', 'Drawing robot: long links, wide workspace. Can trace large shapes but with some compliance.', 'concept');
+    } else if(p === 'scara'){
+      S.robot = 'scara'; S.L1 = 250; S.L2 = 200; S.theta1 = 45; S.theta2 = -30;
+      robotSel.value = 'scara';
+      l1Slider.value = 250; l2Slider.value = 200;
+      th1Slider.value = 45; th2Slider.value = -30;
+      updateLabels(); resetState();
+      teach('SCARA', 'SCARA robot: horizontal joints, rigid in vertical direction. Excellent for assembly — fast and precise.', 'concept');
+    } else {
+      S.robot = 'rp'; S.L1 = 300; S.L2 = 100; S.theta1 = 90; S.theta2 = 0;
+      robotSel.value = 'rp';
+      l1Slider.value = 300; l2Slider.value = 100;
+      th1Slider.value = 90; th2Slider.value = 0;
+      updateLabels(); resetState();
+      teach('WAFER', 'Wafer handling robot: R-P configuration. Long reach (300 mm), precise placement. Used in semiconductor fabs for wafer transfer.', 'concept');
+    }
+  });
+});
+
+function updateLabels(){
+  document.getElementById('l1Val').textContent = S.L1 + ' mm';
+  document.getElementById('l2Val').textContent = S.L2 + ' mm';
+  document.getElementById('th1Val').textContent = S.theta1 + '°';
+  document.getElementById('th2Val').textContent = S.theta2 + '°';
+}
+
+function resetState(){
+  S.running = false; S.time = 0; S.animationT = 0;
+  S.animPath = [];
+  S.singularity = false; S.unreachable = false;
+  playBtn.textContent = '▶ ANIMATE';
+}
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Robot Kinematics. Forward kinematics finds where the tool is; inverse kinematics finds the joint angles to get there.', 'concept');
+  teach('IK', 'For a 2R arm, IK has two solutions (elbow-up and elbow-down). At singularities — fully extended or folded — the robot loses a degree of freedom.', 'concept');
+  teach('HOWTO', 'Adjust link lengths and joint angles. Press SOLVE IK to find angles for a target. Press ANIMATE to trace a path. Try the fault buttons.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

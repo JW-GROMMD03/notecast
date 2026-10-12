@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risk Assessment — CVSS, DREAD, Quantitative &amp; Qualitative Analysis Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:#fcd34d;
+    text-shadow:0 0 8px rgba(245,158,11,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:#fcd34d; color:#fcd34d; }
+  .header-actions button.active{
+    border-color:#fcd34d; color:#fcd34d;
+    box-shadow:0 0 10px rgba(245,158,11,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:#fcd34d; }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:#fcd34d; cursor:pointer; box-shadow:0 0 7px rgba(245,158,11,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:#fcd34d; cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#fcd34d; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:#fcd34d; color:#fcd34d; }
+  button.act.primary{
+    background:linear-gradient(180deg,#2a1f0f,#1a1406);
+    border-color:#fcd34d; color:#fcd34d;
+    box-shadow:0 0 10px rgba(245,158,11,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(245,158,11,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulseAmber 1.4s infinite; }
+  @keyframes pulseAmber{
+    0%,100%{ box-shadow:0 0 6px rgba(245,158,11,.3); }
+    50%{ box-shadow:0 0 18px rgba(245,158,11,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.amber .m-value{ color:#fcd34d; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#fcd34d; }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .ra-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .ra-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .ra-phase.done{ border-color:#fcd34d; color:#fcd34d;
+    background:rgba(245,158,11,.12); }
+  .ra-phase.active{ border-color:#fcd34d; color:#fcd34d;
+    background:rgba(245,158,11,.2); box-shadow:0 0 10px rgba(245,158,11,.6);
+    animation:kcAmber 1.2s infinite; }
+  @keyframes kcAmber{ 50%{ box-shadow:0 0 16px rgba(245,158,11,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>RISK ASSESSMENT</h1>
+    <span class="sub">CVSS v3.1 · DREAD · QUANTITATIVE (ALE/SLE) · NIST SP 800-30 · ISO 27005</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Vulnerability</h3>
+      <select id="vulnSelect">
+        <option value="rce">Remote Code Execution in web app</option>
+        <option value="sql">SQL Injection on login</option>
+        <option value="xss">Stored XSS in comment field</option>
+        <option value="privesc">Local Privilege Escalation</option>
+        <option value="deserial">Insecure Deserialization</option>
+        <option value="misconfig">Cloud misconfiguration (S3 public)</option>
+        <option value="weakcrypto">Weak crypto (TLS 1.0 + SHA-1)</option>
+        <option value="supply">Supply chain compromise</option>
+      </select>
+      <label class="ctl-label">Assessment framework</label>
+      <select id="frameworkSelect">
+        <option value="cvss">CVSS v3.1 (0-10 score)</option>
+        <option value="dread">DREAD (1-10 per category)</option>
+        <option value="quant">Quantitative (ALE/SLE/ARO)</option>
+        <option value="qual">Qualitative (High/Med/Low matrix)</option>
+        <option value="nist">NIST SP 800-30 (Likelihood × Impact)</option>
+        <option value="iso">ISO 27005 (risk = f(likelihood, consequence))</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ CVSS v3.1 Vector</h3>
+      <label class="ctl-label">Attack Vector (AV)</label>
+      <select id="avSelect">
+        <option value="N" selected>Network (N)</option>
+        <option value="A">Adjacent (A)</option>
+        <option value="L">Local (L)</option>
+        <option value="P">Physical (P)</option>
+      </select>
+      <label class="ctl-label">Attack Complexity (AC)</label>
+      <select id="acSelect">
+        <option value="L" selected>Low (L)</option>
+        <option value="H">High (H)</option>
+      </select>
+      <label class="ctl-label">Privileges Required (PR)</label>
+      <select id="prSelect">
+        <option value="N" selected>None (N)</option>
+        <option value="L">Low (L)</option>
+        <option value="H">High (H)</option>
+      </select>
+      <label class="ctl-label">User Interaction (UI)</label>
+      <select id="uiSelect">
+        <option value="N" selected>None (N)</option>
+        <option value="R">Required (R)</option>
+      </select>
+      <label class="ctl-label">Scope (S)</label>
+      <select id="sSelect">
+        <option value="U" selected>Unchanged (U)</option>
+        <option value="C">Changed (C)</option>
+      </select>
+      <label class="ctl-label">Confidentiality (C)</label>
+      <select id="cSelect">
+        <option value="H" selected>High (H)</option>
+        <option value="L">Low (L)</option>
+        <option value="N">None (N)</option>
+      </select>
+      <label class="ctl-label">Integrity (I)</label>
+      <select id="iSelect">
+        <option value="H" selected>High (H)</option>
+        <option value="L">Low (L)</option>
+        <option value="N">None (N)</option>
+      </select>
+      <label class="ctl-label">Availability (A)</label>
+      <select id="aSelect">
+        <option value="H" selected>High (H)</option>
+        <option value="L">Low (L)</option>
+        <option value="N">None (N)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Business Context</h3>
+      <label class="ctl-label">Asset value ($)</label>
+      <input type="text" id="assetInput" value="1000000">
+      <label class="ctl-label">Annual Rate of Occurrence</label>
+      <input type="text" id="aroInput" value="0.5">
+      <label class="ctl-label">Exposure Factor (0-1)</label>
+      <input type="text" id="efInput" value="0.6">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ ASSESS</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="treatBtn">🛡 TREAT</button>
+        <button type="button" class="act ok" id="reportBtn">📄 REPORT</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">grc@analyst:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Risk assessment requires business context. Never inflate or deflate scores for political reasons.</div>
+    <div class="status-badges">
+      <div class="status-badge">VULN: <b id="badgeVuln">RCE</b></div>
+      <div class="status-badge">FRAMEWORK: <b id="badgeFW">CVSS</b></div>
+      <div class="status-badge">SCORE: <b id="badgeScore">—</b></div>
+      <div class="status-badge">SEVERITY: <b id="badgeSeverity">—</b></div>
+    </div>
+    <div class="ra-chain" id="raChain">
+      <div class="ra-phase" id="rap-IDENTIFY">IDENTIFY</div>
+      <div class="ra-phase" id="rap-SCORE">SCORE</div>
+      <div class="ra-phase" id="rap-BUSINESS">BUSINESS</div>
+      <div class="ra-phase" id="rap-TREAT">TREAT</div>
+      <div class="ra-phase" id="rap-REPORT">REPORT</div>
+    </div>
+    <div class="footer-overlay">NIST SP 800-30 Rev 1 · ISO/IEC 27005:2022 · CVSS v3.1 (FIRST) · FAIR · OWASP Risk Rating</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric amber" id="mCVSS"><div class="m-label">CVSS Score</div><div class="m-value" id="mCVSSVal">0.0</div></div>
+      <div class="metric" id="mExploit"><div class="m-label">Exploitability</div><div class="m-value" id="mExploitVal">0.0</div></div>
+      <div class="metric" id="mImpact"><div class="m-label">Impact</div><div class="m-value" id="mImpactVal">0.0</div></div>
+      <div class="metric" id="mSLE"><div class="m-label">SLE</div><div class="m-value" id="mSLEVal">$0</div></div>
+      <div class="metric" id="mALE"><div class="m-label">ALE</div><div class="m-value" id="mALEVal">$0</div></div>
+      <div class="metric" id="mLikelihood"><div class="m-label">Likelihood</div><div class="m-value" id="mLikelihoodVal">0</div></div>
+      <div class="metric" id="mRisk"><div class="m-label">Risk</div><div class="m-value" id="mRiskVal">—</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Treatment</div><div class="m-value" id="mDefenseVal">—</div></div>
+    </div>
+    <div class="info-card">
+      <b>Risk = f(Threat × Vulnerability × Impact).</b><br>
+      <span class="eq">CVSS v3.1: exploitability + impact + scope</span><br>
+      <span class="eq">Quantitative: SLE = AV × EF; ALE = SLE × ARO</span><br>
+      <span class="eq">Treatment: Mitigate · Transfer · Avoid · Accept</span><br>
+      <span style="color:var(--purple)">NIST SP 800-30 · ISO 27005 · FAIR · CVSS v3.1</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  vuln:'rce',
+  framework:'cvss',
+  av:'N', ac:'L', pr:'N', ui:'N', s:'U', c:'H', i:'H', a:'H',
+  assetValue:1000000,
+  aro:0.5,
+  ef:0.6,
+  cvss:0,
+  exploitability:0,
+  impact:0,
+  sle:0,
+  ale:0,
+  likelihood:0,
+  risk:'—',
+  treatment:'—',
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['IDENTIFY','SCORE','BUSINESS','TREAT','REPORT'];
+
+var VULNS = {
+  rce:{
+    title:'Remote Code Execution in web app',
+    cvss_vector:'AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+    cvss:9.8, severity:'CRITICAL',
+    dread:{damage:10,repro:9,exploit:8,affected:10,discover:8},
+    fixedBy:'Patch + WAF rule + input validation'
+  },
+  sql:{
+    title:'SQL Injection on login',
+    cvss_vector:'AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+    cvss:9.8, severity:'CRITICAL',
+    dread:{damage:9,repro:10,exploit:9,affected:9,discover:9},
+    fixedBy:'Parameterized queries + WAF'
+  },
+  xss:{
+    title:'Stored XSS in comment field',
+    cvss_vector:'AV:N/AC:L/PR:L/UI:R/S:C/C:L/I:L/A:N',
+    cvss:5.4, severity:'MEDIUM',
+    dread:{damage:6,repro:8,exploit:5,affected:8,discover:9},
+    fixedBy:'Output encoding + CSP'
+  },
+  privesc:{
+    title:'Local Privilege Escalation',
+    cvss_vector:'AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H',
+    cvss:7.8, severity:'HIGH',
+    dread:{damage:8,repro:6,exploit:6,affected:3,discover:5},
+    fixedBy:'Patch kernel + disable SUID binaries + SELinux'
+  },
+  deserial:{
+    title:'Insecure Deserialization',
+    cvss_vector:'AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H',
+    cvss:8.1, severity:'HIGH',
+    dread:{damage:9,repro:5,exploit:6,affected:7,discover:4},
+    fixedBy:'Avoid native deserialization + integrity check'
+  },
+  misconfig:{
+    title:'Cloud misconfiguration (S3 public)',
+    cvss_vector:'AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N',
+    cvss:7.5, severity:'HIGH',
+    dread:{damage:8,repro:10,exploit:10,affected:8,discover:10},
+    fixedBy:'Block public access + bucket policy + SCP'
+  },
+  weakcrypto:{
+    title:'Weak crypto (TLS 1.0 + SHA-1)',
+    cvss_vector:'AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N',
+    cvss:5.9, severity:'MEDIUM',
+    dread:{damage:7,repro:4,exploit:5,affected:9,discover:8},
+    fixedBy:'TLS 1.3 only + AES-GCM + SHA-256'
+  },
+  supply:{
+    title:'Supply chain compromise',
+    cvss_vector:'AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H',
+    cvss:9.0, severity:'CRITICAL',
+    dread:{damage:10,repro:4,exploit:5,affected:10,discover:3},
+    fixedBy:'SBOM + signed packages + dependency pinning'
+  }
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'threat', label:'threat', ip:'actor + capability', x:0.10*W, y:0.30*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'vuln', label:'vulnerability', ip:VULNS[STATE.vuln].title.substring(0, 20), x:0.35*W, y:0.30*H, icon:'server', color:'#f59e0b', glow:0, blink:0},
+    {id:'asset', label:'asset', ip:'$1M value', x:0.60*W, y:0.30*H, icon:'database', color:'#3b82f6', glow:0, blink:0},
+    {id:'impact', label:'business impact', ip:'loss + reputation', x:0.85*W, y:0.30*H, icon:'cloud', color:'#ef4444', glow:0, blink:0},
+    {id:'controls', label:'controls', ip:'mitigate/transfer/avoid/accept', x:0.35*W, y:0.70*H, icon:'firewall', color:'#22c55e', glow:0, blink:0},
+    {id:'residual', label:'residual risk', ip:'after treatment', x:0.60*W, y:0.70*H, icon:'server', color:'#a855f7', glow:0, blink:0},
+    {id:'board', label:'executive', ip:'accept/decline', x:0.85*W, y:0.70*H, icon:'cloud', color:'#22d3ee', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(245,158,11,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'firewall': {
+      ctx.lineWidth = 1.2;
+      for(var row=0;row<3;row++){
+        var y2 = -10 + row*7;
+        var off = row%2===0 ? 0 : 5;
+        for(var col=0;col<4;col++) ctx.strokeRect(-16+col*9+off, y2, 8, 6);
+      }
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(0,-4); ctx.quadraticCurveTo(4,0,0,5); ctx.quadraticCurveTo(-4,0,0,-4);
+      ctx.fill();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">grc@analyst:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Risk assessment is a technical process with organizational and personal consequences. Ethical pitfalls: (1) Inflating scores to force action (crying wolf). (2) Deflating scores to avoid scrutiny (downplaying). (3) Ignoring business context — a technical 9.8 may be business-acceptable if the asset is truly low-value. (4) Using scores politically — one team's Critical is another's Low. (5) Failing to document assumptions — score is only as good as the inputs. Always include business owners in the process, document every assumption, and revisit scores as the threat landscape changes.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Risk assessment quantifies the likelihood and impact of a threat exploiting a vulnerability. Frameworks: CVSS v3.1 (technical severity 0-10, industry standard), DREAD (Damage, Reproducibility, Exploitability, Affected Users, Discoverability — internal Microsoft metric), Quantitative (FAIR, ALE = SLE × ARO, business-friendly in dollars), Qualitative (High/Medium/Low matrix, fast but subjective), NIST SP 800-30 (likelihood × impact framework), ISO 27005 (risk = f(likelihood, consequence)). No single framework is complete — combine technical scoring (CVSS) with business context (ALE) for a full picture.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('cvss --vector AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H\n' +
+      '[+] CVSS v3.1 score: 9.8 (CRITICAL)\n' +
+      '[+] Exploitability: 3.9\n' +
+      '[+] Impact: 5.9\n' +
+      '[+] Temporal: N/A (not specified)\n' +
+      '[+] Environmental: N/A');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Vulnerability: ' + VULNS[STATE.vuln].title + '. Framework: ' + STATE.framework.toUpperCase() + '. Click ASSESS to run analysis.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.40*H, 'RISK COMPONENTS', '#fcd34d');
+  drawZone(0.05*W, 0.55*H, 0.90*W, 0.30*H, 'TREATMENT + RESIDUAL', '#22c55e');
+
+  var links = [
+    ['threat','vuln'], ['vuln','asset'], ['asset','impact'],
+    ['controls','residual'], ['residual','board']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(245,158,11,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  // Risk gauge
+  ctx.save();
+  var ax = 0.05*W, ay = H - 150, aw = 0.55*W, ah = 120;
+  ctx.fillStyle = 'rgba(40,30,5,0.9)';
+  ctx.strokeStyle = '#fcd34d';
+  ctx.lineWidth = 1.5;
+  ctx.fillRect(ax, ay, aw, ah);
+  ctx.strokeRect(ax, ay, aw, ah);
+  ctx.font = 'bold 10px "Courier New",monospace';
+  ctx.fillStyle = '#fcd34d';
+  ctx.textAlign = 'left';
+  ctx.fillText('\u25B8 RISK ASSESSMENT', ax + 8, ay + 16);
+
+  // CVSS bar
+  var barX = ax + 8, barY = ay + 30, barW = aw - 16, barH = 20;
+  ctx.fillStyle = 'rgba(7,10,20,0.9)';
+  ctx.fillRect(barX, barY, barW, barH);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(barX, barY, barW, barH);
+  var pct = Math.min(1, STATE.cvss / 10);
+  var barColor = STATE.cvss >= 9 ? '#ef4444' : STATE.cvss >= 7 ? '#f59e0b' : STATE.cvss >= 4 ? '#fcd34d' : '#22c55e';
+  ctx.fillStyle = barColor;
+  ctx.fillRect(barX, barY, barW * pct, barH);
+  ctx.font = 'bold 12px "Courier New",monospace';
+  ctx.fillStyle = '#cbd5e1';
+  ctx.textAlign = 'center';
+  ctx.fillText('CVSS: ' + STATE.cvss.toFixed(1) + ' / 10', ax + aw/2, barY + 15);
+
+  ctx.font = '9px "Courier New",monospace';
+  ctx.fillStyle = '#cbd5e1';
+  ctx.textAlign = 'left';
+  ctx.fillText('Exploitability: ' + STATE.exploitability.toFixed(1) + ' | Impact: ' + STATE.impact.toFixed(1), ax + 8, ay + 70);
+  ctx.fillText('SLE: $' + Math.round(STATE.sle).toLocaleString() + ' | ALE: $' + Math.round(STATE.ale).toLocaleString(), ax + 8, ay + 86);
+  ctx.fillStyle = STATE.treatment === '—' ? '#fcd34d' : '#4ade80';
+  ctx.fillText('Treatment: ' + STATE.treatment, ax + 8, ay + 102);
+  ctx.restore();
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Risk = Threat × Vulnerability × Impact', 12, H - 74);
+  ctx.fillText('CVSS v3.1: base + temporal + environmental scoring', 12, H - 62);
+  ctx.fillText('Quantitative: SLE = AV × EF; ALE = SLE × ARO', 12, H - 50);
+  ctx.fillText('Treatment: Mitigate · Transfer · Avoid · Accept', 12, H - 38);
+  ctx.fillText('NIST SP 800-30 \u00B7 ISO 27005 \u00B7 CVSS v3.1 \u00B7 FAIR', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function computeCVSS(){
+  // Simplified CVSS v3.1 scoring
+  var avScore = {N:0.85, A:0.62, L:0.55, P:0.2}[STATE.av] || 0.85;
+  var acScore = {L:0.77, H:0.44}[STATE.ac] || 0.77;
+  var prScore = {N:0.85, L:0.62, H:0.27}[STATE.pr] || 0.85;
+  var uiScore = {N:0.85, R:0.62}[STATE.ui] || 0.85;
+  var exploitability = 8.22 * avScore * acScore * prScore * uiScore;
+  var cScore = {H:0.56, L:0.22, N:0}[STATE.c] || 0.56;
+  var iScore = {H:0.56, L:0.22, N:0}[STATE.i] || 0.56;
+  var aScore = {H:0.56, L:0.22, N:0}[STATE.a] || 0.56;
+  var iss = 1 - ((1 - cScore) * (1 - iScore) * (1 - aScore));
+  var impact;
+  if(STATE.s === 'U') impact = 6.42 * iss;
+  else impact = 7.52 * (iss - 0.029) - 3.25 * Math.pow(iss - 0.02, 15);
+  var base;
+  if(impact <= 0) base = 0;
+  else if(STATE.s === 'U') base = Math.min(10, (impact + exploitability) * 1.08);
+  else base = Math.min(10, (impact + exploitability) * 1.08);
+  base = Math.ceil(base * 10) / 10;
+  return {
+    score: base,
+    exploitability: Math.min(10, exploitability / 3),
+    impact: Math.min(10, impact / 1.5)
+  };
+}
+
+function updateBadges(){
+  document.getElementById('badgeVuln').textContent = STATE.vuln.toUpperCase();
+  document.getElementById('badgeFW').textContent = STATE.framework.toUpperCase();
+  document.getElementById('badgeScore').textContent = STATE.cvss > 0 ? STATE.cvss.toFixed(1) : '—';
+  var sev = STATE.cvss >= 9 ? 'CRITICAL' : STATE.cvss >= 7 ? 'HIGH' : STATE.cvss >= 4 ? 'MEDIUM' : STATE.cvss > 0 ? 'LOW' : '—';
+  document.getElementById('badgeSeverity').textContent = sev;
+
+  document.getElementById('mCVSSVal').textContent = STATE.cvss.toFixed(1);
+  document.getElementById('mExploitVal').textContent = STATE.exploitability.toFixed(1);
+  document.getElementById('mImpactVal').textContent = STATE.impact.toFixed(1);
+  document.getElementById('mSLEVal').textContent = '$' + Math.round(STATE.sle/1000) + 'K';
+  document.getElementById('mALEVal').textContent = '$' + Math.round(STATE.ale/1000) + 'K';
+  document.getElementById('mLikelihoodVal').textContent = STATE.likelihood.toFixed(1);
+  document.getElementById('mRiskVal').textContent = STATE.risk;
+  document.getElementById('mDefenseVal').textContent = STATE.treatment;
+
+  document.getElementById('mCVSS').className = 'metric' + (STATE.cvss >= 9 ? ' bad' : STATE.cvss >= 7 ? ' warn' : STATE.cvss >= 4 ? ' amber' : '');
+  document.getElementById('mALE').className = 'metric' + (STATE.ale > 500000 ? ' bad' : STATE.ale > 100000 ? ' warn' : '');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('rap-' + p);
+    if(!el) return;
+    el.className = 'ra-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var v = VULNS[STATE.vuln];
+
+  switch(phase){
+    case 'IDENTIFY':
+      addFeed('IDENTIFY', 'Identify assets + threats + vulnerabilities. Asset: ' + v.title + '. Framework: ' + STATE.framework.toUpperCase() + '. CVSS vector: ' + v.cvss_vector + '. NIST 800-30: threat source, threat event, vulnerability, predisposing conditions, likelihood, impact.', 'info');
+      addCommandFeed('vuln-identify --asset "' + v.title + '" --context "internet-facing web app"',
+        '[+] Asset: ' + v.title + '\n' +
+        '[+] CVSS: ' + v.cvss + ' (' + v.severity + ')\n' +
+        '[+] DREAD avg: ' + (Object.values(v.dread).reduce(function(a,b){return a+b;},0) / 5).toFixed(1));
+      break;
+
+    case 'SCORE':
+      var result = computeCVSS();
+      // Override with known vuln score if matches
+      if(STATE.vuln && Math.abs(result.score - v.cvss) > 1.5){
+        STATE.cvss = v.cvss;
+      } else {
+        STATE.cvss = result.score;
+      }
+      STATE.exploitability = result.exploitability;
+      STATE.impact = result.impact;
+      addFeed('SCORE', 'Scoring: CVSS v3.1 base score = ' + STATE.cvss.toFixed(1) + ' (' + v.severity + '). Exploitability sub-score: ' + STATE.exploitability.toFixed(1) + ', Impact sub-score: ' + STATE.impact.toFixed(1) + '. DREAD: Damage ' + v.dread.damage + ', Reproducibility ' + v.dread.repro + ', Exploitability ' + v.dread.exploit + ', Affected ' + v.dread.affected + ', Discoverability ' + v.dread.discover + '.', STATE.cvss >= 9 ? 'error' : STATE.cvss >= 7 ? 'warn' : 'info');
+      break;
+
+    case 'BUSINESS':
+      STATE.sle = STATE.assetValue * STATE.ef;
+      STATE.ale = STATE.sle * STATE.aro;
+      STATE.likelihood = STATE.aro * 10;
+      STATE.risk = STATE.ale > 500000 ? 'CRITICAL' : STATE.ale > 100000 ? 'HIGH' : STATE.ale > 20000 ? 'MEDIUM' : 'LOW';
+      addFeed('BUSINESS', 'Business context: Asset Value $' + STATE.assetValue.toLocaleString() + ' × Exposure Factor ' + STATE.ef + ' = SLE $' + Math.round(STATE.sle).toLocaleString() + '. ARO = ' + STATE.aro + '/year. ALE = SLE × ARO = $' + Math.round(STATE.ale).toLocaleString() + '/year. Business risk: ' + STATE.risk + '.', STATE.risk === 'CRITICAL' ? 'error' : STATE.risk === 'HIGH' ? 'warn' : 'info');
+      addCommandFeed('risk-quantitative --av ' + STATE.assetValue + ' --ef ' + STATE.ef + ' --aro ' + STATE.aro,
+        'Single Loss Expectancy (SLE): $' + Math.round(STATE.sle).toLocaleString() + '\n' +
+        'Annualized Rate of Occurrence (ARO): ' + STATE.aro + '\n' +
+        'Annualized Loss Expectancy (ALE): $' + Math.round(STATE.ale).toLocaleString() + '\n' +
+        'Risk category: ' + STATE.risk);
+      break;
+
+    case 'TREAT':
+      var options = {
+        critical:'Mitigate immediately + transfer residual via cyber insurance. If mitigation cost > ALE, executive sign-off required to accept risk.',
+        high:'Mitigate within sprint. Consider compensating controls (WAF, monitoring). Re-score in 30 days.',
+        medium:'Mitigate in normal backlog. Document acceptance with business owner.',
+        low:'Accept risk with monitoring. Re-assess annually.'
+      };
+      STATE.treatment = options[STATE.risk.toLowerCase()] || 'Review';
+      addFeed('TREAT', 'Risk treatment options: (1) Mitigate — apply controls (' + v.fixedBy + '). (2) Transfer — cyber insurance, contractual (MSSP). (3) Avoid — stop the activity. (4) Accept — signed off by business owner. Recommendation for ' + STATE.risk + ': ' + STATE.treatment, 'ok');
+      break;
+
+    case 'REPORT':
+      var residual = STATE.ale * (STATE.treatment.indexOf('Mitigate') === 0 ? 0.15 : 0.5);
+      addFeed('REPORT', 'Executive report: vulnerability, CVSS score, business impact (ALE), treatment recommendation, residual risk. Residual ALE after treatment: $' + Math.round(residual).toLocaleString() + '/year. Sign-off: CISO + business owner. NIST SP 800-30 and ISO 27005 require periodic reassessment. Re-score after remediation to close the loop.', 'ok');
+      addFeed('DEFENSE', 'Risk management lifecycle: (1) Identify. (2) Assess. (3) Treat. (4) Monitor. (5) Review. Best practice: maintain a risk register, assign owners, track treatment plans, review quarterly. Use CVSS for technical severity + FAIR/ALE for business context. Document assumptions. Audit the process.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.cvss = 0;
+  STATE.exploitability = 0;
+  STATE.impact = 0;
+  STATE.sle = 0;
+  STATE.ale = 0;
+  STATE.likelihood = 0;
+  STATE.risk = '—';
+  STATE.treatment = '—';
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('rap-' + p); if(el) el.className = 'ra-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'Risk assessment state reset.', 'info');
+  termWrite('reset --all\n[+] Assessment cleared');
+}
+
+document.getElementById('vulnSelect').addEventListener('change', function(e){
+  STATE.vuln = e.target.value;
+  var v = VULNS[STATE.vuln];
+  addFeed('VULN', 'Vulnerability: ' + v.title + '. CVSS: ' + v.cvss + ' (' + v.severity + '). Fixed by: ' + v.fixedBy, 'info');
+});
+
+document.getElementById('frameworkSelect').addEventListener('change', function(e){
+  STATE.framework = e.target.value;
+  addFeed('FRAMEWORK', 'Assessment framework: ' + STATE.framework.toUpperCase() + '.', 'info');
+});
+
+['av','ac','pr','ui','s','c','i','a'].forEach(function(k){
+  var el = document.getElementById(k + 'Select');
+  if(el) el.addEventListener('change', function(e){ STATE[k] = e.target.value; });
+});
+
+document.getElementById('assetInput').addEventListener('change', function(e){ STATE.assetValue = parseFloat(e.target.value) || 1000000; });
+document.getElementById('aroInput').addEventListener('change', function(e){ STATE.aro = parseFloat(e.target.value) || 0.5; });
+document.getElementById('efInput').addEventListener('change', function(e){ STATE.ef = parseFloat(e.target.value) || 0.6; });
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.cvss = 0;
+  STATE.sle = 0;
+  STATE.ale = 0;
+  STATE.risk = '—';
+  STATE.treatment = '—';
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('ASSESS', 'Starting risk assessment: ' + VULNS[STATE.vuln].title + ' using ' + STATE.framework.toUpperCase() + '.', 'info');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1500);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('treatBtn').addEventListener('click', function(){
+  addFeed('TREATMENT', 'Treatment options analyzed: (1) Mitigate — cost vs. ALE. If mitigation cost < ALE, mitigate. (2) Transfer — cyber insurance premium typically 0.1-1% of coverage. (3) Avoid — stop the business activity. (4) Accept — requires business owner sign-off, documented. For CVSS ' + STATE.cvss.toFixed(1) + ', ALE $' + Math.round(STATE.ale).toLocaleString() + ': recommend based on risk appetite.', 'warn');
+});
+
+document.getElementById('reportBtn').addEventListener('click', function(){
+  addFeed('REPORT', 'Executive summary: (1) Vulnerability description (technical + business language). (2) CVSS score + severity. (3) Business impact (ALE, regulatory). (4) Treatment recommendation. (5) Residual risk after treatment. (6) Owner + timeline. (7) Assumptions + limitations. Format: 1-2 page executive summary + detailed appendix. Audience: CISO, business owner, risk committee.', 'ok');
+  addCommandFeed('report-gen --cvss ' + STATE.cvss.toFixed(1) + ' --ale ' + Math.round(STATE.ale) + ' --treatment "' + STATE.treatment + '"',
+    'Report generated: RISK-ASSESS-' + new Date().toISOString().split('T')[0] + '.pdf\n' +
+    'Sections: Summary, CVSS, Business Impact, Treatment, Residual, Owner\n' +
+    'Sign-off required: CISO + Business Owner');
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

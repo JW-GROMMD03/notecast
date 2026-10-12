@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service Enumeration — Banner Grabbing &amp; Version Detection Teaching Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--green-lt);
+    text-shadow:0 0 8px rgba(34,197,94,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--green); color:var(--green-lt); }
+  .header-actions button.active{
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--green); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--green); cursor:pointer; box-shadow:0 0 7px rgba(34,197,94,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--green); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:var(--green-lt); font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--green); color:var(--green-lt); }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f2a18,#0a1a10);
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(34,197,94,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.danger:hover{ background:#2a0f0f; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.warn:hover{ background:#2a1f0f; }
+  /* FIX: added missing .ok style */
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulseBtn 1.4s infinite; }
+  @keyframes pulseBtn{
+    0%,100%{ box-shadow:0 0 6px rgba(34,197,94,.3); }
+    50%{ box-shadow:0 0 18px rgba(34,197,94,.7); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:170px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--green-lt); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .se-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .se-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .se-phase.done{ border-color:var(--green); color:var(--green-lt);
+    background:rgba(34,197,94,.12); }
+  .se-phase.active{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.15); box-shadow:0 0 10px rgba(34,211,238,.4);
+    animation:kcPulse 1.2s infinite; }
+  @keyframes kcPulse{ 50%{ box-shadow:0 0 16px rgba(34,211,238,.7); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>SERVICE ENUMERATION</h1>
+    <span class="sub">BANNER GRABBING · VERSION DETECTION · MITRE T1046/T1592</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Enumeration Technique</h3>
+      <select id="techSelect">
+        <option value="banner">Banner grabbing (netcat)</option>
+        <option value="nmap">Nmap -sV (version detection)</option>
+        <option value="smb">SMB enum (enum4linux / smbclient)</option>
+        <option value="http">HTTP enum (nikto / gobuster)</option>
+        <option value="dns">DNS enum (dig / dnsenum)</option>
+        <option value="snmp">SNMP walk (onesixtyone / snmpwalk)</option>
+      </select>
+      <label class="ctl-label">Target</label>
+      <input type="text" id="targetInput" value="10.0.0.10">
+      <label class="ctl-label">Port</label>
+      <input type="text" id="portInput" value="22">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Probe Parameters</h3>
+      <label class="ctl-label">Probe intensity <span class="slider-val" id="intensityVal">50%</span></label>
+      <input type="range" id="intensitySlider" min="0" max="100" value="50">
+      <label class="ctl-label">Timeout (s) <span class="slider-val" id="timeoutVal">5</span></label>
+      <input type="range" id="timeoutSlider" min="1" max="30" value="5">
+      <label class="ctl-label">Wordlist</label>
+      <select id="wordlistSelect">
+        <option value="small">/usr/share/wordlists/small.txt (10k)</option>
+        <option value="rockyou">/usr/share/wordlists/rockyou.txt (14M)</option>
+        <option value="raft">raft-small-words (20k)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ ENUMERATE</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="bannerBtn">🚫 BANNERS OFF</button>
+        <button type="button" class="act ok" id="honeypotBtn">🍯 HONEYPOT</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">kali@attacker:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Enumeration against systems without written authorization is illegal.</div>
+    <div class="status-badges">
+      <div class="status-badge">TECH: <b id="badgeTech">BANNER</b></div>
+      <div class="status-badge">TARGET: <b id="badgeTarget">10.0.0.10:22</b></div>
+      <div class="status-badge">SERVICE: <b id="badgeService">—</b></div>
+      <div class="status-badge">VERSION: <b id="badgeVersion">—</b></div>
+    </div>
+    <div class="se-chain" id="seChain">
+      <div class="se-phase" id="sp-CONNECT">CONNECT</div>
+      <div class="se-phase" id="sp-PROBE">PROBE</div>
+      <div class="se-phase" id="sp-RESPONSE">RESPONSE</div>
+      <div class="se-phase" id="sp-FINGERPRINT">FINGERPRINT</div>
+      <div class="se-phase" id="sp-CVE">CVE MATCH</div>
+    </div>
+    <div class="footer-overlay">MITRE T1046 · T1592 · CVE database · NIST SP 800-115</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric" id="mProbes"><div class="m-label">Probes</div><div class="m-value" id="mProbesVal">0</div></div>
+      <div class="metric" id="mServices"><div class="m-label">Services</div><div class="m-value" id="mServicesVal">0</div></div>
+      <div class="metric" id="mVersions"><div class="m-label">Versions</div><div class="m-value" id="mVersionsVal">0</div></div>
+      <div class="metric" id="mBanners"><div class="m-label">Banners</div><div class="m-value" id="mBannersVal">0</div></div>
+      <div class="metric" id="mCVEs"><div class="m-label">CVEs</div><div class="m-value" id="mCVEsVal">0</div></div>
+      <div class="metric" id="mRate"><div class="m-label">Probes/s</div><div class="m-value" id="mRateVal">0</div></div>
+      <div class="metric" id="mProgress"><div class="m-label">Progress</div><div class="m-value" id="mProgressVal">0%</div></div>
+      <div class="metric" id="mDetect"><div class="m-label">Detected</div><div class="m-value" id="mDetectVal">NO</div></div>
+    </div>
+    <div class="info-card">
+      <b>Service enumeration — identify what's running.</b><br>
+      <span class="eq">Banner: SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.4</span><br>
+      <span class="eq">nmap -sV sends ~100 probes per port</span><br>
+      <span class="eq">Version → CVE lookup (searchsploit, NVD)</span><br>
+      <span style="color:var(--purple)">MITRE T1046 · T1592 · CVE/NVD</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  tech:'banner',
+  target:'10.0.0.10',
+  port:'22',
+  intensity:0.5,
+  timeout:5,
+  wordlist:'small',
+  probes:0,
+  services:0,
+  versions:0,
+  banners:0,
+  cves:0,
+  rate:0,
+  progress:0,
+  detected:false,
+  bannerOff:false,
+  honeypot:false,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['CONNECT','PROBE','RESPONSE','FINGERPRINT','CVE'];
+
+// FIX: use string concatenation for control characters to avoid parser ambiguity
+var BANNERS = {
+  '22':{
+    service:'ssh',
+    version:'OpenSSH 8.9p1 Ubuntu-3ubuntu0.4',
+    banner:'SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.4',
+    cves:['CVE-2023-38408 (ssh-agent RCE via PKCS#11)','CVE-2023-28531 (scp injection)']
+  },
+  '80':{
+    service:'http',
+    version:'nginx 1.24.0',
+    banner:'HTTP/1.1 200 OK\r\nServer: nginx/1.24.0\r\nX-Powered-By: Express',
+    cves:['CVE-2023-44487 (HTTP/2 Rapid Reset)']
+  },
+  '443':{
+    service:'ssl/https',
+    version:'nginx 1.24.0 (TLS 1.3)',
+    banner:'HTTP/1.1 200 OK\r\nServer: nginx/1.24.0\r\nStrict-Transport-Security: max-age=31536000',
+    cves:['CVE-2023-44487 (HTTP/2 Rapid Reset)']
+  },
+  '3306':{
+    service:'mysql',
+    version:'MySQL 8.0.35',
+    banner:'J' + '\x00\x00\x00' + '\x0a' + '8.0.35' + '\x00' + '\x1e\x00\x00\x00' + '...',
+    cves:['CVE-2024-20961 (privilege escalation)']
+  },
+  '5432':{
+    service:'postgresql',
+    version:'PostgreSQL 15.4',
+    banner:'PostgreSQL 15.4 on x86_64-pc-linux-gnu',
+    cves:['CVE-2023-5869 (SQL injection)']
+  },
+  '6379':{
+    service:'redis',
+    version:'Redis 7.2.3',
+    banner:'-ERR unknown command',
+    cves:['CVE-2023-45145 (ACL bypass)']
+  },
+  '445':{
+    service:'microsoft-ds',
+    version:'Windows Server 2019 SMB 3.1.1',
+    banner:'SMB 3.1.1 dialect, signing enabled',
+    cves:['CVE-2020-0796 (SMBGhost)']
+  },
+  '3389':{
+    service:'ms-wbt-server',
+    version:'RDP 10.0 (Windows Server 2019)',
+    banner:'RDP TLS handshake OK',
+    cves:['CVE-2019-0708 (BlueKeep)']
+  },
+  '8080':{
+    service:'http-proxy',
+    version:'Apache Tomcat 9.0.80',
+    banner:'HTTP/1.1 200 OK\r\nServer: Apache-Coyote/1.1',
+    cves:['CVE-2024-21733 (info leak)']
+  }
+};
+
+// FIX: generic fallback banner for unknown ports
+function getBanner(port){
+  if(BANNERS[port]) return BANNERS[port];
+  return {
+    service:'unknown',
+    version:'unknown (no signature match)',
+    banner:'(no banner — service did not send a greeting)',
+    cves:['No known CVEs for this signature']
+  };
+}
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'attacker', label:'attacker', ip:'203.0.113.66', x:0.15*W, y:0.42*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'firewall', label:'firewall', ip:'10.0.0.254', x:0.42*W, y:0.42*H, icon:'firewall', color:'#22c55e', glow:0, blink:0},
+    {id:'target', label:'target', ip:STATE.target, x:0.72*W, y:0.42*H, icon:'server', color:'#3b82f6', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(34,197,94,'+(glow*0.5)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'firewall': {
+      ctx.lineWidth = 1.2;
+      for(var row=0;row<3;row++){
+        var y2 = -10 + row*7;
+        var off = row%2===0 ? 0 : 5;
+        for(var col=0;col<4;col++) ctx.strokeRect(-16+col*9+off, y2, 8, 6);
+      }
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(0,-4); ctx.quadraticCurveTo(4,0,0,5); ctx.quadraticCurveTo(-4,0,0,-4);
+      ctx.fill();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">kali@attacker:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Service enumeration goes beyond port scanning — it queries each open port to identify software, version, and configuration. This information directly enables exploit selection. Unauthorized enumeration is illegal under CFAA/CMA. In authorized tests, note that aggressive version probing (nmap -sV --version-all) can crash legacy services or fill logs. Use -sV --version-light on fragile systems.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Service enumeration identifies WHAT is running on open ports, not just THAT they are open. Techniques: banner grabbing (read the greeting), version detection (send probes, match responses against nmap-service-probes), default credential checks, and configuration exposure. The output feeds into CVE lookup — a known version often has published exploits. MITRE T1046 (Network Service Discovery), T1592 (Gather Victim Host Information).',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('nc -nv 10.0.0.10 22\n(UNKNOWN) [10.0.0.10] 22 (ssh) open\nSSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.4');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Technique: ' + STATE.tech.toUpperCase() + '. Target: ' + STATE.target + ':' + STATE.port + '. Click ENUMERATE to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running && STATE.progress < 100){
+    // FIX: do not increment progress during honeypot or banner-off modes
+    if(STATE.honeypot || STATE.bannerOff) {
+      // Still send probes for visual effect, but do NOT advance progress
+      if(STATE.tick % 60 === 0){
+        spawnPacket('attacker','firewall','#a855f7','PROBE',0.025);
+      }
+    } else {
+      STATE.rate = Math.max(10, STATE.intensity * 200);
+      if(STATE.tick % Math.max(1, Math.floor(80 / (STATE.rate/10))) === 0){
+        STATE.probes++;
+        spawnPacket('attacker','firewall','#a855f7','PROBE',0.025);
+        setTimeout(function(){ spawnPacket('firewall','target','#a855f7','PROBE',0.025); }, 100);
+        if(Math.random() < 0.4){
+          setTimeout(function(){
+            spawnPacket('target','firewall','#22c55e','RESP',0.025);
+            setTimeout(function(){ spawnPacket('firewall','attacker','#22c55e','RESP',0.025); }, 100);
+          }, 200);
+        }
+        STATE.progress = Math.min(100, STATE.progress + 2);
+      }
+    }
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.10*H, 0.22*W, 0.65*H, 'ATTACKER', '#ef4444');
+  drawZone(0.32*W, 0.10*H, 0.22*W, 0.65*H, 'TRANSIT', '#f59e0b');
+  drawZone(0.60*W, 0.10*H, 0.36*W, 0.65*H, 'TARGET', '#22c55e');
+
+  var links = [
+    ['attacker','firewall'], ['firewall','target']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(51,65,85,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  // Banner display on canvas
+  var banner = getBanner(STATE.port);
+  if(STATE.banners > 0 && !STATE.bannerOff && banner){
+    ctx.save();
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#22c55e';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 BANNER CAPTURED', 20, 100);
+    ctx.font = '8px "Courier New",monospace';
+    ctx.fillStyle = '#4ade80';
+    var lines = banner.banner.split('\r\n');
+    lines.forEach(function(line, i){
+      ctx.fillText(line.substring(0, 60), 20, 118 + i * 12);
+    });
+    ctx.restore();
+  }
+
+  // Honeypot indicator
+  if(STATE.honeypot){
+    var tn = STATE.nodes.find(function(n){return n.id==='target';});
+    if(tn){
+      ctx.save();
+      ctx.font = 'bold 10px "Courier New",monospace';
+      ctx.fillStyle = '#f59e0b';
+      ctx.textAlign = 'center';
+      ctx.fillText('\u26A0 HONEYPOT', tn.x, tn.y - 28);
+      ctx.restore();
+    }
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Banner: protocol greeting (SSH-2.0-OpenSSH_8.9p1)', 12, H - 62);
+  ctx.fillText('Version \u2192 CVE lookup (searchsploit OpenSSH 8.9)', 12, H - 50);
+  ctx.fillText('Defense: hide banners, disable version disclosure', 12, H - 38);
+  ctx.fillText('MITRE T1046 \u00B7 T1592 \u00B7 OWASP OTG-INFO-002', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeTech').textContent = STATE.tech.toUpperCase();
+  document.getElementById('badgeTarget').textContent = STATE.target + ':' + STATE.port;
+  var b = getBanner(STATE.port);
+  document.getElementById('badgeService').textContent = b && STATE.services > 0 ? b.service : '—';
+  document.getElementById('badgeVersion').textContent = b && STATE.versions > 0 ? b.version : '—';
+
+  document.getElementById('mProbesVal').textContent = STATE.probes;
+  document.getElementById('mServicesVal').textContent = STATE.services;
+  document.getElementById('mVersionsVal').textContent = STATE.versions;
+  document.getElementById('mBannersVal').textContent = STATE.banners;
+  document.getElementById('mCVEsVal').textContent = STATE.cves;
+  document.getElementById('mRateVal').textContent = Math.round(STATE.rate);
+  document.getElementById('mProgressVal').textContent = Math.round(STATE.progress) + '%';
+  document.getElementById('mDetectVal').textContent = STATE.detected ? 'YES' : 'NO';
+
+  document.getElementById('mCVEs').className = 'metric' + (STATE.cves > 3 ? ' bad' : STATE.cves > 0 ? ' warn' : '');
+  document.getElementById('mBanners').className = 'metric' + (STATE.banners > 0 && !STATE.bannerOff ? ' warn' : '');
+}
+
+function advancePhase(){
+  // FIX: if no phases remain, stop
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('sp-' + p);
+    if(!el) return;
+    el.className = 'se-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var banner = getBanner(STATE.port);
+
+  switch(phase){
+    case 'CONNECT':
+      addFeed('CONNECT', 'TCP handshake to ' + STATE.target + ':' + STATE.port + '. If SYN/ACK received \u2192 port open. Established socket ready for protocol probes.', 'info');
+      addCommandFeed('nc -nv ' + STATE.target + ' ' + STATE.port + ' -w 3',
+        'Connection to ' + STATE.target + ' ' + STATE.port + ' port [tcp/*] succeeded!');
+      break;
+
+    case 'PROBE':
+      STATE.probes++;
+      var probeType = STATE.tech === 'banner' ? 'BANNER (recv greeting)' :
+                      STATE.tech === 'nmap' ? 'NULL probe (TCP connect only)' :
+                      STATE.tech === 'smb' ? 'SMB negotiate protocol' :
+                      STATE.tech === 'http' ? 'GET / HTTP/1.1' :
+                      STATE.tech === 'dns' ? 'AXFR / NS / MX queries' :
+                      'SNMP GET sysDescr.0';
+      addFeed('PROBE', 'Sending ' + probeType + '. nmap-service-probes contains ~150 probe patterns per protocol family.', 'info');
+      spawnPacket('attacker','firewall','#a855f7',STATE.tech.toUpperCase(),0.025);
+      break;
+
+    case 'RESPONSE':
+      // FIX: increment phaseIdx before early return
+      if(STATE.honeypot){
+        STATE.detected = true;
+        addFeed('HONEYPOT', 'HONEYPOT detected! Response timing inconsistent (latency 500ms for a local service). Banner is a known deception template. This is likely T-Pot / Cowrie / Dionaea. Attacker should abandon target.', 'warn');
+        STATE.running = false;
+        STATE.phaseIdx++;
+        return;
+      }
+      if(STATE.bannerOff){
+        addFeed('RESPONSE', 'Response received but banner is HIDDEN. Server configured with "ServerTokens Prod" (Apache), "server_tokens off" (nginx), "DebianBanner no" (SSH), or "ProtocolVersion 2" only. Version fingerprinting fails \u2014 attacker must use subtle behavioral probes.', 'ok');
+        STATE.services++;
+        STATE.phaseIdx++;
+        return;
+      }
+      STATE.banners++;
+      STATE.services++;
+      addFeed('RESPONSE', 'Response received! Banner captured from ' + STATE.target + ':' + STATE.port + '. Raw greeting: ' + banner.banner.substring(0, 60), 'warn');
+      spawnPacket('target','firewall','#22c55e','RESP',0.025);
+      break;
+
+    case 'FINGERPRINT':
+      STATE.versions++;
+      addFeed('FINGERPRINT', 'Fingerprint: ' + banner.service + ' ' + banner.version + '. Matched against nmap-service-probes signature. Confidence: high.', 'warn');
+      addCommandFeed('nmap -sV --version-all -p ' + STATE.port + ' ' + STATE.target,
+        'PORT     STATE SERVICE     VERSION\n' +
+        STATE.port + '/tcp   open  ' + banner.service + '     ' + banner.version);
+      break;
+
+    case 'CVE':
+      STATE.cves = banner.cves.length;
+      addFeed('CVE', 'CVE MATCHING against NVD: ' + banner.cves.length + ' known vulnerabilities for ' + banner.service + ' ' + banner.version + '.', 'error');
+      var cveList = banner.cves.join('\n');
+      addCommandFeed('searchsploit ' + banner.service + ' ' + banner.version.split(' ')[0],
+        cveList + '\n\n[+] ' + STATE.cves + ' exploits available in Exploit-DB');
+      addFeed('DEFENSE', 'Reduce information disclosure: (1) Patch to latest version. (2) Disable version strings where possible. (3) Use reverse proxy with anonymized Server header. (4) Rate limit \u2014 nmap -sV triggers 100+ probes per port, easily detected by IDS.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.probes = 0;
+  STATE.services = 0;
+  STATE.versions = 0;
+  STATE.banners = 0;
+  STATE.cves = 0;
+  STATE.rate = 0;
+  STATE.progress = 0;
+  STATE.detected = false;
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('sp-' + p); if(el) el.className = 'se-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'Enumeration state cleared.', 'info');
+  termWrite('reset --all\n[+] State cleared.');
+}
+
+document.getElementById('techSelect').addEventListener('change', function(e){
+  STATE.tech = e.target.value;
+  var info = {
+    banner:'Banner grabbing with netcat/nc: connect and read the greeting. Works for SSH, SMTP, FTP, some HTTP.',
+    nmap:'nmap -sV: sends multiple probes per port, matches responses against signature database. Slower but most accurate.',
+    smb:'SMB enum: enum4linux-ng, smbclient, nbtscan. Enumerates shares, users, password policy, OS version.',
+    http:'HTTP enum: nikto (server misconfig), gobuster (dir brute), whatweb (tech fingerprint), wappalyzer.',
+    dns:'DNS enum: dig (zone transfer attempt), dnsenum, dnsrecon. Reveals subdomains, mail servers, TXT records.',
+    snmp:'SNMP walk: public community string leaks system info, users, network config. Use onesixtyone for community brute.'
+  };
+  addFeed('TECH', 'Technique: ' + STATE.tech.toUpperCase() + '. ' + info[STATE.tech], 'warn');
+});
+
+document.getElementById('targetInput').addEventListener('input', function(e){ STATE.target = e.target.value; });
+document.getElementById('portInput').addEventListener('input', function(e){ STATE.port = e.target.value; });
+document.getElementById('wordlistSelect').addEventListener('change', function(e){ STATE.wordlist = e.target.value; });
+
+document.getElementById('intensitySlider').addEventListener('input', function(e){
+  STATE.intensity = parseInt(e.target.value) / 100;
+  document.getElementById('intensityVal').textContent = e.target.value + '%';
+});
+document.getElementById('timeoutSlider').addEventListener('input', function(e){
+  STATE.timeout = parseInt(e.target.value);
+  document.getElementById('timeoutVal').textContent = e.target.value;
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.probes = 0;
+  STATE.services = 0;
+  STATE.versions = 0;
+  STATE.banners = 0;
+  STATE.cves = 0;
+  STATE.progress = 0;
+  STATE.detected = false;
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('ENUM', 'Starting ' + STATE.tech.toUpperCase() + ' enumeration of ' + STATE.target + ':' + STATE.port + '.', 'warn');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1600);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('bannerBtn').addEventListener('click', function(){
+  STATE.bannerOff = !STATE.bannerOff;
+  this.classList.toggle('active', STATE.bannerOff);
+  if(STATE.bannerOff){
+    addFeed('DEFENSE', 'Banners DISABLED. Server hides version strings: nginx `server_tokens off`, Apache `ServerTokens Prod`, SSH `DebianBanner no`, `VersionAddendum none`. Attackers can still fingerprint via behavioral analysis (TCP stack, TLS ciphersuites) but it is much harder.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Banners ENABLED. Version info leaked to scanners.', 'warn');
+  }
+});
+
+document.getElementById('honeypotBtn').addEventListener('click', function(){
+  STATE.honeypot = !STATE.honeypot;
+  this.classList.toggle('active', STATE.honeypot);
+  if(STATE.honeypot){
+    addFeed('DEFENSE', 'HONEYPOT enabled. Fake service responds with templated banners (T-Pot, Cowrie, Dionaea). Attacker wastes time, all activity logged. Detection by attacker: response latency, odd protocol quirks, known honeypot signatures (Shodan Honeyscore).', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Honeypot DISABLED.', 'warn');
+  }
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

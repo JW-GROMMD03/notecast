@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stepper vs Servo Motors — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>STEPPER vs SERVO MOTORS</h1>
+    <span class="sub">OPEN LOOP · CLOSED LOOP · TORQUE · MICROSTEPPING</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Motor Type</div>
+    <div class="control-group">
+      <label>Comparison</label>
+      <select id="typeSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="stepper">Stepper Motor</option>
+        <option value="servo">Servo Motor (Brushed)</option>
+        <option value="acservo">AC Servo (BLDC-based)</option>
+      </select>
+    </div>
+
+    <div class="section-title">Motion Profile</div>
+    <div class="control-group">
+      <label>Target Position <span class="val" id="tpVal">360°</span></label>
+      <input type="range" id="tpSlider" min="30" max="1440" value="360" step="10">
+    </div>
+    <div class="control-group">
+      <label>Move Time <span class="val" id="mtVal">1.5 s</span></label>
+      <input type="range" id="mtSlider" min="0.3" max="5" value="1.5" step="0.1">
+    </div>
+
+    <div class="section-title">Stepper Parameters</div>
+    <div class="control-group">
+      <label>Step Angle <span class="val" id="saVal">1.8°</span></label>
+      <input type="range" id="saSlider" min="0.9" max="7.5" value="1.8" step="0.9">
+    </div>
+    <div class="control-group">
+      <label>Microstepping <span class="val" id="msVal">8×</span></label>
+      <input type="range" id="msSlider" min="1" max="32" value="8" step="1">
+    </div>
+    <div class="control-group">
+      <label>Load Torque <span class="val" id="ltVal">0.20 N·m</span></label>
+      <input type="range" id="ltSlider" min="0" max="1" value="0.2" step="0.02">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ RUN MOVE</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="missBtn">⚠ MISSED STEPS</button>
+    <button class="btn warn" id="resonanceBtn">⚠ STEP RESONANCE</button>
+    <button class="btn warn" id="overshootBtn">⚠ OVERSHOOT</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="printer">3D Printer</button>
+    <button class="btn" data-preset="cnc">CNC Machine</button>
+    <button class="btn" data-preset="robot">Robot Arm</button>
+    <button class="btn" data-preset="camera">Camera Gimbal</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      Steps = (Target / Step_angle) × Microsteps &nbsp;|&nbsp; <span class="hl">Servo: closed-loop with encoder feedback</span> &nbsp;|&nbsp; T = Kt·I
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mPos">
+          <div class="mlabel">POSITION</div>
+          <div class="mvalue">0<span class="munit">°</span></div>
+        </div>
+        <div class="metric" id="mErr">
+          <div class="mlabel">POSITION ERR</div>
+          <div class="mvalue">0<span class="munit">°</span></div>
+        </div>
+        <div class="metric" id="mSteps">
+          <div class="mlabel">TOTAL STEPS</div>
+          <div class="mvalue">0</div>
+        </div>
+        <div class="metric" id="mSpeed">
+          <div class="mlabel">SPEED</div>
+          <div class="mvalue">0<span class="munit">rpm</span></div>
+        </div>
+        <div class="metric" id="mTorque">
+          <div class="mlabel">TORQUE</div>
+          <div class="mvalue">0<span class="munit">N·m</span></div>
+        </div>
+        <div class="metric" id="mSettle">
+          <div class="mlabel">SETTLING</div>
+          <div class="mvalue">0<span class="munit">ms</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">Stepper: N_steps = (Target/Step) × Microstep</div>
+      <div class="eq">Servo: closed-loop PID with encoder</div>
+      <div class="eq">Servo torque ∝ current</div>
+      <div class="def">
+        Steppers move in discrete steps, open-loop — no encoder needed. 
+        But they can miss steps under overload and lose position permanently. 
+        Servos have encoder feedback and closed-loop control — they detect 
+        position error and correct it. Servos cost more but never miss position.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const TYPES = {
+  stepper: { name:'Stepper',    loop:'open',   maxSpeed:1200, accel:2000, torqueMax:0.5, color:'#22d3ee' },
+  servo:   { name:'Brushed Servo', loop:'closed', maxSpeed:3000, accel:8000, torqueMax:0.8, color:'#4ade80' },
+  acservo: { name:'AC Servo',    loop:'closed', maxSpeed:5000, accel:20000, torqueMax:1.5, color:'#fbbf24' }
+};
+
+const S = {
+  type: 'stepper',
+  target: 360,      // degrees
+  moveTime: 1.5,    // seconds
+  stepAngle: 1.8,   // degrees per step
+  microstep: 8,
+  loadTorque: 0.2,  // N·m
+  position: 0,      // current angle (degrees)
+  velocity: 0,      // deg/s
+  time: 0,
+  running: false,
+  missed: false,
+  stepResonance: false,
+  overshoot: false,
+  history: [],
+  commandedPos: 0,
+  stepCount: 0,
+  settleTime: 0
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const typeSel = document.getElementById('typeSelect');
+const tpSlider = document.getElementById('tpSlider');
+const mtSlider = document.getElementById('mtSlider');
+const saSlider = document.getElementById('saSlider');
+const msSlider = document.getElementById('msSlider');
+const ltSlider = document.getElementById('ltSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── MOTION PROFILES ───────────────────────────────────────
+function getType(){ return TYPES[S.type]; }
+
+function computeMotion(){
+  const type = getType();
+
+  // Total steps required
+  const stepsPerRev = 360 / S.stepAngle;
+  const microSteps = stepsPerRev * S.microstep;
+  const totalSteps = (S.target / S.stepAngle) * S.microstep;
+
+  // Motion profile: trapezoidal
+  const distance = S.target;
+  const time = S.moveTime;
+  const maxAccel = type.accel * (S.microstep / 8);
+  // Peak velocity for triangular vs trapezoidal
+  const vTri = Math.sqrt(distance * maxAccel);
+  const vTrap = distance / time + 0.5 * maxAccel * time;
+  let vPeak, isTrap;
+  if(vTrap * time > distance * 2){
+    vPeak = vTrap;
+    isTrap = true;
+  } else {
+    vPeak = vTri;
+    isTrap = false;
+  }
+  vPeak = Math.min(vPeak, type.maxSpeed);
+
+  // Torque required: T = J·α + T_load + friction
+  const J = 0.0001; // kg·m²
+  const accelTorque = J * (maxAccel * Math.PI / 180);
+  const torque = accelTorque + S.loadTorque;
+
+  const steps = Math.round(totalSteps);
+  const error = S.target - S.position;
+
+  // Settling time (servo settles, stepper just stops)
+  let settleTime = 0;
+  if(S.type === 'stepper'){
+    settleTime = 20; // ms
+  } else if(S.type === 'servo'){
+    settleTime = 50;
+  } else {
+    settleTime = 10;
+  }
+
+  return {
+    stepsPerRev, microSteps, totalSteps, steps, error, vPeak, isTrap,
+    torque, settleTime, type
+  };
+}
+
+// ─── STEP SIMULATION ───────────────────────────────────────
+function stepMotor(dt){
+  const type = getType();
+  const motion = computeMotion();
+
+  // Position error
+  const error = S.target - S.position;
+
+  if(S.type === 'stepper'){
+    // Open loop: stepper moves at commanded rate until done
+    // Velocity determined by step pulses
+    const maxV = motion.vPeak;
+    const stepSize = S.stepAngle / S.microstep;
+    // Ramp
+    const accel = type.accel * (S.microstep / 8);
+    const decelDist = S.velocity * S.velocity / (2 * accel);
+
+    if(Math.abs(error) > Math.abs(decelDist) + stepSize){
+      // Accelerate or cruise
+      if(S.velocity < maxV){
+        S.velocity += accel * dt;
+      }
+    } else {
+      // Decelerate
+      S.velocity -= accel * dt;
+      if(S.velocity < 0) S.velocity = 0;
+    }
+
+    // Move
+    S.position += S.velocity * dt;
+
+    // Clamp to target
+    if(Math.abs(S.position) >= Math.abs(S.target)){
+      S.position = S.target;
+      S.velocity = 0;
+    }
+
+    // Step resonance (steppers have mechanical resonance at certain speeds)
+    if(S.stepResonance && Math.abs(S.velocity) > 200 && Math.abs(S.velocity) < 400){
+      S.velocity += Math.sin(S.time * 30) * 20;
+    }
+
+    // Missed steps under high load
+    if(S.missed || S.loadTorque > motion.type.torqueMax){
+      // Position falls behind
+      S.position -= Math.sign(error) * Math.abs(error) * 0.001 * dt * 60;
+    }
+  } else {
+    // Servo: closed-loop PID
+    // Higher gains for AC servo
+    const Kp = S.type === 'acservo' ? 30 : 15;
+    const Kd = 0.5;
+    // Control effort
+    const cmd = Kp * error - Kd * S.velocity;
+    const accel = cmd * 100; // simplified
+    S.velocity += accel * dt;
+    if(S.velocity > type.maxSpeed) S.velocity = type.maxSpeed;
+    S.position += S.velocity * dt;
+
+    // Overshoot (with low damping)
+    if(S.overshoot && Math.abs(error) < 5){
+      if(!S._overshootPhase){ S._overshootPhase = 0; }
+      S._overshootPhase += dt * 10;
+      S.position += Math.sin(S._overshootPhase) * 2;
+    }
+
+    // Clamp
+    if(Math.abs(S.position - S.target) < 0.1 && Math.abs(S.velocity) < 1){
+      S.position = S.target;
+      S.velocity = 0;
+    }
+  }
+
+  S.time += dt;
+
+  // Record history
+  if(S.history.length === 0 || S.time - S.history[S.history.length-1].t > 0.01){
+    S.history.push({ t: S.time, pos: S.position, cmd: S.target * (S.time / S.moveTime) });
+    if(S.history.length > 2000) S.history.shift();
+  }
+
+  // Stop when target reached
+  if(Math.abs(S.target - S.position) < 1 && Math.abs(S.velocity) < 5 && S.time > 0.3){
+    if(S.running){
+      S.running = false;
+      playBtn.textContent = '▶ RUN MOVE';
+      const finalError = S.target - S.position;
+      if(Math.abs(finalError) > 5){
+        teach('MISSED STEPS', 'Stepper missed steps! Final position ' + S.position.toFixed(0) + '° vs target ' + S.target + '°. Error = ' + finalError.toFixed(0) + '°. The system has no way to detect this — position is now wrong.', 'error');
+      } else {
+        teach('COMPLETE', 'Move complete. Position ' + S.position.toFixed(1) + '° (target ' + S.target + '°). ' + 
+          (S.type === 'stepper' ? 'Stepper arrived without feedback.' : 'Servo confirmed via encoder.'), 'ok');
+      }
+    }
+  }
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawRotatingMotor(W, H);
+  drawPositionTrace(W, H);
+  drawComparison(W, H);
+}
+
+function drawRotatingMotor(W, H){
+  const cx = W * 0.35;
+  const cy = H * 0.4;
+  const info = computeMotion();
+
+  // Motor shaft with pointer (showing rotation)
+  const pointerLen = 80;
+  const angleRad = -S.position * Math.PI / 180 + Math.PI/2;
+
+  // Background circle (360°)
+  ctx.beginPath();
+  ctx.arc(cx, cy, pointerLen + 15, 0, Math.PI * 2);
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Degree markings every 30°
+  for(let i=0;i<12;i++){
+    const a = (i * 30) * Math.PI / 180 - Math.PI/2;
+    const r1 = pointerLen + 5;
+    const r2 = pointerLen + 15;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+    ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+    ctx.strokeStyle = '#475569';
+    ctx.stroke();
+  }
+
+  // Target indicator
+  const targetRad = -S.target * Math.PI / 180 + Math.PI/2;
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(targetRad) * pointerLen, cy + Math.sin(targetRad) * pointerLen);
+  ctx.stroke();
+  // Target arrow
+  ctx.fillStyle = '#4ade80';
+  ctx.beginPath();
+  ctx.arc(cx + Math.cos(targetRad) * pointerLen, cy + Math.sin(targetRad) * pointerLen, 5, 0, Math.PI*2);
+  ctx.fill();
+
+  // Rotor (current position)
+  ctx.strokeStyle = info.type.color;
+  ctx.lineWidth = 4;
+  ctx.shadowColor = info.type.color;
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(angleRad) * pointerLen, cy + Math.sin(angleRad) * pointerLen);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Center
+  ctx.beginPath();
+  ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fill();
+  ctx.strokeStyle = info.type.color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Motor body
+  ctx.beginPath();
+  ctx.arc(cx, cy, pointerLen + 25, 0, Math.PI * 2);
+  ctx.strokeStyle = info.type.color + '44';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  // Text info
+  ctx.fillStyle = info.type.color;
+  ctx.font = 'bold 13px Consolas, monospace';
+  ctx.fillText(info.type.name.toUpperCase() + ' — ' + (info.type.loop === 'open' ? 'OPEN LOOP' : 'CLOSED LOOP'), 20, 30);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('Current: ' + S.position.toFixed(1) + '°', 20, 50);
+  ctx.fillStyle = '#4ade80';
+  ctx.fillText('Target: ' + S.target + '°', 20, 68);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('Error: ' + (S.target - S.position).toFixed(1) + '°', 20, 86);
+
+  // Step info (stepper only)
+  if(S.type === 'stepper'){
+    ctx.fillStyle = '#22d3ee';
+    ctx.font = '11px Consolas, monospace';
+    ctx.fillText('Steps: ' + Math.floor(S.position / S.stepAngle * S.microstep) + ' / ' + Math.round(info.totalSteps), 20, 108);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('Microstep: ' + S.microstep + '×  |  Step angle: ' + S.stepAngle + '°', 20, 126);
+  }
+
+  // Faults
+  if(S.missed){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 14px Consolas, monospace';
+    ctx.fillText('⚠ MISSED STEPS', cx - 70, cy - pointerLen - 40);
+  }
+  if(S.stepResonance){
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 12px Consolas, monospace';
+    ctx.fillText('⚠ STEP RESONANCE', cx - 70, cy + pointerLen + 50);
+  }
+  if(S.overshoot && S.type !== 'stepper'){
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 12px Consolas, monospace';
+    ctx.fillText('⚠ OVERSHOOT', cx - 50, cy + pointerLen + 50);
+  }
+}
+
+function drawPositionTrace(W, H){
+  const ox = 60;
+  const oy = H * 0.6;
+  const w = W * 0.55;
+  const h = H * 0.35;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('POSITION vs TIME', ox, oy - 10);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const pad = { l:50, r:20, t:20, b:30 };
+  const gw = w - pad.l - pad.r;
+  const gh = h - pad.t - pad.b;
+
+  const tWindow = Math.max(S.moveTime + 1, 3);
+  const maxPos = S.target * 1.2;
+
+  const xOf = t => ox + pad.l + (t / tWindow) * gw;
+  const yOf = p => oy + h - pad.b - (p / maxPos) * gh;
+
+  // Grid
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  for(let i=0;i<=5;i++){
+    const y = oy + pad.t + gh * i / 5;
+    ctx.beginPath(); ctx.moveTo(ox + pad.l, y); ctx.lineTo(ox + pad.l + gw, y); ctx.stroke();
+  }
+  ctx.restore();
+
+  // Target line
+  ctx.strokeStyle = 'rgba(74,222,128,0.5)';
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  ctx.moveTo(ox + pad.l, yOf(S.target));
+  ctx.lineTo(ox + pad.l + gw, yOf(S.target));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('target ' + S.target + '°', ox + w - pad.r - 70, yOf(S.target) - 4);
+
+  // Position trace
+  if(S.history.length > 1){
+    ctx.beginPath();
+    ctx.strokeStyle = getType().color;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = getType().color;
+    ctx.shadowBlur = 6;
+    const tStart = 0;
+    let first = true;
+    for(const h2 of S.history){
+      if(h2.t < tStart) continue;
+      const x = xOf(h2.t);
+      const y = yOf(h2.pos);
+      if(first){ ctx.moveTo(x, y); first = false; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // Labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('time (s)', ox + w/2, oy + h - 6);
+  ctx.textAlign = 'left';
+  ctx.save();
+  ctx.translate(ox + 15, oy + h/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign = 'center';
+  ctx.fillText('Position (°)', 0, 0);
+  ctx.restore();
+  ctx.textAlign = 'left';
+}
+
+function drawComparison(W, H){
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 220;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('COMPARISON', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const rows = [
+    ['Feature', 'Stepper', 'Servo'],
+    ['Cost', '$', '$$$'],
+    ['Precision', 'Open loop', 'Encoder'],
+    ['Torque at speed', 'Falls off', 'Flat'],
+    ['Speed', 'Low-mid', 'High'],
+    ['Missing steps', 'Possible', 'Impossible'],
+    ['Tuning', 'None', 'PID needed'],
+    ['Efficiency', 'Low', 'High'],
+    ['Application', '3D printers', 'Robots, CNC']
+  ];
+
+  ctx.font = '10px Consolas, monospace';
+  for(let i=0;i<rows.length;i++){
+    const y = oy + 22 + i * 20;
+    const rowColor = i === 0 ? '#cbd5e1' : '#94a3b8';
+    ctx.fillStyle = rowColor;
+    ctx.fillText(rows[i][0], ox + 8, y);
+    ctx.fillStyle = i === 0 ? '#22d3ee' : '#4ade80';
+    ctx.fillText(rows[i][1], ox + 110, y);
+    ctx.fillStyle = i === 0 ? '#a78bfa' : '#fbbf24';
+    ctx.fillText(rows[i][2], ox + 190, y);
+  }
+
+  // Highlight current type
+  const isStepper = S.type === 'stepper';
+  ctx.fillStyle = isStepper ? '#22d3ee' : (S.type === 'acservo' ? '#fbbf24' : '#4ade80');
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('▲ Using ' + getType().name, ox + 8, oy + h - 10);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const info = computeMotion();
+  const err = S.target - S.position;
+
+  document.querySelector('#mPos .mvalue').innerHTML = S.position.toFixed(1) + '<span class="munit">°</span>';
+  document.querySelector('#mErr .mvalue').innerHTML = err.toFixed(1) + '<span class="munit">°</span>';
+  document.querySelector('#mSteps .mvalue').textContent = Math.floor(S.position / S.stepAngle * S.microstep);
+  document.querySelector('#mSpeed .mvalue').innerHTML = (S.velocity / 6).toFixed(0) + '<span class="munit">rpm</span>';
+  document.querySelector('#mTorque .mvalue').innerHTML = info.torque.toFixed(3) + '<span class="munit">N·m</span>';
+  document.querySelector('#mSettle .mvalue').innerHTML = info.settleTime + '<span class="munit">ms</span>';
+
+  document.getElementById('mErr').className = 'metric' + (Math.abs(err) > 5 ? ' bad' : Math.abs(err) > 1 ? ' warn' : ' ok');
+  document.getElementById('mTorque').className = 'metric' + (info.torque > info.type.torqueMax ? ' bad' : info.torque > info.type.torqueMax * 0.7 ? ' warn' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+function loop(ts){
+  if(S.running){
+    const steps = 5;
+    const dt = 1/60 / steps;
+    for(let i=0;i<steps;i++) stepMotor(dt);
+  }
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+typeSel.addEventListener('change', e => {
+  S.type = e.target.value;
+  const type = getType();
+  resetState();
+  teach('TYPE', type.name + ' (' + (type.loop === 'open' ? 'open loop' : 'closed loop') + '). ' + 
+    (S.type === 'stepper' ? 'Moves in discrete steps. No feedback. Loses position if overloaded.' :
+     S.type === 'servo' ? 'Brushed DC with encoder. Closed-loop PID control.' :
+     'AC servo with encoder. Fast, efficient, high torque across all speeds.'), 'concept');
+});
+
+tpSlider.addEventListener('input', e => {
+  S.target = parseFloat(e.target.value);
+  document.getElementById('tpVal').textContent = S.target + '°';
+});
+
+mtSlider.addEventListener('input', e => {
+  S.moveTime = parseFloat(e.target.value);
+  document.getElementById('mtVal').textContent = S.moveTime.toFixed(1) + ' s';
+});
+
+saSlider.addEventListener('input', e => {
+  S.stepAngle = parseFloat(e.target.value);
+  document.getElementById('saVal').textContent = S.stepAngle.toFixed(1) + '°';
+});
+
+msSlider.addEventListener('input', e => {
+  S.microstep = parseInt(e.target.value);
+  document.getElementById('msVal').textContent = S.microstep + '×';
+});
+
+ltSlider.addEventListener('input', e => {
+  S.loadTorque = parseFloat(e.target.value);
+  document.getElementById('ltVal').textContent = S.loadTorque.toFixed(2) + ' N·m';
+});
+
+playBtn.addEventListener('click', () => {
+  if(Math.abs(S.target - S.position) < 1){
+    resetState();
+    return;
+  }
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ RUN MOVE';
+  if(S.running){
+    const info = computeMotion();
+    teach('MOVE', 'Moving ' + S.target + '° in ' + S.moveTime + ' s. Total steps: ' + Math.round(info.totalSteps) + ' (stepper) or closed-loop trajectory (servo).', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  if(!S.running){
+    S.running = true;
+    playBtn.textContent = '⏸ PAUSE';
+  }
+  for(let i=0;i<30;i++) stepMotor(1/120);
+  teach('STEP', 'Position: ' + S.position.toFixed(1) + '°, error: ' + (S.target - S.position).toFixed(1) + '°.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.type = 'stepper'; S.target = 360; S.moveTime = 1.5;
+  S.stepAngle = 1.8; S.microstep = 8; S.loadTorque = 0.2;
+  S.position = 0; S.velocity = 0; S.time = 0;
+  S.running = false; S.history = [];
+  S.missed = false; S.stepResonance = false; S.overshoot = false;
+  S._overshootPhase = 0;
+  typeSel.value = 'stepper';
+  tpSlider.value = 360; mtSlider.value = 1.5;
+  saSlider.value = 1.8; msSlider.value = 8; ltSlider.value = 0.2;
+  document.getElementById('tpVal').textContent = '360°';
+  document.getElementById('mtVal').textContent = '1.5 s';
+  document.getElementById('saVal').textContent = '1.8°';
+  document.getElementById('msVal').textContent = '8×';
+  document.getElementById('ltVal').textContent = '0.20 N·m';
+  playBtn.textContent = '▶ RUN MOVE';
+  teach('RESET', 'Motion system reset.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('missBtn').addEventListener('click', () => {
+  S.missed = !S.missed;
+  if(S.missed){
+    teach('MISSED', 'Missed steps simulated. This is the stepper\'s weakness — no feedback means the controller thinks it moved further than it did. Real consequences: 3D printer layer shift, CNC scrap part.', 'error');
+  } else {
+    teach('CLEAR', 'Missed steps cleared.', 'ok');
+  }
+});
+
+document.getElementById('resonanceBtn').addEventListener('click', () => {
+  S.stepResonance = !S.stepResonance;
+  if(S.stepResonance){
+    teach('RESONANCE', 'Stepper resonance: mechanical resonance at certain step rates causes vibration and missed steps. Mitigation: microstepping, damping, or avoiding the resonant speed range.', 'warn');
+  } else {
+    teach('CLEAR', 'Resonance avoided.', 'ok');
+  }
+});
+
+document.getElementById('overshootBtn').addEventListener('click', () => {
+  S.overshoot = !S.overshoot;
+  if(S.overshoot){
+    if(S.type === 'stepper'){
+      teach('STEMMER', 'Steppers don\'t overshoot like servos (no inertia mismatch), but can miss steps or oscillate at end.', 'info');
+    } else {
+      teach('OVERSHOOT', 'Servo overshoot: closed-loop systems can overshoot if PID gains too aggressive or inertia mismatch. Tune D gain to damp.', 'warn');
+    }
+  } else {
+    teach('CLEAR', 'Overshoot resolved.', 'ok');
+  }
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'printer'){
+      S.type = 'stepper'; S.target = 360; S.moveTime = 2; S.stepAngle = 1.8; S.microstep = 16; S.loadTorque = 0.15;
+      typeSel.value = 'stepper';
+      tpSlider.value = 360; mtSlider.value = 2;
+      saSlider.value = 1.8; msSlider.value = 16; ltSlider.value = 0.15;
+      updateLabels(); resetState();
+      teach('3D PRINTER', '3D printer: stepper motors, 16× microstepping for smooth motion. Precise position without feedback — missed steps show as layer shifts.', 'concept');
+    } else if(p === 'cnc'){
+      S.type = 'stepper'; S.target = 1440; S.moveTime = 3; S.stepAngle = 1.8; S.microstep = 8; S.loadTorque = 0.4;
+      typeSel.value = 'stepper';
+      tpSlider.value = 1440; mtSlider.value = 3;
+      saSlider.value = 1.8; msSlider.value = 8; ltSlider.value = 0.4;
+      updateLabels(); resetState();
+      teach('CNC', 'CNC machine: high-precision steppers or servos. High load, needs torque at speed. Servos with encoders are preferred for quality machining.', 'concept');
+    } else if(p === 'robot'){
+      S.type = 'acservo'; S.target = 720; S.moveTime = 0.8; S.stepAngle = 1.8; S.microstep = 32; S.loadTorque = 0.5;
+      typeSel.value = 'acservo';
+      tpSlider.value = 720; mtSlider.value = 0.8;
+      saSlider.value = 1.8; msSlider.value = 32; ltSlider.value = 0.5;
+      updateLabels(); resetState();
+      teach('ROBOT ARM', 'Robot arm joint: AC servo, high speed and torque, encoder feedback. Precision under load, fast moves.', 'concept');
+    } else {
+      S.type = 'acservo'; S.target = 90; S.moveTime = 0.3; S.stepAngle = 1.8; S.microstep = 32; S.loadTorque = 0.05;
+      typeSel.value = 'acservo';
+      tpSlider.value = 90; mtSlider.value = 0.3;
+      saSlider.value = 1.8; msSlider.value = 32; ltSlider.value = 0.05;
+      updateLabels(); resetState();
+      teach('GIMBAL', 'Camera gimbal: AC servo for smooth, fast, precise motion. Small moves, high bandwidth. Silent operation for video.', 'concept');
+    }
+  });
+});
+
+function updateLabels(){
+  document.getElementById('tpVal').textContent = S.target + '°';
+  document.getElementById('mtVal').textContent = S.moveTime.toFixed(1) + ' s';
+  document.getElementById('saVal').textContent = S.stepAngle.toFixed(1) + '°';
+  document.getElementById('msVal').textContent = S.microstep + '×';
+  document.getElementById('ltVal').textContent = S.loadTorque.toFixed(2) + ' N·m';
+}
+
+function resetState(){
+  S.position = 0; S.velocity = 0; S.time = 0;
+  S.running = false; S.history = [];
+  S.missed = false; S.stepResonance = false; S.overshoot = false;
+  S._overshootPhase = 0;
+  playBtn.textContent = '▶ RUN MOVE';
+}
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Stepper vs Servo Motors. Both move to precise positions, but with fundamentally different approaches.', 'concept');
+  teach('COMPARISON', 'Steppers: open-loop, count steps, cheap, can miss steps. Servos: closed-loop, encoder feedback, correct for errors, expensive.', 'concept');
+  teach('HOWTO', 'Choose motor type, set target position and move time. Press RUN MOVE. Compare response speed and accuracy. Try the fault buttons.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

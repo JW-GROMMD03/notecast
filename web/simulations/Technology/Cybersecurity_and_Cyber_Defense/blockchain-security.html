@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blockchain Security — Smart Contract Vulnerabilities &amp; DeFi Attacks Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:#fcd34d;
+    text-shadow:0 0 8px rgba(245,158,11,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:#fcd34d; color:#fcd34d; }
+  .header-actions button.active{
+    border-color:#fcd34d; color:#fcd34d;
+    box-shadow:0 0 10px rgba(245,158,11,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:#fcd34d; }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:#fcd34d; cursor:pointer; box-shadow:0 0 7px rgba(245,158,11,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:#fcd34d; cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#fcd34d; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:#fcd34d; color:#fcd34d; }
+  button.act.primary{
+    background:linear-gradient(180deg,#2a1f0f,#1a1406);
+    border-color:#fcd34d; color:#fcd34d;
+    box-shadow:0 0 10px rgba(245,158,11,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(245,158,11,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulseAmber 1.4s infinite; }
+  @keyframes pulseAmber{
+    0%,100%{ box-shadow:0 0 6px rgba(245,158,11,.3); }
+    50%{ box-shadow:0 0 18px rgba(245,158,11,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.amber .m-value{ color:#fcd34d; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#fcd34d; }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .bc-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .bc-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .bc-phase.done{ border-color:#fcd34d; color:#fcd34d;
+    background:rgba(245,158,11,.12); }
+  .bc-phase.active{ border-color:#fcd34d; color:#fcd34d;
+    background:rgba(245,158,11,.2); box-shadow:0 0 10px rgba(245,158,11,.6);
+    animation:kcAmber 1.2s infinite; }
+  @keyframes kcAmber{ 50%{ box-shadow:0 0 16px rgba(245,158,11,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>BLOCKCHAIN SECURITY</h1>
+    <span class="sub">SMART CONTRACTS · DEFI · REENTRANCY · FLASH LOANS · SWC REGISTRY</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Chain &amp; Protocol</h3>
+      <select id="chainSelect">
+        <option value="ethereum">Ethereum (EVM)</option>
+        <option value="bsc">BNB Smart Chain</option>
+        <option value="solana">Solana</option>
+        <option value="polygon">Polygon PoS</option>
+      </select>
+      <label class="ctl-label">Vulnerability class</label>
+      <select id="vulnSelect">
+        <option value="reentrancy">Reentrancy (SWC-107)</option>
+        <option value="oracle">Oracle manipulation (SWC-116)</option>
+        <option value="flashloan">Flash loan attack</option>
+        <option value="access">Access control (SWC-105)</option>
+        <option value="overflow">Integer overflow (SWC-101)</option>
+        <option value="frontrun">Front-running / MEV</option>
+        <option value="random">Weak randomness (SWC-120)</option>
+        <option value="delegate">Delegatecall injection (SWC-112)</option>
+        <option value="dos">Denial of service (SWC-113)</option>
+        <option value="bridge">Cross-chain bridge exploit</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Target Contract</h3>
+      <label class="ctl-label">Contract address</label>
+      <input type="text" id="addrInput" value="0x742d35Cc6634C0532925a3b844Bc454e4438f44e">
+      <label class="ctl-label">DeFi protocol</label>
+      <input type="text" id="protoInput" value="VulnerableVault v1.2">
+      <label class="ctl-label">Contract source</label>
+      <textarea id="srcInput">function withdraw(uint256 amount) public {
+  require(balances[msg.sender] >= amount);
+  (bool ok, ) = msg.sender.call{value: amount}("");
+  require(ok);
+  balances[msg.sender] -= amount;
+}</textarea>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Attacker capital <span class="slider-val" id="capVal">$10M</span></label>
+      <input type="range" id="capSlider" min="0" max="100" value="50">
+      <label class="ctl-label">Gas price (gwei) <span class="slider-val" id="gasVal">30</span></label>
+      <input type="range" id="gasSlider" min="1" max="500" value="30">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ ATTACK</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="auditBtn">🔍 AUDIT</button>
+        <button type="button" class="act ok" id="patchBtn">🛡 PATCH</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">auditor@lab:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — DeFi exploits are theft. Only test on testnets/audits with authorization.</div>
+    <div class="status-badges">
+      <div class="status-badge">CHAIN: <b id="badgeChain">ETHEREUM</b></div>
+      <div class="status-badge">VULN: <b id="badgeVuln">REENTRANCY</b></div>
+      <div class="status-badge">TVL: <b id="badgeTVL">$0</b></div>
+      <div class="status-badge">LOSS: <b id="badgeLoss">$0</b></div>
+    </div>
+    <div class="bc-chain" id="bcChain">
+      <div class="bc-phase" id="bp-RECON">RECON</div>
+      <div class="bc-phase" id="bp-FUND">FUND</div>
+      <div class="bc-phase" id="bp-EXPLOIT">EXPLOIT</div>
+      <div class="bc-phase" id="bp-DRAIN">DRAIN</div>
+      <div class="bc-phase" id="bp-LAUNDER">LAUNDER</div>
+      <div class="bc-phase" id="bp-EXIT">EXIT</div>
+    </div>
+    <div class="footer-overlay">SWC Registry · OWASP Smart Contract Top 10 · DeFi Rekt Database · CWE-841</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric amber" id="mTx"><div class="m-label">Txns</div><div class="m-value" id="mTxVal">0</div></div>
+      <div class="metric" id="mTVL"><div class="m-label">TVL</div><div class="m-value" id="mTVLVal">$0</div></div>
+      <div class="metric" id="mLoss"><div class="m-label">Attacker</div><div class="m-value" id="mLossVal">$0</div></div>
+      <div class="metric" id="mGas"><div class="m-label">Gas</div><div class="m-value" id="mGasVal">$0</div></div>
+      <div class="metric" id="mSlippage"><div class="m-label">Slippage</div><div class="m-value" id="mSlippageVal">0%</div></div>
+      <div class="metric" id="mDetect"><div class="m-label">Detected</div><div class="m-value" id="mDetectVal">NO</div></div>
+      <div class="metric" id="mMEV"><div class="m-label">MEV</div><div class="m-value" id="mMEVVal">$0</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Defense</div><div class="m-value" id="mDefenseVal">OFF</div></div>
+    </div>
+    <div class="info-card">
+      <b>Smart contract security — code is law, bugs are fatal.</b><br>
+      <span class="eq">Reentrancy: DAO hack (2016, $60M) — Checks-Effects-Interactions</span><br>
+      <span class="eq">Oracle: bZx (2020) — use TWAP + multiple sources</span><br>
+      <span class="eq">Flash loan: bZx, Cream, PancakeBunny — millions in seconds</span><br>
+      <span class="eq">Defense: audit, formal verification, bug bounty, pause, timelock</span><br>
+      <span style="color:var(--purple)">SWC Registry · OWASP SC Top 10 · Rekt Leaderboard</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  chain:'ethereum',
+  vuln:'reentrancy',
+  addr:'0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+  proto:'VulnerableVault v1.2',
+  src:'',
+  capital:10000000,
+  gas:30,
+  txns:0,
+  tvl:0,
+  attackerGain:0,
+  gasSpent:0,
+  slippage:0,
+  detected:false,
+  mev:0,
+  patched:false,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['RECON','FUND','EXPLOIT','DRAIN','LAUNDER','EXIT'];
+
+var VULNS = {
+  reentrancy:{
+    title:'Reentrancy (SWC-107)',
+    cwe:'CWE-841',
+    detail:'External call before state update. Attacker\'s fallback function calls withdraw() recursively before balance is decremented. DAO hack: $60M in 2016.',
+    fix:'Checks-Effects-Interactions pattern: update state BEFORE external call. Or use ReentrancyGuard modifier.',
+    tvl:50000000
+  },
+  oracle:{
+    title:'Oracle Manipulation (SWC-116)',
+    cwe:'CWE-346',
+    detail:'Protocol trusts a single spot price. Flash loan skews AMM pool, oracle reports wrong price, protocol misprices collateral. bZx, Harvest, Cheese Bank.',
+    fix:'Use TWAP (Time-Weighted Average Price) over 30+ minutes. Multiple independent oracles (Chainlink + Uniswap V3 TWAP). Circuit breakers on large moves.',
+    tvl:120000000
+  },
+  flashloan:{
+    title:'Flash Loan Attack',
+    cwe:'CWE-362',
+    detail:'Borrow millions with no collateral, execute attack in one transaction, repay + profit. No upfront capital needed. Enables oracle manipulation + arbitrage.',
+    fix:'Do not rely on spot prices for critical logic. Use commit-reveal for sensitive ops. Cap per-block borrow limits.',
+    tvl:200000000
+  },
+  access:{
+    title:'Access Control (SWC-105)',
+    cwe:'CWE-284',
+    detail:'Missing or weak onlyOwner/onlyRole modifier. Functions like mint(), pause(), setFee() callable by anyone. Parity Wallet: $150M frozen (2017).',
+    fix:'Use OpenZeppelin AccessControl. Renounce ownership properly. Multi-sig for admin functions. Timelock for critical ops.',
+    tvl:30000000
+  },
+  overflow:{
+    title:'Integer Overflow (SWC-101)',
+    cwe:'CWE-190',
+    detail:'Solidity <0.8.0 does not check arithmetic overflow. Attacker wraps uint256 to 0 or max. BEC token (2018): $900M market cap wiped.',
+    fix:'Use Solidity >=0.8.0 (auto-reverts on overflow). Or SafeMath library. Fuzz test with boundary values.',
+    tvl:40000000
+  },
+  frontrun:{
+    title:'Front-running / MEV',
+    cwe:'CWE-362',
+    detail:'Attacker sees pending tx in mempool, pays higher gas to be included first. Sandwich attacks on DEX trades. Extracts value from users.',
+    fix:'Commit-reveal scheme. Private mempools (Flashbots Protect). Batch auctions. Slippage limits.',
+    tvl:10000000
+  },
+  random:{
+    title:'Weak Randomness (SWC-120)',
+    cwe:'CWE-330',
+    detail:'Using block.timestamp, blockhash, block.difficulty as randomness source. Miners/validators can manipulate. Fomo3D, SmartBillions exploited.',
+    fix:'Chainlink VRF (Verifiable Random Function). Commit-reveal. Never use on-chain data as randomness.',
+    tvl:5000000
+  },
+  delegate:{
+    title:'Delegatecall Injection (SWC-112)',
+    cwe:'CWE-829',
+    detail:'delegatecall executes another contract\'s code in caller\'s storage context. If target is attacker-controlled, storage is overwritten. Parity Multisig: $30M (2017).',
+    fix:'Never delegatecall to user-controlled address. Use immutable library addresses. Freeze upgradeable patterns with timelock.',
+    tvl:60000000
+  },
+  dos:{
+    title:'Denial of Service (SWC-113)',
+    cwe:'CWE-400',
+    detail:'Loop over dynamic array of users. Attacker adds many entries, gas cost exceeds block limit. Or push payment to a contract that reverts.',
+    fix:'Pull payments instead of push. Use mappings, not arrays, for user lists. Bounded loops.',
+    tvl:20000000
+  },
+  bridge:{
+    title:'Cross-Chain Bridge Exploit',
+    cwe:'CWE-345',
+    detail:'Bridge verifies signatures or Merkle proofs. Compromise validator key or exploit replay. Ronin ($624M), Wormhole ($326M), Nomad ($190M).',
+    fix:'Multi-sig with threshold (5/9+). Hardware wallets for validators. Time-delayed large withdrawals. Rate limits.',
+    tvl:500000000
+  }
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'attacker', label:'attacker', ip:'EOA + contract', x:0.10*W, y:0.30*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'flashloan', label:'flash loan', ip:'Aave/dYdX', x:0.28*W, y:0.15*H, icon:'cloud', color:'#a855f7', glow:0, blink:0},
+    {id:'victim', label:'vulnerable contract', ip:STATE.proto, x:0.50*W, y:0.30*H, icon:'server', color:'#f59e0b', glow:0, blink:0},
+    {id:'oracle', label:'oracle', ip:'price feed', x:0.28*W, y:0.55*H, icon:'cloud', color:'#22d3ee', glow:0, blink:0},
+    {id:'mempool', label:'mempool', ip:'pending txns', x:0.50*W, y:0.65*H, icon:'cloud', color:'#3b82f6', glow:0, blink:0},
+    {id:'mixer', label:'mixer/Tornado', ip:'laundering', x:0.75*W, y:0.15*H, icon:'cloud', color:'#a855f7', glow:0, blink:0},
+    {id:'cipher', label:'attacker exit', ip:'CEX / Monero', x:0.85*W, y:0.50*H, icon:'cloud', color:'#ef4444', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(245,158,11,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">auditor@lab:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  var sa = document.getElementById('srcInput');
+  if(sa) STATE.src = sa.value;
+
+  addFeed('ETHICS',
+    'Smart contract exploits are THEFT, not research, when executed on mainnet against live protocols. The blockchain is immutable: once you drain a contract, the funds are irreversibly gone and victims have no recourse. Legal consequences: wire fraud, computer fraud, money laundering — treated as serious felonies. Legitimate security research: (1) Testnet only for PoCs. (2) Bug bounty programs (Immunefi, Code4rena) pay up to $10M for responsible disclosure. (3) Coordinated disclosure: report to protocol team with 90-day window. (4) Never use discovered bugs for personal gain.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Smart contracts are immutable code deployed on a blockchain. Bugs are permanent and often unpatched — bugs become exploits become losses. Common vulnerability classes: reentrancy (external call before state update), oracle manipulation (spot price from single source), flash loans (uncollateralized borrows in one tx), access control (missing onlyOwner), integer overflow (pre-Solidity 0.8), front-running (MEV), weak randomness, delegatecall injection, DoS, and cross-chain bridge exploits. Defense: multiple audits, formal verification, bug bounties, pause mechanisms, timelocks, and monitoring (Forta, Tenderly).',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('slither ' + STATE.addr + '\n' +
+      "[!] Reentrancy in VulnerableVault.withdraw(uint256) (contracts/Vault.sol#42-46)\n" +
+      "    External call before state update\n" +
+      "    Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities\n" +
+      "[!] State variable update after external call\n" +
+      "[!] 2 findings, 1 high severity");
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Chain: ' + STATE.chain.toUpperCase() + '. Vulnerability: ' + VULNS[STATE.vuln].title + '. Click ATTACK to simulate exploit (testnet only).',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running && STATE.tick % 40 === 0){
+    spawnPacket('attacker','victim','#fcd34d','TX',0.02);
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.40*H, 'BLOCKCHAIN · ' + STATE.chain.toUpperCase(), '#fcd34d');
+  drawZone(0.05*W, 0.55*H, 0.90*W, 0.30*H, 'OFF-CHAIN', '#a855f7');
+
+  var links = [
+    ['attacker','flashloan'], ['flashloan','attacker'],
+    ['attacker','victim'], ['victim','oracle'],
+    ['attacker','mempool'], ['victim','mixer'],
+    ['mixer','cipher']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(245,158,11,0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+    if(n.id === 'victim' && STATE.attackerGain > 0){
+      ctx.save();
+      ctx.font = 'bold 9px "Courier New",monospace';
+      ctx.fillStyle = '#ef4444';
+      ctx.textAlign = 'center';
+      ctx.fillText('DRAINED', n.x, n.y - 25);
+      ctx.restore();
+    }
+  });
+
+  // Info panel
+  var v = VULNS[STATE.vuln];
+  if(v && STATE.phaseIdx > 0){
+    ctx.save();
+    var ax = 0.05*W, ay = H - 180, aw = 0.60*W, ah = 150;
+    ctx.fillStyle = 'rgba(40,25,5,0.9)';
+    ctx.strokeStyle = '#fcd34d';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#fcd34d';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 ' + v.title + ' \u2014 ' + v.cwe, ax + 8, ay + 16);
+    ctx.font = '8px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    // Wrap text
+    var words = v.detail.split(' ');
+    var line = '';
+    var ly = ay + 34;
+    words.forEach(function(w){
+      if((line + w).length > 70){
+        ctx.fillText(line, ax + 8, ly);
+        line = w + ' ';
+        ly += 11;
+      } else {
+        line += w + ' ';
+      }
+    });
+    ctx.fillText(line, ax + 8, ly);
+    ctx.fillStyle = '#4ade80';
+    ctx.fillText('TVL at risk: $' + (v.tvl/1e6).toFixed(0) + 'M | Attacker gain: $' + (STATE.attackerGain/1e6).toFixed(2) + 'M', ax + 8, ay + 110);
+    ctx.fillStyle = '#fcd34d';
+    ctx.fillText('Fix: ' + v.fix, ax + 8, ay + 130);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Reentrancy: check-effects-interactions + ReentrancyGuard', 12, H - 74);
+  ctx.fillText('Oracle: TWAP + multiple sources + circuit breakers', 12, H - 62);
+  ctx.fillText('Flash loan: do not use spot price for critical logic', 12, H - 50);
+  ctx.fillText('Best practice: audit + formal verify + bounty + pause + timelock', 12, H - 38);
+  ctx.fillText('SWC Registry \u00B7 OWASP SC Top 10 \u00B7 Rekt Leaderboard', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeChain').textContent = STATE.chain.toUpperCase();
+  document.getElementById('badgeVuln').textContent = STATE.vuln.toUpperCase();
+  document.getElementById('badgeTVL').textContent = '$' + (VULNS[STATE.vuln].tvl/1e6).toFixed(0) + 'M';
+  document.getElementById('badgeLoss').textContent = '$' + (STATE.attackerGain/1e6).toFixed(2) + 'M';
+
+  document.getElementById('mTxVal').textContent = STATE.txns;
+  document.getElementById('mTVLVal').textContent = '$' + (STATE.tvl/1e6).toFixed(1) + 'M';
+  document.getElementById('mLossVal').textContent = '$' + (STATE.attackerGain/1e6).toFixed(2) + 'M';
+  document.getElementById('mGasVal').textContent = '$' + Math.round(STATE.gasSpent);
+  document.getElementById('mSlippageVal').textContent = STATE.slippage.toFixed(1) + '%';
+  document.getElementById('mDetectVal').textContent = STATE.detected ? 'YES' : 'NO';
+  document.getElementById('mMEVVal').textContent = '$' + (STATE.mev/1e6).toFixed(2) + 'M';
+  document.getElementById('mDefenseVal').textContent = STATE.patched ? 'PATCHED' : 'OFF';
+
+  document.getElementById('mLoss').className = 'metric' + (STATE.attackerGain > 1000000 ? ' bad' : STATE.attackerGain > 0 ? ' warn' : '');
+  document.getElementById('mDetect').className = 'metric' + (STATE.detected ? ' bad' : '');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('bp-' + p);
+    if(!el) return;
+    el.className = 'bc-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var v = VULNS[STATE.vuln];
+
+  switch(phase){
+    case 'RECON':
+      addFeed('RECON', 'Recon: read contract source on Etherscan, run Slither + Mythril + Echidna, review past audits, examine TVL, identify external calls, oracle dependencies, and access control. ' + v.title + ' identified.', 'info');
+      addCommandFeed('slither ' + STATE.addr + ' && myth analyze ' + STATE.addr,
+        '[Slither] 2 findings (1 high, 1 medium)\n' +
+        '[Slither] HIGH: Reentrancy in withdraw()\n' +
+        '[Mythril] 1 issue: external call before state update\n' +
+        '[!] Contract has $' + (v.tvl/1e6).toFixed(0) + 'M TVL');
+      STATE.tvl = v.tvl;
+      break;
+
+    case 'FUND':
+      addFeed('FUND', 'Funding: ' + (STATE.vuln === 'flashloan' || STATE.vuln === 'oracle' ? 'Flash loan from Aave (no capital needed). Borrow ' + (STATE.capital/1e6).toFixed(1) + 'M USDC, repay same block with 0.09% fee.' : 'Attacker deposits seed capital of $' + (STATE.capital/1e6).toFixed(1) + 'M from personal funds.'), 'warn');
+      addCommandFeed('cast send ' + STATE.addr + ' "flashLoan(uint256)" ' + STATE.capital,
+        '[+] Flash loan initiated\n[+] 10M USDC borrowed\n[+] Fee: 9,000 USDC');
+      STATE.gasSpent += 500;
+      break;
+
+    case 'EXPLOIT':
+      STATE.txns++;
+      if(STATE.patched){
+        addFeed('DEFENSE', 'Contract PATCHED. ' + v.fix + ' Attack reverts with reason "ReentrancyGuard: reentrant call". Funds safe.', 'ok');
+        STATE.running = false;
+        return;
+      }
+      var gasCost = STATE.gas * 1000000 * 30 / 1e9 * 2000;
+      STATE.gasSpent += gasCost;
+      addFeed('EXPLOIT', 'Exploit: ' + v.title + '. ' + v.detail, 'error');
+      var hexdata = '0x' + 'a9059cbb' + '000000000000000000000000' + STATE.addr.substring(2, 42) + '00000000000000000000000000000000000000000000000000000000000f4240';
+      addCommandFeed('cast send ' + STATE.addr + ' --data ' + hexdata + ' --gas-price ' + STATE.gas + 'gwei',
+        '[+] Tx sent\n[+] Gas used: 245,127\n[+] Status: SUCCESS\n[+] Exploit tx: 0xabc123def456...');
+      break;
+
+    case 'DRAIN':
+      var drainPct = STATE.vuln === 'flashloan' || STATE.vuln === 'oracle' ? 0.7 : (STATE.vuln === 'reentrancy' ? 0.95 : (STATE.vuln === 'access' ? 1.0 : 0.6));
+      STATE.attackerGain = STATE.tvl * drainPct;
+      STATE.tvl = STATE.tvl * (1 - drainPct);
+      spawnPacket('victim','attacker','#ef4444','DRAIN',0.02);
+      addFeed('DRAIN', 'DRAINED: $' + (STATE.attackerGain/1e6).toFixed(2) + 'M extracted from contract. TVL dropped from $' + (v.tvl/1e6).toFixed(0) + 'M to $' + (STATE.tvl/1e6).toFixed(2) + 'M.', 'error');
+      break;
+
+    case 'LAUNDER':
+      STATE.txns++;
+      addFeed('LAUNDER', 'Laundering: swap tokens for ETH, bridge to other chains, use Tornado Cash (sanctioned by OFAC), Monero atomic swaps, then to CEX with fake KYC. Attacker keeps ~60% after fees.', 'error');
+      addCommandFeed('tornado-cli deposit --mixer 0x... --amount 100',
+        '[+] Deposited 100 ETH to Tornado Cash\n[+] Note saved (needed to withdraw)\n[!] Sanctioned by OFAC 2022 — many CEXs freeze funds');
+      STATE.mev = STATE.attackerGain * 0.05;
+      break;
+
+    case 'EXIT':
+      addFeed('EXIT', 'Exit: attacker converts to fiat, moves to friendly jurisdiction. Post-incident: protocol paused, white-hat negotiations (10% bounty common), blockchain forensics (Chainalysis), law enforcement (FBI/Interpol). Recovery rate historically <10%.', 'error');
+      addFeed('DEFENSE', 'Prevention: (1) ' + v.fix + ' (2) Multiple independent audits. (3) Formal verification (Certora, Runtime Verification). (4) Bug bounty ($1M+ on Immunefi). (5) Pause + timelock + multi-sig. (6) Real-time monitoring (Forta, Tenderly). (7) Insurance (Nexus Mutual).', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.txns = 0;
+  STATE.tvl = 0;
+  STATE.attackerGain = 0;
+  STATE.gasSpent = 0;
+  STATE.slippage = 0;
+  STATE.detected = false;
+  STATE.mev = 0;
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('bp-' + p); if(el) el.className = 'bc-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'Blockchain state reset.', 'info');
+  termWrite('reset --all\n[+] State cleared.');
+}
+
+document.getElementById('chainSelect').addEventListener('change', function(e){
+  STATE.chain = e.target.value;
+  addFeed('CHAIN', 'Chain: ' + STATE.chain.toUpperCase() + '.', 'info');
+});
+
+document.getElementById('vulnSelect').addEventListener('change', function(e){
+  STATE.vuln = e.target.value;
+  var v = VULNS[STATE.vuln];
+  addFeed('VULN', v.title + ' (' + v.cwe + '). ' + v.detail, 'error');
+});
+
+document.getElementById('addrInput').addEventListener('input', function(e){ STATE.addr = e.target.value; });
+document.getElementById('protoInput').addEventListener('input', function(e){ STATE.proto = e.target.value; });
+document.getElementById('srcInput').addEventListener('input', function(e){ STATE.src = e.target.value; });
+
+document.getElementById('capSlider').addEventListener('input', function(e){
+  STATE.capital = parseInt(e.target.value) * 200000;
+  document.getElementById('capVal').textContent = '$' + (STATE.capital/1e6).toFixed(1) + 'M';
+});
+document.getElementById('gasSlider').addEventListener('input', function(e){
+  STATE.gas = parseInt(e.target.value);
+  document.getElementById('gasVal').textContent = e.target.value;
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.txns = 0;
+  STATE.attackerGain = 0;
+  STATE.gasSpent = 0;
+  STATE.mev = 0;
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('ATTACK', 'Starting smart contract attack: ' + STATE.vuln.toUpperCase() + ' against ' + STATE.proto + ' on ' + STATE.chain.toUpperCase() + '. Testnet only.', 'warn');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1500);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('auditBtn').addEventListener('click', function(){
+  addFeed('AUDIT', 'Running automated audit: Slither (static), Mythril (symbolic), Echidna (fuzzing), Manticore (symbolic exec), 4naly3er (best practices). Real audits use Trail of Bits, OpenZeppelin, Consensys Diligence — cost $50K-$500K.', 'info');
+  addCommandFeed('slither . --checklist && myth analyze contracts/*.sol --execution-timeout 300',
+    '[Slither] 6 findings\n' +
+    '  HIGH: Reentrancy in Vault.withdraw()\n' +
+    '  HIGH: Unchecked transfer return value\n' +
+    '  MEDIUM: Missing zero-address check\n' +
+    '  MEDIUM: Centralization risk (owner can pause)\n' +
+    '  LOW: Unused state variable\n' +
+    '  INFO: Function state mutability can be restricted to view');
+});
+
+document.getElementById('patchBtn').addEventListener('click', function(){
+  STATE.patched = !STATE.patched;
+  this.classList.toggle('active', STATE.patched);
+  if(STATE.patched){
+    addFeed('DEFENSE', 'Contract PATCHED. ' + VULNS[STATE.vuln].fix + ' Upgrade via proxy (timelock), or migrate users to V2 contract.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Patch reverted.', 'warn');
+  }
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

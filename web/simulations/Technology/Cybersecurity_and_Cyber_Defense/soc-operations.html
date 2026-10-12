@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOC Operations — SIEM, Alert Triage &amp; Detection Engineering Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--cyan);
+    text-shadow:0 0 8px rgba(34,211,238,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--cyan); color:var(--cyan); }
+  .header-actions button.active{
+    border-color:var(--cyan); color:var(--cyan);
+    box-shadow:0 0 10px rgba(34,211,238,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--cyan); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--cyan); cursor:pointer; box-shadow:0 0 7px rgba(34,211,238,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--cyan); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:var(--cyan); font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--cyan); color:var(--cyan); }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f2a2a,#0a1a1a);
+    border-color:var(--cyan); color:var(--cyan);
+    box-shadow:0 0 10px rgba(34,211,238,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(34,211,238,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.danger:hover{ background:#2a0f0f; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.warn:hover{ background:#2a1f0f; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulseCyan 1.4s infinite; }
+  @keyframes pulseCyan{
+    0%,100%{ box-shadow:0 0 6px rgba(34,211,238,.3); }
+    50%{ box-shadow:0 0 18px rgba(34,211,238,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.cyan .m-value{ color:var(--cyan); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--cyan); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .soc-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .soc-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .soc-phase.done{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.12); }
+  .soc-phase.active{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.2); box-shadow:0 0 10px rgba(34,211,238,.6);
+    animation:kcCyan 1.2s infinite; }
+  @keyframes kcCyan{ 50%{ box-shadow:0 0 16px rgba(34,211,238,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>SOC OPERATIONS</h1>
+    <span class="sub">SIEM · ALERT TRIAGE · MTTD/MTTR · MITRE D3FEND · NIST CSF</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Alert Queue</h3>
+      <select id="alertSelect">
+        <option value="bruteforce">Failed login spike (T1110)</option>
+        <option value="malware">EDR malware detection (T1204)</option>
+        <option value="c2">Suspicious outbound beacon (T1071)</option>
+        <option value="phish">Phishing email reported (T1566)</option>
+        <option value="privesc">Privilege escalation attempt (T1548)</option>
+        <option value="exfil">Large outbound transfer (T1041)</option>
+        <option value="lateral">PsExec lateral movement (T1021.002)</option>
+      </select>
+      <label class="ctl-label">Priority</label>
+      <select id="prioSelect">
+        <option value="P1">P1 — Critical (immediate)</option>
+        <option value="P2" selected>P2 — High (15 min SLA)</option>
+        <option value="P3">P3 — Medium (1 hour)</option>
+        <option value="P4">P4 — Low (next business day)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Triage Decision</h3>
+      <label class="ctl-label">Classification</label>
+      <select id="classSelect">
+        <option value="benign">Benign / True Negative</option>
+        <option value="suspicious">Suspicious — escalate</option>
+        <option value="malicious">Malicious — incident</option>
+        <option value="fp">False Positive — tune rule</option>
+      </select>
+      <label class="ctl-label">Analyst notes</label>
+      <textarea id="notesInput" placeholder="Observed...">Recurring SSH failures from 203.0.113.0/24. Same user 'admin' targeted. Threshold: 50/min.</textarea>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Detection sensitivity <span class="slider-val" id="sensVal">70%</span></label>
+      <input type="range" id="sensSlider" min="0" max="100" value="70">
+      <label class="ctl-label">Enrichment depth <span class="slider-val" id="enrichVal">3</span></label>
+      <input type="range" id="enrichSlider" min="1" max="5" value="3">
+      <label class="ctl-label">Correlation window</label>
+      <select id="windowSelect">
+        <option value="5">5 minutes</option>
+        <option value="15" selected>15 minutes</option>
+        <option value="60">1 hour</option>
+        <option value="1440">24 hours</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ TRIAGE</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="tuneBtn">🔧 TUNE RULE</button>
+        <button type="button" class="act ok" id="playbookBtn">📋 PLAYBOOK</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">analyst@soc:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — SOC work involves sensitive data. Handle per NIST SP 800-53 AU controls.</div>
+    <div class="status-badges">
+      <div class="status-badge">ALERT: <b id="badgeAlert">BRUTEFORCE</b></div>
+      <div class="status-badge">PRIORITY: <b id="badgePrio">P2</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+      <div class="status-badge">VERDICT: <b id="badgeVerdict">—</b></div>
+    </div>
+    <div class="soc-chain" id="socChain">
+      <div class="soc-phase" id="sp-INGEST">INGEST</div>
+      <div class="soc-phase" id="sp-ENRICH">ENRICH</div>
+      <div class="soc-phase" id="sp-CORRELATE">CORRELATE</div>
+      <div class="soc-phase" id="sp-TRIAGE">TRIAGE</div>
+      <div class="soc-phase" id="sp-ESCALATE">ESCALATE</div>
+    </div>
+    <div class="footer-overlay">MITRE D3FEND · NIST CSF · NIST SP 800-61 (IR) · SIEM/EDR taxonomy</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric cyan" id="mQueue"><div class="m-label">Queue</div><div class="m-value" id="mQueueVal">0</div></div>
+      <div class="metric" id="mTTD"><div class="m-label">MTTD</div><div class="m-value" id="mTTDVal">0s</div></div>
+      <div class="metric" id="mMTTR"><div class="m-label">MTTR</div><div class="m-value" id="mMTTRVal">0m</div></div>
+      <div class="metric" id="mFP"><div class="m-label">False Pos %</div><div class="m-value" id="mFPVal">0%</div></div>
+      <div class="metric" id="mCoverage"><div class="m-label">ATT&amp;CK Cov.</div><div class="m-value" id="mCoverageVal">0%</div></div>
+      <div class="metric" id="mRules"><div class="m-label">Rules Active</div><div class="m-value" id="mRulesVal">1240</div></div>
+      <div class="metric" id="mEscalated"><div class="m-label">Escalated</div><div class="m-value" id="mEscalatedVal">0</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Playbook</div><div class="m-value" id="mDefenseVal">—</div></div>
+    </div>
+    <div class="info-card">
+      <b>SOC — Security Operations Center.</b><br>
+      <span class="eq">SIEM = log ingestion + correlation + alerting</span><br>
+      <span class="eq">EDR = endpoint telemetry + behavioral detection</span><br>
+      <span class="eq">MTTD: time to detect; MTTR: time to respond</span><br>
+      <span style="color:var(--purple)">MITRE D3FEND · NIST CSF · SP 800-61</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  alert:'bruteforce',
+  prio:'P2',
+  classification:'benign',
+  notes:'',
+  sensitivity:0.7,
+  enrichment:3,
+  window:15,
+  queue:0,
+  mttd:0,
+  mttr:0,
+  falsePositive:0,
+  coverage:0,
+  rules:1240,
+  escalated:0,
+  playbook:'',
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['INGEST','ENRICH','CORRELATE','TRIAGE','ESCALATE'];
+
+var ALERTS = {
+  bruteforce:{
+    title:'Failed login spike',
+    mitre:'T1110 (Brute Force)',
+    severity:'high',
+    evidence:[
+      'Source: 203.0.113.0/24 (100+ unique IPs)',
+      'Target: 10.0.0.10 (ssh port 22)',
+      'Pattern: 5,400 failed logins in 15 min',
+      'Targeted user: "admin", "root", "ubuntu"',
+      'No successful logins observed'
+    ],
+    playbook:'1. Verify source IPs against threat intel. 2. Check firewall/ACL blocks. 3. Enforce fail2ban / rate limit. 4. Notify identity team. 5. Verify no successful auth.'
+  },
+  malware:{
+    title:'EDR malware detection',
+    mitre:'T1204 (User Execution)',
+    severity:'critical',
+    evidence:[
+      'Host: workstation-01.corp (10.0.0.50)',
+      'Process: powershell.exe -enc <base64>',
+      'Parent: winword.exe (macro execution)',
+      'File dropped: %TEMP%\\invoice.exe (SHA256 3f9a...)',
+      'Hash: matched to Emotet loader family'
+    ],
+    playbook:'1. Isolate host via EDR. 2. Capture memory. 3. Kill process tree. 4. Scan for persistence (Run keys, services). 5. Reset user credentials. 6. Notify IR.'
+  },
+  c2:{
+    title:'Suspicious outbound beacon',
+    mitre:'T1071.001 (Web Protocols)',
+    severity:'high',
+    evidence:[
+      'Source: 10.0.0.50 (workstation-01)',
+      'Destination: 203.0.113.66:443 (unknown)',
+      'Pattern: 60s interval, 5% jitter — C2 profile',
+      'TLS SNI: cdn-telemetry.com (typosquat)',
+      'JA3: e7d705a3286e19ea42f587b344ee6865 (Cobalt Strike)'
+    ],
+    playbook:'1. Block destination at egress. 2. Capture PCAP. 3. Identify process making connection. 4. Kill process, isolate host. 5. Hunt for other hosts with same JA3.'
+  },
+  phish:{
+    title:'Phishing email reported',
+    mitre:'T1566.001 (Spearphishing Attachment)',
+    severity:'medium',
+    evidence:[
+      'Sender: billing@examp1e-corp.com (typosquat)',
+      'Subject: "Urgent: Invoice #INV-2024-0394"',
+      'Attachment: invoice.pdf.exe (double extension)',
+      'URL: hxxps://examp1e-corp[.]com/login',
+      'DKIM: FAIL, SPF: SOFTFAIL, DMARC: QUARANTINE'
+    ],
+    playbook:'1. Quarantine email at gateway. 2. Search for other recipients. 3. Detonate attachment in sandbox. 4. Notify users who clicked. 5. Block sender + URL at proxy.'
+  },
+  privesc:{
+    title:'Privilege escalation attempt',
+    mitre:'T1548.003 (Sudo)',
+    severity:'high',
+    evidence:[
+      'Host: web-server.corp (10.0.0.10)',
+      'User: www-data running "sudo -l" (recon)',
+      'Pattern: GTFOBins find SUID binary',
+      'Executed: find / -exec /bin/sh -p \\; -quit',
+      'Detected by: auditd execve rule + SUID watch'
+    ],
+    playbook:'1. Kill session. 2. Rotate any credentials accessible from www-data. 3. Audit all SUID binaries. 4. Confirm root not obtained. 5. Harden sudoers.'
+  },
+  exfil:{
+    title:'Large outbound transfer',
+    mitre:'T1041 (Exfiltration Over C2 Channel)',
+    severity:'critical',
+    evidence:[
+      'Source: db-server.corp (10.0.0.20)',
+      'Destination: 203.0.113.99:443',
+      'Volume: 12.4 GB in 8 minutes',
+      'Protocol: HTTPS POST (mimics cloud backup)',
+      'Time: 02:14 UTC (off-hours, unusual)'
+    ],
+    playbook:'1. Rate-limit or block at egress. 2. Identify initiating process. 3. Check if DB dump occurred. 4. Notify legal/compliance (data breach). 5. Preserve evidence.'
+  },
+  lateral:{
+    title:'PsExec lateral movement',
+    mitre:'T1021.002 (SMB/Windows Admin Shares)',
+    severity:'high',
+    evidence:[
+      'Source: workstation-02 (10.0.0.51)',
+      'Destination: file-server (10.0.0.30)',
+      'Event ID 7045 (service install): PSEXESVC',
+      'Sysmon: process created by PSEXESVC',
+      'Account: CORP\\svc_backup (compromised)'
+    ],
+    playbook:'1. Isolate both hosts. 2. Reset svc_backup password. 3. Hunt for PSEXESVC service on all hosts. 4. Check DC for Kerberoasting. 5. Enable Credential Guard.'
+  }
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'sources', label:'log sources', ip:'firewall/edr/proxy', x:0.12*W, y:0.30*H, icon:'cloud', color:'#3b82f6', glow:0, blink:0},
+    {id:'siem', label:'SIEM', ip:'splunk/elastic', x:0.35*W, y:0.30*H, icon:'server', color:'#22d3ee', glow:0, blink:0},
+    {id:'soar', label:'SOAR', ip:'playbook engine', x:0.58*W, y:0.30*H, icon:'server', color:'#a855f7', glow:0, blink:0},
+    {id:'analyst', label:'analyst', ip:'tier 1/2/3', x:0.80*W, y:0.30*H, icon:'laptop', color:'#22c55e', glow:0, blink:0},
+    {id:'threat', label:'attacker activity', ip:'correlated events', x:0.35*W, y:0.65*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'ticket', label:'ticket', ip:'jira/servicenow', x:0.80*W, y:0.65*H, icon:'server', color:'#f59e0b', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(34,211,238,'+(glow*0.5)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(var j=0;j<3;j++){ ctx.beginPath(); ctx.moveTo(-10,-8+j*4); ctx.lineTo(8,-8+j*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">analyst@soc:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'A Security Operations Center (SOC) monitors, detects, and responds to security events. Analysts handle sensitive data: credentials, PII, PHI, financial records. Handling rules: (1) Minimize access — only what is needed for the investigation. (2) Log every access. (3) Never share raw customer data outside authorized channels. (4) Follow retention policy (typically 90 days–7 years). (5) Preserve evidence with chain-of-custody. NIST SP 800-53 AU family governs audit and accountability.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'A SOC ingests logs from many sources into a SIEM (Splunk, Elastic, Sentinel, QRadar). The SIEM correlates events with detection rules to produce alerts. Analysts triage: enrich with threat intel, correlate with related events, classify (true positive / false positive / benign), and escalate if needed. Key metrics: MTTD (Mean Time To Detect), MTTR (Mean Time To Respond), false-positive rate, ATT&CK coverage. SOAR automates repetitive triage steps via playbooks.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('splunk search "index=security earliest=-15m event=login_failed"\n' +
+      '14:23:01 host=web-server src=203.0.113.42 user=admin action=denied\n' +
+      '14:23:02 host=web-server src=203.0.113.43 user=admin action=denied\n' +
+      '14:23:03 host=web-server src=203.0.113.44 user=root action=denied\n' +
+      '... (5,400 events in 15 minutes)');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Alert: ' + STATE.alert.toUpperCase() + '. Priority: ' + STATE.prio + '. Click TRIAGE to begin analysis.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running && STATE.tick % 45 === 0){
+    spawnPacket('sources','siem','#22d3ee','LOG',0.02);
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.10*H, 0.90*W, 0.35*H, 'SIEM PIPELINE', '#22d3ee');
+  drawZone(0.05*W, 0.55*H, 0.90*W, 0.30*H, 'CORRELATED ACTIVITY', '#ef4444');
+
+  var links = [
+    ['sources','siem'], ['siem','soar'], ['soar','analyst'],
+    ['threat','siem'], ['analyst','ticket']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(34,211,238,0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  // Alert display
+  var alert = ALERTS[STATE.alert];
+  if(alert && STATE.phaseIdx > 0){
+    ctx.save();
+    var ax = 0.05*W, ay = H - 160, aw = 0.60*W, ah = 130;
+    ctx.fillStyle = 'rgba(7,10,20,0.9)';
+    ctx.strokeStyle = alert.severity === 'critical' ? '#ef4444' : '#f59e0b';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = alert.severity === 'critical' ? '#fca5a5' : '#fcd34d';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 ' + alert.title + ' \u2014 ' + alert.mitre, ax + 8, ay + 16);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    alert.evidence.slice(0, 5).forEach(function(ev, i){
+      ctx.fillText('\u2022 ' + ev, ax + 8, ay + 34 + i * 16);
+    });
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('SIEM: log ingest + correlation + alerting', 12, H - 74);
+  ctx.fillText('EDR: endpoint telemetry + behavioral rules', 12, H - 62);
+  ctx.fillText('MTTD = first_event \u2192 detection; MTTR = detection \u2192 contain', 12, H - 50);
+  ctx.fillText('Tune rules to reduce false positives (goal < 20%)', 12, H - 38);
+  ctx.fillText('MITRE D3FEND \u00B7 NIST CSF \u00B7 SP 800-61', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeAlert').textContent = STATE.alert.toUpperCase();
+  document.getElementById('badgePrio').textContent = STATE.prio;
+  document.getElementById('badgeStatus').textContent = STATE.running ? 'TRIAGING' : (STATE.phaseIdx >= 5 ? 'CLOSED' : 'IDLE');
+  var verdict = STATE.classification;
+  document.getElementById('badgeVerdict').textContent = verdict === 'benign' ? 'BENIGN' : verdict === 'suspicious' ? 'SUSPICIOUS' : verdict === 'malicious' ? 'MALICIOUS' : 'FP';
+
+  document.getElementById('mQueueVal').textContent = STATE.queue;
+  document.getElementById('mTTDVal').textContent = Math.round(STATE.mttd) + 's';
+  document.getElementById('mMTTRVal').textContent = Math.round(STATE.mttr) + 'm';
+  document.getElementById('mFPVal').textContent = Math.round(STATE.falsePositive) + '%';
+  document.getElementById('mCoverageVal').textContent = Math.round(STATE.coverage) + '%';
+  document.getElementById('mRulesVal').textContent = STATE.rules;
+  document.getElementById('mEscalatedVal').textContent = STATE.escalated;
+  document.getElementById('mDefenseVal').textContent = STATE.playbook ? 'ACTIVE' : '—';
+
+  document.getElementById('mFP').className = 'metric' + (STATE.falsePositive > 50 ? ' bad' : STATE.falsePositive > 25 ? ' warn' : '');
+  document.getElementById('mTTD').className = 'metric' + (STATE.mttd > 60 ? ' bad' : STATE.mttd > 20 ? ' warn' : '');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('sp-' + p);
+    if(!el) return;
+    el.className = 'soc-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var alert = ALERTS[STATE.alert];
+
+  switch(phase){
+    case 'INGEST':
+      STATE.queue++;
+      spawnPacket('sources','siem','#22d3ee','LOG',0.02);
+      addFeed('INGEST', 'Logs ingested: ' + alert.title + ' detected. Alert fired by rule (correlation window: ' + STATE.window + ' min, sensitivity: ' + Math.round(STATE.sensitivity*100) + '%).', 'info');
+      addCommandFeed('index=security sourcetype=' + STATE.alert + ' earliest=-' + STATE.window + 'm | stats count by src',
+        'src               count\n' +
+        '203.0.113.42      1240\n' +
+        '203.0.113.43      987\n' +
+        '203.0.113.44      1420\n' +
+        '203.0.113.45      1753\n' +
+        '[... 96 more IPs ...]');
+      STATE.mttd = 3 + Math.random() * 10;
+      break;
+
+    case 'ENRICH':
+      spawnPacket('siem','soar','#a855f7','ENRICH',0.02);
+      addFeed('ENRICH', 'Enriching alert with: threat intel (VirusTotal, AbuseIPDB), asset criticality (CMDB), user context (AD/LDAP), historical alerts (SIEM), MITRE ATT&CK mapping. Enrichment depth: ' + STATE.enrichment + '.', 'info');
+      addCommandFeed('!vt ip 203.0.113.42',
+        'VirusTotal: 43/92 vendors flag as malicious\n' +
+        'AbuseIPDB: 100% confidence, 2,401 reports\n' +
+        'Origin: TOR exit node\n' +
+        'Recent activity: SSH brute force, RDP scanning');
+      break;
+
+    case 'CORRELATE':
+      addFeed('CORRELATE', 'Correlating with ' + STATE.window + '-minute window and related events: firewall drops (5,400), IDS alerts (12), EDR telemetry (0 — no endpoint compromise yet). Pattern matches ' + alert.mitre + '.', 'warn');
+      STATE.coverage = 40 + Math.random() * 30;
+      break;
+
+    case 'TRIAGE':
+      var fpChance = 1 - STATE.sensitivity;
+      if(Math.random() < fpChance){
+        STATE.falsePositive += 15;
+        STATE.classification = 'fp';
+        addFeed('TRIAGE', 'Verdict: FALSE POSITIVE. This alert pattern is generated by our own vulnerability scanner (10.0.0.5). Recommend: whitelist scanner IP in the rule.', 'warn');
+      } else {
+        STATE.classification = 'malicious';
+        addFeed('TRIAGE', 'Verdict: TRUE POSITIVE. Confirmed malicious activity: ' + alert.title + '. Severity matches priority ' + STATE.prio + '. Recommend immediate escalation to Tier 2.', 'error');
+      }
+      break;
+
+    case 'ESCALATE':
+      if(STATE.classification === 'malicious'){
+        STATE.escalated++;
+        spawnPacket('analyst','ticket','#ef4444','ESCALATE',0.02);
+        addFeed('ESCALATE', 'Escalated to Tier 2. Ticket created in ServiceNow with all evidence, enrichment, and correlation. SLA: ' + (STATE.prio === 'P1' ? '15 min' : STATE.prio === 'P2' ? '1 hour' : '4 hours') + '.', 'warn');
+        addCommandFeed('servicenow create --priority ' + STATE.prio + ' --category security_incident',
+          'INC0012345 created\n' +
+          'Priority: ' + STATE.prio + '\n' +
+          'Assigned: SOC-Tier2\n' +
+          'SLA: ' + (STATE.prio === 'P1' ? '15' : '60') + ' minutes\n' +
+          'Evidence attached: 5 items');
+        STATE.mttr = 15 + Math.random() * 30;
+      } else {
+        addFeed('ESCALATE', 'No escalation — verdict is ' + STATE.classification + '. Alert closed with documentation. Feedback loop to detection engineering to tune the rule.', 'ok');
+        STATE.mttr = 3 + Math.random() * 5;
+      }
+      addFeed('DEFENSE', 'After-action: (1) Update rule to reduce FPs. (2) Add IOC to blocklist. (3) Brief team on new TTP. (4) Improve telemetry if gaps found. SOC quality is measured by detection coverage, MTTD, MTTR, and FP rate.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.queue = 0;
+  STATE.mttd = 0;
+  STATE.mttr = 0;
+  STATE.falsePositive = 0;
+  STATE.coverage = 0;
+  STATE.escalated = 0;
+  STATE.events = [];
+  STATE.playbook = '';
+  PHASES.forEach(function(p){ var el = document.getElementById('sp-' + p); if(el) el.className = 'soc-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'SOC state cleared. Alert queue emptied.', 'info');
+  termWrite('reset --all\n[+] Queue cleared.');
+}
+
+document.getElementById('alertSelect').addEventListener('change', function(e){
+  STATE.alert = e.target.value;
+  var a = ALERTS[STATE.alert];
+  addFeed('ALERT', 'Alert type: ' + a.title + ' (' + a.mitre + '). Severity: ' + a.severity + '.', a.severity === 'critical' ? 'error' : 'warn');
+});
+
+document.getElementById('prioSelect').addEventListener('change', function(e){
+  STATE.prio = e.target.value;
+  addFeed('PRIO', 'Priority set to ' + STATE.prio + '.', 'info');
+});
+
+document.getElementById('classSelect').addEventListener('change', function(e){
+  STATE.classification = e.target.value;
+});
+
+document.getElementById('notesInput').addEventListener('input', function(e){ STATE.notes = e.target.value; });
+
+document.getElementById('sensSlider').addEventListener('input', function(e){
+  STATE.sensitivity = parseInt(e.target.value) / 100;
+  document.getElementById('sensVal').textContent = e.target.value + '%';
+});
+document.getElementById('enrichSlider').addEventListener('input', function(e){
+  STATE.enrichment = parseInt(e.target.value);
+  document.getElementById('enrichVal').textContent = e.target.value;
+});
+document.getElementById('windowSelect').addEventListener('change', function(e){
+  STATE.window = parseInt(e.target.value);
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.queue = 0;
+  STATE.mttd = 0;
+  STATE.mttr = 0;
+  STATE.escalated = 0;
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('TRIAGE', 'Starting triage of ' + STATE.alert.toUpperCase() + ' alert at priority ' + STATE.prio + '.', 'warn');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1600);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('tuneBtn').addEventListener('click', function(){
+  if(STATE.falsePositive > 0){
+    STATE.falsePositive = Math.max(0, STATE.falsePositive - 15);
+    addFeed('TUNE', 'Rule tuned. Added exception for scanner IPs and known admin maintenance windows. False positive rate reduced by 15%.', 'ok');
+  } else {
+    addFeed('TUNE', 'No false positives to tune right now. Rule is performing well.', 'info');
+  }
+});
+
+document.getElementById('playbookBtn').addEventListener('click', function(){
+  STATE.playbook = ALERTS[STATE.alert].playbook;
+  addFeed('PLAYBOOK', 'Loaded playbook for ' + STATE.alert.toUpperCase() + '. Steps: ' + STATE.playbook, 'ok');
+  addCommandFeed('soar run playbook_' + STATE.alert + '.yaml',
+    '[+] Step 1: gather evidence\n' +
+    '[+] Step 2: enrich with threat intel\n' +
+    '[+] Step 3: notify stakeholders\n' +
+    '[+] Step 4: contain (if authorized)\n' +
+    '[+] Step 5: document + close');
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Advanced Security Architecture — SABSA, TOGAF &amp; Zero Trust Design Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--purple);
+    text-shadow:0 0 8px rgba(168,85,247,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--purple); color:#d8b4fe; }
+  .header-actions button.active{
+    border-color:var(--purple); color:#d8b4fe;
+    box-shadow:0 0 10px rgba(168,85,247,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--purple); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; font-size:10px; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--purple); cursor:pointer; box-shadow:0 0 7px rgba(168,85,247,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--purple); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#d8b4fe; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--purple); color:#d8b4fe; }
+  button.act.primary{
+    background:linear-gradient(180deg,#1a0f2a,#0a0612);
+    border-color:var(--purple); color:#d8b4fe;
+    box-shadow:0 0 10px rgba(168,85,247,.25);
+  }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.pulse{ animation:pulsePurp 1.4s infinite; }
+  @keyframes pulsePurp{
+    0%,100%{ box-shadow:0 0 6px rgba(168,85,247,.3); }
+    50%{ box-shadow:0 0 18px rgba(168,85,247,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.purple .m-value{ color:#d8b4fe; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#d8b4fe; }
+  .arch-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .arch-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .arch-phase.done{ border-color:var(--purple); color:#d8b4fe;
+    background:rgba(168,85,247,.12); }
+  .arch-phase.active{ border-color:var(--purple); color:#d8b4fe;
+    background:rgba(168,85,247,.2); box-shadow:0 0 10px rgba(168,85,247,.6);
+    animation:kcPurp 1.2s infinite; }
+  @keyframes kcPurp{ 50%{ box-shadow:0 0 16px rgba(168,85,247,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>ADVANCED SECURITY ARCHITECTURE</h1>
+    <span class="sub">SABSA · TOGAF · ZERO TRUST · SASE · NIST CSF · ENTERPRISE DESIGN</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Architecture Framework</h3>
+      <select id="frameworkSelect">
+        <option value="sabsa">SABSA (Sherwood Applied Business Security Architecture)</option>
+        <option value="togaf">TOGAF (The Open Group Architecture Framework)</option>
+        <option value="zt">Zero Trust Architecture (NIST SP 800-207)</option>
+        <option value="sase">SASE (Secure Access Service Edge)</option>
+        <option value="csf">NIST CSF 2.0 (Govern, Identify, Protect, Detect, Respond, Recover)</option>
+        <option value="isa62443">ISA/IEC 62443 (industrial)</option>
+      </select>
+      <label class="ctl-label">Design goal</label>
+      <select id="goalSelect">
+        <option value="modernize">Modernize legacy → cloud-native</option>
+        <option value="zt-migration">Migrate to Zero Trust</option>
+        <option value="hybrid">Hybrid multi-cloud</option>
+        <option value="sase-adopt">Adopt SASE (converge network + security)</option>
+        <option value="ot-it">Converge OT/IT securely</option>
+        <option value="compliance">Achieve compliance (ISO 27001 / SOC 2)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Organization</h3>
+      <label class="ctl-label">Enterprise</label>
+      <input type="text" id="orgInput" value="ExampleCorp Global">
+      <label class="ctl-label">Business drivers</label>
+      <textarea id="driversInput">- Digital transformation
+- Remote workforce (60% WFH)
+- Regulatory compliance (GDPR, SOX, PCI)
+- Cloud-first (AWS + Azure)</textarea>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Risk appetite <span class="slider-val" id="appetiteVal">40%</span></label>
+      <input type="range" id="appetiteSlider" min="0" max="100" value="40">
+      <label class="ctl-label">Investment level <span class="slider-val" id="invVal">$5M / yr</span></label>
+      <input type="range" id="invSlider" min="0" max="100" value="50">
+      <label class="ctl-label">Transformation timeline <span class="slider-val" id="timelineVal">24 months</span></label>
+      <input type="range" id="timelineSlider" min="0" max="100" value="50">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ DESIGN</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="gapBtn">🔍 GAP ANALYSIS</button>
+        <button type="button" class="act ok" id="roadmapBtn">🗺 ROADMAP</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">architect@design:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Architecture decisions have long-term consequences. Always involve stakeholders.</div>
+    <div class="status-badges">
+      <div class="status-badge">FRAMEWORK: <b id="badgeFramework">SABSA</b></div>
+      <div class="status-badge">GOAL: <b id="badgeGoal">MODERNIZE</b></div>
+      <div class="status-badge">PHASE: <b id="badgePhase">IDLE</b></div>
+      <div class="status-badge">MATURITY: <b id="badgeMaturity">2.5</b></div>
+    </div>
+    <div class="arch-chain" id="archChain">
+      <div class="arch-phase" id="ap-BUSINESS">BUSINESS</div>
+      <div class="arch-phase" id="ap-CONCEPT">CONCEPT</div>
+      <div class="arch-phase" id="ap-SYSTEM">SYSTEM</div>
+      <div class="arch-phase" id="ap-TECH">TECH</div>
+      <div class="arch-phase" id="ap-COMPONENT">COMPONENT</div>
+      <div class="arch-phase" id="ap-OPERATIONS">OPERATIONS</div>
+    </div>
+    <div class="footer-overlay">SABSA · TOGAF · NIST SP 800-207 (ZT) · ISO 27001 · SABSA Matrix</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric purple" id="mDomains"><div class="m-label">Domains</div><div class="m-value" id="mDomainsVal">0</div></div>
+      <div class="metric" id="mComponents"><div class="m-label">Components</div><div class="m-value" id="mComponentsVal">0</div></div>
+      <div class="metric" id="mControls"><div class="m-label">Controls</div><div class="m-value" id="mControlsVal">0</div></div>
+      <div class="metric" id="mCost"><div class="m-label">CapEx</div><div class="m-value" id="mCostVal">$0M</div></div>
+      <div class="metric" id="mCoverage"><div class="m-label">Coverage</div><div class="m-value" id="mCoverageVal">0%</div></div>
+      <div class="metric" id="mGaps"><div class="m-label">Gaps</div><div class="m-value" id="mGapsVal">0</div></div>
+      <div class="metric" id="mMaturity"><div class="m-label">Maturity</div><div class="m-value" id="mMaturityVal">2.5</div></div>
+      <div class="metric" id="mPosture"><div class="m-label">Posture</div><div class="m-value" id="mPostureVal">—</div></div>
+    </div>
+    <div class="info-card">
+      <b>Architecture — the long-term blueprint of security.</b><br>
+      <span class="eq">SABSA: Business → Concept → System → Tech → Component → Ops</span><br>
+      <span class="eq">Zero Trust: never trust, always verify; identity is perimeter</span><br>
+      <span class="eq">SASE: SD-WAN + SWG + CASB + ZTNA + FWaaS</span><br>
+      <span style="color:var(--purple)">TOGAF ADM · SABSA Matrix · NIST SP 800-207 · CSA</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  framework:'sabsa',
+  goal:'modernize',
+  org:'ExampleCorp Global',
+  drivers:'',
+  appetite:0.4,
+  investment:50,
+  timeline:50,
+  domains:0,
+  components:0,
+  controls:0,
+  cost:0,
+  coverage:0,
+  gaps:0,
+  maturity:2.5,
+  posture:'—',
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['BUSINESS','CONCEPT','SYSTEM','TECH','COMPONENT','OPERATIONS'];
+
+var FRAMEWORKS = {
+  sabsa:{
+    title:'SABSA (Sherwood Applied Business Security Architecture)',
+    layers:['Business View (why)','Architect View (how)','Designer View (what)','Builder View (with what)','Tradesman View (how built)','Service Manager (how managed)'],
+    detail:'SABSA is business-driven security architecture. Starts with business requirements → derives security architecture through 6 layers (Business, Architect, Designer, Builder, Tradesman, Service Manager) × 6 questions (What, Why, How, Who, Where, When). Each cell of the SABSA matrix defines a control.'
+  },
+  togaf:{
+    title:'TOGAF (The Open Group Architecture Framework)',
+    layers:['Business Architecture','Information Systems Architecture','Technology Architecture','Architecture Governance'],
+    detail:'TOGAF ADM (Architecture Development Method): Preliminary → Vision → Business → IS → Technology → Opportunities → Migration Planning → Governance → Change Management. Enterprise-wide, not security-specific — security is a cross-cutting concern.'
+  },
+  zt:{
+    title:'Zero Trust Architecture (NIST SP 800-207)',
+    layers:['Identity Plane','Control Plane','Data Plane','Policy Engine','Policy Administrator','Policy Enforcement Point'],
+    detail:'Zero Trust: no implicit trust based on network location. Every request authenticated + authorized. Policy Engine + Administrator (control plane) + Policy Enforcement Points (data plane). Verify identity, device health, context per request.'
+  },
+  sase:{
+    title:'SASE (Secure Access Service Edge)',
+    layers:['SD-WAN','SWG','CASB','ZTNA','FWaaS','DLP'],
+    detail:'SASE converges network (SD-WAN) + security (SWG, CASB, ZTNA, FWaaS, DLP) as a cloud-delivered service. Gartner 2019 term. Ideal for distributed workforce + multi-cloud.'
+  },
+  csf:{
+    title:'NIST CSF 2.0',
+    layers:['GOVERN','IDENTIFY','PROTECT','DETECT','RESPOND','RECOVER'],
+    detail:'NIST Cybersecurity Framework 2.0 (2024): 6 functions covering governance + lifecycle. Govern (new in 2.0) covers strategy, roles, policy, risk management. Each function has categories and subcategories.'
+  },
+  isa62443:{
+    title:'ISA/IEC 62443 (Industrial Automation & Control Systems)',
+    layers:['General','Policies & Procedures','System','Component'],
+    detail:'ISA/IEC 62443: 4 parts (General, Policies & Procedures, System, Component). Zones and Conduits model. Security Levels SL0-SL4 (SL4 = state-sponsored threats). Mandatory for OT environments.'
+  }
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'business', label:'BUSINESS', ip:'strategy + goals', x:0.10*W, y:0.20*H, icon:'cloud', color:'#3b82f6', glow:0, blink:0},
+    {id:'identity', label:'IDENTITY', ip:'IdP + PAM', x:0.30*W, y:0.20*H, icon:'server', color:'#a855f7', glow:0, blink:0},
+    {id:'network', label:'NETWORK', ip:'SD-WAN + ZTNA', x:0.50*W, y:0.20*H, icon:'router', color:'#22d3ee', glow:0, blink:0},
+    {id:'app', label:'APPLICATIONS', ip:'SaaS + on-prem', x:0.70*W, y:0.20*H, icon:'server', color:'#fcd34d', glow:0, blink:0},
+    {id:'data', label:'DATA', ip:'at rest + in transit', x:0.90*W, y:0.20*H, icon:'database', color:'#ef4444', glow:0, blink:0},
+    {id:'edge', label:'EDGE', ip:'users + branches', x:0.20*W, y:0.60*H, icon:'laptop', color:'#22c55e', glow:0, blink:0},
+    {id:'cloud', label:'CLOUD', ip:'AWS + Azure + GCP', x:0.50*W, y:0.60*H, icon:'cloud', color:'#3b82f6', glow:0, blink:0},
+    {id:'secops', label:'SECOPS', ip:'SOC + SOAR', x:0.80*W, y:0.60*H, icon:'firewall', color:'#22c55e', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(168,85,247,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(var j=0;j<3;j++){ ctx.beginPath(); ctx.moveTo(-10,-8+j*4); ctx.lineTo(8,-8+j*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'router': {
+      ctx.strokeRect(-14,-6,28,12);
+      for(var k=0;k<4;k++){
+        ctx.strokeStyle = '#334155'; ctx.lineWidth = 0.6;
+        ctx.strokeRect(-11+k*6, 0, 4, 4);
+        var on = (blink+k)%2===0;
+        ctx.fillStyle = on ? '#22c55e' : '#166534';
+        ctx.fillRect(-10.5+k*6, 1, 3, 2);
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-6,-6); ctx.lineTo(-9,-14); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(6,-6); ctx.lineTo(9,-14); ctx.stroke();
+      break;
+    }
+    case 'firewall': {
+      ctx.lineWidth = 1.2;
+      for(var row=0;row<3;row++){
+        var y2 = -10 + row*7;
+        var off = row%2===0 ? 0 : 5;
+        for(var col=0;col<4;col++) ctx.strokeRect(-16+col*9+off, y2, 8, 6);
+      }
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(0,-4); ctx.quadraticCurveTo(4,0,0,5); ctx.quadraticCurveTo(-4,0,0,-4);
+      ctx.fill();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(n => n.id===fromId);
+  var to = STATE.nodes.find(n => n.id===toId);
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">architect@design:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(()=>{
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(v => v.lang && v.lang.startsWith('en-US')) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Security architecture decisions have long-term consequences: they shape cost, complexity, and risk for years. Ethical practice: (1) Involve ALL stakeholders — business, legal, compliance, engineering. (2) Document trade-offs honestly — every architecture has them. (3) Do NOT recommend solutions just because they are trendy (Zero Trust, SASE) — match to business needs. (4) Challenge vendor bias. (5) Include residual risk acceptance in design. (6) Plan for graceful degradation. (7) Consider privacy, accessibility, and environmental impact. (8) Avoid architecture that locks the organization into a single vendor without strategic reason. (9) Design for operability — an unmaintainable architecture is a security risk. (10) Codify decisions as ADRs (Architecture Decision Records) so future teams understand the reasoning.',
+    'ethics');
+  setTimeout(()=>{
+    var f = FRAMEWORKS[STATE.framework];
+    addFeed('CONCEPT', f.title + ': ' + f.detail, 'concept');
+  }, 800);
+  setTimeout(()=>{
+    termWrite('arch-design --framework ' + STATE.framework + ' --goal ' + STATE.goal + '\n' +
+      '[+] Framework loaded: ' + FRAMEWORKS[STATE.framework].title + '\n' +
+      '[+] Design goal: ' + STATE.goal + '\n' +
+      '[+] Organization: ' + STATE.org + '\n' +
+      '[+] Ready to iterate through phases');
+  }, 1600);
+  setTimeout(()=>{
+    addFeed('INFO',
+      'Framework: ' + FRAMEWORKS[STATE.framework].title + '. Goal: ' + STATE.goal.toUpperCase() + '. Click DESIGN to iterate through architecture phases.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(n => { n.blink = Math.floor(STATE.tick / 20); });
+
+  for(let i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(n => { if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running && STATE.tick % 60 === 0){
+    spawnPacket('business','identity','#3b82f6','POLICY',0.03);
+    spawnPacket('identity','network','#a855f7','CONTROL',0.03);
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.40*H, 'CONTROL PLANE · ' + FRAMEWORKS[STATE.framework].title.split(' ')[0], '#a855f7');
+  drawZone(0.05*W, 0.52*H, 0.90*W, 0.38*H, 'DATA PLANE', '#22c55e');
+
+  var links = [
+    ['business','identity'], ['identity','network'],
+    ['network','app'], ['app','data'],
+    ['edge','network'], ['cloud','network'], ['secops','network']
+  ];
+  links.forEach(pair => {
+    var na = STATE.nodes.find(n => n.id===pair[0]);
+    var nb = STATE.nodes.find(n => n.id===pair[1]);
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(168,85,247,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(e => {
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 10;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '8px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 10);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(n => {
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  if(STATE.phaseIdx > 0){
+    var f = FRAMEWORKS[STATE.framework];
+    ctx.save();
+    var ax = 0.05*W, ay = H - 150, aw = 0.55*W, ah = 120;
+    ctx.fillStyle = 'rgba(30,15,50,0.9)';
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#d8b4fe';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 ' + f.title, ax + 8, ay + 16);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('Goal: ' + STATE.goal.toUpperCase() + ' | Timeline: ' + STATE.timeline + 'm', ax + 8, ay + 36);
+    ctx.fillText('Domains: ' + STATE.domains + ' | Components: ' + STATE.components, ax + 8, ay + 52);
+    ctx.fillText('Controls: ' + STATE.controls + ' | CapEx: $' + STATE.cost + 'M', ax + 8, ay + 68);
+    ctx.fillText('Coverage: ' + STATE.coverage + '% | Gaps: ' + STATE.gaps, ax + 8, ay + 84);
+    ctx.fillStyle = STATE.maturity >= 3.5 ? '#4ade80' : STATE.maturity >= 2.5 ? '#fcd34d' : '#fca5a5';
+    ctx.fillText('Maturity: ' + STATE.maturity.toFixed(1) + '/5 | Posture: ' + STATE.posture, ax + 8, ay + 100);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('SABSA: business-driven security architecture (6 layers × 6 questions)', 12, H - 74);
+  ctx.fillText('TOGAF: enterprise architecture (Business → IS → Tech → Governance)', 12, H - 62);
+  ctx.fillText('Zero Trust: no implicit trust; verify identity + device + context', 12, H - 50);
+  ctx.fillText('SASE: converge network + security as cloud service', 12, H - 38);
+  ctx.fillText('SABSA · TOGAF · NIST SP 800-207 · ISO 27001 · CSA', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeFramework').textContent = STATE.framework.toUpperCase();
+  document.getElementById('badgeGoal').textContent = STATE.goal.toUpperCase();
+  document.getElementById('badgePhase').textContent = PHASES[STATE.phaseIdx-1] || 'IDLE';
+  document.getElementById('badgeMaturity').textContent = STATE.maturity.toFixed(1);
+
+  document.getElementById('mDomainsVal').textContent = STATE.domains;
+  document.getElementById('mComponentsVal').textContent = STATE.components;
+  document.getElementById('mControlsVal').textContent = STATE.controls;
+  document.getElementById('mCostVal').textContent = '$' + STATE.cost + 'M';
+  document.getElementById('mCoverageVal').textContent = STATE.coverage + '%';
+  document.getElementById('mGapsVal').textContent = STATE.gaps;
+  document.getElementById('mMaturityVal').textContent = STATE.maturity.toFixed(1);
+  document.getElementById('mPostureVal').textContent = STATE.posture;
+
+  document.getElementById('mCoverage').className = 'metric' + (STATE.coverage < 40 ? ' bad' : STATE.coverage < 70 ? ' warn' : ' ok');
+  document.getElementById('mGaps').className = 'metric' + (STATE.gaps > 5 ? ' bad' : STATE.gaps > 0 ? ' warn' : ' ok');
+  document.getElementById('mPosture').className = 'metric' + (STATE.posture === 'STRONG' ? ' ok' : STATE.posture === 'MEDIUM' ? ' warn' : STATE.posture === 'WEAK' ? ' bad' : '');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach((p,i) => {
+    var el = document.getElementById('ap-' + p);
+    if(!el) return;
+    el.className = 'arch-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var f = FRAMEWORKS[STATE.framework];
+
+  switch(phase){
+    case 'BUSINESS':
+      addFeed('BUSINESS', 'Business layer: capture ' + STATE.org + ' drivers: ' + STATE.drivers + '. Business requirements + risk appetite (' + Math.round(STATE.appetite*100) + '%). Stakeholders: CEO, CFO, CISO, CIO, Legal, Business Units. Success metrics defined.', 'info');
+      break;
+
+    case 'CONCEPT':
+      addFeed('CONCEPT', 'Concept layer: derive security concepts from business. ' + (STATE.goal === 'zt-migration' ? 'Zero Trust: identity as perimeter, micro-segmentation, per-request authz.' : STATE.goal === 'sase-adopt' ? 'SASE: converge network + security, cloud-delivered, identity-driven.' : STATE.goal === 'compliance' ? 'Compliance: ISO 27001 ISMS, SOC 2 TSC, control mapping.' : STATE.goal === 'ot-it' ? 'OT/IT convergence: ISA/IEC 62443 zones + conduits, unidirectional gateways.' : 'Modernization: cloud-native security, IaC, DevSecOps.') + ' Architecture principles documented as ADRs.', 'concept');
+      break;
+
+    case 'SYSTEM':
+      STATE.domains = 4 + Math.floor(Math.random() * 4);
+      STATE.components = 12 + Math.floor(Math.random() * 20);
+      addFeed('SYSTEM', 'System layer: ' + STATE.domains + ' security domains defined (Identity, Data, Network, Application, Endpoint, Cloud, OT, Third-party). ' + STATE.components + ' logical components. Data classification + flow mapping.', 'info');
+      addCommandFeed('domain-model --framework ' + STATE.framework,
+        'Domains: ' + STATE.domains + '\n' +
+        'Components: ' + STATE.components + '\n' +
+        'Data flows mapped: yes\n' +
+        'Trust boundaries: defined');
+      break;
+
+    case 'TECH':
+      STATE.controls = 20 + Math.floor(Math.random() * 40);
+      STATE.cost = 2 + Math.floor(Math.random() * 8);
+      addFeed('TECH', 'Technology layer: ' + STATE.controls + ' controls selected. Reference architecture — cloud (AWS/Azure), IdP (Entra/Okta), EDR (CrowdStrike/Defender), SIEM (Splunk/Sentinel), ZTNA (Zscaler/Cloudflare). CapEx estimate: $' + STATE.cost + 'M.', 'info');
+      break;
+
+    case 'COMPONENT':
+      addFeed('COMPONENT', 'Component layer: specific products + configurations. Each component has: owner, SLA, integration points, security baseline. Component reuse where possible to reduce attack surface. Vendor consolidation strategy.', 'info');
+      break;
+
+    case 'OPERATIONS':
+      var posture;
+      var score = STATE.controls + STATE.domains * 3;
+      STATE.coverage = Math.min(100, 30 + STATE.controls);
+      STATE.gaps = Math.max(0, 10 - STATE.domains);
+      STATE.maturity = Math.min(5, 2 + STATE.domains * 0.3 + (STATE.controls / 20));
+      if(STATE.coverage >= 70 && STATE.maturity >= 3.5) posture = 'STRONG';
+      else if(STATE.coverage >= 40 && STATE.maturity >= 2.5) posture = 'MEDIUM';
+      else posture = 'WEAK';
+      STATE.posture = posture;
+
+      addFeed('OPERATIONS', 'Operations layer: runbooks, monitoring, incident response, change management. Architecture transitions through phases with governance gates. Posture: ' + posture + '. Coverage: ' + STATE.coverage + '% | Maturity: ' + STATE.maturity.toFixed(1) + '/5.', posture === 'STRONG' ? 'ok' : posture === 'MEDIUM' ? 'warn' : 'error');
+      addFeed('DEFENSE', 'Advanced architecture best practices: (1) Business-driven (SABSA). (2) Iterative (TOGAF ADM). (3) Zero Trust by default (NIST SP 800-207). (4) Convergence where it makes sense (SASE). (5) Sector-specific standards (ISA/IEC 62443 for OT, PCI DSS for card). (6) Reference architectures + patterns. (7) Document as ADRs. (8) Involve stakeholders early. (9) Plan phased rollout with business value at each step. (10) Measure effectiveness + iterate. (11) Account for regulatory + legal constraints. (12) Consider TCO over 5 years, not just year 1.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.domains = 0;
+  STATE.components = 0;
+  STATE.controls = 0;
+  STATE.cost = 0;
+  STATE.coverage = 0;
+  STATE.gaps = 0;
+  STATE.maturity = 2.5;
+  STATE.posture = '—';
+  STATE.events = [];
+  PHASES.forEach(p => { var el = document.getElementById('ap-' + p); if(el) el.className = 'arch-phase'; });
+  STATE.nodes.forEach(n => { n.glow = 0; });
+  addFeed('RESET', 'Architecture design reset.', 'info');
+  termWrite('reset --all\n[+] Design state cleared.');
+}
+
+document.getElementById('frameworkSelect').addEventListener('change', e => {
+  STATE.framework = e.target.value;
+  var f = FRAMEWORKS[STATE.framework];
+  addFeed('FRAMEWORK', f.title + ': ' + f.detail, 'concept');
+});
+document.getElementById('goalSelect').addEventListener('change', e => {
+  STATE.goal = e.target.value;
+  addFeed('GOAL', 'Design goal: ' + STATE.goal.toUpperCase() + '.', 'info');
+});
+document.getElementById('orgInput').addEventListener('input', e => { STATE.org = e.target.value; });
+document.getElementById('driversInput').addEventListener('input', e => { STATE.drivers = e.target.value; });
+
+document.getElementById('appetiteSlider').addEventListener('input', e => {
+  STATE.appetite = parseInt(e.target.value) / 100;
+  document.getElementById('appetiteVal').textContent = e.target.value + '%';
+});
+document.getElementById('invSlider').addEventListener('input', e => {
+  STATE.investment = parseInt(e.target.value);
+  var amounts = [1, 2, 5, 10, 20, 50];
+  var amount = amounts[Math.floor(STATE.investment / 20)];
+  document.getElementById('invVal').textContent = '$' + amount + 'M / yr';
+});
+document.getElementById('timelineSlider').addEventListener('input', e => {
+  STATE.timeline = parseInt(e.target.value);
+  var months = Math.max(6, Math.round(6 + STATE.timeline * 0.36));
+  STATE.timeline = months;
+  document.getElementById('timelineVal').textContent = months + ' months';
+});
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.domains = 0;
+  STATE.components = 0;
+  STATE.controls = 0;
+  STATE.cost = 0;
+  STATE.coverage = 0;
+  STATE.gaps = 0;
+  STATE.maturity = 2.5;
+  STATE.posture = '—';
+  STATE.nodes.forEach(n => { n.glow = 0; });
+  addFeed('DESIGN', 'Designing architecture using ' + FRAMEWORKS[STATE.framework].title + ' for ' + STATE.org, 'info');
+  var interval = setInterval(() => {
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+    if(STATE.phaseIdx >= 6){ clearInterval(interval); STATE.running = false; }
+  }, 1500);
+});
+
+document.getElementById('stepBtn').addEventListener('click', () => {
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('gapBtn').addEventListener('click', () => {
+  var gaps = ['Missing PAM for privileged accounts','No CASB for SaaS shadow IT','OT network not segmented from IT','Third-party risk assessment incomplete','DR site not tested in 12 months','No SBOM for software supply chain','Cloud IAM over-permissive roles','Incident response playbook outdated'];
+  var n = Math.min(3, STATE.gaps || 3);
+  for(let i = 0; i < n; i++){
+    addFeed('GAP', 'Gap identified: ' + gaps[i % gaps.length], 'warn');
+  }
+});
+
+document.getElementById('roadmapBtn').addEventListener('click', () => {
+  addFeed('ROADMAP', 'Phased roadmap: Phase 1 (0-6m) Quick wins — MFA everywhere, EDR rollout, log centralization. Phase 2 (6-12m) Foundation — Zero Trust identity, network segmentation, DLP. Phase 3 (12-24m) Optimization — SASE, cloud-native, automation. Phase 4 (24-36m) Continuous — threat hunting, red team, architecture review.', 'ok');
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

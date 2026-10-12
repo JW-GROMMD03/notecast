@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buffer Overflow — Stack Smashing & Memory Corruption Teaching Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--green-lt);
+    text-shadow:0 0 8px rgba(34,197,94,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--green); color:var(--green-lt); }
+  .header-actions button.active{
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--green); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--green); cursor:pointer; box-shadow:0 0 7px rgba(34,197,94,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--green); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:var(--green-lt); font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--green); color:var(--green-lt); }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f2a18,#0a1a10);
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(34,197,94,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.danger:hover{ background:#2a0f0f; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.warn:hover{ background:#2a1f0f; }
+  button.act.pulse{ animation:pulseBtn 1.4s infinite; }
+  @keyframes pulseBtn{
+    0%,100%{ box-shadow:0 0 6px rgba(34,197,94,.3); }
+    50%{ box-shadow:0 0 18px rgba(34,197,94,.7); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--green-lt); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .bo-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .bo-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .bo-phase.done{ border-color:var(--green); color:var(--green-lt);
+    background:rgba(34,197,94,.12); }
+  .bo-phase.active{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.15); box-shadow:0 0 10px rgba(34,211,238,.4);
+    animation:kcPulse 1.2s infinite; }
+  @keyframes kcPulse{ 50%{ box-shadow:0 0 16px rgba(34,211,238,.7); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>BUFFER OVERFLOW</h1>
+    <span class="sub">STACK SMASHING · ROP · ASLR · CWE-120/CWE-787 · MITRE T1203</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Vulnerability</h3>
+      <select id="vulnSelect">
+        <option value="stack">Stack overflow (strcpy)</option>
+        <option value="heap">Heap overflow (malloc)</option>
+        <option value="fmt">Format string (%n)</option>
+        <option value="int">Integer overflow</option>
+      </select>
+      <label class="ctl-label">Binary mitigations</label>
+      <select id="mitigSelect">
+        <option value="none">NONE — 1990s buffer</option>
+        <option value="dep">DEP / NX only</option>
+        <option value="aslr">ASLR only</option>
+        <option value="canary">Stack canary only</option>
+        <option value="full">Full: DEP + ASLR + Canary + RELRO</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Payload</h3>
+      <label class="ctl-label">Buffer size (bytes)</label>
+      <input type="text" id="bufsizeInput" value="64">
+      <label class="ctl-label">Overflow padding</label>
+      <textarea id="payloadInput" placeholder="A*64 + return_addr">AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</textarea>
+      <label class="ctl-label">Return address (hex)</label>
+      <input type="text" id="retAddrInput" value="0x7fffffffe4d0">
+      <div class="preset-row">
+        <button type="button" class="preset-btn" data-preset="crash">Crash</button>
+        <button type="button" class="preset-btn" data-preset="shellcode">Shellcode</button>
+        <button type="button" class="preset-btn" data-preset="rop">ROP chain</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Overflow length <span class="slider-val" id="lenVal">80</span></label>
+      <input type="range" id="lenSlider" min="0" max="200" value="80">
+      <label class="ctl-label">EIP offset <span class="slider-val" id="eipVal">72</span></label>
+      <input type="range" id="eipSlider" min="0" max="120" value="72">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ OVERFLOW</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="canaryBtn">🐤 CANARY</button>
+        <button type="button" class="act" id="aslrBtn">🎲 ASLR</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">gdb-peda$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Memory corruption exploitation of unauthorized systems is a federal crime.</div>
+    <div class="status-badges">
+      <div class="status-badge">VULN: <b id="badgeVuln">STACK</b></div>
+      <div class="status-badge">MITIG: <b id="badgeMitig">NONE</b></div>
+      <div class="status-badge">EIP: <b id="badgeEip">0x41414141</b></div>
+      <div class="status-badge">STATE: <b id="badgeState">NORMAL</b></div>
+    </div>
+    <div class="bo-chain" id="boChain">
+      <div class="bo-phase" id="bp-RECV">RECV INPUT</div>
+      <div class="bo-phase" id="bp-COPY">STRCPY</div>
+      <div class="bo-phase" id="bp-OVERFLOW">OVERFLOW</div>
+      <div class="bo-phase" id="bp-CONTROL">CONTROL EIP</div>
+      <div class="bo-phase" id="bp-EXEC">EXEC</div>
+      <div class="bo-phase" id="bp-SHELL">SHELL</div>
+    </div>
+    <div class="footer-overlay">CWE-120 · CWE-787 · MITRE T1203 · NIST SP 800-53 SI-16</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric" id="mBuf"><div class="m-label">Buffer</div><div class="m-value" id="mBufVal">64</div></div>
+      <div class="metric" id="mWritten"><div class="m-label">Written</div><div class="m-value" id="mWrittenVal">0</div></div>
+      <div class="metric" id="mOffset"><div class="m-label">EIP Offset</div><div class="m-value" id="mOffsetVal">72</div></div>
+      <div class="metric" id="mCanary"><div class="m-label">Canary</div><div class="m-value" id="mCanaryVal">NONE</div></div>
+      <div class="metric" id="mAslr"><div class="m-label">ASLR</div><div class="m-value" id="mAslrVal">OFF</div></div>
+      <div class="metric" id="mDep"><div class="m-label">DEP/NX</div><div class="m-value" id="mDepVal">OFF</div></div>
+      <div class="metric" id="mCrash"><div class="m-label">Crash</div><div class="m-value" id="mCrashVal">NO</div></div>
+      <div class="metric" id="mShell"><div class="m-label">Shell</div><div class="m-value" id="mShellVal">NO</div></div>
+    </div>
+    <div class="info-card">
+      <b>Buffer overflow — writing past allocated memory (CWE-120).</b><br>
+      <span class="eq">Stack layout: [local vars][saved EBP][return addr][args]</span><br>
+      <span class="eq">Overflow: fill buffer → overwrite saved EBP → overwrite EIP</span><br>
+      <span class="eq">Defense: bounds checks, canary, ASLR, DEP, SafeStack</span><br>
+      <span style="color:var(--purple)">CWE-787 · MITRE T1203 · Aleph One (Phrack 49)</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  vuln:'stack',
+  mitig:'none',
+  bufSize:64,
+  written:0,
+  eipOffset:72,
+  retAddr:'0x7fffffffe4d0',
+  padding:'',
+  crash:false,
+  shell:false,
+  canary:false,
+  aslr:false,
+  dep:false,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['RECV','COPY','OVERFLOW','CONTROL','EXEC','SHELL'];
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">gdb-peda$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Buffer overflow exploitation is a dual-use skill. Understanding memory corruption is essential for defensive work — writing secure C, configuring compiler mitigations, and analyzing exploits. However, exploiting memory corruption in systems you do not own or have written authorization to test is illegal under the CFAA (US), Computer Misuse Act (UK), and equivalent laws worldwide. In bug bounties, PoC exploits must demonstrate impact without harming production.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'A buffer overflow occurs when a program writes more data to a fixed-size buffer than it can hold. On the stack, this overwrites adjacent memory — including the saved frame pointer and the return address (EIP/RIP). If an attacker controls EIP, they can redirect execution to shellcode (if writable+executable) or to a ROP gadget (if DEP is enabled). Modern mitigations: stack canaries, ASLR, DEP/NX, RELRO.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('gdb-peda$ checksec ./vuln\n' +
+      '    Arch:     amd64-64-little\n' +
+      '    RELRO:    Partial RELRO\n' +
+      '    Stack:    No canary found\n' +
+      '    NX:       NX disabled\n' +
+      '    PIE:      No PIE (0x400000)\n' +
+      '    RWX:      Has RWX segments');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Vulnerability: ' + STATE.vuln.toUpperCase() + '. Mitigations: ' + STATE.mitig.toUpperCase() + '. Buffer: ' + STATE.bufSize + ' bytes. Click OVERFLOW to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawStackFrame(W*0.5, H*0.35);
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Stack grows DOWN (high addr → low addr)', 12, H - 62);
+  ctx.fillText('Buffer overflow overwrites higher addresses first', 12, H - 50);
+  ctx.fillText('EIP = return address = attacker control point', 12, H - 38);
+  ctx.fillText('Defense: canary before EIP, ASLR randomizes addrs', 12, H - 26);
+  ctx.restore();
+}
+
+function drawStackFrame(cx, cy){
+  var W = canvas.width;
+  var boxW = 240, boxH = 40;
+  var stackX = cx - boxW/2;
+  var labels = ['argv[]', 'argc', 'return addr (EIP)', 'saved EBP', 'buffer[64]', 'local var1', 'local var2'];
+  var offsets = [0, 1, 2, 3, 4, 5, 6];
+  var overflowReached = STATE.written > STATE.bufSize;
+
+  ctx.save();
+  ctx.font = 'bold 10px "Courier New",monospace';
+  ctx.fillStyle = '#22d3ee';
+  ctx.textAlign = 'center';
+  ctx.fillText('STACK FRAME (grows down)', cx, cy - 20);
+
+  labels.forEach(function(label, i){
+    var by = cy + i * (boxH + 4);
+    var isBuffer = label.indexOf('buffer') !== -1;
+    var isEIP = label.indexOf('EIP') !== -1;
+    var isEBP = label.indexOf('EBP') !== -1;
+
+    var fillColor = 'rgba(7,10,20,0.9)';
+    var borderColor = '#1e293b';
+
+    if(isBuffer && overflowReached){
+      fillColor = 'rgba(239,68,68,0.3)';
+      borderColor = '#ef4444';
+    }
+    if(isEIP && STATE.crash){
+      fillColor = 'rgba(239,68,68,0.5)';
+      borderColor = '#ef4444';
+    }
+    if(isEBP && overflowReached){
+      fillColor = 'rgba(245,158,11,0.3)';
+      borderColor = '#f59e0b';
+    }
+
+    ctx.fillStyle = fillColor;
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 2;
+    ctx.fillRect(stackX, by, boxW, boxH);
+    ctx.strokeRect(stackX, by, boxW, boxH);
+
+    ctx.font = 'bold 9px "Courier New",monospace';
+    ctx.fillStyle = isEIP && STATE.crash ? '#fca5a5' : (isBuffer && overflowReached ? '#fca5a5' : '#cbd5e1');
+    ctx.textAlign = 'left';
+    ctx.fillText(label, stackX + 6, by + 16);
+
+    var valText = '';
+    if(isBuffer){
+      var shown = Math.min(STATE.written, STATE.bufSize);
+      valText = '[' + shown + '/' + STATE.bufSize + ' bytes]';
+      if(overflowReached) valText = 'OVERFLOW! ' + (STATE.written - STATE.bufSize) + ' bytes past';
+    } else if(isEIP){
+      valText = STATE.crash ? '0x41414141  ← CRASH' : '0x7fff...e4d0';
+    } else if(isEBP){
+      valText = overflowReached ? '0x41414141' : '0x7fff...e520';
+    } else {
+      valText = '0x' + (0x7fff0000 + i * 0x100).toString(16);
+    }
+    ctx.font = '8px "Courier New",monospace';
+    ctx.fillStyle = isEIP && STATE.crash ? '#ef4444' : '#94a3b8';
+    ctx.fillText(valText, stackX + 6, by + 32);
+  });
+
+  // Arrow to EIP
+  ctx.strokeStyle = '#ef4444';
+  ctx.lineWidth = 2;
+  var eipY = cy + 2 * (boxH + 4) + boxH/2;
+  ctx.beginPath();
+  ctx.moveTo(stackX - 60, eipY);
+  ctx.lineTo(stackX - 5, eipY);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(stackX - 5, eipY);
+  ctx.lineTo(stackX - 12, eipY - 5);
+  ctx.lineTo(stackX - 12, eipY + 5);
+  ctx.closePath();
+  ctx.fillStyle = '#ef4444';
+  ctx.fill();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = '#ef4444';
+  ctx.textAlign = 'right';
+  ctx.fillText('EIP', stackX - 65, eipY + 3);
+
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeVuln').textContent = STATE.vuln.toUpperCase();
+  document.getElementById('badgeMitig').textContent = STATE.mitig.toUpperCase();
+  document.getElementById('badgeEip').textContent = STATE.crash ? '0x41414141' : '0x7fff...e4d0';
+  document.getElementById('badgeState').textContent = STATE.shell ? 'SHELL' : (STATE.crash ? 'CRASHED' : 'NORMAL');
+
+  document.getElementById('mBufVal').textContent = STATE.bufSize;
+  document.getElementById('mWrittenVal').textContent = STATE.written;
+  document.getElementById('mOffsetVal').textContent = STATE.eipOffset;
+  document.getElementById('mCanaryVal').textContent = STATE.canary ? 'ACTIVE' : 'NONE';
+  document.getElementById('mAslrVal').textContent = STATE.aslr ? 'ON' : 'OFF';
+  document.getElementById('mDepVal').textContent = STATE.dep ? 'ON' : 'OFF';
+  document.getElementById('mCrashVal').textContent = STATE.crash ? 'YES' : 'NO';
+  document.getElementById('mShellVal').textContent = STATE.shell ? 'YES' : 'NO';
+
+  document.getElementById('mCrash').className = 'metric' + (STATE.crash ? ' bad' : '');
+  document.getElementById('mShell').className = 'metric' + (STATE.shell ? ' bad' : '');
+  document.getElementById('mCanary').className = 'metric' + (STATE.canary ? '' : ' warn');
+  document.getElementById('mAslr').className = 'metric' + (STATE.aslr ? '' : ' warn');
+  document.getElementById('mDep').className = 'metric' + (STATE.dep ? '' : ' warn');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('bp-' + p);
+    if(!el) return;
+    el.className = 'bo-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  switch(phase){
+    case 'RECV':
+      addFeed('RECV', 'Program receives input via read() / recv() / fgets(). Input length is NOT validated before being passed to the vulnerable function.', 'info');
+      addCommandFeed('./vuln AAAA', 'Please enter your name: ');
+      break;
+    case 'COPY':
+      addFeed('COPY', 'Vulnerable function strcpy(dest, src) copies input byte-by-byte into buffer[' + STATE.bufSize + '] WITHOUT bounds check. Once dest is full, bytes spill into adjacent memory.', 'warn');
+      addCommandFeed('objdump -d ./vuln | grep -A 20 "<vuln>"',
+        '...\n' +
+        '  4005b6:  lea    -0x40(%rbp),%rax   ; buffer[64]\n' +
+        '  4005ba:  mov    %rax,%rdi\n' +
+        '  4005bd:  call   400480 <strcpy@plt>   ; NO bounds check!\n' +
+        '...');
+      break;
+    case 'OVERFLOW': {
+      var payload = '';
+      for(var i=0;i<STATE.written;i++) payload += 'A';
+      STATE.written = Math.min(200, STATE.written + 20);
+      if(STATE.written > STATE.bufSize){
+        addFeed('OVERFLOW', 'Buffer exceeded! ' + (STATE.written - STATE.bufSize) + ' bytes spilled past buffer[' + STATE.bufSize + ']. Overflowing into saved EBP and return address.', 'error');
+      } else {
+        addFeed('OVERFLOW', 'Wrote ' + STATE.written + ' bytes into buffer[' + STATE.bufSize + ']. Still within bounds.', 'info');
+      }
+      break;
+    }
+    case 'CONTROL':
+      if(STATE.canary){
+        addFeed('DEFENSE', 'STACK CANARY DETECTED. The canary value (random 8 bytes placed before saved EBP) was overwritten. __stack_chk_fail() called — program aborts BEFORE returning. Attack fails. Canary value: 0x00efcdab90785634.', 'ok');
+        STATE.running = false;
+        return;
+      }
+      if(STATE.aslr && STATE.mitig !== 'none'){
+        addFeed('DEFENSE', 'ASLR ACTIVE. The stack address 0x7fffffffe4d0 is randomized on each run — the attacker cannot reliably predict where to return. Attack fails without an info leak.', 'ok');
+        STATE.running = false;
+        return;
+      }
+      STATE.crash = true;
+      addFeed('CONTROL', 'Return address (EIP) overwritten with 0x41414141 (AAAA). When the function returns, CPU jumps to address 0x41414141 — SEGFAULT. This is the crash PoC. To exploit, replace AAAA with the address of shellcode or a ROP gadget.', 'error');
+      addCommandFeed('gdb-peda$ run < payload.bin',
+        'Program received signal SIGSEGV, Segmentation fault.\n' +
+        'EIP: 0x41414141 ("AAAA")\n' +
+        'ESP: 0xffffd5e0\n' +
+        'Backtrace: #0 0x41414141 in ?? ()');
+      break;
+    case 'EXEC':
+      if(STATE.dep){
+        addFeed('DEFENSE', 'DEP/NX BLOCKED EXECUTION. The stack is not executable — shellcode placed on the stack cannot run. Attacker must use Return-Oriented Programming (ROP): chain together existing code gadgets to call system("/bin/sh").', 'warn');
+        addFeed('ROP', 'ROP chain: pop rdi; ret → addr("/bin/sh") → system@plt. Each "gadget" ends in ret, chaining through existing executable memory. Bypasses DEP without needing writable+executable memory.', 'concept');
+      } else {
+        addFeed('EXEC', 'No DEP — stack is executable (RWE segment). Attacker can place shellcode in the buffer and jump to it. Classic Smashing the Stack (Aleph One, Phrack 49, 1996).', 'error');
+      }
+      break;
+    case 'SHELL':
+      if(!STATE.canary && !STATE.aslr && !STATE.crash){
+        STATE.shell = true;
+        addFeed('SHELL', 'SHELL OBTAINED. Attacker now has interactive command execution as the vulnerable process user. Typical next steps: privilege escalation, lateral movement, persistence.', 'error');
+        addCommandFeed('(shell) $ id',
+          'uid=1000(www-data) gid=1000(www-data) groups=1000(www-data)\n' +
+          '(shell) $ whoami\n' +
+          'www-data');
+      } else if(STATE.crash){
+        addFeed('SHELL', 'No shell — program crashed before executing attacker code. The PoC demonstrates control of EIP but lacks a valid target address.', 'warn');
+      }
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.written = 0;
+  STATE.crash = false;
+  STATE.shell = false;
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('bp-' + p); if(el) el.className = 'bo-phase'; });
+  addFeed('RESET', 'Program state reset. Buffer emptied. Ready for new run.', 'info');
+  termWrite('reset --all\n[+] State cleared.');
+}
+
+document.getElementById('vulnSelect').addEventListener('change', function(e){
+  STATE.vuln = e.target.value;
+  var info = {
+    stack:'Stack overflow: overwrite saved EBP and return address. Classic, most common.',
+    heap:'Heap overflow: overwrite heap metadata (malloc chunks), leading to arbitrary write via unlink.',
+    fmt:'Format string: user input as format arg to printf. %x leaks stack, %n writes to arbitrary address.',
+    int:'Integer overflow: arithmetic wraps (e.g., 255+1=0), leading to undersized allocation and heap overflow.'
+  };
+  addFeed('VULN', 'Vulnerability: ' + STATE.vuln.toUpperCase() + '. ' + info[STATE.vuln], 'warn');
+});
+
+document.getElementById('mitigSelect').addEventListener('change', function(e){
+  STATE.mitig = e.target.value;
+  STATE.canary = (STATE.mitig === 'canary' || STATE.mitig === 'full');
+  STATE.aslr = (STATE.mitig === 'aslr' || STATE.mitig === 'full');
+  STATE.dep = (STATE.mitig === 'dep' || STATE.mitig === 'full');
+  addFeed('MITIG', 'Mitigations: ' + STATE.mitig.toUpperCase() + '. Canary: ' + (STATE.canary ? 'ON' : 'OFF') + '. ASLR: ' + (STATE.aslr ? 'ON' : 'OFF') + '. DEP: ' + (STATE.dep ? 'ON' : 'OFF') + '.', STATE.mitig === 'full' ? 'ok' : 'info');
+});
+
+document.getElementById('bufsizeInput').addEventListener('change', function(e){
+  STATE.bufSize = parseInt(e.target.value) || 64;
+  addFeed('BUF', 'Buffer size set to ' + STATE.bufSize + ' bytes.', 'info');
+});
+document.getElementById('retAddrInput').addEventListener('change', function(e){
+  STATE.retAddr = e.target.value;
+});
+
+var presetBtns = document.querySelectorAll('.preset-btn');
+for(var pb = 0; pb < presetBtns.length; pb++){
+  (function(btn){
+    btn.addEventListener('click', function(){
+      var p = btn.dataset.preset;
+      if(p === 'crash'){
+        STATE.written = STATE.bufSize + 8;
+        STATE.crash = true;
+        addFeed('PRESET', 'Crash PoC: fill buffer, overwrite EIP with 0x41414141. Confirms the overflow exists.', 'warn');
+      } else if(p === 'shellcode'){
+        STATE.written = STATE.bufSize + 16;
+        addFeed('PRESET', 'Shellcode payload: 25-byte execve("/bin/sh") + NOP sled + return address pointing to buffer. Requires stack to be executable (no DEP).', 'error');
+      } else if(p === 'rop'){
+        addFeed('PRESET', 'ROP chain: pop rdi; ret → "/bin/sh" string → system@plt. Bypasses DEP by chaining existing code.', 'warn');
+      }
+    });
+  })(presetBtns[pb]);
+}
+
+document.getElementById('lenSlider').addEventListener('input', function(e){
+  STATE.written = parseInt(e.target.value);
+  document.getElementById('lenVal').textContent = e.target.value;
+});
+document.getElementById('eipSlider').addEventListener('input', function(e){
+  STATE.eipOffset = parseInt(e.target.value);
+  document.getElementById('eipVal').textContent = e.target.value;
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.written = 0;
+  STATE.crash = false;
+  STATE.shell = false;
+  addFeed('OVERFLOW', 'Starting buffer overflow against ./vuln. Buffer size: ' + STATE.bufSize + '. Mitigations: ' + STATE.mitig.toUpperCase() + '.', 'warn');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1200);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('canaryBtn').addEventListener('click', function(){
+  STATE.canary = !STATE.canary;
+  this.classList.toggle('active', STATE.canary);
+  if(STATE.canary){
+    addFeed('DEFENSE', 'Stack canary ENABLED (-fstack-protector-strong). A random 8-byte value is placed between the buffer and saved EBP. On return, the value is checked — mismatch aborts the program via __stack_chk_fail(). Bypass requires an info leak to read the canary first.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Stack canary DISABLED.', 'warn');
+  }
+});
+
+document.getElementById('aslrBtn').addEventListener('click', function(){
+  STATE.aslr = !STATE.aslr;
+  this.classList.toggle('active', STATE.aslr);
+  if(STATE.aslr){
+    addFeed('DEFENSE', 'ASLR ENABLED (/proc/sys/kernel/randomize_va_space=2). Stack, heap, libraries, and mmap regions are randomized at each exec. Attacker cannot hardcode return addresses. Bypass requires an info leak (format string, use-after-free).', 'ok');
+  } else {
+    addFeed('DEFENSE', 'ASLR DISABLED.', 'warn');
+  }
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

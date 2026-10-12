@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Serverless Security — Lambda/Cloud Functions Attack &amp; Defense Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:#fcd34d;
+    text-shadow:0 0 8px rgba(245,158,11,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:#fcd34d; color:#fcd34d; }
+  .header-actions button.active{
+    border-color:#fcd34d; color:#fcd34d;
+    box-shadow:0 0 10px rgba(245,158,11,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:#fcd34d; }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:#fcd34d; cursor:pointer; box-shadow:0 0 7px rgba(245,158,11,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:#fcd34d; cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#fcd34d; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:#fcd34d; color:#fcd34d; }
+  button.act.primary{
+    background:linear-gradient(180deg,#2a1f0f,#1a1406);
+    border-color:#fcd34d; color:#fcd34d;
+    box-shadow:0 0 10px rgba(245,158,11,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(245,158,11,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulseAmber 1.4s infinite; }
+  @keyframes pulseAmber{
+    0%,100%{ box-shadow:0 0 6px rgba(245,158,11,.3); }
+    50%{ box-shadow:0 0 18px rgba(245,158,11,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.amber .m-value{ color:#fcd34d; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#fcd34d; }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .sls-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .sls-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .sls-phase.done{ border-color:#fcd34d; color:#fcd34d;
+    background:rgba(245,158,11,.12); }
+  .sls-phase.active{ border-color:#fcd34d; color:#fcd34d;
+    background:rgba(245,158,11,.2); box-shadow:0 0 10px rgba(245,158,11,.6);
+    animation:kcAmber 1.2s infinite; }
+  @keyframes kcAmber{ 50%{ box-shadow:0 0 16px rgba(245,158,11,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>SERVERLESS SECURITY</h1>
+    <span class="sub">LAMBDA · CLOUD FUNCTIONS · EVENT INJECTION · MITRE T1648 · OWASP SERVERLESS TOP 10</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Runtime</h3>
+      <select id="runtimeSelect">
+        <option value="aws">AWS Lambda + API Gateway</option>
+        <option value="azure">Azure Functions</option>
+        <option value="gcp">Google Cloud Functions</option>
+        <option value="cloudflare">Cloudflare Workers</option>
+        <option value="knative">Knative / OpenFaaS</option>
+      </select>
+      <label class="ctl-label">Vulnerability class</label>
+      <select id="vulnSelect">
+        <option value="event">Event injection (T1648)</option>
+        <option value="iam">Over-permissive IAM role</option>
+        <option value="rce">Remote code execution (dependency)</option>
+        <option value="env">Env var secret leakage</option>
+        <option value="dos">Billion laughs / ReDoS</option>
+        <option value="ssrf">SSRF via event data</option>
+        <option value="coldstart">Cold start side-channel</option>
+        <option value="depconf">Dependency confusion (supply chain)</option>
+        <option value="logging">Log injection / credential leak</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Function Context</h3>
+      <label class="ctl-label">Function name</label>
+      <input type="text" id="fnInput" value="payment-processor-prod">
+      <label class="ctl-label">Runtime</label>
+      <select id="langSelect">
+        <option value="node18">Node.js 18.x</option>
+        <option value="python311">Python 3.11</option>
+        <option value="go121">Go 1.21</option>
+        <option value="java17">Java 17</option>
+      </select>
+      <label class="ctl-label">Trigger</label>
+      <select id="triggerSelect">
+        <option value="apigw">API Gateway (HTTPS)</option>
+        <option value="s3">S3 event (object created)</option>
+        <option value="sqs">SQS queue</option>
+        <option value="dynamodb">DynamoDB stream</option>
+        <option value="eventbridge">EventBridge schedule</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Timeout (s) <span class="slider-val" id="toVal">30</span></label>
+      <input type="range" id="toSlider" min="1" max="900" value="30">
+      <label class="ctl-label">Memory (MB) <span class="slider-val" id="memVal">512</span></label>
+      <input type="range" id="memSlider" min="128" max="10240" value="512">
+      <label class="ctl-label">Concurrent invocations <span class="slider-val" id="concVal">100</span></label>
+      <input type="range" id="concSlider" min="1" max="1000" value="100">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ ATTACK</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="iamBtn">🔒 FIX IAM</button>
+        <button type="button" class="act ok" id="scaBtn">📦 SCA SCAN</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">pentester@serverless:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Serverless attacks on production functions cause outages and data breaches.</div>
+    <div class="status-badges">
+      <div class="status-badge">RUNTIME: <b id="badgeRuntime">AWS</b></div>
+      <div class="status-badge">VULN: <b id="badgeVuln">EVENT INJ</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+      <div class="status-badge">IMPACT: <b id="badgeImpact">NONE</b></div>
+    </div>
+    <div class="sls-chain" id="slsChain">
+      <div class="sls-phase" id="sp-RECON">RECON</div>
+      <div class="sls-phase" id="sp-TRIGGER">TRIGGER</div>
+      <div class="sls-phase" id="sp-INJECT">INJECT</div>
+      <div class="sls-phase" id="sp-EXEC">EXEC</div>
+      <div class="sls-phase" id="sp-LATERAL">LATERAL</div>
+      <div class="sls-phase" id="sp-EXFIL">EXFIL</div>
+    </div>
+    <div class="footer-overlay">MITRE T1648 (Serverless Execution) · OWASP Serverless Top 10 · AWS Well-Architected Security Pillar</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric amber" id="mInvocations"><div class="m-label">Invocations</div><div class="m-value" id="mInvocationsVal">0</div></div>
+      <div class="metric" id="mErrors"><div class="m-label">Errors</div><div class="m-value" id="mErrorsVal">0</div></div>
+      <div class="metric" id="mColdStarts"><div class="m-label">Cold Starts</div><div class="m-value" id="mColdStartsVal">0</div></div>
+      <div class="metric" id="mDuration"><div class="m-label">Duration</div><div class="m-value" id="mDurationVal">0ms</div></div>
+      <div class="metric" id="mCost"><div class="m-label">Cost</div><div class="m-value" id="mCostVal">$0</div></div>
+      <div class="metric" id="mLeaks"><div class="m-label">Leaks</div><div class="m-value" id="mLeaksVal">0</div></div>
+      <div class="metric" id="mRole"><div class="m-label">IAM Role</div><div class="m-value" id="mRoleVal">basic</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Status</div><div class="m-value" id="mDefenseVal">—</div></div>
+    </div>
+    <div class="info-card">
+      <b>Serverless — event-driven, ephemeral, ephemeral trust.</b><br>
+      <span class="eq">Event injection: control the event = control the input</span><br>
+      <span class="eq">IAM role abuse: over-permissive role = full account access</span><br>
+      <span class="eq">Env vars often leak secrets to logs / errors</span><br>
+      <span class="eq">Attack: invoke repeatedly → cost DoS, cold-start analysis</span><br>
+      <span style="color:var(--purple)">MITRE T1648 · OWASP Serverless Top 10 · AWS Lambda security</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  runtime:'aws',
+  vuln:'event',
+  fn:'payment-processor-prod',
+  lang:'node18',
+  trigger:'apigw',
+  timeout:30,
+  memory:512,
+  concurrency:100,
+  invocations:0,
+  errors:0,
+  coldStarts:0,
+  duration:0,
+  cost:0,
+  leaks:0,
+  role:'basic',
+  impact:'NONE',
+  iamFixed:false,
+  scaClean:false,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['RECON','TRIGGER','INJECT','EXEC','LATERAL','EXFIL'];
+
+var VULNS = {
+  event:{
+    title:'Event injection (T1648)',
+    detail:'Function trusts event fields (JSON, headers, S3 key names). Inject shell metachars, path traversal, or NoSQL operators. Examples: `{"user":"admin\' OR \'1\'=\'1"}`, S3 key `../../etc/passwd`.',
+    impact:'Data leak, RCE'
+  },
+  iam:{
+    title:'Over-permissive IAM role',
+    detail:'Function role has `*` permissions (e.g., s3:*, iam:*, lambda:*). Once the function is compromised via event injection, the attacker inherits those permissions. AWS 2019 Capital One breach: misconfigured Lambda role → 100M records.',
+    impact:'Full account takeover'
+  },
+  rce:{
+    title:'Remote code execution (dependency)',
+    detail:'Vulnerable npm/pip dependency (e.g., lodash prototype pollution, event-stream backdoor, log4j). Payload runs in the function runtime with all env vars and IAM role.',
+    impact:'RCE inside AWS'
+  },
+  env:{
+    title:'Env var secret leakage',
+    detail:'Secrets stored in env vars leak via: (1) error stack traces, (2) debug endpoints, (3) /proc/self/environ on misconfigured runtimes, (4) logs ingested to CloudWatch. Use Secrets Manager + KMS instead.',
+    impact:'Credential leak'
+  },
+  dos:{
+    title:'Billion laughs / ReDoS',
+    detail:'XML bomb (`<!ENTITY ...`) or regex catastrophic backtracking. Function times out, consumes max memory, generates cost. Repeated invocation = financial DoS.',
+    impact:'Cost + availability'
+  },
+  ssrf:{
+    title:'SSRF via event data',
+    detail:'Function fetches URL from event field. Attacker points to http://169.254.169.254/latest/meta-data/iam/security-credentials/ to steal the Lambda role credentials. Mitigated by IMDSv2 + URL allowlist.',
+    impact:'IAM credential theft'
+  },
+  coldstart:{
+    title:'Cold start side-channel',
+    detail:'Timing differences between cold and warm invocations leak information: (1) whether env changed, (2) whether previous invocation ran, (3) container reuse. Combined with other attacks can defeat isolation.',
+    impact:'Info disclosure'
+  },
+  depconf:{
+    title:'Dependency confusion (supply chain)',
+    detail:'Attacker publishes package with same name as internal one on public npm/pip. Build pipeline pulls the public (malicious) version. 2021 research by Alex Birsan affected Apple, Microsoft, Tesla.',
+    impact:'RCE in build + runtime'
+  },
+  logging:{
+    title:'Log injection / credential leak',
+    detail:'Unsanitized input goes to logs. Attacker injects newlines to forge log entries or leaks env vars. CloudWatch Logs may contain PII, secrets, or tokens — visible to anyone with logs:GetLogEvents.',
+    impact:'Log poisoning + secret exposure'
+  }
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'attacker', label:'attacker', ip:'internet', x:0.10*W, y:0.40*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'trigger', label:'trigger', ip:'apigw/s3/sqs', x:0.30*W, y:0.40*H, icon:'cloud', color:'#22d3ee', glow:0, blink:0},
+    {id:'lambda', label:'Lambda', ip:STATE.fn, x:0.52*W, y:0.40*H, icon:'server', color:'#fcd34d', glow:0, blink:0},
+    {id:'secrets', label:'Secrets Mgr', ip:'env vars', x:0.72*W, y:0.20*H, icon:'database', color:'#a855f7', glow:0, blink:0},
+    {id:'s3', label:'S3 / DB', ip:'data store', x:0.72*W, y:0.60*H, icon:'database', color:'#3b82f6', glow:0, blink:0},
+    {id:'logs', label:'CloudWatch', ip:'logs + metrics', x:0.88*W, y:0.40*H, icon:'server', color:'#22c55e', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(245,158,11,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">pentester@serverless:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Serverless functions often process sensitive data: payments, PII, healthcare. Unauthorized testing is illegal under CFAA/CMA and often violates cloud provider ToS (AWS AUP). Even authorized testing has sharp edges: Lambda billing is per-invocation — a runaway test can cost thousands. Rate limits protect the platform, not your bill. Always: (1) Get written authorization. (2) Use a test account, not production. (3) Set billing alerts. (4) Document IAM roles you touch. (5) Never exfiltrate real customer data — use synthetic samples in PoCs.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Serverless (Lambda, Functions, Cloud Run, Workers) shifts security to the event boundary. Function code is ephemeral — but the IAM role is long-lived. If an attacker controls the event input, they control the function. Common attack classes: event injection (SSRF, command injection via JSON), IAM privilege escalation (function role with *, iam:PassRole), secrets in env vars, dependency confusion, cold-start timing side channels, and cost DoS. Defense: least-privilege roles, Secrets Manager (not env), IMDSv2, input validation, per-function VPC + security groups, concurrency limits, and CloudWatch alarms on error spikes.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('aws lambda get-function --function-name ' + STATE.fn + '\n' +
+      '{\n' +
+      '  "Configuration": {\n' +
+      '    "FunctionName": "' + STATE.fn + '",\n' +
+      '    "Runtime": "' + STATE.lang + '",\n' +
+      '    "Role": "arn:aws:iam::123456789012:role/lambda-role",\n' +
+      '    "Timeout": ' + STATE.timeout + ',\n' +
+      '    "MemorySize": ' + STATE.memory + ',\n' +
+      '    "Environment": {\n' +
+      '      "Variables": {\n' +
+      '        "DB_PASSWORD": "REDACTED_BUT_VISIBLE_IN_LOGS",\n' +
+      '        "API_KEY": "sk_live_..."\n' +
+      '      }\n' +
+      '    }\n' +
+      '  }\n' +
+      '}');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Runtime: ' + STATE.runtime.toUpperCase() + '. Function: ' + STATE.fn + '. Vulnerability: ' + VULNS[STATE.vuln].title + '. Click ATTACK to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running && STATE.tick % 40 === 0){
+    spawnPacket('attacker','trigger','#ef4444','EVENT',0.03);
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.25*W, 0.75*H, 'PUBLIC', '#ef4444');
+  drawZone(0.35*W, 0.08*H, 0.60*W, 0.75*H, 'AWS ACCOUNT', '#fcd34d');
+
+  var links = [
+    ['attacker','trigger'], ['trigger','lambda'],
+    ['lambda','secrets'], ['lambda','s3'],
+    ['lambda','logs']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(245,158,11,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+    if(n.id === 'lambda' && STATE.leaks > 0){
+      ctx.save();
+      ctx.font = 'bold 9px "Courier New",monospace';
+      ctx.fillStyle = '#ef4444';
+      ctx.textAlign = 'center';
+      ctx.fillText('COMPROMISED', n.x, n.y - 25);
+      ctx.restore();
+    }
+  });
+
+  // Info panel
+  if(STATE.phaseIdx > 0){
+    var v = VULNS[STATE.vuln];
+    ctx.save();
+    var ax = 0.05*W, ay = H - 150, aw = 0.55*W, ah = 120;
+    ctx.fillStyle = 'rgba(40,30,5,0.9)';
+    ctx.strokeStyle = '#fcd34d';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#fcd34d';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 ' + v.title, ax + 8, ay + 16);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('Function: ' + STATE.fn + ' (' + STATE.lang + ')', ax + 8, ay + 36);
+    ctx.fillText('Invocations: ' + STATE.invocations + ' | Errors: ' + STATE.errors, ax + 8, ay + 52);
+    ctx.fillText('Cold starts: ' + STATE.coldStarts + ' | Duration: ' + STATE.duration + 'ms', ax + 8, ay + 68);
+    ctx.fillText('IAM role: ' + STATE.role + ' | Cost: $' + STATE.cost.toFixed(4), ax + 8, ay + 84);
+    ctx.fillStyle = STATE.leaks > 0 ? '#ef4444' : '#4ade80';
+    ctx.fillText('Leaks: ' + STATE.leaks + ' | Impact: ' + v.impact, ax + 8, ay + 100);
+    ctx.fillStyle = STATE.iamFixed ? '#4ade80' : '#fcd34d';
+    ctx.fillText('IAM fixed: ' + (STATE.iamFixed ? 'YES' : 'NO') + ' | SCA clean: ' + (STATE.scaClean ? 'YES' : 'NO'), ax + 8, ay + 116);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Event input controls the function — validate every field', 12, H - 74);
+  ctx.fillText('IAM role is long-lived — use least privilege, no wildcards', 12, H - 62);
+  ctx.fillText('Secrets: Secrets Manager + KMS, never env vars', 12, H - 50);
+  ctx.fillText('IMDSv2 + URL allowlist defends against SSRF', 12, H - 38);
+  ctx.fillText('MITRE T1648 \u00B7 OWASP Serverless Top 10 \u00B7 AWS Well-Architected', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeRuntime').textContent = STATE.runtime.toUpperCase();
+  document.getElementById('badgeVuln').textContent = STATE.vuln.toUpperCase();
+  document.getElementById('badgeStatus').textContent = STATE.running ? 'ATTACKING' : (STATE.phaseIdx >= 6 ? 'COMPLETE' : 'IDLE');
+  document.getElementById('badgeImpact').textContent = STATE.impact;
+
+  document.getElementById('mInvocationsVal').textContent = STATE.invocations;
+  document.getElementById('mErrorsVal').textContent = STATE.errors;
+  document.getElementById('mColdStartsVal').textContent = STATE.coldStarts;
+  document.getElementById('mDurationVal').textContent = STATE.duration + 'ms';
+  document.getElementById('mCostVal').textContent = '$' + STATE.cost.toFixed(4);
+  document.getElementById('mLeaksVal').textContent = STATE.leaks;
+  document.getElementById('mRoleVal').textContent = STATE.role;
+  document.getElementById('mDefenseVal').textContent = STATE.iamFixed ? 'FIXED' : 'VULN';
+
+  document.getElementById('mLeaks').className = 'metric' + (STATE.leaks > 0 ? ' bad' : '');
+  document.getElementById('mRole').className = 'metric' + (STATE.role === 'admin' ? ' bad' : STATE.role === 'scoped' ? ' ok' : ' warn');
+  document.getElementById('mCost').className = 'metric' + (STATE.cost > 5 ? ' bad' : STATE.cost > 1 ? ' warn' : '');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('sp-' + p);
+    if(!el) return;
+    el.className = 'sls-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var v = VULNS[STATE.vuln];
+
+  switch(phase){
+    case 'RECON':
+      addFeed('RECON', 'Recon: enumerate function configuration via IAM (get-function, list-functions). Check role ARN, env vars, trigger types, layers, runtime version. Look for public API Gateway endpoints that invoke it.', 'info');
+      addCommandFeed('aws lambda list-functions --query "Functions[*].[FunctionName,Runtime,Role]"',
+        '[\n' +
+        '  ["' + STATE.fn + '", "' + STATE.lang + '", "arn:aws:iam::123456789012:role/lambda-role"]\n' +
+        ']');
+      break;
+
+    case 'TRIGGER':
+      STATE.invocations++;
+      spawnPacket('attacker','trigger','#ef4444','EVENT',0.02);
+      addFeed('TRIGGER', 'Trigger: sending crafted ' + STATE.trigger.toUpperCase() + ' event. ' + (STATE.trigger === 'apigw' ? 'POST to https://api.example.com/prod/process with malicious body.' : STATE.trigger === 's3' ? 'Uploading object with crafted key name to trigger event.' : STATE.trigger === 'sqs' ? 'Sending message to SQS queue with malicious attributes.' : STATE.trigger === 'dynamodb' ? 'Inserting item that triggers stream processing.' : 'Waiting for scheduled invocation window.'), 'warn');
+      break;
+
+    case 'INJECT':
+      addFeed('INJECT', 'Injecting payload: ' + v.title + '. ' + v.detail, 'error');
+      if(STATE.vuln === 'ssrf'){
+        addCommandFeed('curl -X POST https://api.example.com/prod/process -d \'{"url":"http://169.254.169.254/latest/meta-data/iam/security-credentials/lambda-role"}\'',
+          '{\n  "AccessKeyId": "ASIA...",\n  "SecretAccessKey": "...",\n  "Token": "...",\n  "Expiration": "2024-01-15T20:00:00Z"\n}');
+      } else if(STATE.vuln === 'event'){
+        addCommandFeed('curl -X POST https://api.example.com/prod/payment -d \'{"amount":1,"user":"admin\\\' OR \\\'1\\\'=\\\'1","note":"$(cat /etc/passwd)"}\'',
+          '{"status":"success","balance":999999}');
+      } else if(STATE.vuln === 'dos'){
+        addCommandFeed('python3 billion_laughs.py --target https://api.example.com/prod/parse',
+          '[*] Sending 100MB XML bomb\n[*] Lambda memory: 512 MB → OOM\n[*] 100 concurrent invocations = $50/hour burn');
+      } else {
+        addCommandFeed('exploit-cli --target ' + STATE.fn + ' --class ' + STATE.vuln,
+          '[*] Payload delivered\n[*] Function invoked\n[*] No input validation');
+      }
+      break;
+
+    case 'EXEC':
+      STATE.invocations++;
+      STATE.duration = Math.floor(Math.random() * 3000) + 100;
+      STATE.coldStarts += Math.random() < 0.3 ? 1 : 0;
+      STATE.cost += (STATE.duration / 1000) * (STATE.memory / 1024) * 0.0000166667;
+      addFeed('EXEC', 'Function executing. ' + (STATE.iamFixed ? 'IAM role is scoped — attacker limited to the function own permissions. Blast radius contained.' : 'IAM role is over-permissive — attacker can now access any AWS API allowed by the role.'), STATE.iamFixed ? 'ok' : 'error');
+      break;
+
+    case 'LATERAL':
+      if(STATE.iamFixed){
+        addFeed('DEFENSE', 'IAM role scoped: attacker can only read from ' + STATE.fn + '-bucket. Cannot escalate, cannot enumerate. Best practice: one role per function, minimum permissions, resource ARNs, conditions.', 'ok');
+        STATE.impact = 'LIMITED';
+        STATE.running = false;
+        return;
+      }
+      STATE.role = 'admin';
+      STATE.leaks += 3;
+      STATE.impact = 'CRITICAL';
+      spawnPacket('lambda','s3','#ef4444','EXFIL',0.02);
+      addFeed('LATERAL', 'Attacker inherits function role with wildcard permissions. Enumerates: s3:*, secretsmanager:GetSecretValue, dynamodb:*, iam:ListRoles. Full account compromise within minutes. This mirrors the 2019 Capital One breach (misconfigured Lambda role → 100M records).', 'error');
+      addCommandFeed('aws s3 ls --recursive s3://company-backups/ && aws secretsmanager list-secrets',
+        '2024-01-15 08:12:14  1024000 backups/prod/db-2024-01-15.sql.gz\n' +
+        '2024-01-15 08:15:32  2048000 backups/prod/users.sql.gz\n' +
+        '{\n  "SecretList": [\n    {"Name":"prod/db/mysql"},{"Name":"prod/api/stripe"},{"Name":"prod/jwt-signing"}\n  ]\n}');
+      break;
+
+    case 'EXFIL':
+      if(STATE.iamFixed){
+        addFeed('EXFIL', 'Exfil attempt blocked — role scoped. Attacker can only read from function own S3 prefix.', 'ok');
+        return;
+      }
+      STATE.leaks += 10;
+      addFeed('EXFIL', 'Exfiltration complete. Attacker copied: 2 S3 backup archives, 3 Secrets Manager secrets, 12,000 user records from DynamoDB. Leak window: 30 seconds. CloudTrail logs show API calls from Lambda execution role — detection requires anomaly rules or CloudTrail insights.', 'error');
+      addFeed('DEFENSE', 'Preventive: (1) One IAM role per function, min permissions, resource ARNs. (2) Secrets Manager with KMS, not env vars. (3) VPC + endpoint policies. (4) IMDSv2 required. (5) Input validation + schema. (6) Concurrency limits + budget alarms. Detective: CloudTrail, GuardDuty Lambda protection, Security Hub, custom anomaly rules on role usage patterns.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.invocations = 0;
+  STATE.errors = 0;
+  STATE.coldStarts = 0;
+  STATE.duration = 0;
+  STATE.cost = 0;
+  STATE.leaks = 0;
+  STATE.role = 'basic';
+  STATE.impact = 'NONE';
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('sp-' + p); if(el) el.className = 'sls-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'Serverless state cleared.', 'info');
+  termWrite('reset --all\n[+] Function state reset');
+}
+
+document.getElementById('runtimeSelect').addEventListener('change', function(e){
+  STATE.runtime = e.target.value;
+  addFeed('RUNTIME', 'Runtime: ' + STATE.runtime.toUpperCase() + '.', 'info');
+});
+document.getElementById('vulnSelect').addEventListener('change', function(e){
+  STATE.vuln = e.target.value;
+  var v = VULNS[STATE.vuln];
+  addFeed('VULN', v.title + '. ' + v.detail, 'warn');
+});
+document.getElementById('fnInput').addEventListener('input', function(e){ STATE.fn = e.target.value; });
+document.getElementById('langSelect').addEventListener('change', function(e){ STATE.lang = e.target.value; });
+document.getElementById('triggerSelect').addEventListener('change', function(e){ STATE.trigger = e.target.value; });
+
+document.getElementById('toSlider').addEventListener('input', function(e){
+  STATE.timeout = parseInt(e.target.value);
+  document.getElementById('toVal').textContent = e.target.value;
+});
+document.getElementById('memSlider').addEventListener('input', function(e){
+  STATE.memory = parseInt(e.target.value);
+  document.getElementById('memVal').textContent = e.target.value;
+});
+document.getElementById('concSlider').addEventListener('input', function(e){
+  STATE.concurrency = parseInt(e.target.value);
+  document.getElementById('concVal').textContent = e.target.value;
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.invocations = 0;
+  STATE.errors = 0;
+  STATE.coldStarts = 0;
+  STATE.cost = 0;
+  STATE.leaks = 0;
+  STATE.role = 'basic';
+  STATE.impact = 'NONE';
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('ATTACK', 'Starting serverless attack: ' + VULNS[STATE.vuln].title + ' against ' + STATE.fn + '.', 'warn');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1400);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('iamBtn').addEventListener('click', function(){
+  STATE.iamFixed = !STATE.iamFixed;
+  this.classList.toggle('active', STATE.iamFixed);
+  if(STATE.iamFixed){
+    STATE.role = 'scoped';
+    addFeed('DEFENSE', 'IAM role scoped to least privilege. Removed wildcards, resource ARNs specific to function needs, added aws:SourceVpce condition. Attacker with event injection can no longer pivot to other AWS resources.', 'ok');
+  } else {
+    STATE.role = 'basic';
+    addFeed('DEFENSE', 'IAM fix reverted.', 'warn');
+  }
+});
+
+document.getElementById('scaBtn').addEventListener('click', function(){
+  STATE.scaClean = true;
+  addFeed('SCA', 'Running Software Composition Analysis: scanning package-lock.json / requirements.txt for known CVEs. Tools: npm audit, pip-audit, Snyk, Trivy, Grype. Result: 47 dependencies, 3 with medium CVEs, 1 with high (upgrade recommended). Also checking for dependency confusion: internal package names published to public registries.', 'warn');
+  addCommandFeed('trivy fs --scanners vuln,secret,config .',
+    'package-lock.json (npm)\n' +
+    '========================\n' +
+    'Total: 47 (UNKNOWN: 0, LOW: 12, MEDIUM: 3, HIGH: 1, CRITICAL: 0)\n\n' +
+    '┌──────────────────────┬────────────────┬──────────┬───────────────────┐\n' +
+    '│       Library        │ Vulnerability  │ Severity │ Installed Version │\n' +
+    '├──────────────────────┼────────────────┼──────────┼───────────────────┤\n' +
+    '│ json5                │ CVE-2022-46175 │ HIGH     │ 2.2.1             │\n' +
+    '└──────────────────────┴────────────────┴──────────┴───────────────────┘');
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

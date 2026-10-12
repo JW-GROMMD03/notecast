@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Case Study Simulation — Real-World Cyber Incidents Interactive Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:#fca5a5;
+    text-shadow:0 0 8px rgba(239,68,68,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:#ef4444; color:#fca5a5; }
+  .header-actions button.active{
+    border-color:#ef4444; color:#fca5a5;
+    box-shadow:0 0 10px rgba(239,68,68,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:#ef4444; }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; font-size:10px; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:#ef4444; cursor:pointer; box-shadow:0 0 7px rgba(239,68,68,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:#ef4444; cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#fca5a5; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:#ef4444; color:#fca5a5; }
+  button.act.primary{
+    background:linear-gradient(180deg,#2a0f0f,#1a0606);
+    border-color:#ef4444; color:#fca5a5;
+    box-shadow:0 0 10px rgba(239,68,68,.25);
+  }
+  button.act.danger{ border-color:#ef4444; color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.pulse{ animation:pulseRed 1.4s infinite; }
+  @keyframes pulseRed{
+    0%,100%{ box-shadow:0 0 6px rgba(239,68,68,.3); }
+    50%{ box-shadow:0 0 18px rgba(239,68,68,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.red .m-value{ color:#fca5a5; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#fca5a5; }
+  .cs-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .cs-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .cs-phase.done{ border-color:#ef4444; color:#fca5a5;
+    background:rgba(239,68,68,.12); }
+  .cs-phase.active{ border-color:#ef4444; color:#fca5a5;
+    background:rgba(239,68,68,.2); box-shadow:0 0 10px rgba(239,68,68,.6);
+    animation:kcRed 1.2s infinite; }
+  @keyframes kcRed{ 50%{ box-shadow:0 0 16px rgba(239,68,68,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>CASE STUDY SIMULATION</h1>
+    <span class="sub">SOLARWINDS · COLONIAL · EQUIFAX · NOTPETYA · TARGET · WANNACRY</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Case Study</h3>
+      <select id="caseSelect">
+        <option value="solarwinds">SolarWinds (2020) — supply chain</option>
+        <option value="colonial">Colonial Pipeline (2021) — ransomware</option>
+        <option value="equifax">Equifax (2017) — unpatched web app</option>
+        <option value="notpetya">NotPetya (2017) — wiper / supply chain</option>
+        <option value="target">Target (2013) — third-party HVAC</option>
+        <option value="wannacry">WannaCry (2017) — worm ransomware</option>
+        <option value="codecov">Codecov (2021) — build system</option>
+        <option value="log4shell">Log4Shell (2021) — logging library</option>
+        <option value="moveit">MOVEit (2023) — file transfer</option>
+        <option value="changehealth">Change Healthcare (2024) — ransomware</option>
+      </select>
+      <label class="ctl-label">Perspective</label>
+      <select id="perspectiveSelect">
+        <option value="attacker">Attacker (red team)</option>
+        <option value="defender">Defender (blue team)</option>
+        <option value="executive">Executive (business)</option>
+        <option value="ir">Incident responder</option>
+        <option value="regulator">Regulator / auditor</option>
+        <option value="journalist">Journalist / researcher</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Timeline Control</h3>
+      <label class="ctl-label">Current day <span class="slider-val" id="dayVal">Day 0</span></label>
+      <input type="range" id="daySlider" min="0" max="100" value="0">
+      <label class="ctl-label">Response speed <span class="slider-val" id="speedVal">Normal</span></label>
+      <input type="range" id="speedSlider" min="0" max="100" value="50">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Decision Point</h3>
+      <label class="ctl-label">Decision</label>
+      <select id="decisionSelect">
+        <option value="default">— Select a decision —</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ BEGIN CASE</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="lessonBtn">📚 LESSONS</button>
+        <button type="button" class="act ok" id="timelineBtn">📅 TIMELINE</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">analyst@case:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Case studies describe real incidents. Learn from them, do not replicate.</div>
+    <div class="status-badges">
+      <div class="status-badge">CASE: <b id="badgeCase">SOLARWINDS</b></div>
+      <div class="status-badge">VIEW: <b id="badgeView">RED TEAM</b></div>
+      <div class="status-badge">DAY: <b id="badgeDay">0</b></div>
+      <div class="status-badge">IMPACT: <b id="badgeImpact">—</b></div>
+    </div>
+    <div class="cs-chain" id="csChain">
+      <div class="cs-phase" id="cp-PRE">PRE-INCIDENT</div>
+      <div class="cs-phase" id="cp-INITIAL">INITIAL ACCESS</div>
+      <div class="cs-phase" id="cp-EXPLOIT">EXPLOIT</div>
+      <div class="cs-phase" id="cp-IMPACT">IMPACT</div>
+      <div class="cs-phase" id="cp-DISCOVERY">DISCOVERY</div>
+      <div class="cs-phase" id="cp-RESPONSE">RESPONSE</div>
+      <div class="cs-phase" id="cp-LESSONS">LESSONS</div>
+    </div>
+    <div class="footer-overlay">Real incidents, fictional numbers · MITRE ATT&CK mapped · VERIS schema</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric" id="mDwell"><div class="m-label">Dwell (days)</div><div class="m-value" id="mDwellVal">0</div></div>
+      <div class="metric" id="mVictims"><div class="m-label">Victims</div><div class="m-value" id="mVictimsVal">0</div></div>
+      <div class="metric red" id="mCost"><div class="m-label">Impact $</div><div class="m-value" id="mCostVal">$0</div></div>
+      <div class="metric" id="mDetected"><div class="m-label">Detected</div><div class="m-value" id="mDetectedVal">NO</div></div>
+      <div class="metric" id="mContained"><div class="m-label">Contained</div><div class="m-value" id="mContainedVal">NO</div></div>
+      <div class="metric" id="mRecovery"><div class="m-label">Recovery</div><div class="m-value" id="mRecoveryVal">0%</div></div>
+      <div class="metric" id="mIOCs"><div class="m-label">IOCs</div><div class="m-value" id="mIOCsVal">0</div></div>
+      <div class="metric" id="mStage"><div class="m-label">Stage</div><div class="m-value" id="mStageVal">PRE</div></div>
+      <div class="metric" id="mPosture"><div class="m-label">Posture</div><div class="m-value" id="mPostureVal">—</div></div>
+    </div>
+    <div class="info-card">
+      <b>Case studies — learning from real failures.</b><br>
+      <span class="eq">SolarWinds: supply chain, 18K victims, 9mo dwell</span><br>
+      <span class="eq">Colonial: IT ransomware → OT shutdown, $4.4M ransom</span><br>
+      <span class="eq">Equifax: CVE-2017-5638, 147M records, $1.4B cost</span><br>
+      <span class="eq">NotPetya: wiper via update, $10B global damage</span><br>
+      <span style="color:var(--purple)">MITRE ATT&CK · VERIS · CISA advisories · GDPR fines</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  caseStudy:'solarwinds',
+  perspective:'attacker',
+  day:0,
+  speed:50,
+  dwell:0,
+  victims:0,
+  cost:0,
+  detected:false,
+  contained:false,
+  recovery:0,
+  iocs:0,
+  stage:'PRE',
+  posture:'—',
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0,
+  decisions:{}
+};
+
+var CASES = {
+  solarwinds:{
+    name:'SolarWinds Orion Supply Chain (2020)',
+    year:2020,
+    attacker:'APT29 / Cozy Bear (Russian SVR)',
+    vector:'Supply chain compromise of build system',
+    timeline:[
+      {day:0, event:'Attacker compromises SolarWinds dev environment (password spray)'},
+      {day:30, event:'Injects SUNBURST backdoor into Orion build pipeline'},
+      {day:60, event:'Signed malicious update ships to 18,000 customers'},
+      {day:120, event:'Dwell time: months of undetected access at victims'},
+      {day:240, event:'FireEye discovers SUNBURST (Dec 2020)'},
+      {day:245, event:'CISA Emergency Directive 21-01 issued'},
+      {day:260, event:'SolarWinds releases clean update + forensic guidance'}
+    ],
+    stats:{victims:18000, cost:100000000, dwell:240},
+    mitre:['T1195.002 (Compromise Software Supply Chain)','T1078 (Valid Accounts)','T1550 (Use Alternate Auth Material)','T1071.001 (Web Protocols)'],
+    lessons:[
+      'Supply chain trust is a critical risk — even signed updates can be malicious',
+      'Reproducible builds + SBOM would have detected anomalies',
+      'Egress monitoring is essential — SUNBURST beaconed via HTTP',
+      'Assume breach — defense in depth against post-compromise activity',
+      'Executive order 14028 mandated SBOM after this incident'
+    ]
+  },
+  colonial:{
+    name:'Colonial Pipeline Ransomware (2021)',
+    year:2021,
+    attacker:'DarkSide (Ransomware-as-a-Service)',
+    vector:'Compromised VPN password (leaked, no MFA)',
+    timeline:[
+      {day:0, event:'Attacker uses leaked VPN credentials (no MFA)'},
+      {day:1, event:'Ransomware deployed on IT systems'},
+      {day:2, event:'Colonial proactively shuts down OT pipeline'},
+      {day:3, event:'Fuel shortage across US East Coast'},
+      {day:5, event:'$4.4M ransom paid in Bitcoin'},
+      {day:6, event:'Decryption key provided (slow, partial)'},
+      {day:10, event:'Full operations restored'}
+    ],
+    stats:{victims:1, cost:4400000, dwell:1},
+    mitre:['T1078 (Valid Accounts)','T1486 (Data Encrypted for Impact)','T1490 (Inhibit System Recovery)'],
+    lessons:[
+      'MFA on VPN is non-negotiable',
+      'IT/OT segmentation prevented OT compromise (but business halt)',
+      'Incident response plan must include OT procedures',
+      'Ransomware payments may violate OFAC sanctions',
+      'Business continuity depends on IT resilience'
+    ]
+  },
+  equifax:{
+    name:'Equifax Data Breach (2017)',
+    year:2017,
+    attacker:'Chinese military (PLA Unit 61398 - suspected)',
+    vector:'Unpatched Apache Struts (CVE-2017-5638)',
+    timeline:[
+      {day:0, event:'Apache Struts CVE-2017-5638 published (March 2017)'},
+      {day:2, event:'Equifax notified of vulnerability internally'},
+      {day:60, event:'Patch NOT applied — expired SSL cert prevented scanning'},
+      {day:76, event:'Attackers exploit the vulnerability (May 2017)'},
+      {day:78, event:'Attacker moves laterally to database with 147M records'},
+      {day:170, event:'Breach discovered (July 2017)'},
+      {day:173, event:'Public disclosure'},
+      {day:250, event:'CEO, CSO, CIO resign; $1.4B total cost'}
+    ],
+    stats:{victims:147000000, cost:1400000000, dwell:92},
+    mitre:['T1190 (Exploit Public-Facing App)','T1078 (Valid Accounts)','T1070 (Indicator Removal)','T1087 (Account Discovery)'],
+    lessons:[
+      'Patch management is critical — 2 months of exposure',
+      'Certificate expiry on scanning tools created blind spots',
+      'Data minimization — Equifax stored too much PII',
+      'Encryption at rest would have reduced impact',
+      'Forensic investigation took months due to missing logs'
+    ]
+  },
+  notpetya:{
+    name:'NotPetya Wiper Attack (2017)',
+    year:2017,
+    attacker:'Sandworm (Russian GRU)',
+    vector:'Compromised M.E.Doc update server (Ukraine)',
+    timeline:[
+      {day:0, event:'Attacker compromises M.E.Doc accounting software in Ukraine'},
+      {day:30, event:'Pushes trojanized update to ~1M Ukrainian businesses'},
+      {day:31, event:'EternalBlue + Mimikatz spread inside networks'},
+      {day:31, event:'MBR wiped — data unrecoverable, NOT ransomware'},
+      {day:32, event:'Maersk: 49,000 laptops + 1,000 apps destroyed'},
+      {day:33, event:'FedEx, Merck, Mondelez, Reckitt: $10B+ global damage'},
+      {day:40, event:'Wiper disguised as ransomware exposed'},
+      {day:365, event:'Maersk spent $300M+ on recovery'}
+    ],
+    stats:{victims:1000000, cost:10000000000, dwell:0},
+    mitre:['T1195.002 (Supply Chain)','T1210 (Exploitation of Remote Services)','T1561.002 (Disk Wipe)','T1021.002 (SMB)'],
+    lessons:[
+      'Supply chain compromise can weaponize legitimate software',
+      'Wipers disguised as ransomware confuse response',
+      'EternalBlue (SMB) still relevant despite patches',
+      'Backups must be offline + air-gapped',
+      'Microsoft Cyber Attack Response Playbook formalized after this'
+    ]
+  },
+  target:{
+    name:'Target Breach (2013)',
+    year:2013,
+    attacker:'Financial cybercrime group',
+    vector:'Third-party HVAC vendor credentials',
+    timeline:[
+      {day:0, event:'Attacker phishes HVAC vendor (Fazio Mechanical)'},
+      {day:30, event:'Vendor has network access via credentials for billing'},
+      {day:60, event:'Attacker pivots from vendor access to Target POS network'},
+      {day:90, event:'Memory-scraping malware installed on 40K POS terminals'},
+      {day:95, event:'40M credit + 70M personal records stolen'},
+      {day:130, event:'Krebs + Secret Service + Target discover breach'},
+      {day:140, event:'Public disclosure; CEO resigns; $292M cost'}
+    ],
+    stats:{victims:110000000, cost:292000000, dwell:70},
+    mitre:['T1566 (Phishing)','T1078 (Valid Accounts)','T1200 (Hardware Additions)','T1005 (Data from Local System)'],
+    lessons:[
+      'Third-party risk management is critical',
+      'Network segmentation between vendor and POS should be enforced',
+      'Memory scraping bypasses disk encryption',
+      'POS whitelisting would have blocked the malware',
+      'Monitoring for lateral movement matters'
+    ]
+  },
+  wannacry:{
+    name:'WannaCry Global Ransomware (2017)',
+    year:2017,
+    attacker:'Lazarus Group (North Korea)',
+    vector:'EternalBlue (MS17-010) - SMB vulnerability',
+    timeline:[
+      {day:0, event:'Shadow Brokers leak NSA EternalBlue exploit (April 2017)'},
+      {day:14, event:'Microsoft patches MS17-010 (March 2017)'},
+      {day:30, event:'WannaCry releases, uses EternalBlue to spread'},
+      {day:30, event:'200K+ victims in 150 countries in 24 hours'},
+      {day:31, event:'Kill switch domain registered by Marcus Hutchins'},
+      {day:32, event:'UK NHS: 70K devices affected, surgeries cancelled'},
+      {day:90, event:'Variant without killswitch appears'},
+      {day:365, event:'Total damages $4-8B'}
+    ],
+    stats:{victims:200000, cost:6000000000, dwell:0},
+    mitre:['T1210 (Exploitation)','T1486 (Data Encrypted)','T1490 (Inhibit Recovery)','T1562.001 (Disable Security Tools)'],
+    lessons:[
+      'Patch management — 1-month-old patch would have prevented it',
+      'Legacy systems (Windows XP) were vulnerable',
+      'Worm + ransomware combination is extremely destructive',
+      'Kill switch shows attacker operational mistakes',
+      'Critical infrastructure (NHS) had inadequate BCP'
+    ]
+  },
+  codecov:{
+    name:'Codecov Supply Chain (2021)',
+    year:2021,
+    attacker:'Unknown (suspected nation-state)',
+    vector:'Compromised bash uploader script in CI/CD',
+    timeline:[
+      {day:0, event:'Attacker compromises Codecov CI/CD pipeline (Jan 2021)'},
+      {day:14, event:'Modifies Bash Uploader script to exfil env vars'},
+      {day:60, event:'Script downloads to 29,000 customers\' CI pipelines'},
+      {day:70, event:'Exfiltrates CI secrets (AWS keys, tokens, DB creds)'},
+      {day:75, event:'Customer notices anomalous request to Codecov'},
+      {day:77, event:'Codecov discloses breach (April 2021)'},
+      {day:90, event:'Hundreds of companies rotate credentials'},
+      {day:120, event:'Full forensic review published'}
+    ],
+    stats:{victims:29000, cost:100000000, dwell:60},
+    mitre:['T1195.002 (Supply Chain)','T1552.001 (Credentials in Files)','T1071.001 (Web Protocols)','T1567 (Exfiltration Over Web)'],
+    lessons:[
+      'CI/CD pipelines are high-value targets',
+      'Secrets should never be in env vars sent to third parties',
+      'Pin versions + verify hashes of third-party scripts',
+      'Least-privilege for CI service accounts',
+      'Monitor egress from CI/CD'
+    ]
+  },
+  log4shell:{
+    name:'Log4Shell (2021)',
+    year:2021,
+    attacker:'Opportunistic + APTs',
+    vector:'CVE-2021-44228 in Apache Log4j 2',
+    timeline:[
+      {day:0, event:'CVE-2021-44228 disclosed (Dec 9, 2021)'},
+      {day:0, event:'Proof-of-concept published within hours'},
+      {day:1, event:'Mass scanning begins globally'},
+      {day:2, event:'Cryptominers + botnets exploit in the wild'},
+      {day:7, event:'APTs begin targeted exploitation'},
+      {day:30, event:'2,000+ downstream packages affected'},
+      {day:60, event:'Most orgs patched vulnerable Log4j'},
+      {day:365, event:'Still finding unpatched instances worldwide'}
+    ],
+    stats:{victims:10000000, cost:10000000000, dwell:0},
+    mitre:['T1190 (Exploit Public-Facing App)','T1059 (Command Execution)','T1213 (Data from Info Repositories)'],
+    lessons:[
+      'SBOM would have identified affected systems quickly',
+      'JNDI (Java Naming and Directory Interface) is dangerous',
+      'Logging libraries are everywhere — patch chaos',
+      'Egress filtering would have blocked many attacks',
+      'CVE response requires inventory + automated scanning'
+    ]
+  },
+  moveit:{
+    name:'MOVEit Transfer (2023)',
+    year:2023,
+    attacker:'Cl0p ransomware group',
+    vector:'CVE-2023-34362 SQL injection in MOVEit Transfer',
+    timeline:[
+      {day:0, event:'Cl0p exploits zero-day SQLi in MOVEit Transfer (May 2023)'},
+      {day:2, event:'Steals files from hundreds of orgs'},
+      {day:5, event:'Public disclosure of vulnerability'},
+      {day:10, event:'2,500+ organizations affected'},
+      {day:30, event:'Massachusetts DMV, BBC, BA, Shell, etc. exposed'},
+      {day:60, event:'~17M individuals notified'},
+      {day:90, event:'Cl0p begins extortion, threatens data dumps'},
+      {day:180, event:'Recovery ongoing across victims'}
+    ],
+    stats:{victims:2500, cost:15000000000, dwell:2},
+    mitre:['T1190 (Exploit Public-Facing App)','T1005 (Data from Local System)','T1567 (Exfiltration Over Web)','T1657 (Financial Theft)'],
+    lessons:[
+      'File transfer software is a high-value target',
+      'Zero-day exploits give 24-48h window',
+      'Data minimization matters — victims lost data they should not store',
+      'Third-party risk — many victims were downstream of MOVEit users',
+      'Ransomware groups pivoting to data theft (double extortion)'
+    ]
+  },
+  changehealth:{
+    name:'Change Healthcare (2024)',
+    year:2024,
+    attacker:'ALPHV / BlackCat ransomware',
+    vector:'Compromised Citrix remote access (no MFA)',
+    timeline:[
+      {day:0, event:'Attacker uses compromised Citrix credentials (Feb 2024)'},
+      {day:1, event:'Moves laterally within Change Healthcare network'},
+      {day:5, event:'Encrypts systems — healthcare payments halted'},
+      {day:7, event:'US healthcare providers cannot process claims'},
+      {day:14, event:'$22M ransom paid (per reports)'},
+      {day:21, event:'Ransomware group "exit scams" with payment'},
+      {day:30, event:'30% of US healthcare payments still disrupted'},
+      {day:60, event:'Investigation reveals 6TB data stolen'},
+      {day:120, event:'Financial impact: $872M+ to UnitedHealth'}
+    ],
+    stats:{victims:190000000, cost:2500000000, dwell:5},
+    mitre:['T1078 (Valid Accounts)','T1486 (Data Encrypted)','T1657 (Financial Theft)','T1070.004 (File Deletion)'],
+    lessons:[
+      'MFA on remote access is critical',
+      'Healthcare is a prime target (high uptime needs)',
+      'Ransomware attackers not trustworthy — exit scams common',
+      'Cyber insurance gaps — critical infrastructure needs strategic planning',
+      'Third-party dependency risk — one breach halts an industry'
+    ]
+  }
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'attacker', label:'threat actor', ip:'external', x:0.10*W, y:0.30*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'entry', label:'entry point', ip:'initial vector', x:0.30*W, y:0.30*H, icon:'server', color:'#f59e0b', glow:0, blink:0},
+    {id:'pivot', label:'pivot / lateral', ip:'internal', x:0.50*W, y:0.30*H, icon:'server', color:'#fcd34d', glow:0, blink:0},
+    {id:'target', label:'target asset', ip:'data + systems', x:0.72*W, y:0.30*H, icon:'database', color:'#a855f7', glow:0, blink:0},
+    {id:'c2', label:'C2', ip:'beacon', x:0.85*W, y:0.60*H, icon:'cloud', color:'#ef4444', glow:0, blink:0},
+    {id:'soc', label:'SOC', ip:'detection', x:0.30*W, y:0.65*H, icon:'firewall', color:'#22c55e', glow:0, blink:0},
+    {id:'ir', label:'IR team', ip:'response', x:0.60*W, y:0.65*H, icon:'laptop', color:'#22d3ee', glow:0, blink:0},
+    {id:'public', label:'public', ip:'disclosure', x:0.85*W, y:0.20*H, icon:'cloud', color:'#3b82f6', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(239,68,68,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(var j=0;j<3;j++){ ctx.beginPath(); ctx.moveTo(-10,-8+j*4); ctx.lineTo(8,-8+j*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'firewall': {
+      ctx.lineWidth = 1.2;
+      for(var row=0;row<3;row++){
+        var y2 = -10 + row*7;
+        var off = row%2===0 ? 0 : 5;
+        for(var col=0;col<4;col++) ctx.strokeRect(-16+col*9+off, y2, 8, 6);
+      }
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(0,-4); ctx.quadraticCurveTo(4,0,0,5); ctx.quadraticCurveTo(-4,0,0,-4);
+      ctx.fill();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(n => n.id===fromId);
+  var to = STATE.nodes.find(n => n.id===toId);
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:5});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">analyst@case:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(()=>{
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(v => v.lang && v.lang.startsWith('en-US')) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Case studies describe REAL incidents that caused REAL harm: patients denied care (WannaCry NHS), millions of individuals affected (Equifax 147M, Change Healthcare 190M), critical infrastructure disrupted (Colonial Pipeline), businesses destroyed (NotPetya). Learning from these events is a public service. But NEVER use them as attack playbooks against live systems — the vectors are public because CISA and vendors disclosed them responsibly. If you discover a new vulnerability today, follow responsible disclosure: report to the vendor, give 90 days, coordinate with CISA if critical infrastructure. Do not publish exploit code that puts users at risk. Do not contact victims to offer "recovery services" (a common scam after breaches). The people in these case studies were real; treat the material with respect.',
+    'ethics');
+  setTimeout(()=>{
+    var c = CASES[STATE.caseStudy];
+    addFeed('CONCEPT', c.name + ' (' + c.year + '). Attacker: ' + c.attacker + '. Vector: ' + c.vector + '. Dwell time: ' + c.stats.dwell + ' days. Victims: ' + c.stats.victims.toLocaleString() + '. Estimated cost: $' + (c.stats.cost/1e9).toFixed(1) + 'B.', 'concept');
+  }, 800);
+  setTimeout(()=>{
+    var c = CASES[STATE.caseStudy];
+    termWrite('case-load --id ' + STATE.caseStudy + '\n' +
+      '[+] Case loaded: ' + c.name + '\n' +
+      '[+] Year: ' + c.year + '\n' +
+      '[+] MITRE techniques: ' + c.mitre.length + '\n' +
+      '[+] Timeline events: ' + c.timeline.length + '\n' +
+      '[+] Perspective: ' + STATE.perspective);
+  }, 1600);
+  setTimeout(()=>{
+    addFeed('INFO',
+      'Case: ' + CASES[STATE.caseStudy].name + '. Perspective: ' + STATE.perspective.toUpperCase() + '. Use the day slider or click STEP to advance through the timeline.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(n => { n.blink = Math.floor(STATE.tick / 20); });
+
+  for(let i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(n => { if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running && STATE.tick % 30 === 0){
+    STATE.day++;
+    if(STATE.day > 100){ STATE.day = 100; STATE.running = false; }
+    document.getElementById('daySlider').value = STATE.day;
+    document.getElementById('dayVal').textContent = 'Day ' + STATE.day;
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.50*H, 'KILL CHAIN · ' + CASES[STATE.caseStudy].name.split(' ').slice(0,3).join(' '), '#ef4444');
+  drawZone(0.05*W, 0.62*H, 0.90*W, 0.28*H, 'RESPONSE + RECOVERY', '#22c55e');
+
+  var links = [
+    ['attacker','entry'], ['entry','pivot'], ['pivot','target'],
+    ['target','c2'], ['soc','ir'], ['pivot','soc']
+  ];
+  links.forEach(pair => {
+    var na = STATE.nodes.find(n => n.id===pair[0]);
+    var nb = STATE.nodes.find(n => n.id===pair[1]);
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(239,68,68,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(e => {
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 10;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '8px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 10);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(n => {
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+    if(n.id === 'target' && STATE.victims > 0){
+      ctx.save();
+      ctx.font = 'bold 9px "Courier New",monospace';
+      ctx.fillStyle = '#ef4444';
+      ctx.textAlign = 'center';
+      ctx.fillText('BREACHED', n.x, n.y - 25);
+      ctx.restore();
+    }
+    if(n.id === 'soc' && STATE.detected){
+      ctx.save();
+      ctx.font = 'bold 9px "Courier New",monospace';
+      ctx.fillStyle = '#4ade80';
+      ctx.textAlign = 'center';
+      ctx.fillText('DETECTED', n.x, n.y - 25);
+      ctx.restore();
+    }
+    if(n.id === 'ir' && STATE.contained){
+      ctx.save();
+      ctx.font = 'bold 9px "Courier New",monospace';
+      ctx.fillStyle = '#22d3ee';
+      ctx.textAlign = 'center';
+      ctx.fillText('CONTAINED', n.x, n.y - 25);
+      ctx.restore();
+    }
+  });
+
+  if(STATE.phaseIdx > 0){
+    var c = CASES[STATE.caseStudy];
+    ctx.save();
+    var ax = 0.05*W, ay = H - 150, aw = 0.55*W, ah = 120;
+    ctx.fillStyle = 'rgba(40,10,10,0.9)';
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#fca5a5';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 ' + c.name, ax + 8, ay + 16);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('Year: ' + c.year + ' | Attacker: ' + c.attacker, ax + 8, ay + 34);
+    ctx.fillText('Vector: ' + c.vector, ax + 8, ay + 50);
+    ctx.fillText('Day: ' + STATE.day + ' | Dwell: ' + STATE.dwell + ' | Victims: ' + STATE.victims.toLocaleString(), ax + 8, ay + 68);
+    ctx.fillStyle = '#fcd34d';
+    ctx.fillText('Cost: $' + (STATE.cost/1e9).toFixed(1) + 'B | IOCs: ' + STATE.iocs, ax + 8, ay + 86);
+    ctx.fillStyle = STATE.detected ? '#4ade80' : '#fca5a5';
+    ctx.fillText('Detected: ' + (STATE.detected ? 'YES' : 'NO') + ' | Contained: ' + (STATE.contained ? 'YES' : 'NO') + ' | Recovery: ' + STATE.recovery + '%', ax + 8, ay + 104);
+    ctx.fillStyle = STATE.posture === 'STRONG' ? '#4ade80' : STATE.posture === 'MEDIUM' ? '#fcd34d' : '#fca5a5';
+    ctx.fillText('Posture: ' + STATE.posture, ax + 8, ay + 120);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('MITRE ATT&CK mapping · Kill chain phases · Dwell time tracking', 12, H - 74);
+  ctx.fillText('Real incidents: SolarWinds, Colonial, Equifax, NotPetya, WannaCry', 12, H - 62);
+  ctx.fillText('Lessons: patch management, MFA, segmentation, backup, monitoring', 12, H - 50);
+  ctx.fillText('Case studies from CISA advisories, VERIS, MITRE, vendor reports', 12, H - 38);
+  ctx.fillText('Real events · fictional simulation numbers · MITRE ATT&CK mapped', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeCase').textContent = STATE.caseStudy.toUpperCase().substring(0, 12);
+  document.getElementById('badgeView').textContent = STATE.perspective.toUpperCase();
+  document.getElementById('badgeDay').textContent = STATE.day;
+  document.getElementById('badgeImpact').textContent = STATE.posture;
+
+  document.getElementById('mDwellVal').textContent = STATE.dwell;
+  document.getElementById('mVictimsVal').textContent = STATE.victims > 1000000 ? (STATE.victims/1e6).toFixed(1) + 'M' : STATE.victims.toLocaleString();
+  document.getElementById('mCostVal').textContent = '$' + (STATE.cost/1e9).toFixed(1) + 'B';
+  document.getElementById('mDetectedVal').textContent = STATE.detected ? 'YES' : 'NO';
+  document.getElementById('mContainedVal').textContent = STATE.contained ? 'YES' : 'NO';
+  document.getElementById('mRecoveryVal').textContent = STATE.recovery + '%';
+  document.getElementById('mIOCsVal').textContent = STATE.iocs;
+  document.getElementById('mStageVal').textContent = STATE.stage;
+  document.getElementById('mPostureVal').textContent = STATE.posture;
+
+  document.getElementById('mCost').className = 'metric' + (STATE.cost > 1e9 ? ' bad' : STATE.cost > 1e8 ? ' red' : '');
+  document.getElementById('mDetected').className = 'metric' + (STATE.detected ? ' ok' : '');
+  document.getElementById('mContained').className = 'metric' + (STATE.contained ? ' ok' : ' bad');
+  document.getElementById('mRecovery').className = 'metric' + (STATE.recovery >= 80 ? ' ok' : STATE.recovery >= 40 ? ' warn' : ' bad');
+  document.getElementById('mPosture').className = 'metric' + (STATE.posture === 'STRONG' ? ' ok' : STATE.posture === 'MEDIUM' ? ' warn' : STATE.posture === 'WEAK' ? ' bad' : '');
+}
+
+function advancePhase(){
+  var c = CASES[STATE.caseStudy];
+  var nextDay = Math.min(365, STATE.day + 20);
+  STATE.day = nextDay;
+
+  // Find the timeline events between previous day and now
+  var events = c.timeline.filter(function(t){ return t.day <= nextDay && t.day > (nextDay - 21); });
+  events.forEach(function(ev){
+    addFeed('TIMELINE', 'Day ' + ev.day + ': ' + ev.event, 'error');
+  });
+
+  // Update state based on progression
+  if(STATE.day >= 30){
+    STATE.victims = Math.floor(c.stats.victims * 0.3);
+    STATE.iocs = Math.floor(Math.random() * 20) + 5;
+    STATE.stage = 'INITIAL';
+  }
+  if(STATE.day >= 60){
+    STATE.victims = Math.floor(c.stats.victims * 0.7);
+    STATE.cost = Math.floor(c.stats.cost * 0.3);
+    STATE.stage = 'IMPACT';
+  }
+  if(STATE.day >= 100){
+    STATE.victims = c.stats.victims;
+    STATE.cost = c.stats.cost;
+    STATE.detected = true;
+    STATE.stage = 'DISCOVERY';
+    STATE.dwell = c.stats.dwell;
+  }
+  if(STATE.day >= 140){
+    STATE.contained = true;
+    STATE.stage = 'RESPONSE';
+    STATE.recovery = Math.min(90, STATE.recovery + 30);
+  }
+  if(STATE.day >= 200){
+    STATE.recovery = Math.min(100, STATE.recovery + 20);
+    STATE.stage = 'LESSONS';
+    var posture;
+    var avg = (STATE.recovery + (STATE.contained ? 100 : 0)) / 2;
+    if(avg >= 80) posture = 'STRONG';
+    else if(avg >= 50) posture = 'MEDIUM';
+    else posture = 'WEAK';
+    STATE.posture = posture;
+  }
+
+  // Progress kill chain
+  PHASES.forEach((p,i) => {
+    var el = document.getElementById('cp-' + p);
+    if(!el) return;
+    el.className = 'cs-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  // If finished, add lessons
+  if(STATE.phaseIdx >= PHASES.length){
+    c.lessons.forEach(function(lesson, i){
+      setTimeout(function(){
+        addFeed('LESSON', lesson, 'ok');
+      }, i * 800);
+    });
+    STATE.running = false;
+    return;
+  }
+
+  var phase = PHASES[STATE.phaseIdx];
+  switch(phase){
+    case 'PRE':
+      addFeed('PRE', 'Pre-incident state: ' + c.name + '. Organization has (or lacks) controls. Timeline begins ' + c.year + '.', 'info');
+      break;
+    case 'INITIAL':
+      spawnPacket('attacker','entry','#ef4444','ACCESS',0.03);
+      addFeed('INITIAL', 'Initial access: ' + c.vector + '. This is Day ' + STATE.day + ' of the case.', 'error');
+      break;
+    case 'EXPLOIT':
+      spawnPacket('entry','pivot','#f59e0b','PIVOT',0.03);
+      addFeed('EXPLOIT', 'Exploitation + lateral movement. Attacker pivots through internal network. MITRE: ' + c.mitre.join(', '), 'error');
+      break;
+    case 'IMPACT':
+      spawnPacket('pivot','target','#ef4444','IMPACT',0.03);
+      STATE.victims = c.stats.victims;
+      STATE.cost = c.stats.cost;
+      addFeed('IMPACT', 'Impact: ' + STATE.victims.toLocaleString() + ' victims affected. Estimated cost: $' + (STATE.cost/1e9).toFixed(1) + 'B. Dwell time at this point: ' + STATE.dwell + ' days.', 'error');
+      break;
+    case 'DISCOVERY':
+      STATE.detected = true;
+      STATE.dwell = c.stats.dwell;
+      addFeed('DISCOVERY', 'Discovery: breach detected after ' + STATE.dwell + ' days of dwell time. Detection came from external researcher, third party, or law enforcement — NOT from internal controls (a common pattern).', 'warn');
+      break;
+    case 'RESPONSE':
+      STATE.contained = true;
+      STATE.recovery = 40;
+      addFeed('RESPONSE', 'Response: incident response engaged. Containment + eradication + recovery. Timeline: days to months. Vendor + CISA + law enforcement coordination.', 'ok');
+      break;
+    case 'LESSONS':
+      STATE.recovery = Math.min(100, STATE.recovery + 40);
+      addFeed('LESSONS', 'Lessons learned: after-action review published. Regulatory impact: GDPR fines, SEC disclosure, lawsuits.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.day = 0;
+  STATE.dwell = 0;
+  STATE.victims = 0;
+  STATE.cost = 0;
+  STATE.detected = false;
+  STATE.contained = false;
+  STATE.recovery = 0;
+  STATE.iocs = 0;
+  STATE.stage = 'PRE';
+  STATE.posture = '—';
+  STATE.events = [];
+  PHASES.forEach(p => { var el = document.getElementById('cp-' + p); if(el) el.className = 'cs-phase'; });
+  STATE.nodes.forEach(n => { n.glow = 0; });
+  document.getElementById('daySlider').value = 0;
+  document.getElementById('dayVal').textContent = 'Day 0';
+  addFeed('RESET', 'Case study state cleared.', 'info');
+  termWrite('reset --all\n[+] Case state reset.');
+}
+
+document.getElementById('caseSelect').addEventListener('change', e => {
+  STATE.caseStudy = e.target.value;
+  resetAll();
+  var c = CASES[STATE.caseStudy];
+  addFeed('CASE', c.name + ' (' + c.year + '). Attacker: ' + c.attacker + '. Vector: ' + c.vector, 'error');
+});
+document.getElementById('perspectiveSelect').addEventListener('change', e => {
+  STATE.perspective = e.target.value;
+  addFeed('PERSPECTIVE', 'Perspective: ' + STATE.perspective.toUpperCase() + '.', 'info');
+});
+
+document.getElementById('daySlider').addEventListener('input', e => {
+  STATE.day = parseInt(e.target.value);
+  document.getElementById('dayVal').textContent = 'Day ' + STATE.day;
+});
+document.getElementById('speedSlider').addEventListener('input', e => {
+  STATE.speed = parseInt(e.target.value);
+  var labels = ['Slow','Normal','Fast','Turbo','Insane'];
+  var idx = Math.floor(STATE.speed / 25);
+  document.getElementById('speedVal').textContent = labels[idx];
+});
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.day = 0;
+  STATE.dwell = 0;
+  STATE.victims = 0;
+  STATE.cost = 0;
+  STATE.detected = false;
+  STATE.contained = false;
+  STATE.recovery = 0;
+  STATE.iocs = 0;
+  STATE.stage = 'PRE';
+  STATE.posture = '—';
+  STATE.nodes.forEach(n => { n.glow = 0; });
+  addFeed('BEGIN', 'Beginning case: ' + CASES[STATE.caseStudy].name + ' from ' + STATE.perspective.toUpperCase() + ' perspective.', 'error');
+  var interval = setInterval(() => {
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+    if(STATE.phaseIdx >= PHASES.length){ clearInterval(interval); STATE.running = false; }
+  }, 2500);
+});
+
+document.getElementById('stepBtn').addEventListener('click', () => {
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('lessonBtn').addEventListener('click', () => {
+  var c = CASES[STATE.caseStudy];
+  addFeed('LESSONS', 'Top lessons from ' + c.name + ':', 'ok');
+  c.lessons.forEach(function(lesson, i){
+    setTimeout(function(){
+      addFeed('LESSON', '• ' + lesson, 'ok');
+    }, (i + 1) * 600);
+  });
+});
+
+document.getElementById('timelineBtn').addEventListener('click', () => {
+  var c = CASES[STATE.caseStudy];
+  addFeed('TIMELINE', 'Full timeline of ' + c.name + ':', 'info');
+  c.timeline.forEach(function(ev, i){
+    setTimeout(function(){
+      addFeed('TIMELINE', 'Day ' + ev.day + ': ' + ev.event, 'warn');
+    }, (i + 1) * 500);
+  });
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firewalls &amp; Packet Filtering — iptables/nftables/WAF Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--cyan);
+    text-shadow:0 0 8px rgba(34,211,238,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--cyan); color:var(--cyan); }
+  .header-actions button.active{
+    border-color:var(--cyan); color:var(--cyan);
+    box-shadow:0 0 10px rgba(34,211,238,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--cyan); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; font-size:10px; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--cyan); cursor:pointer; box-shadow:0 0 7px rgba(34,211,238,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--cyan); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:var(--cyan); font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--cyan); color:var(--cyan); }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f2a2a,#0a1a1a);
+    border-color:var(--cyan); color:var(--cyan);
+    box-shadow:0 0 10px rgba(34,211,238,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(34,211,238,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulseCyan 1.4s infinite; }
+  @keyframes pulseCyan{
+    0%,100%{ box-shadow:0 0 6px rgba(34,211,238,.3); }
+    50%{ box-shadow:0 0 18px rgba(34,211,238,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.cyan .m-value{ color:var(--cyan); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--cyan); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .fw-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .fw-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .fw-phase.done{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.12); }
+  .fw-phase.active{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.2); box-shadow:0 0 10px rgba(34,211,238,.6);
+    animation:kcCyan 1.2s infinite; }
+  @keyframes kcCyan{ 50%{ box-shadow:0 0 16px rgba(34,211,238,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>FIREWALLS &amp; PACKET FILTERING</h1>
+    <span class="sub">STATEFUL · iptables/nftables · WAF · NGFW · CIS BENCHMARK</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Firewall Type</h3>
+      <select id="fwTypeSelect">
+        <option value="stateless">Stateless packet filter (ACL)</option>
+        <option value="stateful" selected>Stateful firewall (conntrack)</option>
+        <option value="ngfw">NGFW (L7 + App ID)</option>
+        <option value="waf">WAF (HTTP/HTTPS)</option>
+        <option value="cloud-sg">Cloud Security Group (AWS/Azure)</option>
+        <option value="cloud-nacl">Cloud NACL (subnet-level)</option>
+      </select>
+      <label class="ctl-label">Default policy</label>
+      <select id="defaultSelect">
+        <option value="drop" selected>DROP (deny all, allow by exception)</option>
+        <option value="accept">ACCEPT (allow all, deny by exception)</option>
+        <option value="reject">REJECT (with ICMP unreachable)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Rule Editor</h3>
+      <label class="ctl-label">Add rule</label>
+      <textarea id="ruleInput">-A INPUT -p tcp --dport 22 -s 10.0.0.0/8 -j ACCEPT</textarea>
+      <div class="btn-row">
+        <button type="button" class="act ok" id="addRuleBtn">+ ADD</button>
+        <button type="button" class="act warn" id="flushBtn">⚠ FLUSH</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Test Packet</h3>
+      <label class="ctl-label">Source IP</label>
+      <input type="text" id="srcInput" value="203.0.113.42">
+      <label class="ctl-label">Destination port</label>
+      <input type="text" id="dportInput" value="22">
+      <label class="ctl-label">Protocol / flags</label>
+      <select id="protoSelect">
+        <option value="tcp-syn">TCP SYN (new connection)</option>
+        <option value="tcp-ack">TCP ACK (established)</option>
+        <option value="tcp-fin">TCP FIN (close)</option>
+        <option value="udp">UDP</option>
+        <option value="icmp">ICMP echo</option>
+        <option value="frag">Fragmented packet</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="testBtn">▶ TEST PACKET</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="bypassBtn">🚨 BYPASS ATTEMPT</button>
+        <button type="button" class="act ok" id="hardenBtn">🛡 HARDEN</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">root@fw:~# </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Firewall bypass attempts against unauthorized networks are illegal.</div>
+    <div class="status-badges">
+      <div class="status-badge">FW: <b id="badgeFW">STATEFUL</b></div>
+      <div class="status-badge">POLICY: <b id="badgePolicy">DROP</b></div>
+      <div class="status-badge">RULES: <b id="badgeRules">0</b></div>
+      <div class="status-badge">VERDICT: <b id="badgeVerdict">—</b></div>
+    </div>
+    <div class="fw-chain" id="fwChain">
+      <div class="fw-phase" id="fp-PACKET">PACKET IN</div>
+      <div class="fw-phase" id="fp-MATCH">MATCH RULES</div>
+      <div class="fw-phase" id="fp-CONNTRACK">CONNTRACK</div>
+      <div class="fw-phase" id="fp-VERDICT">VERDICT</div>
+      <div class="fw-phase" id="fp-LOG">LOG</div>
+    </div>
+    <div class="footer-overlay">NIST SP 800-41 Rev 1 (Firewall Guidelines) · PCI DSS 1.2 · CIS Benchmarks · RFC 2979</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric cyan" id="mRules"><div class="m-label">Rules</div><div class="m-value" id="mRulesVal">0</div></div>
+      <div class="metric" id="mPackets"><div class="m-label">Packets</div><div class="m-value" id="mPacketsVal">0</div></div>
+      <div class="metric" id="mAllowed"><div class="m-label">Allowed</div><div class="m-value" id="mAllowedVal">0</div></div>
+      <div class="metric" id="mDenied"><div class="m-label">Denied</div><div class="m-value" id="mDeniedVal">0</div></div>
+      <div class="metric" id="mConntrack"><div class="m-label">Conntrack</div><div class="m-value" id="mConntrackVal">0</div></div>
+      <div class="metric" id="mLatency"><div class="m-label">Latency</div><div class="m-value" id="mLatencyVal">0μs</div></div>
+      <div class="metric" id="mByPass"><div class="m-label">Bypasses</div><div class="m-value" id="mByPassVal">0</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Posture</div><div class="m-value" id="mDefenseVal">WEAK</div></div>
+    </div>
+    <div class="info-card">
+      <b>Firewalls — enforce network policy at boundaries.</b><br>
+      <span class="eq">Stateless: per-packet ACL (fast, no context)</span><br>
+      <span class="eq">Stateful: track TCP/UDP connections (conntrack)</span><br>
+      <span class="eq">NGFW: L7 inspection, app ID, TLS decrypt</span><br>
+      <span class="eq">WAF: HTTP/HTTPS filter (OWASP CRS rules)</span><br>
+      <span style="color:var(--purple)">NIST SP 800-41r1 · PCI DSS 1.2 · CIS Benchmarks</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  fwType:'stateful',
+  policy:'drop',
+  rules:[],
+  src:'203.0.113.42',
+  dport:22,
+  proto:'tcp-syn',
+  packets:0,
+  allowed:0,
+  denied:0,
+  conntrack:0,
+  latency:0,
+  bypasses:0,
+  posture:'WEAK',
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'internet', label:'internet', ip:'untrusted', x:0.10*W, y:0.40*H, icon:'cloud', color:'#ef4444', glow:0, blink:0},
+    {id:'fw', label:'firewall', ip:'edge', x:0.35*W, y:0.40*H, icon:'firewall', color:'#22d3ee', glow:0, blink:0},
+    {id:'dmz', label:'DMZ', ip:'10.0.1.0/24', x:0.55*W, y:0.20*H, icon:'server', color:'#f59e0b', glow:0, blink:0},
+    {id:'lan', label:'internal LAN', ip:'10.0.0.0/24', x:0.55*W, y:0.60*H, icon:'server', color:'#22c55e', glow:0, blink:0},
+    {id:'db', label:'database', ip:'10.0.0.20:3306', x:0.78*W, y:0.60*H, icon:'database', color:'#a855f7', glow:0, blink:0},
+    {id:'siem', label:'SIEM', ip:'log aggregator', x:0.90*W, y:0.40*H, icon:'server', color:'#3b82f6', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(34,211,238,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'firewall': {
+      ctx.lineWidth = 1.2;
+      for(var row=0;row<3;row++){
+        var y2 = -10 + row*7;
+        var off = row%2===0 ? 0 : 5;
+        for(var col=0;col<4;col++) ctx.strokeRect(-16+col*9+off, y2, 8, 6);
+      }
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(0,-4); ctx.quadraticCurveTo(4,0,0,5); ctx.quadraticCurveTo(-4,0,0,-4);
+      ctx.fill();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:5});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">root@fw:~# </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  // Initialize with sensible default rules
+  STATE.rules = [
+    {action:'ACCEPT', proto:'tcp', dport:'22', src:'10.0.0.0/8', desc:'SSH from internal only'},
+    {action:'ACCEPT', proto:'tcp', dport:'443', src:'0.0.0.0/0', desc:'HTTPS public'},
+    {action:'ACCEPT', proto:'tcp', dport:'80', src:'0.0.0.0/0', desc:'HTTP (redirect to HTTPS)'},
+    {action:'ACCEPT', proto:'tcp', dport:'3306', src:'10.0.0.0/8', desc:'MySQL internal only'},
+    {action:'DROP', proto:'tcp', dport:'3389', src:'0.0.0.0/0', desc:'Block RDP from internet'},
+    {action:'DROP', proto:'tcp', dport:'23', src:'0.0.0.0/0', desc:'Block Telnet (legacy)'}
+  ];
+
+  addFeed('ETHICS',
+    'Firewalls enforce the network policy of an organization. Misconfiguring them — or bypassing them without authorization — can expose PII, PHI, financial data, and critical infrastructure. Never test firewall rules on networks you do not own. In authorized engagements, document every rule change. CIS Benchmarks define the hardening baseline: default-deny, explicit rules, logging enabled, change-controlled. Cloud security groups (AWS/Azure/GCP) follow the same principles but with subtle differences (stateful by default, quota limits, IAM policies for who can modify them).',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Firewalls enforce network access policy at boundaries. Types: STATELESS (per-packet ACL, no memory of prior packets — fast but easily bypassed via flag manipulation), STATEFUL (tracks TCP/UDP connection state via conntrack — blocks unsolicited inbound; most common), NGFW (Next-Gen Firewall — adds L7 DPI, application identification, TLS inspection, IPS integration), WAF (Web Application Firewall — HTTP/HTTPS only, filters requests via OWASP CRS), CLOUD SECURITY GROUPS (stateful, attached to instances, default-deny inbound), NACL (subnet-level, stateless, both inbound + outbound must be allowed). Best practice: default-deny, explicit allow rules, log everything, review quarterly.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('iptables -L -n -v --line-numbers\n' +
+      'Chain INPUT (policy ' + STATE.policy.toUpperCase() + ')\n' +
+      'num  target  prot opt source       destination\n' +
+      '1    ACCEPT  tcp  --  10.0.0.0/8   0.0.0.0/0    tcp dpt:22\n' +
+      '2    ACCEPT  tcp  --  0.0.0.0/0    0.0.0.0/0    tcp dpt:443\n' +
+      '3    ACCEPT  tcp  --  0.0.0.0/0    0.0.0.0/0    tcp dpt:80\n' +
+      '4    DROP    tcp  --  0.0.0.0/0    0.0.0.0/0    tcp dpt:3389\n' +
+      '5    DROP    tcp  --  0.0.0.0/0    0.0.0.0/0    tcp dpt:23');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Firewall: ' + STATE.fwType.toUpperCase() + '. Policy: ' + STATE.policy.toUpperCase() + '. Rules loaded: ' + STATE.rules.length + '. Test a packet or click BYPASS to attempt an evasion.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.20*W, 0.75*H, 'UNTRUSTED', '#ef4444');
+  drawZone(0.28*W, 0.08*H, 0.15*W, 0.75*H, 'FIREWALL', '#22d3ee');
+  drawZone(0.48*W, 0.08*H, 0.48*W, 0.75*H, 'TRUSTED', '#22c55e');
+
+  var links = [
+    ['internet','fw'], ['fw','dmz'], ['fw','lan'], ['lan','db'], ['fw','siem']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(34,211,238,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 10;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '8px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 10);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  // Rules list overlay
+  if(STATE.rules.length > 0){
+    ctx.save();
+    var ax = 0.30*W, ay = 0.15*H, aw = 0.30*W, ah = 60 + STATE.rules.length * 12;
+    ctx.fillStyle = 'rgba(10,20,30,0.9)';
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 9px "Courier New",monospace';
+    ctx.fillStyle = '#22d3ee';
+    ctx.textAlign = 'left';
+    ctx.fillText('RULESET (' + STATE.rules.length + ')', ax + 6, ay + 14);
+    ctx.font = '8px "Courier New",monospace';
+    STATE.rules.slice(0, 8).forEach(function(r, i){
+      var actionColor = r.action === 'ACCEPT' ? '#4ade80' : '#fca5a5';
+      ctx.fillStyle = actionColor;
+      ctx.fillText(r.action.padEnd(6) + ' ' + (r.proto || 'any').padEnd(4) + ' :' + r.dport + ' from ' + r.src, ax + 6, ay + 28 + i * 12);
+    });
+    ctx.restore();
+  }
+
+  // Verdict overlay
+  if(STATE.phaseIdx > 0){
+    ctx.save();
+    var vx = 0.65*W, vy = 0.15*H, vw = 0.30*W, vh = 80;
+    ctx.fillStyle = 'rgba(10,20,30,0.9)';
+    ctx.strokeStyle = STATE.lastVerdict === 'ALLOW' ? '#22c55e' : '#ef4444';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(vx, vy, vw, vh);
+    ctx.strokeRect(vx, vy, vw, vh);
+    ctx.font = 'bold 11px "Courier New",monospace';
+    ctx.fillStyle = STATE.lastVerdict === 'ALLOW' ? '#4ade80' : '#fca5a5';
+    ctx.textAlign = 'left';
+    ctx.fillText('VERDICT: ' + (STATE.lastVerdict || '—'), vx + 8, vy + 20);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('src: ' + STATE.src + ':' + Math.floor(Math.random() * 40000 + 1024), vx + 8, vy + 40);
+    ctx.fillText('dst: 10.0.0.10:' + STATE.dport + ' ' + STATE.proto.toUpperCase(), vx + 8, vy + 56);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Stateful: tracks connection state via conntrack table', 12, H - 74);
+  ctx.fillText('Stateless: rules must allow both directions explicitly', 12, H - 62);
+  ctx.fillText('Best practice: default-DENY + explicit allow + logging', 12, H - 50);
+  ctx.fillText('Common mistakes: allow any/any, no egress rules, no logging', 12, H - 38);
+  ctx.fillText('NIST SP 800-41r1 \u00B7 PCI DSS 1.2 \u00B7 CIS Benchmarks', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeFW').textContent = STATE.fwType.toUpperCase();
+  document.getElementById('badgePolicy').textContent = STATE.policy.toUpperCase();
+  document.getElementById('badgeRules').textContent = STATE.rules.length;
+  document.getElementById('badgeVerdict').textContent = STATE.lastVerdict || '—';
+
+  document.getElementById('mRulesVal').textContent = STATE.rules.length;
+  document.getElementById('mPacketsVal').textContent = STATE.packets;
+  document.getElementById('mAllowedVal').textContent = STATE.allowed;
+  document.getElementById('mDeniedVal').textContent = STATE.denied;
+  document.getElementById('mConntrackVal').textContent = STATE.conntrack;
+  document.getElementById('mLatencyVal').textContent = STATE.latency + 'μs';
+  document.getElementById('mByPassVal').textContent = STATE.bypasses;
+  document.getElementById('mDefenseVal').textContent = STATE.posture;
+
+  document.getElementById('mByPass').className = 'metric' + (STATE.bypasses > 0 ? ' bad' : '');
+  document.getElementById('mDefense').className = 'metric' + (STATE.posture === 'STRONG' ? ' ok' : STATE.posture === 'MEDIUM' ? ' warn' : ' bad');
+}
+
+function evaluatePacket(){
+  STATE.packets++;
+  STATE.latency = Math.floor(20 + Math.random() * 30);
+
+  // Match against rules
+  var matched = null;
+  for(var i = 0; i < STATE.rules.length; i++){
+    var r = STATE.rules[i];
+    // Simple matching
+    if(r.dport === '*' || r.dport === String(STATE.dport)){
+      if(r.proto === '*' || r.proto === 'tcp' && STATE.proto.indexOf('tcp') === 0 || r.proto === STATE.proto){
+        // Check source
+        if(r.src === '0.0.0.0/0' || (r.src === '10.0.0.0/8' && STATE.src.indexOf('10.') === 0) || r.src === STATE.src){
+          matched = r;
+          break;
+        }
+      }
+    }
+  }
+
+  var verdict = matched ? matched.action : (STATE.policy === 'accept' ? 'ACCEPT' : (STATE.policy === 'drop' ? 'DROP' : 'REJECT'));
+  STATE.lastVerdict = verdict === 'ACCEPT' ? 'ALLOW' : 'DENY';
+
+  if(verdict === 'ACCEPT'){
+    STATE.allowed++;
+    if(STATE.proto === 'tcp-syn') STATE.conntrack++;
+  } else {
+    STATE.denied++;
+  }
+
+  return {verdict: verdict, matched: matched};
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= 5){
+    STATE.running = false;
+    return;
+  }
+  var phase = ['PACKET','MATCH','CONNTRACK','VERDICT','LOG'][STATE.phaseIdx];
+  ['PACKET','MATCH','CONNTRACK','VERDICT','LOG'].forEach(function(p,i){
+    var el = document.getElementById('fp-' + p);
+    if(!el) return;
+    el.className = 'fw-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  switch(phase){
+    case 'PACKET':
+      spawnPacket('internet','fw','#ef4444',STATE.proto.toUpperCase(),0.03);
+      addFeed('PACKET', 'Incoming packet: src=' + STATE.src + ', dport=' + STATE.dport + ', proto=' + STATE.proto.toUpperCase() + '. ' + (STATE.proto === 'frag' ? 'FRAGMENTED — must reassemble before matching (potential evasion).' : STATE.proto === 'tcp-ack' ? 'ACK-only — will be checked against conntrack table.' : 'SYN — new connection attempt.'), 'info');
+      break;
+
+    case 'MATCH':
+      addFeed('MATCH', 'Evaluating ' + STATE.rules.length + ' rules in order. ' + (STATE.fwType === 'stateful' ? 'Stateful: check conntrack first (ESTABLISHED/RELATED allowed).' : STATE.fwType === 'stateless' ? 'Stateless: no connection state — match on packet fields only.' : STATE.fwType === 'ngfw' ? 'NGFW: L7 inspection — will parse application protocol.' : 'WAF: HTTP parsing — check for OWASP Top 10 patterns.') + ' Default policy: ' + STATE.policy.toUpperCase() + '.', 'info');
+      break;
+
+    case 'CONNTRACK':
+      if(STATE.fwType === 'stateful'){
+        addFeed('CONNTRACK', 'Conntrack lookup: ' + (STATE.proto === 'tcp-ack' ? 'ESTABLISHED connection found — allowed without rule match.' : STATE.proto === 'tcp-syn' ? 'NEW connection — must match an ACCEPT rule (or drop).' : 'Not a TCP flow — rule-based only.'), 'info');
+      } else if(STATE.fwType === 'stateless'){
+        addFeed('CONNTRACK', 'Stateless firewall has no conntrack table. All packets evaluated independently. This allows some evasion: attackers can send packets with unusual flag combinations (e.g., SYN+FIN, NULL, XMAS) that some ACLs mishandle.', 'warn');
+      } else {
+        addFeed('CONNTRACK', STATE.fwType.toUpperCase() + ' — connection tracking + L7 state as applicable.', 'info');
+      }
+      break;
+
+    case 'VERDICT':
+      var result = evaluatePacket();
+      spawnPacket('fw', result.verdict === 'ACCEPT' ? 'lan' : 'siem',
+                  result.verdict === 'ACCEPT' ? '#22c55e' : '#ef4444',
+                  result.verdict, 0.03);
+      addFeed('VERDICT', 'Firewall verdict: ' + result.verdict + '. ' +
+        (result.matched ? 'Matched rule: ' + result.matched.action + ' ' + result.matched.proto + ' dport ' + result.matched.dport + ' from ' + result.matched.src : 'No rule matched — using default policy: ' + STATE.policy.toUpperCase()) + '.',
+        result.verdict === 'ACCEPT' ? 'ok' : 'warn');
+      addCommandFeed('iptables -L -n -v | grep ' + STATE.dport, 
+        result.verdict === 'ACCEPT' ? 
+          '    ' + (STATE.denied + STATE.allowed) + '  ' + Math.floor((STATE.denied + STATE.allowed) * 0.5) + 'K  ACCEPT tcp -- ' + STATE.src + ' 0.0.0.0/0 tcp dpt:' + STATE.dport + '\n[+] Packet accepted — connection tracked' :
+          '    ' + STATE.denied + '  ' + Math.floor(STATE.denied * 0.3) + 'K  DROP   tcp -- ' + STATE.src + ' 0.0.0.0/0 tcp dpt:' + STATE.dport + '\n[!] Packet dropped — logged to SIEM');
+      break;
+
+    case 'LOG':
+      addFeed('LOG', 'Verdict logged to SIEM (' + (result.verdict === 'ACCEPT' ? 'info' : 'warning') + ' severity): src=' + STATE.src + ':' + Math.floor(Math.random() * 40000 + 1024) + ', dport=' + STATE.dport + ', proto=' + STATE.proto.toUpperCase() + ', verdict=' + STATE.lastVerdict + '. PCI DSS requires logging all allowed and denied traffic on cardholder-data networks. Detect anomalies: repeated DROP from same src = scan; ACCEPT to unusual service = lateral movement.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.packets = 0;
+  STATE.allowed = 0;
+  STATE.denied = 0;
+  STATE.conntrack = 0;
+  STATE.bypasses = 0;
+  STATE.lastVerdict = null;
+  STATE.events = [];
+  ['PACKET','MATCH','CONNTRACK','VERDICT','LOG'].forEach(function(p){
+    var el = document.getElementById('fp-' + p); if(el) el.className = 'fw-phase';
+  });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'Firewall state cleared.', 'info');
+  termWrite('iptables -F\n[+] All rules flushed\n[+] Default policy: ' + STATE.policy.toUpperCase());
+}
+
+document.getElementById('fwTypeSelect').addEventListener('change', function(e){
+  STATE.fwType = e.target.value;
+  addFeed('FW', 'Firewall type: ' + STATE.fwType.toUpperCase() + '.', 'info');
+});
+document.getElementById('defaultSelect').addEventListener('change', function(e){
+  STATE.policy = e.target.value;
+  addFeed('POLICY', 'Default policy: ' + STATE.policy.toUpperCase() + '.', STATE.policy === 'accept' ? 'warn' : 'ok');
+});
+document.getElementById('srcInput').addEventListener('input', function(e){ STATE.src = e.target.value; });
+document.getElementById('dportInput').addEventListener('input', function(e){ STATE.dport = parseInt(e.target.value) || 0; });
+document.getElementById('protoSelect').addEventListener('change', function(e){ STATE.proto = e.target.value; });
+
+document.getElementById('addRuleBtn').addEventListener('click', function(){
+  var txt = document.getElementById('ruleInput').value.trim();
+  // Parse: -A CHAIN -p PROTO --dport PORT -s SRC -j ACTION
+  var match = txt.match(/-p\s+(\w+)/);
+  var proto = match ? match[1] : '*';
+  var dportMatch = txt.match(/--dport\s+(\d+|\*)/);
+  var dport = dportMatch ? dportMatch[1] : '*';
+  var srcMatch = txt.match(/-s\s+([\d\.\/]+)/);
+  var src = srcMatch ? srcMatch[1] : '0.0.0.0/0';
+  var actionMatch = txt.match(/-j\s+(ACCEPT|DROP|REJECT)/);
+  var action = actionMatch ? actionMatch[1] : 'DROP';
+  STATE.rules.push({action:action, proto:proto, dport:dport, src:src, desc:'user-added'});
+  addFeed('RULE', 'Added rule: ' + action + ' ' + proto + ' dport ' + dport + ' from ' + src, 'ok');
+});
+
+document.getElementById('flushBtn').addEventListener('click', function(){
+  STATE.rules = [];
+  addFeed('FLUSH', 'ALL RULES FLUSHED. Only default policy remains: ' + STATE.policy.toUpperCase() + '. ' + (STATE.policy === 'accept' ? 'CRITICAL: default ACCEPT means everything is now allowed!' : 'Default DROP still protects.'), STATE.policy === 'accept' ? 'error' : 'warn');
+});
+
+document.getElementById('testBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  addFeed('TEST', 'Testing packet: ' + STATE.src + ' → 10.0.0.10:' + STATE.dport + ' (' + STATE.proto.toUpperCase() + ')', 'info');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+    if(STATE.phaseIdx >= 5){ clearInterval(interval); STATE.running = false; }
+  }, 800);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('bypassBtn').addEventListener('click', function(){
+  STATE.bypasses++;
+  var bypasses = [
+    'Fragment overlap: attacker crafts overlapping IP fragments. Stateless firewalls may reassemble differently than the target OS → packet filter sees one thing, target sees another.',
+    'Source port 53: rule might allow DNS (UDP 53) — but some admins also allow TCP 53 → attacker tunnels data over TCP 53.',
+    'IPv6 fallback: firewall may be IPv4-only, but target has IPv6 → attacker reaches via IPv6.',
+    'Tunneling via allowed protocol: HTTP CONNECT, DNS TXT, ICMP tunneling.',
+    'Time-of-check vs. time-of-use: firewall sees allowed packet; target processes it after slight modification (TCP session splicing).'
+  ];
+  var chosen = bypasses[Math.floor(Math.random() * bypasses.length)];
+  addFeed('BYPASS', 'Attempting evasion: ' + chosen, 'error');
+  if(STATE.policy === 'accept' || STATE.rules.length === 0){
+    addFeed('BYPASS', 'BYPASS SUCCESSFUL — weak firewall configuration. Default policy or missing rules allowed the evasion. This is why "default-deny" is critical.', 'error');
+    STATE.posture = 'WEAK';
+  } else if(STATE.fwType === 'stateful' || STATE.fwType === 'ngfw'){
+    addFeed('BYPASS', 'Bypass BLOCKED — stateful/NGFW inspection detected the anomaly. Fragment reassembly is done by the firewall (not the target), conntrack validates state, L7 DPI sees through obfuscation.', 'ok');
+    STATE.posture = 'STRONG';
+  } else {
+    addFeed('BYPASS', 'Bypass PARTIALLY blocked — stateless firewall blocked basic evasion but advanced fragmentation may still work. Upgrade to stateful or NGFW.', 'warn');
+    STATE.posture = 'MEDIUM';
+  }
+});
+
+document.getElementById('hardenBtn').addEventListener('click', function(){
+  STATE.policy = 'drop';
+  document.getElementById('defaultSelect').value = 'drop';
+  STATE.fwType = 'stateful';
+  document.getElementById('fwTypeSelect').value = 'stateful';
+  STATE.rules = [
+    {action:'ACCEPT', proto:'tcp', dport:'22', src:'10.0.0.0/8', desc:'SSH internal only'},
+    {action:'ACCEPT', proto:'tcp', dport:'443', src:'0.0.0.0/0', desc:'HTTPS public'},
+    {action:'ACCEPT', proto:'tcp', dport:'80', src:'0.0.0.0/0', desc:'HTTP (redirect)'},
+    {action:'ACCEPT', proto:'tcp', dport:'3306', src:'10.0.0.0/8', desc:'MySQL internal only'},
+    {action:'DROP', proto:'tcp', dport:'3389', src:'0.0.0.0/0', desc:'Block RDP'},
+    {action:'DROP', proto:'tcp', dport:'23', src:'0.0.0.0/0', desc:'Block Telnet'},
+    {action:'DROP', proto:'any', dport:'*', src:'0.0.0.0/0', desc:'Default deny (implicit)'}
+  ];
+  STATE.posture = 'STRONG';
+  addFeed('DEFENSE', 'Firewall hardened: default-DENY policy + stateful inspection + explicit allow rules + logging. Best practice checklist: (1) Default deny inbound + outbound. (2) Stateful inspection. (3) Explicit allow rules with source IP restrictions. (4) Log all DROP + ACCEPT to SIEM. (5) Review rules quarterly (remove stale). (6) Change control for all modifications. (7) Separate management plane (SSH only from jump host). (8) Rate-limit + fail2ban. (9) Egress filtering (C2 blocking). (10) NGFW with IPS for advanced threats.', 'ok');
+  termWrite('iptables -P INPUT DROP\n' +
+    'iptables -P FORWARD DROP\n' +
+    'iptables -P OUTPUT DROP\n' +
+    'iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT\n' +
+    'iptables -A INPUT -i lo -j ACCEPT\n' +
+    'iptables -A INPUT -p tcp --dport 443 -j ACCEPT\n' +
+    'iptables -A INPUT -p tcp --dport 22 -s 10.0.0.0/8 -j ACCEPT\n' +
+    'iptables -A INPUT -j LOG --log-prefix "FW-DROP: "\n' +
+    '[+] Harden complete — default-deny + stateful');
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

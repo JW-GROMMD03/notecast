@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VPN &amp; Secure Tunneling — IPSec/WireGuard/OpenVPN Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--cyan);
+    text-shadow:0 0 8px rgba(34,211,238,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--cyan); color:var(--cyan); }
+  .header-actions button.active{
+    border-color:var(--cyan); color:var(--cyan);
+    box-shadow:0 0 10px rgba(34,211,238,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--cyan); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--cyan); cursor:pointer; box-shadow:0 0 7px rgba(34,211,238,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--cyan); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:var(--cyan); font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--cyan); color:var(--cyan); }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f2a2a,#0a1a1a);
+    border-color:var(--cyan); color:var(--cyan);
+    box-shadow:0 0 10px rgba(34,211,238,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(34,211,238,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulseCyan 1.4s infinite; }
+  @keyframes pulseCyan{
+    0%,100%{ box-shadow:0 0 6px rgba(34,211,238,.3); }
+    50%{ box-shadow:0 0 18px rgba(34,211,238,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.cyan .m-value{ color:var(--cyan); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--cyan); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .vpn-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .vpn-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .vpn-phase.done{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.12); }
+  .vpn-phase.active{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.2); box-shadow:0 0 10px rgba(34,211,238,.6);
+    animation:kcCyan 1.2s infinite; }
+  @keyframes kcCyan{ 50%{ box-shadow:0 0 16px rgba(34,211,238,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>VPN &amp; SECURE TUNNELING</h1>
+    <span class="sub">IPSEC · WIREGUARD · OPENVPN · TLS · NIST SP 800-77 · RFC 7296</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Protocol</h3>
+      <select id="protoSelect">
+        <option value="wireguard">WireGuard (UDP, Noise)</option>
+        <option value="openvpn">OpenVPN (TLS, UDP/TCP)</option>
+        <option value="ipsec">IPsec IKEv2 (ESP)</option>
+        <option value="ssl-vpn">SSL VPN (Web portal)</option>
+        <option value="ssh">SSH tunnel (-L/-R/-D)</option>
+      </select>
+      <label class="ctl-label">Tunnel type</label>
+      <select id="typeSelect">
+        <option value="site2site">Site-to-site (fixed peers)</option>
+        <option value="remote">Remote access (road warrior)</option>
+        <option value="split">Split tunnel (selective routing)</option>
+        <option value="full">Full tunnel (all traffic)</option>
+        <option value="mesh">Mesh (peer-to-peer)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Cryptographic Configuration</h3>
+      <label class="ctl-label">Cipher suite</label>
+      <select id="cipherSelect">
+        <option value="chacha">ChaCha20-Poly1305 (AEAD)</option>
+        <option value="aes-gcm">AES-256-GCM (AEAD)</option>
+        <option value="aes-cbc">AES-256-CBC + HMAC-SHA256</option>
+        <option value="3des">3DES + MD5 (legacy, broken)</option>
+        <option value="null">NULL cipher (unencrypted)</option>
+      </select>
+      <label class="ctl-label">Key exchange</label>
+      <select id="kexSelect">
+        <option value="x25519">X25519 (Curve25519 ECDH)</option>
+        <option value="p256">ECDH P-256</option>
+        <option value="dh2048">DH Group 14 (2048-bit MODP)</option>
+        <option value="psk">Pre-shared key (PSK)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">MTU <span class="slider-val" id="mtuVal">1420</span></label>
+      <input type="range" id="mtuSlider" min="576" max="9000" value="1420">
+      <label class="ctl-label">Keepalive (s) <span class="slider-val" id="kaVal">25</span></label>
+      <input type="range" id="kaSlider" min="0" max="120" value="25">
+      <label class="ctl-label">Re-key interval (min) <span class="slider-val" id="rkVal">120</span></label>
+      <input type="range" id="rkSlider" min="1" max="1440" value="120">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ CONNECT</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="mitmBtn">🎭 MITM TEST</button>
+        <button type="button" class="act ok" id="pqcBtn">🔮 PQC HYBRID</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">root@vpn:~# </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — VPN bypass testing on unauthorized networks is illegal.</div>
+    <div class="status-badges">
+      <div class="status-badge">PROTOCOL: <b id="badgeProto">WIREGUARD</b></div>
+      <div class="status-badge">TYPE: <b id="badgeType">SITE2SITE</b></div>
+      <div class="status-badge">CIPHER: <b id="badgeCipher">CHACHA20</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+    </div>
+    <div class="vpn-chain" id="vpnChain">
+      <div class="vpn-phase" id="vp-KEX">KEY EXCHANGE</div>
+      <div class="vpn-phase" id="vp-AUTH">AUTHENTICATE</div>
+      <div class="vpn-phase" id="vp-TUNNEL">TUNNEL UP</div>
+      <div class="vpn-phase" id="vp-TRAFFIC">TRAFFIC</div>
+      <div class="vpn-phase" id="vp-REKEY">REKEY</div>
+      <div class="vpn-phase" id="vp-CLOSE">CLOSE</div>
+    </div>
+    <div class="footer-overlay">RFC 7296 (IKEv2) · RFC 8446 (TLS 1.3) · WireGuard whitepaper · NIST SP 800-77r1</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric cyan" id="mTunnel"><div class="m-label">Tunnel</div><div class="m-value" id="mTunnelVal">DOWN</div></div>
+      <div class="metric" id="mRTT"><div class="m-label">RTT</div><div class="m-value" id="mRTTVal">—</div></div>
+      <div class="metric" id="mThroughput"><div class="m-label">Throughput</div><div class="m-value" id="mThroughputVal">0 Mbps</div></div>
+      <div class="metric" id="mOverhead"><div class="m-label">Overhead</div><div class="m-value" id="mOverheadVal">0%</div></div>
+      <div class="metric" id="mPackets"><div class="m-label">Packets</div><div class="m-value" id="mPacketsVal">0</div></div>
+      <div class="metric" id="mRekey"><div class="m-label">Rekey In</div><div class="m-value" id="mRekeyVal">120m</div></div>
+      <div class="metric" id="mLeaks"><div class="m-label">Leaks</div><div class="m-value" id="mLeaksVal">0</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Security</div><div class="m-value" id="mDefenseVal">—</div></div>
+    </div>
+    <div class="info-card">
+      <b>VPN — encrypted tunnel over untrusted networks.</b><br>
+      <span class="eq">IPsec: IKEv2 (UDP 500/4500) + ESP (proto 50)</span><br>
+      <span class="eq">WireGuard: UDP single port, Noise_IK handshake</span><br>
+      <span class="eq">OpenVPN: TLS on UDP 1194 or TCP 443</span><br>
+      <span class="eq">SSH tunnel: -L local, -R remote, -D SOCKS</span><br>
+      <span style="color:var(--purple)">NIST SP 800-77r1 · RFC 7296 · WireGuard whitepaper</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  proto:'wireguard',
+  type:'site2site',
+  cipher:'chacha',
+  kex:'x25519',
+  mtu:1420,
+  keepalive:25,
+  rekey:120,
+  tunnelUp:false,
+  rtt:0,
+  throughput:0,
+  overhead:0,
+  packets:0,
+  rekeyIn:120,
+  leaks:0,
+  security:'—',
+  mitm:false,
+  pqc:false,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['KEX','AUTH','TUNNEL','TRAFFIC','REKEY','CLOSE'];
+
+var CIPHERS = {
+  chacha:{name:'ChaCha20-Poly1305', bits:256, aead:true, overhead:16, speed:800, secure:true},
+  'aes-gcm':{name:'AES-256-GCM', bits:256, aead:true, overhead:16, speed:1600, secure:true},
+  'aes-cbc':{name:'AES-256-CBC + HMAC-SHA256', bits:256, aead:false, overhead:48, speed:1200, secure:true},
+  '3des':{name:'3DES + MD5', bits:112, aead:false, overhead:48, speed:60, secure:false},
+  null:{name:'NULL (no encryption)', bits:0, aead:false, overhead:0, speed:10000, secure:false}
+};
+
+var KEXS = {
+  x25519:{name:'X25519', bits:128, pqcResistant:false, speed:'fast', forwardSecrecy:true},
+  p256:{name:'ECDH P-256', bits:128, pqcResistant:false, speed:'fast', forwardSecrecy:true},
+  dh2048:{name:'DH Group 14', bits:112, pqcResistant:false, speed:'medium', forwardSecrecy:true},
+  psk:{name:'Pre-Shared Key', bits:256, pqcResistant:true, speed:'fast', forwardSecrecy:false}
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'client', label:'client site', ip:'10.0.1.0/24', x:0.12*W, y:0.45*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'attacker', label:'attacker / ISP', ip:'on-path', x:0.50*W, y:0.15*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'tunnel', label:'encrypted tunnel', ip:'UDP 51820', x:0.50*W, y:0.45*H, icon:'cloud', color:'#22d3ee', glow:0, blink:0},
+    {id:'server', label:'VPN server', ip:'203.0.113.10', x:0.88*W, y:0.45*H, icon:'server', color:'#22c55e', glow:0, blink:0},
+    {id:'internal', label:'internal network', ip:'10.0.2.0/24', x:0.88*W, y:0.75*H, icon:'database', color:'#a855f7', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(34,211,238,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(var j=0;j<3;j++){ ctx.beginPath(); ctx.moveTo(-10,-8+j*4); ctx.lineTo(8,-8+j*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">root@vpn:~# </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'VPNs protect confidentiality over untrusted networks. Testing VPN configurations is legal ONLY on networks you own or have written authorization to audit. Bypassing corporate VPNs without permission violates CFAA/CMA. In authorized engagements, verify that split-tunnel does not leak sensitive traffic, that kill switches work, and that DNS queries do not escape the tunnel. Report any leak to the network owner immediately.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'VPNs create encrypted tunnels over untrusted networks. IPsec (IKEv2 + ESP) is the enterprise standard, used for site-to-site and remote access. WireGuard is modern, small (~4,000 LOC), uses Noise_IK handshake with Curve25519 + ChaCha20-Poly1305. OpenVPN uses TLS for control channel and custom data channel. SSL VPNs are web-based (Citrix, Pulse, Fortinet). SSH tunnels provide quick point-to-point encrypted forwarding. All rely on strong cryptography and correct configuration — the "NULL cipher" and split-tunnel misconfigurations are common weaknesses.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('wg show\n' +
+      'interface: wg0\n' +
+      '  public key: aBcDeF...\n' +
+      '  listening port: 51820\n' +
+      'peer: xYz123...\n' +
+      '  endpoint: 203.0.113.10:51820\n' +
+      '  allowed ips: 10.0.2.0/24\n' +
+      '  latest handshake: 12 seconds ago\n' +
+      '  transfer: 4.21 MiB received, 1.87 MiB sent');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Protocol: ' + STATE.proto.toUpperCase() + '. Type: ' + STATE.type.toUpperCase() + '. Cipher: ' + CIPHERS[STATE.cipher].name + '. Click CONNECT to bring up the tunnel.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.tunnelUp){
+    // Data packets
+    if(STATE.tick % 15 === 0){
+      spawnPacket('client','tunnel','#22d3ee','DATA',0.03);
+      spawnPacket('tunnel','server','#22d3ee','DATA',0.03);
+      STATE.packets += 2;
+    }
+    // Attacker seeing encrypted traffic
+    if(STATE.mitm && STATE.tick % 40 === 0){
+      spawnPacket('tunnel','attacker','#ef4444','SNIFF',0.03);
+    }
+    // Rekey countdown
+    if(STATE.tick % 30 === 0 && STATE.rekeyIn > 0){
+      STATE.rekeyIn--;
+      if(STATE.rekeyIn === 0){
+        addFeed('REKEY', 'Re-key triggered. Rotating session keys after ' + STATE.rekey + ' minutes. Forward secrecy: even if long-term key is compromised, past sessions remain secure.', 'ok');
+        STATE.rekeyIn = STATE.rekey;
+      }
+    }
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.28*W, 0.80*H, 'CLIENT SITE', '#3b82f6');
+  drawZone(0.35*W, 0.08*H, 0.30*W, 0.80*H, 'UNTRUSTED NETWORK', '#ef4444');
+  drawZone(0.70*W, 0.08*H, 0.28*W, 0.80*H, 'VPN SERVER + INTERNAL', '#22c55e');
+
+  var links = [
+    ['client','tunnel'], ['tunnel','server'], ['server','internal'],
+    ['attacker','tunnel']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = pair[0] === 'attacker' ? 'rgba(239,68,68,0.3)' : 'rgba(34,211,238,0.4)';
+    ctx.lineWidth = STATE.tunnelUp && pair[0] !== 'attacker' ? 3 : 1.5;
+    ctx.setLineDash(pair[0] === 'attacker' ? [3,3] : []);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  // Tunnel status overlay
+  if(STATE.tunnelUp){
+    ctx.save();
+    ctx.font = 'bold 11px "Courier New",monospace';
+    ctx.fillStyle = '#22c55e';
+    ctx.textAlign = 'center';
+    var t = STATE.nodes.find(function(n){return n.id==='tunnel';});
+    ctx.fillText('TUNNEL UP', t.x, t.y - 40);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#4ade80';
+    ctx.fillText(CIPHERS[STATE.cipher].name, t.x, t.y - 25);
+    ctx.restore();
+  }
+
+  // Attacker sees ciphertext only
+  if(STATE.mitm && STATE.tunnelUp){
+    var a = STATE.nodes.find(function(n){return n.id==='attacker';});
+    ctx.save();
+    ctx.font = 'bold 9px "Courier New",monospace';
+    ctx.fillStyle = STATE.cipher === 'null' ? '#ef4444' : '#fcd34d';
+    ctx.textAlign = 'center';
+    ctx.fillText(STATE.cipher === 'null' ? 'READS PLAINTEXT' : 'SEES CIPHERTEXT ONLY', a.x, a.y - 25);
+    ctx.restore();
+  }
+
+  // Info panel
+  if(STATE.phaseIdx > 0){
+    ctx.save();
+    var ax = 0.05*W, ay = H - 160, aw = 0.60*W, ah = 130;
+    ctx.fillStyle = 'rgba(10,20,30,0.9)';
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#22d3ee';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 TUNNEL CONFIGURATION', ax + 8, ay + 16);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('Protocol: ' + STATE.proto.toUpperCase() + ' | Type: ' + STATE.type.toUpperCase(), ax + 8, ay + 36);
+    ctx.fillText('Cipher: ' + CIPHERS[STATE.cipher].name + ' (' + CIPHERS[STATE.cipher].bits + ' bits)', ax + 8, ay + 52);
+    ctx.fillText('KEX: ' + KEXS[STATE.kex].name + ' (FS: ' + (KEXS[STATE.kex].forwardSecrecy?'yes':'no') + ')', ax + 8, ay + 68);
+    ctx.fillText('MTU: ' + STATE.mtu + ' | Overhead: ' + STATE.overhead + '%', ax + 8, ay + 84);
+    ctx.fillStyle = CIPHERS[STATE.cipher].secure ? '#4ade80' : '#ef4444';
+    ctx.fillText('Security: ' + STATE.security, ax + 8, ay + 104);
+    ctx.fillStyle = '#fcd34d';
+    ctx.fillText('Packets: ' + STATE.packets + ' | Leaks: ' + STATE.leaks, ax + 8, ay + 120);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('IPsec: IKEv2 (UDP 500/4500) + ESP (proto 50) for data', 12, H - 74);
+  ctx.fillText('WireGuard: UDP only, Noise_IK handshake, ~4000 LOC', 12, H - 62);
+  ctx.fillText('OpenVPN: TLS control channel + custom data channel', 12, H - 50);
+  ctx.fillText('SSH tunnel: -L local -R remote -D SOCKS proxy', 12, H - 38);
+  ctx.fillText('NEVER use NULL cipher or 3DES in production', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeProto').textContent = STATE.proto.toUpperCase();
+  document.getElementById('badgeType').textContent = STATE.type.toUpperCase();
+  document.getElementById('badgeCipher').textContent = STATE.cipher.toUpperCase();
+  document.getElementById('badgeStatus').textContent = STATE.tunnelUp ? 'UP' : 'IDLE';
+
+  document.getElementById('mTunnelVal').textContent = STATE.tunnelUp ? 'UP' : 'DOWN';
+  document.getElementById('mRTTVal').textContent = STATE.rtt > 0 ? STATE.rtt + 'ms' : '—';
+  document.getElementById('mThroughputVal').textContent = STATE.throughput + ' Mbps';
+  document.getElementById('mOverheadVal').textContent = STATE.overhead + '%';
+  document.getElementById('mPacketsVal').textContent = STATE.packets;
+  document.getElementById('mRekeyVal').textContent = STATE.rekeyIn + 'm';
+  document.getElementById('mLeaksVal').textContent = STATE.leaks;
+  document.getElementById('mDefenseVal').textContent = STATE.security;
+
+  document.getElementById('mTunnel').className = 'metric' + (STATE.tunnelUp ? ' cyan' : '');
+  document.getElementById('mLeaks').className = 'metric' + (STATE.leaks > 0 ? ' bad' : '');
+  document.getElementById('mDefense').className = 'metric' + (CIPHERS[STATE.cipher].secure ? '' : ' bad');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('vp-' + p);
+    if(!el) return;
+    el.className = 'vpn-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var c = CIPHERS[STATE.cipher];
+  var k = KEXS[STATE.kex];
+
+  switch(phase){
+    case 'KEX':
+      spawnPacket('client','server','#22d3ee','KEX',0.02);
+      addFeed('KEX', 'Key exchange: ' + k.name + '. ' +
+        (STATE.proto === 'wireguard' ? 'Noise_IK handshake: 1 round-trip. Initiator sends ephemeral pubkey + encrypted static pubkey; responder replies with ephemeral + encrypted nothing. Derives 4 keys (send/recv per direction).' :
+         STATE.proto === 'ipsec' ? 'IKE_SA_INIT (2 messages): negotiate proposals, DH exchange, nonces. Then IKE_AUTH (2 messages): authenticate, establish first Child SA.' :
+         STATE.proto === 'openvpn' ? 'TLS handshake for control channel: ClientHello/ServerHello, key exchange, Finished. Then PUSH_REPLY with tunnel config.' :
+         STATE.proto === 'ssl-vpn' ? 'TLS 1.3 handshake to HTTPS portal. After auth, portal provides tunnel config.' :
+         'SSH: curve25519-sha256 for session key, host key verification.'),
+        'info');
+      addCommandFeed('wg genkey | tee privatekey | wg pubkey > publickey',
+        '[+] Private key: ' + Math.random().toString(36).substring(2, 18) + '=\n' +
+        '[+] Public key: ' + Math.random().toString(36).substring(2, 18) + '=');
+      break;
+
+    case 'AUTH':
+      addFeed('AUTH', 'Authentication: ' +
+        (STATE.proto === 'wireguard' ? 'WireGuard has no user auth — relies on peer public keys. Uses a static key per device. Roaming works via endpoint discovery.' :
+         STATE.proto === 'ipsec' ? 'IKEv2 supports EAP-MSCHAPv2, certificates, or PSK. Certificates strongly preferred. EAP-TLS for machine certs.' :
+         'Username + password (TLS-protected) + optional client certificate (mutual TLS). MFA strongly recommended.'),
+        'info');
+      STATE.rtt = Math.floor(20 + Math.random() * 100);
+      break;
+
+    case 'TUNNEL':
+      STATE.tunnelUp = true;
+      STATE.nodes.find(function(n){return n.id==='tunnel';}).glow = 1;
+      STATE.throughput = Math.min(c.speed, 1000);
+      STATE.overhead = Math.round(c.overhead / 20);
+      STATE.security = c.secure ? (k.forwardSecrecy ? 'STRONG (PFS)' : 'STRONG (no PFS)') : 'BROKEN';
+      addFeed('TUNNEL', 'Tunnel UP. Cipher: ' + c.name + '. Overhead: ' + STATE.overhead + '%. Throughput: ' + STATE.throughput + ' Mbps. RTT: ' + STATE.rtt + 'ms. ' +
+        (STATE.type === 'split' ? 'Split-tunnel: only traffic to 10.0.2.0/24 routed through VPN.' :
+         STATE.type === 'full' ? 'Full-tunnel: ALL traffic routed through VPN (including internet).' :
+         STATE.type === 'mesh' ? 'Mesh: peer-to-peer encrypted between all nodes.' :
+         STATE.type === 'site2site' ? 'Site-to-site: fixed peers, subnets exchanged via routing.' :
+         'Remote access: road warrior with dynamic IP, NAT traversal (UDP 4500).'),
+        'ok');
+      if(!c.secure){
+        addFeed('WARNING', 'INSECURE CIPHER SELECTED! ' + c.name + ' is broken or absent. Traffic is trivially readable by an on-path attacker. ' +
+          (STATE.cipher === 'null' ? 'NULL cipher = no encryption at all.' :
+           STATE.cipher === '3des' ? '3DES is deprecated (Sweet32 attack, NIST SP 800-131A). 64-bit block size is too small.' :
+           'MD5 is broken for HMAC.'),
+          'error');
+      }
+      break;
+
+    case 'TRAFFIC':
+      STATE.packets += 100;
+      addFeed('TRAFFIC', 'Data flowing through tunnel. Packets encapsulated: original packet + VPN header + AEAD tag. MTU reduced to ' + STATE.mtu + ' to fit encapsulation overhead.', 'info');
+      if(STATE.mitm){
+        if(!c.secure){
+          STATE.leaks += 10;
+          addFeed('MITM', 'ATTACKER READS PLAINTEXT! With ' + c.name + ', on-path attacker captures cleartext credentials, session cookies, and application data. This is why encryption + authentication (AEAD) is mandatory.', 'error');
+        } else {
+          addFeed('MITM', 'Attacker sees only ciphertext. ' + c.name + ' provides confidentiality AND integrity (AEAD). ' + (k.forwardSecrecy ? 'Forward secrecy via ' + k.name + ' means past sessions stay secure even if the long-term key leaks later.' : 'Warning: no forward secrecy — session keys derived from long-term key.'), 'ok');
+        }
+      }
+      break;
+
+    case 'REKEY':
+      addFeed('REKEY', 'Re-key interval: ' + STATE.rekey + ' minutes. Rotating ephemeral keys. Forward secrecy ensures compromise of one session does not affect others. Rekey triggers: time-based (default 120m), data-based (WireGuard: 2^60 messages or 2^64 bytes), or on reconnection.', 'info');
+      STATE.rekeyIn = STATE.rekey;
+      break;
+
+    case 'CLOSE':
+      STATE.tunnelUp = false;
+      addFeed('CLOSE', 'Tunnel torn down. ' +
+        (STATE.type === 'split' ? 'SPLIT-TUNNEL LEAK CHECK: verify DNS is not leaking outside tunnel, verify browser WebRTC is disabled, verify IPv6 is either tunneled or blocked.' :
+         'Kill switch verified: if tunnel drops, all traffic is blocked (no cleartext fallback).'),
+        'ok');
+      addFeed('DEFENSE', 'VPN best practices: (1) Use AEAD ciphers only (AES-GCM, ChaCha20-Poly1305). (2) Enable forward secrecy (X25519, P-256). (3) Rotate keys regularly. (4) Enable kill switch. (5) DNS leak protection. (6) Disable split-tunnel unless required. (7) MFA for remote access. (8) Monitor for cryptojacking via VPN. (9) Test for IPv6 leaks. (10) PQC-ready (hybrid KEX).', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.tunnelUp = false;
+  STATE.rtt = 0;
+  STATE.throughput = 0;
+  STATE.overhead = 0;
+  STATE.packets = 0;
+  STATE.rekeyIn = STATE.rekey;
+  STATE.leaks = 0;
+  STATE.security = '—';
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('vp-' + p); if(el) el.className = 'vpn-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'VPN state cleared.', 'info');
+  termWrite('wg-quick down wg0\n[+] Interface wg0 down\n[+] Routes removed');
+}
+
+document.getElementById('protoSelect').addEventListener('change', function(e){
+  STATE.proto = e.target.value;
+  addFeed('PROTO', 'Protocol: ' + STATE.proto.toUpperCase() + '.', 'info');
+});
+
+document.getElementById('typeSelect').addEventListener('change', function(e){
+  STATE.type = e.target.value;
+  addFeed('TYPE', 'Tunnel type: ' + STATE.type.toUpperCase() + '.', 'info');
+});
+
+document.getElementById('cipherSelect').addEventListener('change', function(e){
+  STATE.cipher = e.target.value;
+  var c = CIPHERS[STATE.cipher];
+  addFeed('CIPHER', 'Cipher: ' + c.name + '. ' + (c.aead ? 'AEAD (authenticated encryption).' : 'Non-AEAD (separate MAC).') + ' ' + c.bits + '-bit. ' + (c.secure ? 'Secure.' : 'INSECURE — do not use in production.'), c.secure ? 'info' : 'error');
+});
+
+document.getElementById('kexSelect').addEventListener('change', function(e){
+  STATE.kex = e.target.value;
+  var k = KEXS[STATE.kex];
+  addFeed('KEX', 'Key exchange: ' + k.name + '. ' + k.bits + '-bit security. Forward secrecy: ' + (k.forwardSecrecy ? 'yes' : 'no') + '. PQC-resistant: ' + (k.pqcResistant ? 'yes' : 'no'), 'info');
+});
+
+document.getElementById('mtuSlider').addEventListener('input', function(e){
+  STATE.mtu = parseInt(e.target.value);
+  document.getElementById('mtuVal').textContent = e.target.value;
+});
+document.getElementById('kaSlider').addEventListener('input', function(e){
+  STATE.keepalive = parseInt(e.target.value);
+  document.getElementById('kaVal').textContent = e.target.value;
+});
+document.getElementById('rkSlider').addEventListener('input', function(e){
+  STATE.rekey = parseInt(e.target.value);
+  STATE.rekeyIn = STATE.rekey;
+  document.getElementById('rkVal').textContent = e.target.value;
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.packets = 0;
+  STATE.leaks = 0;
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('CONNECT', 'Bringing up VPN: ' + STATE.proto.toUpperCase() + ' (' + STATE.type + ') with ' + CIPHERS[STATE.cipher].name, 'info');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1400);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('mitmBtn').addEventListener('click', function(){
+  STATE.mitm = !STATE.mitm;
+  this.classList.toggle('active', STATE.mitm);
+  if(STATE.mitm){
+    addFeed('MITM', 'MITM simulation enabled. Attacker is on-path between client and server. ' + (CIPHERS[STATE.cipher].secure ? 'With strong AEAD, only ciphertext is visible. Traffic analysis (packet sizes, timing) still possible.' : 'INSECURE CIPHER — attacker will read plaintext!'), CIPHERS[STATE.cipher].secure ? 'warn' : 'error');
+  } else {
+    addFeed('MITM', 'MITM simulation disabled.', 'info');
+  }
+});
+
+document.getElementById('pqcBtn').addEventListener('click', function(){
+  STATE.pqc = !STATE.pqc;
+  this.classList.toggle('active', STATE.pqc);
+  if(STATE.pqc){
+    addFeed('DEFENSE', 'PQC hybrid KEX enabled: X25519 + Kyber-768 for key exchange. Signatures: Dilithium3 + Ed25519. Quantum-resistant AND classical-resistant. Recommended for long-lived tunnels (site-to-site, medical, government).', 'ok');
+  } else {
+    addFeed('DEFENSE', 'PQC hybrid disabled.', 'warn');
+  }
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

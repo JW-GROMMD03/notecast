@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reverse Engineering — Ghidra/IDA Static + Dynamic Analysis Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:#d8b4fe;
+    text-shadow:0 0 8px rgba(168,85,247,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:#a855f7; color:#d8b4fe; }
+  .header-actions button.active{
+    border-color:#a855f7; color:#d8b4fe;
+    box-shadow:0 0 10px rgba(168,85,247,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:#a855f7; }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; font-size:10px; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:#a855f7; cursor:pointer; box-shadow:0 0 7px rgba(168,85,247,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:#a855f7; cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#d8b4fe; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:#a855f7; color:#d8b4fe; }
+  button.act.primary{
+    background:linear-gradient(180deg,#1a0f2a,#0a0612);
+    border-color:#a855f7; color:#d8b4fe;
+    box-shadow:0 0 10px rgba(168,85,247,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(168,85,247,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulsePurp 1.4s infinite; }
+  @keyframes pulsePurp{
+    0%,100%{ box-shadow:0 0 6px rgba(168,85,247,.3); }
+    50%{ box-shadow:0 0 18px rgba(168,85,247,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.purple .m-value{ color:#d8b4fe; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#d8b4fe; }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .re-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .re-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .re-phase.done{ border-color:var(--purple); color:#d8b4fe;
+    background:rgba(168,85,247,.12); }
+  .re-phase.active{ border-color:var(--purple); color:#d8b4fe;
+    background:rgba(168,85,247,.2); box-shadow:0 0 10px rgba(168,85,247,.6);
+    animation:kcPurp 1.2s infinite; }
+  @keyframes kcPurp{ 50%{ box-shadow:0 0 16px rgba(168,85,247,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>REVERSE ENGINEERING</h1>
+    <span class="sub">GHIDRA · IDA · R2 · X64DBG · CWE-1357 · NIST SP 800-83</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Tool</h3>
+      <select id="toolSelect">
+        <option value="ghidra">Ghidra (NSA, open source)</option>
+        <option value="ida">IDA Pro / Free</option>
+        <option value="radare">Radare2 / Rizin</option>
+        <option value="binaryninja">Binary Ninja</option>
+        <option value="x64dbg">x64dbg (Windows debugger)</option>
+        <option value="gdb">GDB + pwndbg / GEF</option>
+        <option value="objdump">objdump / readelf / nm</option>
+      </select>
+      <label class="ctl-label">Analysis type</label>
+      <select id="typeSelect">
+        <option value="static">Static (disassembly, decompile)</option>
+        <option value="dynamic">Dynamic (debugger, breakpoints)</option>
+        <option value="symbolic">Symbolic execution (angr)</option>
+        <option value="differential">Differential (compare versions)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Target Binary</h3>
+      <label class="ctl-label">File name</label>
+      <input type="text" id="fileInput" value="crackme.exe">
+      <label class="ctl-label">Architecture / format</label>
+      <select id="archSelect">
+        <option value="pe64">PE32+ x86-64 (Windows)</option>
+        <option value="pe32">PE32 x86 (Windows)</option>
+        <option value="elf64">ELF x86-64 (Linux)</option>
+        <option value="macho">Mach-O x86-64 (macOS)</option>
+        <option value="apk">Android APK (DEX)</option>
+        <option value="dotnet">.NET assembly (CIL)</option>
+      </select>
+      <label class="ctl-label">Purpose</label>
+      <select id="purposeSelect">
+        <option value="crackme">Crackme / CTF challenge</option>
+        <option value="malware">Malware analysis</option>
+        <option value="license">License check bypass</option>
+        <option value="protocol">Protocol RE (custom binary)</option>
+        <option value="vuln">Vulnerability research</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Analysis depth <span class="slider-val" id="depthVal">70%</span></label>
+      <input type="range" id="depthSlider" min="0" max="100" value="70">
+      <label class="ctl-label">Decompiler quality</label>
+      <select id="decompSelect">
+        <option value="high">High (Ghidra/IDA advanced)</option>
+        <option value="medium">Medium (r2 pdc)</option>
+        <option value="raw">Raw disassembly only</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ ANALYZE</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="patchBtn">🔧 PATCH</button>
+        <button type="button" class="act ok" id="iocBtn">📋 FINDINGS</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">re@lab:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Reverse engineering software you do not own may violate EULAs and copyright laws.</div>
+    <div class="status-badges">
+      <div class="status-badge">TOOL: <b id="badgeTool">GHIDRA</b></div>
+      <div class="status-badge">TARGET: <b id="badgeTarget">crackme.exe</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+      <div class="status-badge">FINDINGS: <b id="badgeFindings">0</b></div>
+    </div>
+    <div class="re-chain" id="reChain">
+      <div class="re-phase" id="rp-TRIAGE">TRIAGE</div>
+      <div class="re-phase" id="rp-STRINGS">STRINGS</div>
+      <div class="re-phase" id="rp-DISASM">DISASM</div>
+      <div class="re-phase" id="rp-DECOMPILE">DECOMPILE</div>
+      <div class="re-phase" id="rp-DEBUG">DEBUG</div>
+      <div class="re-phase" id="rp-PATCH">PATCH</div>
+    </div>
+    <div class="footer-overlay">Ghidra · IDA · Radare2 · x64dbg · GDB · NIST SP 800-83 · SANS FOR610</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric purple" id="mFuncs"><div class="m-label">Functions</div><div class="m-value" id="mFuncsVal">0</div></div>
+      <div class="metric" id="mStrings"><div class="m-label">Strings</div><div class="m-value" id="mStringsVal">0</div></div>
+      <div class="metric" id="mImports"><div class="m-label">Imports</div><div class="m-value" id="mImportsVal">0</div></div>
+      <div class="metric" id="mXrefs"><div class="m-label">Xrefs</div><div class="m-value" id="mXrefsVal">0</div></div>
+      <div class="metric" id="mFindings"><div class="m-label">Findings</div><div class="m-value" id="mFindingsVal">0</div></div>
+      <div class="metric" id="mEntropy"><div class="m-label">Entropy</div><div class="m-value" id="mEntropyVal">0</div></div>
+      <div class="metric" id="mPacked"><div class="m-label">Packed</div><div class="m-value" id="mPackedVal">NO</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Status</div><div class="m-value" id="mDefenseVal">IDLE</div></div>
+    </div>
+    <div class="info-card">
+      <b>Reverse engineering — understand what the binary does.</b><br>
+      <span class="eq">Static: disassemble, decompile, no execution</span><br>
+      <span class="eq">Dynamic: debugger, breakpoints, memory inspection</span><br>
+      <span class="eq">Symbolic: angr — auto-solve with constraints</span><br>
+      <span class="eq">Tools: Ghidra (free), IDA (commercial), r2, x64dbg</span><br>
+      <span style="color:var(--purple)">NIST SP 800-83 · SANS FOR610 · CWE-1357</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  tool:'ghidra',
+  type:'static',
+  file:'crackme.exe',
+  arch:'pe64',
+  purpose:'crackme',
+  depth:0.7,
+  decomp:'high',
+  funcs:0,
+  strings:0,
+  imports:0,
+  xrefs:0,
+  findings:0,
+  entropy:0,
+  packed:false,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['TRIAGE','STRINGS','DISASM','DECOMPILE','DEBUG','PATCH'];
+
+var TOOLS = {
+  ghidra:{name:'Ghidra',freely:'Free, NSA, Java-based, excellent decompiler'},
+  ida:{name:'IDA Pro',freely:'Industry standard, commercial, Hex-Rays decompiler'},
+  radare:{name:'Radare2',freely:'CLI-focused, scriptable, free'},
+  binaryninja:{name:'Binary Ninja',freely:'Modern UI, Python API, commercial'},
+  x64dbg:{name:'x64dbg',freely:'Windows debugger, dynamic analysis'},
+  gdb:{name:'GDB + pwndbg',freely:'Linux debugger, scripting with Python'},
+  objdump:{name:'objdump/readelf',freely:'Basic command-line inspection'}
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'analyst', label:'reverse engineer', ip:'workstation', x:0.10*W, y:0.40*H, icon:'laptop', color:'#a855f7', glow:0, blink:0},
+    {id:'loader', label:'loader', ip:'PE/ELF parser', x:0.30*W, y:0.40*H, icon:'server', color:'#22d3ee', glow:0, blink:0},
+    {id:'disasm', label:'disassembler', ip:'x86-64', x:0.50*W, y:0.20*H, icon:'server', color:'#fcd34d', glow:0, blink:0},
+    {id:'decomp', label:'decompiler', ip:'pseudo-C', x:0.50*W, y:0.60*H, icon:'server', color:'#22c55e', glow:0, blink:0},
+    {id:'debugger', label:'debugger', ip:'breakpoints', x:0.72*W, y:0.20*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'notes', label:'findings', ip:'report', x:0.88*W, y:0.40*H, icon:'database', color:'#ef4444', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(168,85,247,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(168,85,247,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#d8b4fe'; ctx.lineWidth = 0.7;
+      for(var j=0;j<3;j++){ ctx.beginPath(); ctx.moveTo(-10,-8+j*4); ctx.lineTo(8,-8+j*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(n => n.id===fromId);
+  var to = STATE.nodes.find(n => n.id===toId);
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">re@lab:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(()=>{
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(v => v.lang && v.lang.startsWith('en-US')) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Reverse engineering is a legitimate discipline used for malware analysis, vulnerability research, interoperability, and CTF competitions. However, it can violate laws and agreements: (1) EULA restrictions on reverse engineering (varies by jurisdiction — EU allows it for interoperability, US has DMCA §1201 anti-circumvention). (2) Copyright — do not redistribute modified binaries. (3) Malware RE requires isolated lab — never on production. (4) License bypass (cracking) is illegal for commercial software. (5) Vulnerability research on software you do not own requires responsible disclosure (90 days, vendor coordination). (6) For malware: samples may contain victim PII — handle per incident response policy.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Reverse engineering is the process of understanding a binary without source code. STATIC analysis inspects the file: disassembler (objdump, radare2, Ghidra) shows assembly, decompiler (Ghidra, Hex-Rays) reconstructs pseudo-C, string extraction finds hardcoded data, import table shows OS APIs used. DYNAMIC analysis runs the binary under a debugger (x64dbg, GDB, IDA) with breakpoints, single-step, memory inspection — reveals runtime behavior. SYMBOLIC execution (angr, Triton) explores all paths automatically. Modern RE workflow: (1) Triage with Detect It Easy / PE-bear (packing, compiler). (2) Extract strings (strings, FLOSS for obfuscated). (3) Disassemble/decompile in Ghidra. (4) Identify key functions (main, crypto, license check). (5) Dynamic debug to confirm. (6) Patch if needed (for CTF/crackme). Malware RE uses the same workflow plus sandboxing and YARA.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('ghidra-analyze --file ' + STATE.file + ' --auto-analyze\n' +
+      '[+] File loaded\n' +
+      '[+] Architecture: ' + STATE.arch + '\n' +
+      '[+] Compiler: Microsoft Visual C++ 2019\n' +
+      '[+] Auto-analysis: complete\n' +
+      '[+] Functions identified: ' + STATE.funcs + '\n' +
+      '[+] Strings: ' + STATE.strings);
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Tool: ' + TOOLS[STATE.tool].name + '. Target: ' + STATE.file + '. Purpose: ' + STATE.purpose.toUpperCase() + '. Click ANALYZE to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(n => { n.blink = Math.floor(STATE.tick / 20); });
+
+  for(let i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(n => { if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.75*H, 'RE WORKBENCH · ' + STATE.arch.toUpperCase(), '#a855f7');
+
+  var links = [
+    ['analyst','loader'], ['loader','disasm'], ['loader','decomp'],
+    ['disasm','debugger'], ['decomp','notes'], ['debugger','notes']
+  ];
+  links.forEach(pair => {
+    var na = STATE.nodes.find(n => n.id===pair[0]);
+    var nb = STATE.nodes.find(n => n.id===pair[1]);
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(168,85,247,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(e => {
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 10;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '8px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 10);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(n => {
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  if(STATE.phaseIdx > 0){
+    ctx.save();
+    var ax = 0.05*W, ay = H - 150, aw = 0.55*W, ah = 120;
+    ctx.fillStyle = 'rgba(30,15,50,0.9)';
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#d8b4fe';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 ' + TOOLS[STATE.tool].name + ' · ' + STATE.type.toUpperCase(), ax + 8, ay + 16);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('Target: ' + STATE.file + ' | Arch: ' + STATE.arch.toUpperCase(), ax + 8, ay + 36);
+    ctx.fillText('Functions: ' + STATE.funcs + ' | Strings: ' + STATE.strings + ' | Imports: ' + STATE.imports, ax + 8, ay + 52);
+    ctx.fillText('Xrefs: ' + STATE.xrefs + ' | Findings: ' + STATE.findings, ax + 8, ay + 68);
+    ctx.fillStyle = STATE.entropy > 7 ? '#ef4444' : STATE.entropy > 6 ? '#fcd34d' : '#4ade80';
+    ctx.fillText('Entropy: ' + STATE.entropy.toFixed(2) + ' (packing: ' + (STATE.packed ? 'likely' : 'no') + ')', ax + 8, ay + 84);
+    ctx.fillStyle = '#d8b4fe';
+    ctx.fillText('Purpose: ' + STATE.purpose.toUpperCase() + ' | Decompile: ' + STATE.decomp.toUpperCase(), ax + 8, ay + 100);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Static: disassemble + decompile (no execution)', 12, H - 74);
+  ctx.fillText('Dynamic: debug with breakpoints, inspect memory', 12, H - 62);
+  ctx.fillText('Tools: Ghidra, IDA, r2, x64dbg, GDB, Binary Ninja', 12, H - 50);
+  ctx.fillText('Workflow: triage → strings → disasm → decompile → debug', 12, H - 38);
+  ctx.fillText('NIST SP 800-83 \u00B7 SANS FOR610 \u00B7 CWE-1357', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeTool').textContent = STATE.tool.toUpperCase();
+  document.getElementById('badgeTarget').textContent = STATE.file;
+  document.getElementById('badgeStatus').textContent = STATE.running ? 'ANALYZING' : (STATE.phaseIdx >= 6 ? 'COMPLETE' : 'IDLE');
+  document.getElementById('badgeFindings').textContent = STATE.findings;
+
+  document.getElementById('mFuncsVal').textContent = STATE.funcs;
+  document.getElementById('mStringsVal').textContent = STATE.strings;
+  document.getElementById('mImportsVal').textContent = STATE.imports;
+  document.getElementById('mXrefsVal').textContent = STATE.xrefs;
+  document.getElementById('mFindingsVal').textContent = STATE.findings;
+  document.getElementById('mEntropyVal').textContent = STATE.entropy.toFixed(2);
+  document.getElementById('mPackedVal').textContent = STATE.packed ? 'LIKELY' : 'NO';
+  document.getElementById('mDefenseVal').textContent = STATE.phaseIdx > 0 ? (STATE.packed ? 'PACKED' : 'ANALYZED') : 'IDLE';
+
+  document.getElementById('mFuncs').className = 'metric purple';
+  document.getElementById('mPacked').className = 'metric' + (STATE.packed ? ' warn' : ' ok');
+  document.getElementById('mEntropy').className = 'metric' + (STATE.entropy > 7 ? ' bad' : STATE.entropy > 6 ? ' warn' : '');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach((p,i) => {
+    var el = document.getElementById('re-phase-' + p) || document.getElementById('rp-' + p);
+    if(!el) return;
+    el.className = 're-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  switch(phase){
+    case 'TRIAGE':
+      STATE.funcs = 20 + Math.floor(Math.random() * 80);
+      STATE.imports = 30 + Math.floor(Math.random() * 100);
+      STATE.entropy = 5.5 + Math.random() * 2;
+      STATE.packed = STATE.entropy > 7.0;
+      addFeed('TRIAGE', 'Triage: file type ' + STATE.arch.toUpperCase() + ', compiler MSVC 2019, entropy ' + STATE.entropy.toFixed(2) + ' (' + (STATE.packed ? 'LIKELY PACKED — 7.0+ suggests compression or encryption' : 'normal for compiled code') + '). Imports: ' + STATE.imports + ' APIs from KERNEL32, USER32, ADVAPI32. Entry point: 0x140001000.', 'info');
+      addCommandFeed('pe-bear ' + STATE.file,
+        'Architecture: ' + STATE.arch + '\n' +
+        'Compiler: MSVC 2019\n' +
+        'Entry point: 0x140001000\n' +
+        'Entropy: ' + STATE.entropy.toFixed(2) + '\n' +
+        'Sections: .text .rdata .data .pdata .rsrc\n' +
+        'Imports: ' + STATE.imports + ' APIs');
+      break;
+
+    case 'STRINGS':
+      STATE.strings = 200 + Math.floor(Math.random() * 800);
+      addFeed('STRINGS', 'String extraction: ' + STATE.strings + ' ASCII + Unicode strings found. Notable: "Invalid license", "Please register", "https://license.example-corp.com/activate", "SOFTWARE\\\\MyApp\\\\License", "Volume serial", "GetVolumeInformationA". These hint at license validation logic.', 'warn');
+      addCommandFeed('strings -n 6 ' + STATE.file + ' | grep -iE "license|serial|key|pass"',
+        'Invalid license key\n' +
+        'Please register to continue\n' +
+        'https://license.example-corp.com/activate\n' +
+        'SOFTWARE\\\\MyApp\\\\License\n' +
+        'GetVolumeInformationA');
+      break;
+
+    case 'DISASM':
+      STATE.xrefs = 50 + Math.floor(Math.random() * 200);
+      addFeed('DISASM', 'Disassembly complete. ' + STATE.funcs + ' functions identified, ' + STATE.xrefs + ' cross-references mapped. Entry point → main → WinMain → registerLicense(). Key function: sub_140001234 (validateLicense). Crypto imports: BCryptEncrypt, BCryptHashData — likely hashing the license.', 'info');
+      addCommandFeed('radare2 -A ' + STATE.file + '; pdf @ main',
+        'main:\n' +
+        '  0x140001000  push rbp\n' +
+        '  0x140001001  mov rbp, rsp\n' +
+        '  0x140001004  sub rsp, 0x20\n' +
+        '  0x140001008  call 0x140001234    ; validateLicense\n' +
+        '  0x14000100d  test eax, eax\n' +
+        '  0x14000100f  jne 0x140001020      ; if valid → continue\n' +
+        '  0x140001011  lea rcx, "Invalid license"\n' +
+        '  0x140001018  call MessageBoxA');
+      break;
+
+    case 'DECOMPILE':
+      addFeed('DECOMPILE', 'Decompiled validateLicense() to pseudo-C. Function: reads registry key SOFTWARE\\MyApp\\License, computes SHA-256 of license string, compares against hardcoded hash 3f9a8b7c... If match → returns 1 (valid). The hash is the "secret" — could be reversed via symbolic execution (angr) to find a valid license.', 'warn');
+      addCommandFeed('ghidra-decompile --function validateLicense',
+        'int validateLicense(void) {\n' +
+        '  char regbuf[256];\n' +
+        '  DWORD size = sizeof(regbuf);\n' +
+        '  RegGetValueA(HKEY_CURRENT_USER,\n' +
+        '    "SOFTWARE\\\\\\\\MyApp", "License",\n' +
+        '    RRF_RT_REG_SZ, NULL, regbuf, &size);\n' +
+        '  unsigned char hash[32];\n' +
+        '  BCryptHashData(BCRYPT_SHA256_ALGORITHM,\n' +
+        '    regbuf, strlen(regbuf), 0);\n' +
+        '  if (memcmp(hash, expected_hash, 32) == 0)\n' +
+        '    return 1;\n' +
+        '  return 0;\n' +
+        '}');
+      break;
+
+    case 'DEBUG':
+      addFeed('DEBUG', 'Dynamic debug: attached x64dbg. Set breakpoint at validateLicense() entry. Ran with test license → function returned 0 (invalid). Modified EAX to 1 at return address → license accepted. Alternative: patch the hash comparison to always succeed (JNE → JMP).', 'warn');
+      addCommandFeed('x64dbg --attach ' + STATE.file + ' --bp 0x140001234',
+        'Breakpoint hit at validateLicense()\n' +
+        'RAX = 0x00000000 (invalid)\n' +
+        'Setting RAX = 1\n' +
+        'Continuing execution...\n' +
+        'Application started successfully');
+      break;
+
+    case 'PATCH':
+      STATE.findings += 3;
+      addFeed('PATCH', 'Binary patched: NOP out the JNE at 0x14000100f (75 0F → 90 90). Now validateLicense() result is ignored → application always proceeds. File saved as ' + STATE.file + '.patched (SHA-256 changed). For CTF: goal achieved.', 'error');
+      addFeed('DEFENSE', 'For reverse engineering defenders: (1) Binary hardening — strip symbols, obfuscate, use control flow flattening (OLLVM). (2) Anti-debugging — IsDebuggerPresent, PEB checks, timing checks, hardware breakpoint detection. (3) Anti-VM — detect VMware/VirtualBox artifacts. (4) Packing — UPX, Themida, VMProtect (raises entropy). (5) Runtime checks — hashing own code, integrity verification. (6) Server-side licensing — critical checks on server, not client. (7) Note: determined attackers will always eventually RE — the goal is raising cost.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.funcs = 0;
+  STATE.strings = 0;
+  STATE.imports = 0;
+  STATE.xrefs = 0;
+  STATE.findings = 0;
+  STATE.entropy = 0;
+  STATE.packed = false;
+  STATE.events = [];
+  PHASES.forEach(p => { var el = document.getElementById('rp-' + p); if(el) el.className = 're-phase'; });
+  STATE.nodes.forEach(n => { n.glow = 0; });
+  addFeed('RESET', 'RE state cleared.', 'info');
+  termWrite('reset --all\n[+] Project closed\n[+] Database purged');
+}
+
+document.getElementById('toolSelect').addEventListener('change', e => {
+  STATE.tool = e.target.value;
+  addFeed('TOOL', 'Tool: ' + TOOLS[STATE.tool].name + '. ' + TOOLS[STATE.tool].freely, 'info');
+});
+document.getElementById('typeSelect').addEventListener('change', e => { STATE.type = e.target.value; });
+document.getElementById('fileInput').addEventListener('input', e => { STATE.file = e.target.value; });
+document.getElementById('archSelect').addEventListener('change', e => { STATE.arch = e.target.value; });
+document.getElementById('purposeSelect').addEventListener('change', e => { STATE.purpose = e.target.value; });
+document.getElementById('decompSelect').addEventListener('change', e => { STATE.decomp = e.target.value; });
+
+document.getElementById('depthSlider').addEventListener('input', e => {
+  STATE.depth = parseInt(e.target.value) / 100;
+  document.getElementById('depthVal').textContent = e.target.value + '%';
+});
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.funcs = 0;
+  STATE.strings = 0;
+  STATE.imports = 0;
+  STATE.xrefs = 0;
+  STATE.findings = 0;
+  STATE.entropy = 0;
+  STATE.packed = false;
+  STATE.nodes.forEach(n => { n.glow = 0; });
+  addFeed('ANALYZE', 'Starting analysis: ' + TOOLS[STATE.tool].name + ' on ' + STATE.file, 'info');
+  var interval = setInterval(() => {
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+    if(STATE.phaseIdx >= 6){ clearInterval(interval); STATE.running = false; }
+  }, 1300);
+});
+
+document.getElementById('stepBtn').addEventListener('click', () => {
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('patchBtn').addEventListener('click', () => {
+  STATE.findings++;
+  addFeed('PATCH', 'Applying patch: JNE (75 0F) at offset 0x100F → NOP NOP (90 90). Result: license check ignored, app runs regardless. Patch saved as new binary.', 'error');
+});
+
+document.getElementById('iocBtn').addEventListener('click', () => {
+  addFeed('FINDINGS', 'Findings summary: ' + STATE.funcs + ' functions, ' + STATE.strings + ' strings, ' + STATE.imports + ' imports, ' + STATE.xrefs + ' xrefs. Key function: validateLicense() at 0x140001234. Hardcoded SHA-256 hash used for validation. Registry path: SOFTWARE\\MyApp\\License. Bypass method: patch JNE at 0x14000100f → NOP NOP. Alternative: symbolic execution with angr to reverse the hash.', 'ok');
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

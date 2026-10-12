@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threat Modeling — Interactive Cybersecurity Teaching Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--green-lt);
+    text-shadow:0 0 8px rgba(34,197,94,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--green); color:var(--green-lt); }
+  .header-actions button.active{
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--green); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--green); cursor:pointer; box-shadow:0 0 7px rgba(34,197,94,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--green); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:var(--green-lt); font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--green); color:var(--green-lt); }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f2a18,#0a1a10);
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(34,197,94,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.danger:hover{ background:#2a0f0f; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.warn:hover{ background:#2a1f0f; }
+  button.act.pulse{ animation:pulseBtn 1.4s infinite; }
+  @keyframes pulseBtn{
+    0%,100%{ box-shadow:0 0 6px rgba(34,197,94,.3); }
+    50%{ box-shadow:0 0 18px rgba(34,197,94,.7); }
+  }
+  .stride-grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-top:6px;
+  }
+  .stride-cell{
+    font-size:9px; padding:5px 4px; border:1px solid var(--border);
+    background:#0a0f1a; color:var(--muted); border-radius:3px;
+    cursor:pointer; text-align:center; letter-spacing:.5px; transition:.15s;
+  }
+  .stride-cell:hover{ border-color:var(--cyan); color:var(--cyan); }
+  .stride-cell.active{
+    border-color:var(--red); color:#fca5a5;
+    background:rgba(239,68,68,.1); box-shadow:0 0 8px rgba(239,68,68,.3);
+  }
+  .stride-cell .s-letter{
+    font-size:14px; font-weight:bold; display:block; margin-bottom:2px;
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--green-lt); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .tm-matrix{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .tm-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .tm-phase.done{ border-color:var(--green); color:var(--green-lt);
+    background:rgba(34,197,94,.12); }
+  .tm-phase.active{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.15); box-shadow:0 0 10px rgba(34,211,238,.4);
+    animation:kcPulse 1.2s infinite; }
+  @keyframes kcPulse{ 50%{ box-shadow:0 0 16px rgba(34,211,238,.7); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+  .dread-row{
+    display:flex; align-items:center; gap:6px; margin:4px 0;
+  }
+  .dread-row label{ font-size:9px; color:var(--muted); width:90px; }
+  .dread-row input[type=range]{ flex:1; }
+  .dread-row .dread-val{ font-size:10px; color:var(--green-lt); width:24px; text-align:right; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>THREAT MODELING</h1>
+    <span class="sub">STRIDE · DREAD · MICROSOFT SDL · MITRE ATT&CK MAPPING</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Target System</h3>
+      <label class="ctl-label">System under threat model</label>
+      <select id="targetSelect">
+        <option value="webapp">web-app.corp (10.0.0.10)</option>
+        <option value="api">api-gateway.corp (10.0.0.15)</option>
+        <option value="db">db-server.corp (10.0.0.20)</option>
+        <option value="mobile">mobile-api.corp (10.0.0.30)</option>
+        <option value="iot">iot-hub.corp (10.0.0.40)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ STRIDE Categories</h3>
+      <div class="stride-grid" id="strideGrid">
+        <div class="stride-cell" data-stride="S"><span class="s-letter">S</span>Spoofing</div>
+        <div class="stride-cell" data-stride="T"><span class="s-letter">T</span>Tampering</div>
+        <div class="stride-cell" data-stride="R"><span class="s-letter">R</span>Repudiation</div>
+        <div class="stride-cell" data-stride="I"><span class="s-letter">I</span>Info Disclosure</div>
+        <div class="stride-cell" data-stride="D"><span class="s-letter">D</span>Denial of Service</div>
+        <div class="stride-cell" data-stride="E"><span class="s-letter">E</span>Elevation of Privilege</div>
+      </div>
+      <div style="font-size:9px;color:var(--muted);margin-top:6px">
+        Click a category to filter threats by STRIDE type.
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ DREAD Scoring</h3>
+      <div class="dread-row">
+        <label>Damage</label>
+        <input type="range" id="dreadDamage" min="0" max="10" value="7">
+        <span class="dread-val" id="dreadDamageVal">7</span>
+      </div>
+      <div class="dread-row">
+        <label>Reproducibility</label>
+        <input type="range" id="dreadRepro" min="0" max="10" value="8">
+        <span class="dread-val" id="dreadReproVal">8</span>
+      </div>
+      <div class="dread-row">
+        <label>Exploitability</label>
+        <input type="range" id="dreadExploit" min="0" max="10" value="6">
+        <span class="dread-val" id="dreadExploitVal">6</span>
+      </div>
+      <div class="dread-row">
+        <label>Affected Users</label>
+        <input type="range" id="dreadAffected" min="0" max="10" value="9">
+        <span class="dread-val" id="dreadAffectedVal">9</span>
+      </div>
+      <div class="dread-row">
+        <label>Discoverability</label>
+        <input type="range" id="dreadDiscover" min="0" max="10" value="5">
+        <span class="dread-val" id="dreadDiscoverVal">5</span>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:5px">
+        DREAD Score: <span id="dreadScore" style="color:var(--green-lt);font-weight:bold">7.0</span>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Threat Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ ANALYZE</button>
+        <button type="button" class="act" id="stepBtn">⏭ NEXT</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="dreadBtn">📊 DREAD RANK</button>
+        <button type="button" class="act" id="mitigateBtn">🛡 MITIGATE</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">threat-model:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Only threat-model systems you own or have explicit authorization to assess.</div>
+    <div class="status-badges">
+      <div class="status-badge">SYSTEM: <b id="badgeTarget">web-app.corp</b></div>
+      <div class="status-badge">STRIDE: <b id="badgeStride">—</b></div>
+      <div class="status-badge">THREATS: <b id="badgeThreats">0</b></div>
+      <div class="status-badge">DREAD: <b id="badgeDread">7.0</b></div>
+    </div>
+    <div class="tm-matrix" id="tmMatrix">
+      <div class="tm-phase" id="tm-S">SPOOF</div>
+      <div class="tm-phase" id="tm-T">TAMPER</div>
+      <div class="tm-phase" id="tm-R">REPUD</div>
+      <div class="tm-phase" id="tm-I">INFO</div>
+      <div class="tm-phase" id="tm-D">DoS</div>
+      <div class="tm-phase" id="tm-E">ELEV</div>
+    </div>
+    <div class="footer-overlay">Fictional topology · 10.0.0.0/24 · RFC 5737 documentation range · STRIDE + DREAD methodology</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric" id="mThreats"><div class="m-label">Threats</div><div class="m-value" id="mThreatsVal">0</div></div>
+      <div class="metric" id="mHigh"><div class="m-label">High Risk</div><div class="m-value" id="mHighVal">0</div></div>
+      <div class="metric" id="mMed"><div class="m-label">Medium</div><div class="m-value" id="mMedVal">0</div></div>
+      <div class="metric" id="mLow"><div class="m-label">Low</div><div class="m-value" id="mLowVal">0</div></div>
+      <div class="metric" id="mMitig"><div class="m-label">Mitigated</div><div class="m-value" id="mMitigVal">0</div></div>
+      <div class="metric" id="mDread"><div class="m-label">DREAD Avg</div><div class="m-value" id="mDreadVal">0.0</div></div>
+      <div class="metric" id="mCoverage"><div class="m-label">Coverage</div><div class="m-value" id="mCoverageVal">0%</div></div>
+      <div class="metric" id="mAssets"><div class="m-label">Assets</div><div class="m-value" id="mAssetsVal">5</div></div>
+    </div>
+    <div class="info-card">
+      <b>Threat Modeling — systematic identification of threats.</b><br>
+      <span class="eq">STRIDE = Spoofing, Tampering, Repudiation, Info Disclosure, DoS, EoP</span><br>
+      <span class="eq">DREAD = Damage + Reproducibility + Exploitability + Affected + Discoverability</span><br>
+      <span style="color:var(--purple)">Microsoft SDL · OWASP Threat Dragon · MITRE ATT&CK</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  running:false,
+  target:'webapp',
+  strideFilter:null,
+  threats:[],
+  analyzed:0,
+  mitigated:0,
+  dread:{damage:7,repro:8,exploit:6,affected:9,discover:5},
+  tick:0, lastTime:0, events:[], nodes:[], links:[],
+  currentThreat:null
+};
+
+const TARGETS = {
+  webapp:{name:'web-app.corp',ip:'10.0.0.10',icon:'server',assets:['login page','session store','user DB','API endpoint','static CDN']},
+  api:{name:'api-gateway.corp',ip:'10.0.0.15',icon:'server',assets:['auth endpoint','rate limiter','token issuer','backend proxy','logs']},
+  db:{name:'db-server.corp',ip:'10.0.0.20',icon:'database',assets:['user table','orders table','audit log','encryption keys','backups']},
+  mobile:{name:'mobile-api.corp',ip:'10.0.0.30',icon:'laptop',assets:['device auth','push tokens','user profile','payment API','sync queue']},
+  iot:{name:'iot-hub.corp',ip:'10.0.0.40',icon:'cloud',assets:['device registry','telemetry stream','OTA updater','MQTT broker','rules engine']}
+};
+
+const STRIDE_THREATS = {
+  S:[
+    {t:'Credential stuffing against login',d:'Attacker reuses leaked passwords from other breaches.',score:8},
+    {t:'Session token forgery',d:'Weak entropy in session IDs allows prediction.',score:7},
+    {t:'Spoofed API client',d:'Missing mutual TLS allows client impersonation.',score:6}
+  ],
+  T:[
+    {t:'Request body tampering',d:'No HMAC on payload lets attacker modify order totals.',score:7},
+    {t:'Cookie manipulation',d:'Unsigned cookies allow role escalation.',score:8},
+    {t:'Log tampering',d:'Attacker with file access modifies audit trail.',score:6}
+  ],
+  R:[
+    {t:'Missing audit logging',d:'No record of admin actions — cannot attribute.',score:5},
+    {t:'Weak log integrity',d:'Logs stored locally without forwarding.',score:6},
+    {t:'No signed transactions',d:'User can deny placing an order.',score:4}
+  ],
+  I:[
+    {t:'Verbose error messages',d:'Stack traces leak framework and file paths.',score:5},
+    {t:'IDOR on /api/user/{id}',d:'Sequential IDs expose other users.',score:9},
+    {t:'Cleartext PII in logs',d:'Passwords and tokens written to disk.',score:7}
+  ],
+  D:[
+    {t:'Missing rate limiting',d:'Unlimited login attempts enable brute force.',score:6},
+    {t:'Expensive query endpoint',d:'Unbounded search triggers CPU exhaustion.',score:7},
+    {t:'No CDN in front of static',d:'Single origin absorbs all traffic.',score:5}
+  ],
+  E:[
+    {t:'SQL injection in search',d:'Unparameterized query allows UNION.',score:9},
+    {t:'Deserialization of untrusted data',d:'Java deserialization RCE possible.',score:10},
+    {t:'Misconfigured S3 bucket policy',d:'Overly permissive IAM role.',score:7}
+  ]
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const terminalContent = document.getElementById('termContent');
+const teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  const pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  const W = canvas.width, H = canvas.height;
+  const t = TARGETS[STATE.target];
+  STATE.nodes = [
+    {id:'user', label:'user', ip:'10.0.0.50', x:0.12*W, y:0.55*H, icon:'laptop', color:'#22c55e', glow:0, blink:0},
+    {id:'browser', label:'browser', ip:'—', x:0.22*W, y:0.42*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'waf', label:'WAF', ip:'10.0.0.5', x:0.36*W, y:0.30*H, icon:'firewall', color:'#22c55e', glow:0, blink:0},
+    {id:'target', label:t.name, ip:t.ip, x:0.58*W, y:0.42*H, icon:t.icon, color:'#3b82f6', glow:0, blink:0},
+    {id:'db', label:'data-store', ip:'10.0.0.20', x:0.78*W, y:0.60*H, icon:'database', color:'#a855f7', glow:0, blink:0},
+    {id:'attacker', label:'threat-actor', ip:'203.0.113.66', x:0.88*W, y:0.20*H, icon:'attacker', color:'#ef4444', glow:0, blink:0}
+  ];
+  STATE.links = [
+    {a:'user',b:'browser',proto:'HTTPS',port:'443'},
+    {a:'browser',b:'waf',proto:'HTTPS',port:'443'},
+    {a:'waf',b:'target',proto:'HTTPS',port:'443'},
+    {a:'target',b:'db',proto:'SQL',port:'5432'},
+    {a:'attacker',b:'waf',proto:'HTTPS',port:'443'}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    const g = ctx.createRadialGradient(0,0,2,0,0,38);
+    g.addColorStop(0, 'rgba(239,68,68,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,38,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(let i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(-10,-8+i*4); ctx.lineTo(8,-8+i*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(let i=0;i<5;i++){
+        const yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'database': {
+      const rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'firewall': {
+      ctx.lineWidth = 1.2;
+      for(let row=0;row<3;row++){
+        const yy = -10 + row*7;
+        const off = row%2===0 ? 0 : 5;
+        for(let col=0;col<4;col++) ctx.strokeRect(-16+col*9+off, yy, 8, 6);
+      }
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(0,-4); ctx.quadraticCurveTo(4,0,0,5); ctx.quadraticCurveTo(-4,0,0,-4);
+      ctx.fill();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 28);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 38);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  const from = STATE.nodes.find(n=>n.id===fromId);
+  const to = STATE.nodes.find(n=>n.id===toId);
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.01, color, label, size:4});
+}
+function spawnExplosion(x, y, color){
+  STATE.events.push({type:'explosion', x, y, r:0, maxR:30, color, t:0});
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  const div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  const time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">'+tag+'</span> <span style="color:#475569">['+time+']</span> ' + text;
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+
+function addCommandFeed(cmd, output){
+  const div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br><span style="color:#4ade80">threat-model:~$ </span>'+cmd+'\n'+output;
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+let termQueue = []; let termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text, callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  const item = termQueue.shift();
+  let i = 0; const text = item.text;
+  terminalContent.textContent = '';
+  const interval = setInterval(()=>{
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 12);
+}
+
+const VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  const now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  const text = VOICE.queue.shift();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  const voices = VOICE.synth.getVoices();
+  const pref = voices.find(v=>v.lang && v.lang.startsWith('en-US')) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = ()=>{ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = ()=>{ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Threat modeling is a DEFENSIVE activity. Understanding how attackers think helps you design better systems. However, applying these techniques to systems you do not own or have written permission to assess is illegal under the CFAA (US), Computer Misuse Act (UK), and equivalent laws. Responsible disclosure means reporting findings to the vendor with a reasonable remediation window before public disclosure.',
+    'ethics');
+  setTimeout(()=>{
+    addFeed('CONCEPT',
+      'Threat modeling is the structured process of identifying, quantifying, and prioritizing threats to a system. Microsoft\'s STRIDE framework categorizes threats into six types, while DREAD scores each threat by severity. Together they turn vague "security" concerns into an actionable backlog.',
+      'concept');
+  }, 800);
+  setTimeout(()=>{
+    termWrite('threat-model init --framework=STRIDE\n[+] Framework loaded: S-T-R-I-D-E\n[+] DREAD scoring engine ready\n[+] Awaiting target selection...');
+  }, 1600);
+  setTimeout(()=>{
+    addFeed('INFO',
+      'System: web-app.corp (10.0.0.10). Assets identified: login page, session store, user DB, API endpoint, static CDN. Click ANALYZE to run STRIDE across all assets.',
+      'info');
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  const dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(n=>{ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(let i = STATE.events.length - 1; i >= 0; i--){
+    const e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1){ spawnExplosion(e.to.x, e.to.y, e.color); STATE.events.splice(i,1); }
+    } else if(e.type === 'explosion'){
+      e.r += 0.8 * (dt/16);
+      if(e.r >= e.maxR) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(n=>{ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  render();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(let x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(let y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.10*H, 0.28*W, 0.75*H, 'TRUSTED USERS', '#22c55e');
+  drawZone(0.34*W, 0.10*H, 0.55*W, 0.78*H, 'APPLICATION · 10.0.0.0/24', '#3b82f6');
+  drawZone(0.82*W, 0.08*H, 0.14*W, 0.55*H, 'EXTERNAL', '#ef4444');
+
+  STATE.links.forEach(link=>{
+    const a = STATE.nodes.find(n=>n.id===link.a);
+    const b = STATE.nodes.find(n=>n.id===link.b);
+    if(!a || !b) return;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    ctx.strokeStyle = 'rgba(51,65,85,0.7)'; ctx.lineWidth = 1.5; ctx.stroke();
+    const mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+    ctx.font = '7px "Courier New",monospace';
+    ctx.fillStyle = '#475569'; ctx.textAlign = 'center';
+    ctx.fillText(link.proto + (link.port ? ':'+link.port : ''), mx, my - 5);
+  });
+
+  STATE.events.forEach(e=>{
+    if(e.type === 'packet'){
+      const x = e.from.x + (e.to.x - e.from.x) * e.t;
+      const y = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(x, y, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, x, y - 7);
+      }
+      ctx.restore();
+    } else if(e.type === 'explosion'){
+      ctx.save();
+      ctx.globalAlpha = 1 - e.r/e.maxR;
+      ctx.strokeStyle = e.color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(n=>{
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  // STRIDE overlay on target
+  if(STATE.currentThreat){
+    const tn = STATE.nodes.find(n=>n.id==='target');
+    ctx.save();
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.arc(tn.x, tn.y, 30, 0, Math.PI*2); ctx.stroke();
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#ef4444'; ctx.textAlign = 'center';
+    ctx.fillText(STATE.currentThreat, tn.x, tn.y - 36);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('DREAD = (D + R + E + A + D) / 5', 12, H - 50);
+  ctx.fillText('STRIDE = 6 threat categories', 12, H - 38);
+  ctx.fillText('Risk = Threat × Vulnerability × Impact', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function computeDread(){
+  const d = STATE.dread;
+  return (d.damage + d.repro + d.exploit + d.affected + d.discover) / 5;
+}
+
+function updateMetrics(){
+  document.getElementById('mThreatsVal').textContent = STATE.threats.length;
+  const high = STATE.threats.filter(t=>t.score >= 7).length;
+  const med = STATE.threats.filter(t=>t.score >= 4 && t.score < 7).length;
+  const low = STATE.threats.filter(t=>t.score < 4).length;
+  document.getElementById('mHighVal').textContent = high;
+  document.getElementById('mMedVal').textContent = med;
+  document.getElementById('mLowVal').textContent = low;
+  document.getElementById('mMitigVal').textContent = STATE.mitigated;
+  const avg = STATE.threats.length ? STATE.threats.reduce((s,t)=>s+t.score,0) / STATE.threats.length : 0;
+  document.getElementById('mDreadVal').textContent = avg.toFixed(1);
+  const coverage = STATE.threats.length ? Math.round((STATE.threats.filter(t=>t.mitigated).length / STATE.threats.length) * 100) : 0;
+  document.getElementById('mCoverageVal').textContent = coverage + '%';
+
+  document.getElementById('mHigh').className = 'metric' + (high > 3 ? ' bad' : high > 1 ? ' warn' : '');
+  document.getElementById('mDread').className = 'metric' + (avg > 7 ? ' bad' : avg > 4 ? ' warn' : '');
+  document.getElementById('mCoverage').className = 'metric' + (coverage < 30 ? ' bad' : coverage < 70 ? ' warn' : '');
+
+  document.getElementById('badgeTarget').textContent = TARGETS[STATE.target].name;
+  document.getElementById('badgeThreats').textContent = STATE.threats.length;
+  document.getElementById('badgeDread').textContent = computeDread().toFixed(1);
+}
+
+function analyzeStride(strideKey){
+  const threats = STRIDE_THREATS[strideKey] || [];
+  const label = {S:'SPOOFING',T:'TAMPERING',R:'REPUDIATION',I:'INFO DISCLOSURE',D:'DENIAL OF SERVICE',E:'ELEVATION OF PRIVILEGE'}[strideKey];
+  addFeed('STRIDE', 'Analyzing STRIDE category: ' + label + '. ' +
+    {S:'Spoofing = pretending to be someone or something else. Mitigations: strong auth, mutual TLS, MFA.',
+     T:'Tampering = unauthorized modification of data or code. Mitigations: HMAC, signatures, integrity checks.',
+     R:'Repudiation = denying an action occurred. Mitigations: audit logs, digital signatures, non-repudiation.',
+     I:'Information Disclosure = exposing data to unauthorized parties. Mitigations: encryption, access control.',
+     D:'Denial of Service = making a system unavailable. Mitigations: rate limiting, redundancy, DDoS scrubbing.',
+     E:'Elevation of Privilege = gaining higher access than authorized. Mitigations: least privilege, input validation.'}[strideKey],
+    'warn');
+  STATE.currentThreat = strideKey;
+  document.getElementById('badgeStride').textContent = strideKey;
+
+  // Highlight matrix phase
+  document.querySelectorAll('.tm-phase').forEach(p=>p.classList.remove('active','done'));
+  document.getElementById('tm-' + strideKey).classList.add('active');
+
+  // Spawn attack packets
+  for(let i=0;i<threats.length;i++){
+    setTimeout(()=>{
+      spawnPacket('attacker','waf', '#ef4444', strideKey, 0.012);
+      setTimeout(()=>spawnPacket('waf','target', '#ef4444', strideKey, 0.012), 300);
+      const tn = STATE.nodes.find(n=>n.id==='target');
+      if(tn){ tn.glow = 1; spawnExplosion(tn.x, tn.y, '#ef4444'); }
+    }, i * 400);
+  }
+
+  // Add threats to list
+  setTimeout(()=>{
+    threats.forEach((th, i)=>{
+      setTimeout(()=>{
+        STATE.threats.push({stride:strideKey, t:th.t, d:th.d, score:th.score, mitigated:false});
+        addFeed('THREAT', '[' + strideKey + '] ' + th.t + ' — ' + th.d + ' (DREAD: ' + th.score + '/10)', th.score >= 7 ? 'error' : th.score >= 4 ? 'warn' : 'info');
+        updateMetrics();
+      }, i * 500);
+    });
+  }, threats.length * 400);
+
+  setTimeout(()=>{
+    document.getElementById('tm-' + strideKey).classList.remove('active');
+    document.getElementById('tm-' + strideKey).classList.add('done');
+    STATE.analyzed++;
+    updateMetrics();
+  }, threats.length * 400 + 500);
+}
+
+function dreadRank(){
+  if(STATE.threats.length === 0){
+    addFeed('DREAD', 'No threats to rank yet. Run ANALYZE first.', 'warn');
+    return;
+  }
+  const sorted = [...STATE.threats].sort((a,b)=>b.score - a.score);
+  addFeed('DREAD', 'Ranking ' + sorted.length + ' threats by DREAD score. The top threat is "' + sorted[0].t + '" at ' + sorted[0].score + '/10. Prioritize remediation by score × business impact — not just score alone.', 'concept');
+  const lines = sorted.slice(0,5).map((t,i)=>(i+1)+'. ['+t.stride+'] '+t.t+' — '+t.score+'/10').join('\n');
+  addCommandFeed('dread --rank --top=5', lines + '\n\n[+] Ranking complete.');
+}
+
+function mitigate(){
+  const unmitigated = STATE.threats.filter(t=>!t.mitigated);
+  if(unmitigated.length === 0){
+    addFeed('MITIGATE', 'All identified threats have mitigations recorded. Remember: a mitigation is only effective if it is implemented AND tested.', 'ok');
+    return;
+  }
+  const target = unmitigated[0];
+  target.mitigated = true;
+  STATE.mitigated++;
+  const defenses = {
+    S:'Enforce MFA, use mutual TLS, rotate credentials, bind sessions to device fingerprints.',
+    T:'Apply HMAC to all request bodies, sign cookies, use append-only audit logs with hash chaining.',
+    R:'Centralize logs to a SIEM, sign transactions with private keys, use trusted timestamps.',
+    I:'Encrypt at rest and in transit, enforce object-level access control, sanitize error messages.',
+    D:'Rate limit per identity, add CDN/shield, use circuit breakers, autoscale read replicas.',
+    E:'Validate all input, use parameterized queries, apply least-privilege IAM, sandbox deserialization.'
+  };
+  addFeed('MITIGATE', 'Mitigation applied to "' + target.t + '": ' + defenses[target.stride] + ' Threat marked as mitigated. Effective mitigation requires implementation, monitoring, and periodic re-testing.', 'ok');
+  updateMetrics();
+}
+
+function resetAll(){
+  STATE.threats = [];
+  STATE.mitigated = 0;
+  STATE.analyzed = 0;
+  STATE.currentThreat = null;
+  document.querySelectorAll('.tm-phase').forEach(p=>p.classList.remove('active','done'));
+  document.getElementById('badgeStride').textContent = '—';
+  updateMetrics();
+  addFeed('RESET', 'Threat model cleared. All threats, mitigations, and analysis state reset.', 'info');
+  termWrite('reset --all\n[+] Threat model state cleared.');
+}
+
+// Controls
+document.getElementById('targetSelect').addEventListener('change', e=>{
+  STATE.target = e.target.value;
+  buildTopology();
+  addFeed('TARGET', 'System changed to ' + TARGETS[STATE.target].name + '. Assets: ' + TARGETS[STATE.target].assets.join(', ') + '.', 'info');
+});
+
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.threats = [];
+  STATE.mitigated = 0;
+  document.querySelectorAll('.tm-phase').forEach(p=>p.classList.remove('active','done'));
+  addFeed('ANALYZE', 'Starting full STRIDE analysis on ' + TARGETS[STATE.target].name + '. Each category is analyzed in sequence. Watch the matrix at the bottom of the canvas for progress.', 'info');
+  const order = ['S','T','R','I','D','E'];
+  let idx = 0;
+  (function next(){
+    if(idx >= order.length || !STATE.running){
+      STATE.running = false;
+      addFeed('COMPLETE', 'STRIDE analysis complete. ' + STATE.threats.length + ' threats identified. Use DREAD RANK to prioritize and MITIGATE to record defenses.', 'ok');
+      return;
+    }
+    analyzeStride(order[idx]);
+    idx++;
+    setTimeout(next, 3000);
+  })();
+});
+
+document.getElementById('stepBtn').addEventListener('click', ()=>{
+  const order = ['S','T','R','I','D','E'];
+  const next = order[STATE.analyzed % order.length];
+  analyzeStride(next);
+  updateMetrics();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('dreadBtn').addEventListener('click', dreadRank);
+document.getElementById('mitigateBtn').addEventListener('click', mitigate);
+
+document.querySelectorAll('.stride-cell').forEach(cell=>{
+  cell.addEventListener('click', ()=>{
+    const s = cell.dataset.stride;
+    document.querySelectorAll('.stride-cell').forEach(c=>c.classList.remove('active'));
+    cell.classList.add('active');
+    analyzeStride(s);
+  });
+});
+
+['damage','repro','exploit','affected','discover'].forEach(k=>{
+  const slider = document.getElementById('dread' + k.charAt(0).toUpperCase() + k.slice(1));
+  if(!slider) return;
+  slider.addEventListener('input', e=>{
+    STATE.dread[k] = parseInt(e.target.value);
+    document.getElementById('dread' + k.charAt(0).toUpperCase() + k.slice(1) + 'Val').textContent = e.target.value;
+    document.getElementById('dreadScore').textContent = computeDread().toFixed(1);
+    document.getElementById('badgeDread').textContent = computeDread().toFixed(1);
+  });
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  const on = this.classList.toggle('active');
+  this.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '🔊 VOICE: ON' : 'VOICE: OFF';
+});
+
+updateMetrics();
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quantum Cryptography — Shor, Grover &amp; Post-Quantum Migration Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--purple);
+    text-shadow:0 0 8px rgba(168,85,247,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--purple); color:#d8b4fe; }
+  .header-actions button.active{
+    border-color:var(--purple); color:#d8b4fe;
+    box-shadow:0 0 10px rgba(168,85,247,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--purple); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--purple); cursor:pointer; box-shadow:0 0 7px rgba(168,85,247,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--purple); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#d8b4fe; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--purple); color:#d8b4fe; }
+  button.act.primary{
+    background:linear-gradient(180deg,#1a0f2a,#0a0612);
+    border-color:var(--purple); color:#d8b4fe;
+    box-shadow:0 0 10px rgba(168,85,247,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(168,85,247,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulsePurp 1.4s infinite; }
+  @keyframes pulsePurp{
+    0%,100%{ box-shadow:0 0 6px rgba(168,85,247,.3); }
+    50%{ box-shadow:0 0 18px rgba(168,85,247,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.purple .m-value{ color:#d8b4fe; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#d8b4fe; }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .q-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .q-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .q-phase.done{ border-color:var(--purple); color:#d8b4fe;
+    background:rgba(168,85,247,.12); }
+  .q-phase.active{ border-color:var(--purple); color:#d8b4fe;
+    background:rgba(168,85,247,.2); box-shadow:0 0 10px rgba(168,85,247,.6);
+    animation:kcPurp 1.2s infinite; }
+  @keyframes kcPurp{ 50%{ box-shadow:0 0 16px rgba(168,85,247,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>QUANTUM CRYPTOGRAPHY</h1>
+    <span class="sub">SHOR · GROVER · NIST PQC · QKD · HARVEST-NOW-DECRYPT-LATER</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Simulation</h3>
+      <select id="simSelect">
+        <option value="shor">Shor's algorithm (break RSA/ECC)</option>
+        <option value="grover">Grover's algorithm (search speedup)</option>
+        <option value="qkd">QKD (BB84 quantum key distribution)</option>
+        <option value="pqc">PQC migration (Kyber/Dilithium)</option>
+        <option value="hndl">Harvest-now-decrypt-later</option>
+      </select>
+      <label class="ctl-label">Target cryptography</label>
+      <select id="cryptoSelect">
+        <option value="rsa-2048">RSA-2048</option>
+        <option value="rsa-4096">RSA-4096</option>
+        <option value="ecc-p256">ECC P-256</option>
+        <option value="aes-256">AES-256 (symmetric)</option>
+        <option value="sha-256">SHA-256 (hash)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Quantum Parameters</h3>
+      <label class="ctl-label">Logical qubits <span class="slider-val" id="qubitsVal">4096</span></label>
+      <input type="range" id="qubitsSlider" min="8" max="8192" value="4096">
+      <label class="ctl-label">Coherence time (μs) <span class="slider-val" id="coherVal">500</span></label>
+      <input type="range" id="coherSlider" min="1" max="2000" value="500">
+      <label class="ctl-label">Error rate (%) <span class="slider-val" id="errVal">0.1</span></label>
+      <input type="range" id="errSlider" min="1" max="100" value="10">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ SIMULATE</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="hndlBtn">📼 HNDL</button>
+        <button type="button" class="act ok" id="pqcBtn">🔮 MIGRATE PQC</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">quantum@lab:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Quantum cryptanalysis is a threat model, not a tool. Research responsibly.</div>
+    <div class="status-badges">
+      <div class="status-badge">SIM: <b id="badgeSim">SHOR</b></div>
+      <div class="status-badge">TARGET: <b id="badgeTarget">RSA-2048</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+      <div class="status-badge">RISK: <b id="badgeRisk">LOW</b></div>
+    </div>
+    <div class="q-chain" id="qChain">
+      <div class="q-phase" id="qp-INIT">INIT</div>
+      <div class="q-phase" id="qp-SUPER">SUPERPOSITION</div>
+      <div class="q-phase" id="qp-ORACLE">ORACLE</div>
+      <div class="q-phase" id="qp-AMP">AMPLIFY</div>
+      <div class="q-phase" id="qp-MEASURE">MEASURE</div>
+      <div class="q-phase" id="qp-OUTPUT">OUTPUT</div>
+    </div>
+    <div class="footer-overlay">NIST PQC Standardization (FIPS 203/204/205) · ETSI QKD · Shor 1994 · Grover 1996</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric purple" id="mQubits"><div class="m-label">Qubits</div><div class="m-value" id="mQubitsVal">4096</div></div>
+      <div class="metric" id="mGates"><div class="m-label">Gates</div><div class="m-value" id="mGatesVal">0</div></div>
+      <div class="metric" id="mTime"><div class="m-label">Break Time</div><div class="m-value" id="mTimeVal">∞</div></div>
+      <div class="metric" id="mClassical"><div class="m-label">Classical</div><div class="m-value" id="mClassicalVal">10^9 yr</div></div>
+      <div class="metric" id="mSpeedup"><div class="m-label">Speedup</div><div class="m-value" id="mSpeedupVal">2^N/2</div></div>
+      <div class="metric" id="mSecurity"><div class="m-label">Bits</div><div class="m-value" id="mSecurityVal">112</div></div>
+      <div class="metric" id="mPQC"><div class="m-label">PQC Ready</div><div class="m-value" id="mPQCVal">NO</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Defense</div><div class="m-value" id="mDefenseVal">—</div></div>
+    </div>
+    <div class="info-card">
+      <b>Quantum cryptography — the post-quantum transition.</b><br>
+      <span class="eq">Shor: breaks RSA/ECC in poly time (needs ~4000 logical qubits)</span><br>
+      <span class="eq">Grover: quadratic speedup on search (halves symmetric key bits)</span><br>
+      <span class="eq">PQC: NIST FIPS 203 (Kyber), 204 (Dilithium), 205 (SPHINCS+)</span><br>
+      <span style="color:var(--purple)">NIST PQC · ETSI QKD · CNSA 2.0 · BSI TR-02102</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  sim:'shor',
+  crypto:'rsa-2048',
+  qubits:4096,
+  coherence:500,
+  error:0.1,
+  gates:0,
+  time:'∞',
+  classical:'10^9 yr',
+  speedup:'2^N/2',
+  security:112,
+  pqcReady:false,
+  hndl:false,
+  risk:'LOW',
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['INIT','SUPER','ORACLE','AMP','MEASURE','OUTPUT'];
+
+var SIMS = {
+  shor:{
+    title:'Shor\'s Algorithm',
+    detail:'Shor (1994) factors integers in polynomial time using quantum Fourier transform. For RSA-2048: ~4096 logical qubits needed. Current hardware: ~1000 physical qubits (Google Sycamore), 100s needed for one logical. Timeline estimates: 2030-2040 for RSA-2048.',
+    classical:'10^9 years (GNFS on 2048-bit)'
+  },
+  grover:{
+    title:'Grover\'s Algorithm',
+    detail:'Grover (1996) searches unstructured data in O(√N) vs O(N). Effect on symmetric crypto: AES-256 reduced to 128-bit security, AES-128 to 64-bit (insecure). Mitigation: double key sizes (AES-256 is safe).',
+    classical:'O(2^N) vs quantum O(2^N/2)'
+  },
+  qkd:{
+    title:'Quantum Key Distribution (BB84)',
+    detail:'Uses quantum no-cloning theorem to detect eavesdropping. Any interception disturbs the quantum state. Practical limits: distance (~500km fiber), rate (~Mbps), requires trusted nodes. Not a replacement for PQC — complementary.',
+    classical:'N/A — quantum channel'
+  },
+  pqc:{
+    title:'PQC Migration (NIST standards)',
+    detail:'NIST selected: CRYSTALS-Kyber (KEM, FIPS 203), CRYSTALS-Dilithium (signature, FIPS 204), SPHINCS+ (hash-based signature, FIPS 205), FALCON (signature). Hybrid mode: run classical + PQC together for defense-in-depth during transition.',
+    classical:'N/A — replacement'
+  },
+  hndl:{
+    title:'Harvest-Now-Decrypt-Later',
+    detail:'Adversaries capture encrypted traffic today, decrypt when quantum computers arrive. Long-lived secrets (medical records, state secrets, intellectual property) already at risk. Migration urgency is based on data shelf-life, not quantum arrival.',
+    classical:'N/A — passive collection'
+  }
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'classical', label:'classical computer', ip:'exponential time', x:0.15*W, y:0.30*H, icon:'server', color:'#3b82f6', glow:0, blink:0},
+    {id:'quantum', label:'quantum computer', ip:'polynomial time', x:0.15*W, y:0.65*H, icon:'cloud', color:'#a855f7', glow:0, blink:0},
+    {id:'rsa', label:'RSA-2048', ip:'factoring problem', x:0.40*W, y:0.30*H, icon:'server', color:'#f59e0b', glow:0, blink:0},
+    {id:'ecc', label:'ECC P-256', ip:'ECDLP', x:0.40*W, y:0.65*H, icon:'server', color:'#f59e0b', glow:0, blink:0},
+    {id:'pqc', label:'PQC (Kyber)', ip:'lattice-based', x:0.65*W, y:0.30*H, icon:'server', color:'#22c55e', glow:0, blink:0},
+    {id:'hybrid', label:'hybrid KEM', ip:'classical + PQC', x:0.65*W, y:0.65*H, icon:'firewall', color:'#22c55e', glow:0, blink:0},
+    {id:'data', label:'protected data', ip:'shelf life matters', x:0.88*W, y:0.45*H, icon:'database', color:'#22d3ee', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(168,85,247,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'firewall': {
+      ctx.lineWidth = 1.2;
+      for(var row=0;row<3;row++){
+        var y2 = -10 + row*7;
+        var off = row%2===0 ? 0 : 5;
+        for(var col=0;col<4;col++) ctx.strokeRect(-16+col*9+off, y2, 8, 6);
+      }
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(0,-4); ctx.quadraticCurveTo(4,0,0,5); ctx.quadraticCurveTo(-4,0,0,-4);
+      ctx.fill();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">quantum@lab:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Quantum computing research is legitimate and essential. However, using quantum algorithms to break cryptography you do not own is illegal. Post-quantum migration is a DEFENSIVE priority — every organization should inventory long-lived secrets and plan hybrid PQC deployment. NIST FIPS 203/204/205 (2024) provide the standards. NSA CNSA 2.0 mandates PQC by 2033 for national security systems. Crypto-agility — the ability to swap algorithms quickly — is the #1 governance priority.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'Quantum computers threaten modern cryptography in two ways. Shor\'s algorithm (1994) factors integers and solves discrete logs in polynomial time — breaking RSA, ECC, and Diffie-Hellman. Grover\'s algorithm (1996) provides quadratic speedup for brute force — halving the effective security of symmetric ciphers and hashes. Post-quantum cryptography (PQC) replaces vulnerable primitives with lattice-based (Kyber, Dilithium) or hash-based (SPHINCS+) constructions. NIST finalized PQC standards in August 2024.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out rsa.pem\n' +
+      'openssl pkey -in rsa.pem -pubout\n' +
+      '# [quantum threat] A 4096-logical-qubit QC breaks this in ~8 hours\n' +
+      '# [classical threat] GNFS on 2048-bit takes ~10^9 CPU-years');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Simulation: ' + STATE.sim.toUpperCase() + '. Target: ' + STATE.crypto.toUpperCase() + '. Qubits: ' + STATE.qubits + '. Click SIMULATE to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running && STATE.tick % 30 === 0){
+    spawnPacket('quantum','rsa','#a855f7','QUBIT',0.02);
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.30*W, 0.80*H, 'COMPUTE', '#a855f7');
+  drawZone(0.40*W, 0.08*H, 0.30*W, 0.80*H, 'CRYPTOGRAPHIC PRIMITIVES', '#f59e0b');
+  drawZone(0.72*W, 0.08*H, 0.24*W, 0.80*H, 'PROTECTED', '#22c55e');
+
+  var links = [
+    ['quantum','rsa'], ['quantum','ecc'],
+    ['rsa','pqc'], ['ecc','pqc'],
+    ['pqc','hybrid'], ['hybrid','data']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(168,85,247,0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+    if(n.id === 'rsa' && STATE.phaseIdx >= 5){
+      ctx.save();
+      ctx.font = 'bold 9px "Courier New",monospace';
+      ctx.fillStyle = '#ef4444';
+      ctx.textAlign = 'center';
+      ctx.fillText('BROKEN', n.x, n.y - 25);
+      ctx.restore();
+    }
+    if(n.id === 'pqc' && STATE.pqcReady){
+      ctx.save();
+      ctx.font = 'bold 9px "Courier New",monospace';
+      ctx.fillStyle = '#22c55e';
+      ctx.textAlign = 'center';
+      ctx.fillText('SAFE', n.x, n.y - 25);
+      ctx.restore();
+    }
+  });
+
+  // Info panel
+  var sim = SIMS[STATE.sim];
+  if(sim && STATE.phaseIdx > 0){
+    ctx.save();
+    var ax = 0.05*W, ay = H - 180, aw = 0.60*W, ah = 150;
+    ctx.fillStyle = 'rgba(30,15,50,0.9)';
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#d8b4fe';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 ' + sim.title, ax + 8, ay + 16);
+    ctx.font = '8px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    // Wrap text
+    var words = sim.detail.split(' ');
+    var line = '';
+    var ly = ay + 34;
+    words.forEach(function(w){
+      if((line + w).length > 70){
+        ctx.fillText(line, ax + 8, ly);
+        line = w + ' ';
+        ly += 11;
+      } else {
+        line += w + ' ';
+      }
+    });
+    ctx.fillText(line, ax + 8, ly);
+    ctx.fillStyle = '#fcd34d';
+    ctx.fillText('Classical: ' + sim.classical, ax + 8, ay + 130);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Shor: RSA/ECC broken in polynomial time (needs 4096 logical qubits)', 12, H - 74);
+  ctx.fillText('Grover: symmetric key effective strength halved (AES-256→128)', 12, H - 62);
+  ctx.fillText('NIST FIPS 203/204/205 (Aug 2024): Kyber, Dilithium, SPHINCS+', 12, H - 50);
+  ctx.fillText('CNSA 2.0: PQC mandate by 2033 for national security', 12, H - 38);
+  ctx.fillText('Action: inventory long-lived secrets + hybrid PQC now', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeSim').textContent = STATE.sim.toUpperCase();
+  document.getElementById('badgeTarget').textContent = STATE.crypto.toUpperCase();
+  document.getElementById('badgeStatus').textContent = STATE.running ? 'RUNNING' : (STATE.phaseIdx >= 6 ? 'COMPLETE' : 'IDLE');
+  document.getElementById('badgeRisk').textContent = STATE.risk;
+
+  document.getElementById('mQubitsVal').textContent = STATE.qubits;
+  document.getElementById('mGatesVal').textContent = STATE.gates;
+  document.getElementById('mTimeVal').textContent = STATE.time;
+  document.getElementById('mClassicalVal').textContent = STATE.classical;
+  document.getElementById('mSpeedupVal').textContent = STATE.speedup;
+  document.getElementById('mSecurityVal').textContent = STATE.security;
+  document.getElementById('mPQCVal').textContent = STATE.pqcReady ? 'YES' : 'NO';
+  document.getElementById('mDefenseVal').textContent = STATE.hndl ? 'HNDL' : (STATE.pqcReady ? 'PQC' : '—');
+
+  document.getElementById('mPQC').className = 'metric' + (STATE.pqcReady ? ' ok' : ' warn');
+  document.getElementById('mSecurity').className = 'metric' + (STATE.security < 100 ? ' warn' : '');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('qp-' + p);
+    if(!el) return;
+    el.className = 'q-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var sim = SIMS[STATE.sim];
+
+  switch(phase){
+    case 'INIT':
+      addFeed('INIT', 'Initializing quantum simulation: ' + sim.title + '. Loading ' + STATE.qubits + ' logical qubits. Coherence time: ' + STATE.coherence + 'μs. Error rate: ' + STATE.error + '%.', 'info');
+      addCommandFeed('qsim init --algorithm ' + STATE.sim + ' --qubits ' + STATE.qubits,
+        '[+] Qubit register initialized\n' +
+        '[+] Topology: heavy-hex lattice\n' +
+        '[+] Coherence budget: ' + STATE.coherence + 'μs');
+      break;
+    case 'SUPER':
+      STATE.gates += STATE.qubits * 2;
+      addFeed('SUPER', 'Creating uniform superposition: applying Hadamard gates to all ' + STATE.qubits + ' qubits. State now represents 2^' + STATE.qubits + ' amplitudes simultaneously.', 'concept');
+      break;
+    case 'ORACLE':
+      STATE.gates += STATE.qubits * 4;
+      addFeed('ORACLE', 'Applying quantum oracle (period-finding circuit for Shor; marked item for Grover). Oracle is the quantum analog of a function evaluation, applied in superposition.', 'info');
+      break;
+    case 'AMP':
+      STATE.gates += STATE.qubits * 3;
+      addFeed('AMP', 'Amplifying the correct answer. ' + (STATE.sim === 'shor' ? 'Quantum Fourier Transform extracts the period r from the modular exponentiation function f(x) = a^x mod N. From r, classical post-processing recovers factors p and q.' : (STATE.sim === 'grover' ? 'Grover iterations: ~π/4 × √N amplifies the marked state. Each iteration is a reflection about the mean + oracle.' : (STATE.sim === 'qkd' ? 'BB84: Alice sends polarized photons in random bases; Bob measures in random bases; sifting reveals eavesdropping.' : (STATE.sim === 'pqc' ? 'Generating PQC key pair using lattice-based cryptography. CRYSTALS-Kyber: NTT-based polynomial arithmetic mod q=3329.' : 'HNDL: passive collection of encrypted traffic — no active attack yet.')))), 'concept');
+      break;
+    case 'MEASURE':
+      addFeed('MEASURE', 'Measuring ' + STATE.qubits + ' qubits. Collapse to classical bitstring. Probability of correct answer amplified by ~2^' + Math.floor(STATE.qubits/2) + ' compared to random guess.', 'warn');
+      break;
+    case 'OUTPUT':
+      STATE.pqcReady = STATE.sim === 'pqc' || STATE.sim === 'qkd';
+      STATE.security = STATE.crypto === 'aes-256' ? 128 : (STATE.crypto === 'sha-256' ? 128 : (STATE.crypto === 'rsa-4096' ? 152 : 112));
+      if(STATE.sim === 'shor'){
+        STATE.time = STATE.qubits >= 4096 ? '8 hours' : (STATE.qubits >= 2048 ? '3 days' : 'infeasible (need more qubits)');
+        STATE.classical = '10^9 years (GNFS)';
+        STATE.risk = STATE.qubits >= 4096 ? 'CRITICAL' : 'LOW';
+        addFeed('OUTPUT', 'Shor result: ' + (STATE.qubits >= 4096 ? 'RSA-2048 FACTORED. Private key recovered. Time: 8 hours on 4096 logical qubits.' : 'Insufficient qubits — need 4096 logical for RSA-2048. Current hardware has ~1000 physical, ~10 logical.'), STATE.qubits >= 4096 ? 'error' : 'warn');
+        addCommandFeed('qsim factor --N rsa-2048',
+          STATE.qubits >= 4096 ? '[+] Factored! p = 0x...\n[+] q = 0x...\n[+] Private key d = 0x...' : '[!] Qubit count insufficient\n[!] Need 4096 logical qubits (with error correction: ~20M physical)');
+      } else if(STATE.sim === 'grover'){
+        STATE.security = STATE.crypto === 'aes-256' ? 128 : 64;
+        STATE.time = '2^64 operations';
+        addFeed('OUTPUT', 'Grover result: AES-256 effective strength reduced from 256 to 128 bits. Still secure. AES-128 reduced to 64 bits — BRUTE-FORCEABLE. Recommendation: use AES-256 minimum.', 'warn');
+      } else if(STATE.sim === 'qkd'){
+        addFeed('OUTPUT', 'QKD (BB84) result: 256-bit key exchanged with information-theoretic security. Eavesdropping detected via quantum bit error rate (QBER) > 11%. Distance limited to ~500km fiber without trusted nodes.', 'ok');
+      } else if(STATE.sim === 'pqc'){
+        STATE.pqcReady = true;
+        addFeed('OUTPUT', 'PQC migration complete. Deployed hybrid X25519+Kyber768 (TLS), Dilithium3 (signatures). Quantum-resistant AND classical-resistant. Standards: NIST FIPS 203, 204.', 'ok');
+        addCommandFeed('openssl genpkey -algorithm kyber768 -out pqc.key',
+          '[+] Kyber-768 key pair generated\n[+] Public key: 1184 bytes\n[+] Ciphertext: 1088 bytes\n[+] NIST security category 3 (~AES-192)');
+      } else if(STATE.sim === 'hndl'){
+        addFeed('OUTPUT', 'HNDL result: adversary has been recording encrypted traffic since 2020. Data with 10+ year shelf life is already compromised. Migration urgency = data_shelf_life - expected_quantum_arrival.', 'error');
+      }
+      addFeed('DEFENSE', 'Actions: (1) Inventory long-lived secrets. (2) Adopt hybrid PQC in TLS, SSH, VPN. (3) Test crypto-agility. (4) Plan HSM/firmware upgrades. (5) Monitor NIST CNSA 2.0 timelines (2025-2033 milestones).', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.gates = 0;
+  STATE.time = '∞';
+  STATE.classical = '10^9 yr';
+  STATE.speedup = '2^N/2';
+  STATE.security = 112;
+  STATE.pqcReady = false;
+  STATE.risk = 'LOW';
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('qp-' + p); if(el) el.className = 'q-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'Quantum simulation reset.', 'info');
+  termWrite('reset --all\n[+] State cleared.');
+}
+
+document.getElementById('simSelect').addEventListener('change', function(e){
+  STATE.sim = e.target.value;
+  var s = SIMS[STATE.sim];
+  addFeed('SIM', 'Simulation: ' + s.title + '. ' + s.detail, 'warn');
+});
+
+document.getElementById('cryptoSelect').addEventListener('change', function(e){
+  STATE.crypto = e.target.value;
+  addFeed('CRYPTO', 'Target cryptography: ' + STATE.crypto.toUpperCase() + '.', 'info');
+});
+
+document.getElementById('qubitsSlider').addEventListener('input', function(e){
+  STATE.qubits = parseInt(e.target.value);
+  document.getElementById('qubitsVal').textContent = e.target.value;
+});
+document.getElementById('coherSlider').addEventListener('input', function(e){
+  STATE.coherence = parseInt(e.target.value);
+  document.getElementById('coherVal').textContent = e.target.value;
+});
+document.getElementById('errSlider').addEventListener('input', function(e){
+  STATE.error = parseInt(e.target.value) / 100;
+  document.getElementById('errVal').textContent = (parseInt(e.target.value) / 10).toFixed(1);
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.gates = 0;
+  STATE.pqcReady = false;
+  STATE.risk = 'LOW';
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('SIMULATE', 'Running quantum simulation: ' + STATE.sim.toUpperCase() + ' against ' + STATE.crypto.toUpperCase() + '. Qubits: ' + STATE.qubits + '.', 'warn');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1500);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('hndlBtn').addEventListener('click', function(){
+  STATE.hndl = !STATE.hndl;
+  this.classList.toggle('active', STATE.hndl);
+  if(STATE.hndl){
+    addFeed('HNDL', 'Harvest-Now-Decrypt-Later mode ENABLED. Adversary is collecting encrypted traffic today, will decrypt when QC arrives. This makes migration urgent: if data has 10-year confidentiality requirement and QC arrives in 2035, migration must be complete by 2025.', 'error');
+  } else {
+    addFeed('HNDL', 'HNDL mode disabled.', 'warn');
+  }
+});
+
+document.getElementById('pqcBtn').addEventListener('click', function(){
+  STATE.pqcReady = !STATE.pqcReady;
+  this.classList.toggle('active', STATE.pqcReady);
+  if(STATE.pqcReady){
+    addFeed('DEFENSE', 'PQC MIGRATION ENABLED. Hybrid X25519+Kyber768 for TLS. Dilithium3 for signatures. SPHINCS+ for long-term signatures. Backward compatible via hybrid mode (both classical and PQC key exchange).', 'ok');
+    STATE.security = 256;
+  } else {
+    addFeed('DEFENSE', 'PQC migration disabled. Vulnerable to quantum attack.', 'warn');
+  }
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARP Spoofing & MITM — Interactive Cybersecurity Teaching Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--green-lt);
+    text-shadow:0 0 8px rgba(34,197,94,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--green); color:var(--green-lt); }
+  .header-actions button.active{
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--green); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--green); cursor:pointer; box-shadow:0 0 7px rgba(34,197,94,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--green); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:var(--green-lt); font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--green); color:var(--green-lt); }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f2a18,#0a1a10);
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(34,197,94,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.danger:hover{ background:#2a0f0f; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.warn:hover{ background:#2a1f0f; }
+  button.act.pulse{ animation:pulseBtn 1.4s infinite; }
+  @keyframes pulseBtn{
+    0%,100%{ box-shadow:0 0 6px rgba(34,197,94,.3); }
+    50%{ box-shadow:0 0 18px rgba(34,197,94,.7); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:170px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--green-lt); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .arp-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .arp-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .arp-phase.done{ border-color:var(--green); color:var(--green-lt);
+    background:rgba(34,197,94,.12); }
+  .arp-phase.active{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.15); box-shadow:0 0 10px rgba(34,211,238,.4);
+    animation:kcPulse 1.2s infinite; }
+  @keyframes kcPulse{ 50%{ box-shadow:0 0 16px rgba(34,211,238,.7); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>ARP SPOOFING & MITM</h1>
+    <span class="sub">ARP CACHE POISONING · MAN-IN-THE-MIDDLE · RFC 826 · DAI</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Attack Mode</h3>
+      <select id="attackSelect">
+        <option value="arp">ARP Spoofing (cache poisoning)</option>
+        <option value="mitm">Full MITM (bidirectional)</option>
+        <option value="sslstrip">SSL Strip (HTTPS downgrade)</option>
+        <option value="dnsarp">DNS + ARP Combo</option>
+      </select>
+      <label class="ctl-label">Victim (target)</label>
+      <select id="victimSelect">
+        <option value="10.0.0.50">workstation-01 (10.0.0.50)</option>
+        <option value="10.0.0.51">workstation-02 (10.0.0.51)</option>
+        <option value="10.0.0.60">laptop-ceo (10.0.0.60)</option>
+      </select>
+      <label class="ctl-label">Gateway (spoof target)</label>
+      <input type="text" id="gatewayInput" value="10.0.0.1">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ ARP Poisoning</h3>
+      <label class="ctl-label">Attacker MAC</label>
+      <input type="text" id="attackerMac" value="de:ad:be:ef:00:01">
+      <label class="ctl-label">Victim MAC (spoofed)</label>
+      <input type="text" id="victimMac" value="aa:bb:cc:dd:ee:01">
+      <label class="ctl-label">Gateway MAC (spoofed)</label>
+      <input type="text" id="gatewayMac" value="00:11:22:33:44:55">
+      <div class="preset-row">
+        <button type="button" class="preset-btn" data-preset="grat">Gratuitous ARP</button>
+        <button type="button" class="preset-btn" data-preset="both">Bidirectional</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Poison rate <span class="slider-val" id="rateVal">10/s</span></label>
+      <input type="range" id="rateSlider" min="0" max="100" value="30">
+      <label class="ctl-label">Forward traffic <span class="slider-val" id="fwdVal">90%</span></label>
+      <input type="range" id="fwdSlider" min="0" max="100" value="90">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ POISON</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="daiBtn">🛡 DAI</button>
+        <button type="button" class="act" id="staticBtn">📌 STATIC ARP</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">kali@attacker:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — ARP spoofing on production networks causes outages and is a criminal offense.</div>
+    <div class="status-badges">
+      <div class="status-badge">MODE: <b id="badgeMode">ARP</b></div>
+      <div class="status-badge">VICTIM: <b id="badgeVictim">10.0.0.50</b></div>
+      <div class="status-badge">GATEWAY: <b id="badgeGateway">10.0.0.1</b></div>
+      <div class="status-badge">POISONED: <b id="badgePoisoned">NO</b></div>
+    </div>
+    <div class="arp-chain" id="arpChain">
+      <div class="arp-phase" id="ap-RECON">RECON</div>
+      <div class="arp-phase" id="ap-POISON-V">POISON V</div>
+      <div class="arp-phase" id="ap-POISON-G">POISON G</div>
+      <div class="arp-phase" id="ap-RELAY">RELAY</div>
+      <div class="arp-phase" id="ap-CAPTURE">CAPTURE</div>
+      <div class="arp-phase" id="ap-INJECT">INJECT</div>
+    </div>
+    <div class="footer-overlay">RFC 826 (ARP) · MITRE T1557.002 (ARP Cache Poisoning) · DAI (Dynamic ARP Inspection)</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric" id="mArp"><div class="m-label">ARP/s</div><div class="m-value" id="mArpVal">0</div></div>
+      <div class="metric" id="mPoisoned"><div class="m-label">Cache Poisoned</div><div class="m-value" id="mPoisonedVal">NO</div></div>
+      <div class="metric" id="mCaptured"><div class="m-label">Captured Pkts</div><div class="m-value" id="mCapturedVal">0</div></div>
+      <div class="metric" id="mCreds"><div class="m-label">Creds</div><div class="m-value" id="mCredsVal">0</div></div>
+      <div class="metric" id="mForward"><div class="m-label">Forwarded</div><div class="m-value" id="mForwardVal">0</div></div>
+      <div class="metric" id="mDropped"><div class="m-label">Dropped</div><div class="m-value" id="mDroppedVal">0</div></div>
+      <div class="metric" id="mLatency"><div class="m-label">Latency</div><div class="m-value" id="mLatencyVal">0ms</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Defense</div><div class="m-value" id="mDefenseVal">OFF</div></div>
+    </div>
+    <div class="info-card">
+      <b>ARP — Address Resolution Protocol (RFC 826).</b><br>
+      <span class="eq">ARP: "Who has 10.0.0.1? Tell 10.0.0.50"</span><br>
+      <span class="eq">ARP Reply: "10.0.0.1 is at 00:11:22:33:44:55"</span><br>
+      <span class="eq">Stateless — no authentication. Any host can claim any IP.</span><br>
+      <span style="color:var(--purple)">MITRE T1557.002 · DAI (Dynamic ARP Inspection) · RFC 826</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const STATE = {
+  running:false,
+  mode:'arp',
+  victim:'10.0.0.50',
+  gateway:'10.0.0.1',
+  attackerMac:'de:ad:be:ef:00:01',
+  victimMac:'aa:bb:cc:dd:ee:01',
+  gatewayMac:'00:11:22:33:44:55',
+  rate:10,
+  forward:0.9,
+  poisoned:false,
+  captured:0,
+  creds:0,
+  forwarded:0,
+  dropped:0,
+  latency:0,
+  dai:false,
+  staticArp:false,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const terminalContent = document.getElementById('termContent');
+const teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  const pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  const W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'attacker', label:'attacker', ip:'10.0.0.99', mac:STATE.attackerMac, x:0.50*W, y:0.75*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'victim', label:'victim', ip:STATE.victim, mac:STATE.victimMac, x:0.20*W, y:0.40*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'gateway', label:'gateway', ip:STATE.gateway, mac:STATE.gatewayMac, x:0.80*W, y:0.40*H, icon:'router', color:'#22c55e', glow:0, blink:0},
+    {id:'switch', label:'switch', ip:'—', mac:'—', x:0.50*W, y:0.40*H, icon:'switch', color:'#22d3ee', glow:0, blink:0},
+    {id:'internet', label:'internet', ip:'—', mac:'—', x:0.95*W, y:0.15*H, icon:'cloud', color:'#a855f7', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    const g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(239,68,68,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(let i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(-10,-8+i*4); ctx.lineTo(8,-8+i*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'router': {
+      ctx.strokeRect(-14,-6,28,12);
+      for(let i=0;i<4;i++){
+        ctx.strokeStyle = '#334155'; ctx.lineWidth = 0.6;
+        ctx.strokeRect(-11+i*6, 0, 4, 4);
+        const on = (blink+i)%2===0;
+        ctx.fillStyle = on ? '#22c55e' : '#166534';
+        ctx.fillRect(-10.5+i*6, 1, 3, 2);
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-6,-6); ctx.lineTo(-9,-14); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(6,-6); ctx.lineTo(9,-14); ctx.stroke();
+      break;
+    }
+    case 'switch': {
+      ctx.strokeRect(-20,-5,40,10);
+      for(let i=0;i<8;i++){
+        ctx.strokeStyle = '#334155'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-17+i*4.5, -2, 3, 4);
+        const on = (blink+i)%3!==0;
+        ctx.fillStyle = on ? '#22d3ee' : '#0e7490';
+        ctx.fillRect(-16.5+i*4.5, -1, 2, 2);
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 28);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 38);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  const from = STATE.nodes.find(n=>n.id===fromId);
+  const to = STATE.nodes.find(n=>n.id===toId);
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.01, color, label, size:4});
+}
+function spawnExplosion(x, y, color){
+  STATE.events.push({type:'explosion', x, y, r:0, maxR:30, color, t:0});
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  const div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  const time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">'+tag+'</span> <span style="color:#475569">['+time+']</span> ' + text;
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+
+function addCommandFeed(cmd, output){
+  const div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br><span style="color:#4ade80">kali@attacker:~$ </span>'+cmd+'\n'+output;
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+let termQueue = []; let termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text, callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  const item = termQueue.shift();
+  let i = 0; const text = item.text;
+  terminalContent.textContent = '';
+  const interval = setInterval(()=>{
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+const VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  const now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  const text = VOICE.queue.shift();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  const voices = VOICE.synth.getVoices();
+  const pref = voices.find(v=>v.lang && v.lang.startsWith('en-US')) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = ()=>{ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = ()=>{ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'ARP spoofing redirects traffic on a local network, enabling eavesdropping, session hijacking, and credential theft. It is illegal on networks you do not own or lack written authorization to test. Even on your own LAN, ARP spoofing can break connectivity for other users. Public Wi-Fi networks are especially vulnerable — always use HTTPS and a VPN on untrusted networks. Defenders should deploy Dynamic ARP Inspection (DAI) on managed switches.',
+    'ethics');
+  setTimeout(()=>{
+    addFeed('CONCEPT',
+      'ARP (Address Resolution Protocol, RFC 826) maps IP addresses to MAC addresses on a LAN. It is stateless and unauthenticated: any host can send an ARP reply claiming to own any IP. Attackers exploit this to redirect traffic: poison the victim\'s cache so that the gateway IP maps to the attacker MAC, then relay traffic while capturing it.',
+      'concept');
+  }, 800);
+  setTimeout(()=>{
+    termWrite('arpspoof -i eth0 -t 10.0.0.50 10.0.0.1\n[+] arpspoof started\n[+] Sending ARP replies: 10.0.0.1 is at de:ad:be:ef:00:01\n[!] Press Ctrl+C to stop');
+  }, 1600);
+  setTimeout(()=>{
+    addFeed('INFO',
+      'Target: ' + STATE.victim + '. Gateway: ' + STATE.gateway + '. Attacker MAC: ' + STATE.attackerMac + '. Click POISON to begin.',
+      'info');
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  const dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(n=>{ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(let i = STATE.events.length - 1; i >= 0; i--){
+    const e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1){ spawnExplosion(e.to.x, e.to.y, e.color); STATE.events.splice(i,1); }
+    } else if(e.type === 'explosion'){
+      e.r += 0.7 * (dt/16);
+      if(e.r >= e.maxR) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(n=>{ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running){
+    // Send poison packets
+    if(STATE.tick % Math.max(2, Math.floor(30 - STATE.rate*2)) === 0){
+      spawnPacket('attacker','victim','#ef4444','ARP "10.0.0.1 is-at attacker"',0.02);
+      spawnPacket('attacker','gateway','#ef4444','ARP "10.0.0.50 is-at attacker"',0.02);
+    }
+    // Send victim traffic (through attacker if poisoned)
+    if(STATE.tick % 20 === 0 && STATE.poisoned){
+      // Victim → attacker → gateway (MITM relay)
+      if(Math.random() < STATE.forward){
+        spawnPacket('victim','attacker','#3b82f6','HTTP',0.02);
+        setTimeout(()=>spawnPacket('attacker','gateway','#22c55e','FORWARD',0.02), 300);
+        STATE.forwarded++;
+        // Random capture
+        if(Math.random() < 0.3){
+          STATE.captured++;
+          if(Math.random() < 0.2){
+            STATE.creds++;
+            addFeed('CREDS', 'Captured credential: user=' + 'admin' + ' pass=' + 'P@ssw0rd' + ' (plaintext HTTP). Use HTTPS to prevent this.', 'error');
+          }
+        }
+      } else {
+        STATE.dropped++;
+      }
+      STATE.latency = 20 + Math.random() * 100;
+    }
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(let x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(let y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.55*H, 'LOCAL LAN · 10.0.0.0/24 · 192.168.1.0/24', '#22c55e');
+  drawZone(0.85*W, 0.08*H, 0.13*W, 0.20*H, 'INTERNET', '#a855f7');
+
+  // Links
+  const links = [
+    ['victim','switch'],
+    ['switch','gateway'],
+    ['gateway','internet'],
+    ['attacker','switch'],
+  ];
+  links.forEach(([a,b])=>{
+    const na = STATE.nodes.find(n=>n.id===a);
+    const nb = STATE.nodes.find(n=>n.id===b);
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(51,65,85,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  // Poison overlay lines
+  if(STATE.poisoned){
+    ctx.save();
+    ctx.setLineDash([6,4]);
+    ctx.strokeStyle = 'rgba(239,68,68,0.6)';
+    ctx.lineWidth = 2;
+    const v = STATE.nodes.find(n=>n.id==='victim');
+    const a = STATE.nodes.find(n=>n.id==='attacker');
+    const g = STATE.nodes.find(n=>n.id==='gateway');
+    if(v && a){
+      ctx.beginPath(); ctx.moveTo(v.x, v.y + 20); ctx.lineTo(a.x, a.y - 20); ctx.stroke();
+    }
+    if(a && g){
+      ctx.beginPath(); ctx.moveTo(a.x, a.y - 20); ctx.lineTo(g.x, g.y + 20); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  STATE.events.forEach(e=>{
+    if(e.type === 'packet'){
+      const x = e.from.x + (e.to.x - e.from.x) * e.t;
+      const y = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(x, y, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, x, y - 7);
+      }
+      ctx.restore();
+    } else if(e.type === 'explosion'){
+      ctx.save();
+      ctx.globalAlpha = 1 - e.r/e.maxR;
+      ctx.strokeStyle = e.color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(n=>{
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  // MAC table display
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.8)';
+  ctx.textAlign = 'left';
+  ctx.fillText('VICTIM ARP CACHE:', 12, H - 120);
+  ctx.fillStyle = STATE.poisoned ? '#ef4444' : '#4ade80';
+  ctx.fillText('  ' + STATE.gateway + ' → ' + (STATE.poisoned ? STATE.attackerMac + '  ← POISONED' : STATE.gatewayMac), 12, H - 108);
+  ctx.fillStyle = '#64748b';
+  ctx.fillText('GATEWAY ARP CACHE:', 12, H - 90);
+  ctx.fillStyle = STATE.poisoned ? '#ef4444' : '#4ade80';
+  ctx.fillText('  ' + STATE.victim + ' → ' + (STATE.poisoned ? STATE.attackerMac + '  ← POISONED' : STATE.victimMac), 12, H - 78);
+
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.fillText('ARP: "Who has X? Tell Y" — stateless, unauthenticated', 12, H - 50);
+  ctx.fillText('Poison: claim gateway IP = attacker MAC (RFC 826)', 12, H - 38);
+  ctx.fillText('Defense: Dynamic ARP Inspection on managed switch', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeMode').textContent = STATE.mode.toUpperCase();
+  document.getElementById('badgeVictim').textContent = STATE.victim;
+  document.getElementById('badgeGateway').textContent = STATE.gateway;
+  document.getElementById('badgePoisoned').textContent = STATE.poisoned ? 'YES' : 'NO';
+
+  document.getElementById('mArpVal').textContent = STATE.running ? Math.floor(STATE.rate) : 0;
+  document.getElementById('mPoisonedVal').textContent = STATE.poisoned ? 'YES' : 'NO';
+  document.getElementById('mCapturedVal').textContent = STATE.captured;
+  document.getElementById('mCredsVal').textContent = STATE.creds;
+  document.getElementById('mForwardVal').textContent = STATE.forwarded;
+  document.getElementById('mDroppedVal').textContent = STATE.dropped;
+  document.getElementById('mLatencyVal').textContent = Math.round(STATE.latency) + 'ms';
+  document.getElementById('mDefenseVal').textContent = STATE.dai ? 'DAI' : (STATE.staticArp ? 'STATIC' : 'OFF');
+
+  document.getElementById('mCreds').className = 'metric' + (STATE.creds > 0 ? ' bad' : '');
+  document.getElementById('mPoisoned').className = 'metric' + (STATE.poisoned ? ' bad' : '');
+  document.getElementById('mLatency').className = 'metric' + (STATE.latency > 200 ? ' bad' : STATE.latency > 100 ? ' warn' : '');
+}
+
+document.getElementById('attackSelect').addEventListener('change', e=>{
+  STATE.mode = e.target.value;
+  const info = {
+    arp:'ARP Spoofing: send forged ARP replies to poison the victim\'s cache. Victim now thinks the attacker is the gateway.',
+    mitm:'Full MITM: poison both victim AND gateway. All traffic flows victim → attacker → gateway. Attacker can inspect, modify, or drop packets.',
+    sslstrip:'SSL Strip: MITM + downgrade HTTPS to HTTP. Attacker rewrites https:// links to http://, capturing credentials in cleartext. Defeated by HSTS.',
+    dnsarp:'DNS + ARP: combine ARP spoofing with a rogue DNS server to redirect specific domains to attacker-controlled IPs.'
+  };
+  addFeed('MODE', 'Attack mode: ' + STATE.mode.toUpperCase() + '. ' + info[STATE.mode], STATE.mode === 'arp' ? 'warn' : 'error');
+});
+
+document.getElementById('victimSelect').addEventListener('change', e=>{
+  STATE.victim = e.target.value;
+  buildTopology();
+  addFeed('VICTIM', 'Victim set to ' + STATE.victim + '.', 'info');
+});
+
+document.getElementById('gatewayInput').addEventListener('input', e=>{
+  STATE.gateway = e.target.value;
+  document.getElementById('badgeGateway').textContent = e.target.value;
+});
+
+document.getElementById('attackerMac').addEventListener('input', e=>{ STATE.attackerMac = e.target.value; });
+document.getElementById('victimMac').addEventListener('input', e=>{ STATE.victimMac = e.target.value; });
+document.getElementById('gatewayMac').addEventListener('input', e=>{ STATE.gatewayMac = e.target.value; });
+
+document.querySelectorAll('.preset-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const p = btn.dataset.preset;
+    if(p === 'grat'){
+      addFeed('PRESET', 'Gratuitous ARP: broadcast an unsolicited ARP reply. Many OSes update their cache without verification. Used by attackers and also legitimately by HA failover.', 'warn');
+    } else if(p === 'both'){
+      addFeed('PRESET', 'Bidirectional poisoning: poison BOTH victim and gateway. Enables full MITM relay.', 'error');
+    }
+  });
+});
+
+document.getElementById('rateSlider').addEventListener('input', e=>{
+  STATE.rate = 1 + parseInt(e.target.value) / 5;
+  document.getElementById('rateVal').textContent = Math.round(STATE.rate) + '/s';
+});
+document.getElementById('fwdSlider').addEventListener('input', e=>{
+  STATE.forward = parseInt(e.target.value) / 100;
+  document.getElementById('fwdVal').textContent = e.target.value + '%';
+});
+
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.poisoned = true;
+  STATE.captured = 0;
+  STATE.creds = 0;
+  STATE.forwarded = 0;
+  STATE.dropped = 0;
+  STATE.nodes.find(n=>n.id==='attacker').glow = 1;
+  STATE.nodes.find(n=>n.id==='victim').glow = 1;
+  addFeed('LAUNCH', 'Launching ' + STATE.mode.toUpperCase() + ' against ' + STATE.victim + '. Poisoning ' + STATE.gateway + ' cache. Attacker MAC: ' + STATE.attackerMac, 'error');
+  addCommandFeed('arpspoof -i eth0 -t ' + STATE.victim + ' ' + STATE.gateway,
+    'arpspoof: sending ARP replies...\n' +
+    'Victim: ' + STATE.victim + '\n' +
+    'Gateway: ' + STATE.gateway + '\n' +
+    'Spoofing: ' + STATE.gateway + ' is-at ' + STATE.attackerMac + '\n' +
+    '[+] Cache poisoned. Relaying traffic.');
+  addCommandFeed('sysctl -w net.ipv4.ip_forward=1',
+    'net.ipv4.ip_forward = 1\n[+] IP forwarding enabled (MITM relay active)');
+});
+
+document.getElementById('stepBtn').addEventListener('click', ()=>{
+  if(!STATE.running){
+    STATE.running = true;
+    STATE.poisoned = true;
+    STATE.nodes.find(n=>n.id==='attacker').glow = 1;
+    STATE.nodes.find(n=>n.id==='victim').glow = 1;
+  }
+  // Send one poison pair
+  spawnPacket('attacker','victim','#ef4444','ARP REPLY',0.02);
+  spawnPacket('attacker','gateway','#ef4444','ARP REPLY',0.02);
+  STATE.captured++;
+  addFeed('POISON', 'Sent forged ARP replies: "' + STATE.gateway + ' is-at ' + STATE.attackerMac + '" to victim, and "' + STATE.victim + ' is-at ' + STATE.attackerMac + '" to gateway.', 'error');
+});
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  STATE.running = false;
+  STATE.poisoned = false;
+  STATE.captured = 0;
+  STATE.creds = 0;
+  STATE.forwarded = 0;
+  STATE.dropped = 0;
+  STATE.latency = 0;
+  STATE.events = [];
+  STATE.nodes.forEach(n=>{ n.glow = 0; });
+  addFeed('RESET', 'ARP caches restored. Attack stopped. Network clean.', 'info');
+  termWrite('reset --all\n[+] ARP caches flushed. Attack stopped.');
+});
+
+document.getElementById('daiBtn').addEventListener('click', ()=>{
+  STATE.dai = !STATE.dai;
+  this.classList.toggle('active', STATE.dai);
+  if(STATE.dai){
+    STATE.poisoned = false;
+    STATE.running = false;
+    STATE.nodes.forEach(n=>{ n.glow = 0; });
+    addFeed('DEFENSE', 'Dynamic ARP Inspection (DAI) ENABLED on the switch. DAI cross-references ARP packets against the DHCP snooping binding table — forged ARP replies with mismatched MAC/IP are dropped. This is the primary defense against ARP spoofing on managed switches. Requires DHCP snooping to be enabled first.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'DAI DISABLED. Network vulnerable to ARP spoofing.', 'warn');
+  }
+});
+
+document.getElementById('staticBtn').addEventListener('click', ()=>{
+  STATE.staticArp = !STATE.staticArp;
+  this.classList.toggle('active', STATE.staticArp);
+  if(STATE.staticArp){
+    STATE.poisoned = false;
+    addFeed('DEFENSE', 'Static ARP entries added for critical hosts (gateway, servers). Static entries cannot be overwritten by forged ARP replies. Practical only for small, stable networks. Not scalable for large environments — use DAI there.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Static ARP entries removed. Dynamic ARP active.', 'warn');
+  }
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  const on = this.classList.toggle('active');
+  this.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '🔊 VOICE: ON' : 'VOICE: OFF';
+});
+
+updateBadges();
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

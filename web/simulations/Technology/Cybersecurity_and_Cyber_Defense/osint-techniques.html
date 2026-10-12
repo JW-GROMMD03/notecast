@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OSINT Techniques — Open-Source Intelligence Teaching Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--cyan);
+    text-shadow:0 0 8px rgba(34,211,238,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--cyan); color:var(--cyan); }
+  .header-actions button.active{
+    border-color:var(--cyan); color:var(--cyan);
+    box-shadow:0 0 10px rgba(34,211,238,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--cyan); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--cyan); cursor:pointer; box-shadow:0 0 7px rgba(34,211,238,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--cyan); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:var(--cyan); font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--cyan); color:var(--cyan); }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f2a2a,#0a1a1a);
+    border-color:var(--cyan); color:var(--cyan);
+    box-shadow:0 0 10px rgba(34,211,238,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(34,211,238,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.danger:hover{ background:#2a0f0f; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.warn:hover{ background:#2a1f0f; }
+  button.act.pulse{ animation:pulseCyan 1.4s infinite; }
+  @keyframes pulseCyan{
+    0%,100%{ box-shadow:0 0 6px rgba(34,211,238,.3); }
+    50%{ box-shadow:0 0 18px rgba(34,211,238,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:170px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.cyan .m-value{ color:var(--cyan); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--cyan); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .os-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .os-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .os-phase.done{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.12); }
+  .os-phase.active{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.2); box-shadow:0 0 10px rgba(34,211,238,.6);
+    animation:kcCyan 1.2s infinite; }
+  @keyframes kcCyan{ 50%{ box-shadow:0 0 16px rgba(34,211,238,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>OSINT TECHNIQUES</h1>
+    <span class="sub">OPEN-SOURCE INTELLIGENCE · SOCMINT · GEOINT · MITRE T1593/T1596</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ OSINT Category</h3>
+      <select id="catSelect">
+        <option value="domain">Domain &amp; DNS intelligence</option>
+        <option value="social">Social media (SOCMINT)</option>
+        <option value="dork">Google dorks / search operators</option>
+        <option value="breach">Breach data &amp; credential leaks</option>
+        <option value="geo">Geolocation (GEOINT)</option>
+        <option value="code">Code &amp; GitHub leaks</option>
+        <option value="shodan">Shodan / Censys exposure</option>
+      </select>
+      <label class="ctl-label">Target org / domain</label>
+      <input type="text" id="targetInput" value="example-corp.com">
+      <label class="ctl-label">Target employee</label>
+      <input type="text" id="personInput" value="j.smith@example-corp.com">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Query / Dork</h3>
+      <textarea id="queryInput">site:example-corp.com ext:pdf "confidential"</textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px">
+        <button type="button" class="preset-btn act" data-dork="filetype:pdf site:example-corp.com">PDF files</button>
+        <button type="button" class="preset-btn act" data-dork="site:github.com \"example-corp\" password">GitHub pw</button>
+        <button type="button" class="preset-btn act" data-dork="site:pastebin.com \"example-corp.com\"">Pastebin leaks</button>
+        <button type="button" class="preset-btn act" data-dork="inurl:admin site:example-corp.com">Admin panels</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Search depth <span class="slider-val" id="depthVal">50</span></label>
+      <input type="range" id="depthSlider" min="10" max="500" value="50">
+      <label class="ctl-label">Correlation level <span class="slider-val" id="corrVal">70%</span></label>
+      <input type="range" id="corrSlider" min="0" max="100" value="70">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ INVESTIGATE</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="mfaBtn">🛡 MFA HARDEN</button>
+        <button type="button" class="act" id="awareBtn">📚 TRAINING</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">osint@kali:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — OSINT only on public data. Never use for stalking or harassment.</div>
+    <div class="status-badges">
+      <div class="status-badge">CATEGORY: <b id="badgeCat">DOMAIN</b></div>
+      <div class="status-badge">TARGET: <b id="badgeTarget">example-corp.com</b></div>
+      <div class="status-badge">FINDINGS: <b id="badgeFindings">0</b></div>
+      <div class="status-badge">RISK: <b id="badgeRisk">LOW</b></div>
+    </div>
+    <div class="os-chain" id="osChain">
+      <div class="os-phase" id="op-SCOPE">SCOPE</div>
+      <div class="os-phase" id="op-COLLECT">COLLECT</div>
+      <div class="os-phase" id="op-CORRELATE">CORRELATE</div>
+      <div class="os-phase" id="op-ANALYZE">ANALYZE</div>
+      <div class="os-phase" id="op-REPORT">REPORT</div>
+    </div>
+    <div class="footer-overlay">MITRE T1593 (Search Open Websites) · T1596 (Search Open Technical Databases) · OSINT Framework</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric cyan" id="mFindings"><div class="m-label">Findings</div><div class="m-value" id="mFindingsVal">0</div></div>
+      <div class="metric" id="mSubdomains"><div class="m-label">Subdomains</div><div class="m-value" id="mSubdomainsVal">0</div></div>
+      <div class="metric" id="mEmails"><div class="m-label">Emails</div><div class="m-value" id="mEmailsVal">0</div></div>
+      <div class="metric" id="mCreds"><div class="m-label">Leaked Creds</div><div class="m-value" id="mCredsVal">0</div></div>
+      <div class="metric" id="mSocial"><div class="m-label">Social Profiles</div><div class="m-value" id="mSocialVal">0</div></div>
+      <div class="metric" id="mRepos"><div class="m-label">Code Repos</div><div class="m-value" id="mReposVal">0</div></div>
+      <div class="metric" id="mRisk"><div class="m-label">Risk Score</div><div class="m-value" id="mRiskVal">0.0</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Defense</div><div class="m-value" id="mDefenseVal">OFF</div></div>
+    </div>
+    <div class="info-card">
+      <b>OSINT — intelligence from public sources.</b><br>
+      <span class="eq">Domain: WHOIS, DNS, cert transparency, Shodan</span><br>
+      <span class="eq">Social: LinkedIn, Twitter, GitHub, Instagram</span><br>
+      <span class="eq">Breach: HIBP, Dehashed, breach directories</span><br>
+      <span class="eq">Dork: Google operators (site:, filetype:, inurl:)</span><br>
+      <span style="color:var(--purple)">MITRE T1593 · T1596 · OSINT Framework</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  cat:'domain',
+  target:'example-corp.com',
+  person:'j.smith@example-corp.com',
+  query:'site:example-corp.com ext:pdf "confidential"',
+  depth:50,
+  corr:0.7,
+  findings:0,
+  subdomains:0,
+  emails:0,
+  creds:0,
+  social:0,
+  repos:0,
+  risk:0,
+  mfa:false,
+  training:false,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['SCOPE','COLLECT','CORRELATE','ANALYZE','REPORT'];
+
+var FINDINGS = {
+  domain:[
+    'Subdomain www.example-corp.com resolves to 203.0.113.10 (AWS us-east-1)',
+    'Mail server mx01.example-corp.com — Google Workspace',
+    'Cert transparency reveals 47 subdomains including staging.example-corp.com',
+    'WHOIS registrant email: admin@example-corp.com (privacy disabled)',
+    'TXT record: _dmarc=quarantine (weak policy, no reject)',
+    'SPF: ~all (softfail, allows spoofing)'
+  ],
+  social:[
+    'LinkedIn: 1,247 employees with public profiles',
+    '12 employees list "IT Admin", "DevOps", "SecOps" titles',
+    'Twitter: 3 employees posted screenshots with internal URLs',
+    'Instagram: office photos reveal building layout + badge design',
+    'Facebook: employee phone numbers in public comments'
+  ],
+  dork:[
+    'site:example-corp.com filetype:pdf — 312 PDFs indexed',
+    'site:example-corp.com inurl:admin — 3 admin panels exposed',
+    'site:pastebin.com "example-corp.com" — 4 paste results',
+    'site:example-corp.com ext:sql — 0 (good)',
+    'site:example-corp.com intitle:"index of" — 2 open directories'
+  ],
+  breach:[
+    'HaveIBeenPwned: 47 corporate emails in 3 breaches',
+    'Dehashed: 23 plaintext passwords from old Collection#1 dump',
+    'RockYou2021: 12 employee passwords (weak: "Company2023!")',
+    'Stealer logs: 8 employee machines with saved browser creds',
+    'Combined: 4 likely VPN credentials (not yet tested)'
+  ],
+  geo:[
+    'ExifTool on office photo: GPS 40.7128,-74.0060 (NYC office)',
+    'Reverse image search (Yandex) matches building in Google Street View',
+    'Elevator photo reveals badge reader model (HID iClass)',
+    'Protest photo shows badge holder color (blue = contractor)',
+    'Drone footage on YouTube reveals rooftop access'
+  ],
+  code:[
+    'GitHub: 12 public repos under "example-corp" org',
+    'Commit history: 3 AWS access keys accidentally committed',
+    'GitLab: 1 leaked .env with DB credentials in fork',
+    'npm package "example-corp-utils": outdated, has CVE',
+    'TruffleHog scan: 8 verified API keys in historical commits'
+  ],
+  shodan:[
+    'Shodan: 47 hosts on 203.0.113.0/24 exposed',
+    'Elasticsearch on 203.0.113.45:9200 — no auth',
+    'MongoDB on 203.0.113.52:27017 — open',
+    'RDP on 203.0.113.12:3389 — exposed to internet',
+    'Kubernetes API on 203.0.113.78:6443 — anonymous auth'
+  ]
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'analyst', label:'OSINT analyst', ip:'researcher', x:0.12*W, y:0.40*H, icon:'laptop', color:'#22d3ee', glow:0, blink:0},
+    {id:'google', label:'Google', ip:'search + dorks', x:0.35*W, y:0.25*H, icon:'cloud', color:'#3b82f6', glow:0, blink:0},
+    {id:'social', label:'Social media', ip:'LinkedIn/Twitter', x:0.35*W, y:0.55*H, icon:'cloud', color:'#a855f7', glow:0, blink:0},
+    {id:'github', label:'GitHub', ip:'public repos', x:0.55*W, y:0.25*H, icon:'cloud', color:'#f59e0b', glow:0, blink:0},
+    {id:'breach', label:'Breach data', ip:'HIBP/Dehashed', x:0.55*W, y:0.55*H, icon:'cloud', color:'#ef4444', glow:0, blink:0},
+    {id:'shodan', label:'Shodan', ip:'exposed services', x:0.75*W, y:0.25*H, icon:'cloud', color:'#22c55e', glow:0, blink:0},
+    {id:'report', label:'Findings', ip:'OSINT report', x:0.85*W, y:0.55*H, icon:'server', color:'#22d3ee', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,40);
+    g.addColorStop(0, 'rgba(34,211,238,'+(glow*0.5)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,40,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(var i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(-10,-8+i*4); ctx.lineTo(8,-8+i*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var j=0;j<5;j++){
+        var yy = -14 + j*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 28);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 38);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">osint@kali:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'OSINT uses only publicly available information — search engines, social media, WHOIS, certificate transparency, breach databases. It is legal to collect this data. HOWEVER: (1) Using OSINT to stalk, harass, or dox individuals is illegal and unethical in most jurisdictions. (2) GDPR/CCPA give individuals rights over their data — be careful storing PII. (3) Corporate espionage via OSINT may violate trade secret laws. (4) Responsible disclosure applies: report findings to the affected organization, do not publish.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'OSINT (Open-Source Intelligence) is the collection and analysis of publicly available information. Categories: domain intelligence (WHOIS, DNS, certificate transparency), social media intelligence (SOCMINT), search engine dorks, breach data, geolocation (GEOINT), code repositories, and internet-facing asset databases (Shodan, Censys). Combined, OSINT builds a target profile that enables phishing, initial access, and social engineering. MITRE T1593 and T1596.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('whois ' + STATE.target + '\nDomain Name: EXAMPLE-CORP.COM\nRegistry Domain ID: 1234567_DOMAIN_COM-VRSN\nCreation Date: 2005-03-15\nRegistrar: GoDaddy.com, LLC\nRegistrant Organization: Example Corp\nRegistrant Email: admin@example-corp.com\nName Server: NS1.EXAMPLE-CORP.COM\nDNSSEC: unsigned');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Category: ' + STATE.cat.toUpperCase() + '. Target: ' + STATE.target + '. Click INVESTIGATE to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.75*H, 'PUBLIC INTERNET · OSINT SOURCES', '#22d3ee');
+
+  var links = [
+    ['analyst','google'], ['analyst','social'],
+    ['analyst','github'], ['analyst','breach'],
+    ['analyst','shodan'],
+    ['google','report'], ['social','report'], ['github','report'],
+    ['breach','report'], ['shodan','report']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(34,211,238,0.15)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  // Risk meter
+  ctx.save();
+  var barX = 0.05*W, barY = 0.88*H, barW = 0.90*W, barH = 14;
+  ctx.fillStyle = 'rgba(7,10,20,0.9)';
+  ctx.fillRect(barX, barY, barW, barH);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(barX, barY, barW, barH);
+  var fillPct = Math.min(1, STATE.risk / 10);
+  var color = STATE.risk > 7 ? '#ef4444' : STATE.risk > 4 ? '#f59e0b' : '#22c55e';
+  ctx.fillStyle = color;
+  ctx.fillRect(barX, barY, barW * fillPct, barH);
+  ctx.font = 'bold 10px "Courier New",monospace';
+  ctx.fillStyle = '#cbd5e1';
+  ctx.textAlign = 'left';
+  ctx.fillText('RISK: ' + STATE.risk.toFixed(1) + '/10', barX + 6, barY - 4);
+  ctx.restore();
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Domain: whois, dig, crt.sh, SecurityTrails', 12, H - 74);
+  ctx.fillText('Social: LinkedIn, Twitter, GitHub, Instagram', 12, H - 62);
+  ctx.fillText('Dorks: site:, filetype:, inurl:, intitle:', 12, H - 50);
+  ctx.fillText('Breach: HIBP, Dehashed, stealer logs', 12, H - 38);
+  ctx.fillText('Exposure: Shodan, Censys, BinaryEdge', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeCat').textContent = STATE.cat.toUpperCase();
+  document.getElementById('badgeTarget').textContent = STATE.target;
+  document.getElementById('badgeFindings').textContent = STATE.findings;
+  document.getElementById('badgeRisk').textContent = STATE.risk > 7 ? 'HIGH' : STATE.risk > 4 ? 'MED' : 'LOW';
+
+  document.getElementById('mFindingsVal').textContent = STATE.findings;
+  document.getElementById('mSubdomainsVal').textContent = STATE.subdomains;
+  document.getElementById('mEmailsVal').textContent = STATE.emails;
+  document.getElementById('mCredsVal').textContent = STATE.creds;
+  document.getElementById('mSocialVal').textContent = STATE.social;
+  document.getElementById('mReposVal').textContent = STATE.repos;
+  document.getElementById('mRiskVal').textContent = STATE.risk.toFixed(1);
+  document.getElementById('mDefenseVal').textContent = STATE.mfa ? 'MFA' : (STATE.training ? 'TRAINING' : 'OFF');
+
+  document.getElementById('mRisk').className = 'metric' + (STATE.risk > 7 ? ' bad' : STATE.risk > 4 ? ' warn' : '');
+  document.getElementById('mCreds').className = 'metric' + (STATE.creds > 5 ? ' bad' : STATE.creds > 0 ? ' warn' : '');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('op-' + p);
+    if(!el) return;
+    el.className = 'os-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var findings = FINDINGS[STATE.cat] || FINDINGS.domain;
+
+  switch(phase){
+    case 'SCOPE':
+      addFeed('SCOPE', 'Defining scope: target organization ' + STATE.target + '. Passive collection only (no packets to target). Collect public data: WHOIS, DNS records, certificate transparency, social media, code repos, breach databases, exposure maps.', 'info');
+      break;
+    case 'COLLECT':
+      spawnPacket('analyst','google','#22d3ee','QUERY',0.02);
+      spawnPacket('analyst','social','#22d3ee','SCRAPE',0.02);
+      spawnPacket('analyst','github','#22d3ee','SEARCH',0.02);
+      spawnPacket('analyst','breach','#22d3ee','LOOKUP',0.02);
+      spawnPacket('analyst','shodan','#22d3ee','API',0.02);
+      STATE.findings += 2;
+      STATE.subdomains += Math.floor(Math.random() * 15) + 5;
+      STATE.emails += Math.floor(Math.random() * 20) + 5;
+      STATE.social += Math.floor(Math.random() * 10) + 3;
+      STATE.repos += Math.floor(Math.random() * 5) + 1;
+      addFeed('COLLECT', 'Collecting from multiple sources in parallel: Google dorks, LinkedIn scraping, GitHub search, HIBP lookup, Shodan query. Each source adds to the profile.', 'info');
+      addCommandFeed('theHarvester -d ' + STATE.target + ' -b all',
+        '[*] Searching 20 sources...\n' +
+        '[+] Emails found: ' + STATE.emails + '\n' +
+        '[+] Hosts found: ' + STATE.subdomains + '\n' +
+        '[+] Subdomains found: ' + STATE.subdomains + '\n' +
+        '[+] People found: ' + STATE.social);
+      break;
+    case 'CORRELATE':
+      addFeed('CORRELATE', 'Correlating findings: employee email pattern is first.last@' + STATE.target + '. Found ' + STATE.emails + ' emails across sources. Cross-reference with breach data reveals credentials. LinkedIn profiles provide org chart. GitHub commits reveal technologies and infrastructure.', 'warn');
+      STATE.findings += 3;
+      STATE.creds += Math.floor(Math.random() * 8) + 2;
+      break;
+    case 'ANALYZE':
+      // Show specific findings
+      findings.slice(0, 4).forEach(function(finding, i){
+        setTimeout(function(){
+          STATE.findings++;
+          addFeed('FINDING', finding, STATE.cat === 'breach' ? 'error' : 'warn');
+        }, i * 400);
+      });
+      STATE.risk = Math.min(10, 2 + STATE.creds * 0.3 + STATE.subdomains * 0.05 + STATE.repos * 0.2);
+      if(STATE.training) STATE.risk -= 1.5;
+      if(STATE.mfa) STATE.risk -= 2;
+      STATE.risk = Math.max(0, STATE.risk);
+      setTimeout(function(){
+        addFeed('ANALYZE', 'Analysis complete. Combined findings form a realistic attack profile: ' + STATE.emails + ' emails, ' + STATE.creds + ' leaked credentials, ' + STATE.subdomains + ' subdomains, ' + STATE.repos + ' code repos. RISK: ' + STATE.risk.toFixed(1) + '/10.', 'error');
+      }, 2000);
+      break;
+    case 'REPORT':
+      addFeed('REPORT', 'OSINT report generated. Used for: (1) Pre-engagement scoping, (2) Phishing campaign targeting, (3) Password spray (using leaked pattern), (4) Attack surface prioritization. Deliverable includes only public data — legal to share with the client (or in authorized engagement).', 'ok');
+      addCommandFeed('cat osint_report_' + STATE.target + '.md',
+        '# OSINT Report: ' + STATE.target + '\n' +
+        '## Summary\n- Emails: ' + STATE.emails + '\n- Subdomains: ' + STATE.subdomains + '\n- Credentials: ' + STATE.creds + '\n- Risk: ' + STATE.risk.toFixed(1) + '/10\n\n' +
+        '## Recommendations\n1. Enable MFA on all accounts\n2. Monitor HIBP for corporate emails\n3. Remove employee names from public code\n4. Configure SPF strict (-all) + DMARC reject\n5. Rotate credentials found in breach data');
+      addFeed('DEFENSE', 'Defensive OSINT: (1) Enforce MFA everywhere. (2) Monitor HIBP via API for corporate domains. (3) Use password managers + unique passwords. (4) Restrict public code repos, scrub secrets. (5) SPF -all + DKIM + DMARC p=reject. (6) Minimize public org chart. (7) Regular employee security awareness training (phishing simulations). (8) Delete old accounts and stale data.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.findings = 0;
+  STATE.subdomains = 0;
+  STATE.emails = 0;
+  STATE.creds = 0;
+  STATE.social = 0;
+  STATE.repos = 0;
+  STATE.risk = 0;
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('op-' + p); if(el) el.className = 'os-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'OSINT state cleared.', 'info');
+  termWrite('reset --all\n[+] State cleared.');
+}
+
+document.getElementById('catSelect').addEventListener('change', function(e){
+  STATE.cat = e.target.value;
+  var info = {
+    domain:'Domain intelligence: WHOIS, DNS records, certificate transparency (crt.sh), passive DNS, subdomain enumeration.',
+    social:'SOCMINT: social media intelligence. LinkedIn (org chart), Twitter (tech hints), Instagram (physical security), Facebook (personal info).',
+    dork:'Google dorks: advanced search operators to find sensitive files, admin panels, error messages, credentials.',
+    breach:'Breach data: HIBP (emails), Dehashed (creds), stealer logs (browser credentials), combolists.',
+    geo:'GEOINT: geolocation from photos (EXIF GPS), image reverse search (Yandex), satellite imagery, street view.',
+    code:'Code intelligence: GitHub/GitLab search, commit history, secret scanning (trufflehog, gitleaks).',
+    shodan:'Asset exposure: Shodan, Censys, BinaryEdge. Find internet-facing services (databases, RDP, Kubernetes).'
+  };
+  addFeed('CAT', 'Category: ' + STATE.cat.toUpperCase() + '. ' + info[STATE.cat], 'info');
+});
+
+document.getElementById('targetInput').addEventListener('input', function(e){ STATE.target = e.target.value; });
+document.getElementById('personInput').addEventListener('input', function(e){ STATE.person = e.target.value; });
+document.getElementById('queryInput').addEventListener('input', function(e){ STATE.query = e.target.value; });
+
+var dorkBtns = document.querySelectorAll('.preset-btn');
+for(var i=0;i<dorkBtns.length;i++){
+  (function(btn){
+    btn.addEventListener('click', function(){
+      STATE.query = btn.dataset.dork;
+      document.getElementById('queryInput').value = STATE.query;
+      addFeed('DORK', 'Dork loaded: ' + STATE.query, 'info');
+    });
+  })(dorkBtns[i]);
+}
+
+document.getElementById('depthSlider').addEventListener('input', function(e){
+  STATE.depth = parseInt(e.target.value);
+  document.getElementById('depthVal').textContent = e.target.value;
+});
+document.getElementById('corrSlider').addEventListener('input', function(e){
+  STATE.corr = parseInt(e.target.value) / 100;
+  document.getElementById('corrVal').textContent = e.target.value + '%';
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.findings = 0;
+  STATE.subdomains = 0;
+  STATE.emails = 0;
+  STATE.creds = 0;
+  STATE.social = 0;
+  STATE.repos = 0;
+  STATE.risk = 0;
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('INVESTIGATE', 'Starting ' + STATE.cat.toUpperCase() + ' investigation of ' + STATE.target + '. Depth: ' + STATE.depth + '. Correlation: ' + Math.round(STATE.corr*100) + '%.', 'info');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1600);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('mfaBtn').addEventListener('click', function(){
+  STATE.mfa = !STATE.mfa;
+  this.classList.toggle('active', STATE.mfa);
+  if(STATE.mfa){
+    addFeed('DEFENSE', 'MFA ENFORCED. Phishing with leaked credentials alone is now insufficient. Best practice: FIDO2/WebAuthn (hardware keys) > TOTP apps > SMS. Note: MFA fatigue (push bombing) attacks exist — require number matching.', 'ok');
+    STATE.risk = Math.max(0, STATE.risk - 2);
+  } else {
+    addFeed('DEFENSE', 'MFA DISABLED. Leaked credentials enable direct account takeover.', 'error');
+  }
+});
+
+document.getElementById('awareBtn').addEventListener('click', function(){
+  STATE.training = !STATE.training;
+  this.classList.toggle('active', STATE.training);
+  if(STATE.training){
+    addFeed('DEFENSE', 'Security awareness training ENABLED. Employees trained to: recognize phishing, use password managers, avoid oversharing on social media, report suspicious activity. Effectiveness measured by phishing simulation click rate — best orgs <5%.', 'ok');
+    STATE.risk = Math.max(0, STATE.risk - 1.5);
+  } else {
+    addFeed('DEFENSE', 'Security awareness training DISABLED.', 'warn');
+  }
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

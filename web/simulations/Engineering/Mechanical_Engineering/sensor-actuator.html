@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sensors &amp; Actuators — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>SENSORS &amp; ACTUATORS</h1>
+    <span class="sub">STRAIN · THERMOCOUPLE · ENCODER · SOLENOID · SIGNAL CHAIN</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Component</div>
+    <div class="control-group">
+      <label>Sensor Type</label>
+      <select id="sensorSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="strain">Strain Gauge</option>
+        <option value="thermocouple">Thermocouple</option>
+        <option value="encoder">Rotary Encoder</option>
+        <option value="lm35">LM35 (temperature IC)</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Actuator Type</label>
+      <select id="actuatorSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="solenoid">Solenoid Valve</option>
+        <option value="rc-servo">RC Servo Motor</option>
+        <option value="heater">Heater Element</option>
+        <option value="piezo">Piezo Actuator</option>
+      </select>
+    </div>
+
+    <div class="section-title">Signal Chain</div>
+    <div class="control-group">
+      <label>Amplifier Gain G <span class="val" id="gVal">100×</span></label>
+      <input type="range" id="gSlider" min="1" max="1000" value="100" step="1">
+    </div>
+    <div class="control-group">
+      <label>ADC Bits <span class="val" id="bitsVal">12 bit</span></label>
+      <input type="range" id="bitsSlider" min="8" max="16" value="12" step="1">
+    </div>
+    <div class="control-group">
+      <label>Sample Rate <span class="val" id="srVal">100 Hz</span></label>
+      <input type="range" id="srSlider" min="1" max="10000" value="100" step="1">
+    </div>
+    <div class="control-group">
+      <label>Noise (SNR) <span class="val" id="noiseVal">40 dB</span></label>
+      <input type="range" id="noiseSlider" min="10" max="80" value="40" step="1">
+    </div>
+
+    <div class="section-title">Physical Input</div>
+    <div class="control-group">
+      <label>Measured Quantity <span class="val" id="physVal">50%</span></label>
+      <input type="range" id="physSlider" min="0" max="100" value="50" step="1">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ RUN SIGNAL CHAIN</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ STEP</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="satBtn">⚠ ADC SATURATION</button>
+    <button class="btn warn" id="noisyBtn">⚠ EXCESSIVE NOISE</button>
+    <button class="btn warn" id="driftBtn">⚠ SENSOR DRIFT</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="loadcell">Load Cell</button>
+    <button class="btn" data-preset="tempctrl">Temperature Control</button>
+    <button class="btn" data-preset="motorpos">Motor Position</button>
+    <button class="btn" data-preset="pressure">Pressure Sensor</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      V_out = G · (sensitivity · physical_input) &nbsp;|&nbsp; resolution = V_ref/2^N &nbsp;|&nbsp; <span class="hl">SNR = 6.02·N + 1.76 dB</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mPhys">
+          <div class="mlabel">PHYSICAL</div>
+          <div class="mvalue">0</div>
+        </div>
+        <div class="metric" id="mVraw">
+          <div class="mlabel">SENSOR V</div>
+          <div class="mvalue">0<span class="munit">mV</span></div>
+        </div>
+        <div class="metric" id="mVamp">
+          <div class="mlabel">AMPLIFIED</div>
+          <div class="mvalue">0<span class="munit">V</span></div>
+        </div>
+        <div class="metric" id="mADC">
+          <div class="mlabel">ADC COUNT</div>
+          <div class="mvalue">0</div>
+        </div>
+        <div class="metric" id="mRes">
+          <div class="mlabel">RESOLUTION</div>
+          <div class="mvalue">0<span class="munit">mV</span></div>
+        </div>
+        <div class="metric" id="mSNR">
+          <div class="mlabel">SNR</div>
+          <div class="mvalue">0<span class="munit">dB</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">Sensor: converts physical → electrical</div>
+      <div class="eq">Actuator: converts electrical → physical</div>
+      <div class="eq">Resolution = V_ref / 2^N</div>
+      <div class="eq">SNR = 6.02·N + 1.76 (ideal ADC)</div>
+      <div class="def">
+        Every sensor has sensitivity (mV per unit), range, and noise. 
+        Signal conditioning (amplification, filtering) matches sensor output 
+        to ADC input. Actuators convert electrical energy back to physical 
+        action — force, heat, light, motion.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const SENSORS = {
+  strain:     { name:'Strain Gauge', sensitivity:2.0, units:'mV/V', range:'0-1000 µε', outputMax:20, color:'#22d3ee' },
+  thermocouple:{ name:'Type K Thermocouple', sensitivity:0.041, units:'mV/°C', range:'-200 to 1350 °C', outputMax:41, color:'#f87171' },
+  encoder:    { name:'Quadrature Encoder', sensitivity:1.0, units:'pulses/rev', range:'0-360°', outputMax:5, color:'#4ade80' },
+  lm35:       { name:'LM35 Temperature', sensitivity:10, units:'mV/°C', range:'0-100 °C', outputMax:1000, color:'#fbbf24' }
+};
+
+const ACTUATORS = {
+  solenoid:  { name:'Solenoid', responseTime:0.010, type:'digital', color:'#f87171' },
+  'rc-servo':{ name:'RC Servo', responseTime:0.100, type:'position', color:'#4ade80' },
+  heater:    { name:'Heater', responseTime:2.0, type:'thermal', color:'#fb923c' },
+  piezo:     { name:'Piezo', responseTime:0.001, type:'analog', color:'#a78bfa' }
+};
+
+const S = {
+  sensor: 'strain',
+  actuator: 'solenoid',
+  gain: 100,
+  bits: 12,
+  sampleRate: 100,
+  snr: 40,
+  physical: 50,    // 0-100 (% of range)
+  time: 0,
+  running: false,
+  samples: [],
+  adcSaturated: false,
+  excessiveNoise: false,
+  drift: 0,
+  Vref: 5.0
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const sensorSel = document.getElementById('sensorSelect');
+const actuatorSel = document.getElementById('actuatorSelect');
+const gSlider = document.getElementById('gSlider');
+const bitsSlider = document.getElementById('bitsSlider');
+const srSlider = document.getElementById('srSlider');
+const noiseSlider = document.getElementById('noiseSlider');
+const physSlider = document.getElementById('physSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── SENSOR & SIGNAL CHAIN ─────────────────────────────────
+function getSensor(){ return SENSORS[S.sensor]; }
+function getActuator(){ return ACTUATORS[S.actuator]; }
+
+function computeChain(){
+  const sensor = getSensor();
+  const actuator = getActuator();
+
+  // Physical input (0-100%)
+  const phys = S.physical;
+
+  // Sensor output voltage (mV)
+  let Vraw;
+  if(S.sensor === 'strain'){
+    // Assume bridge output: 2 mV/V at 50% strain; excitation 5V
+    Vraw = phys / 100 * 10; // 0-10 mV
+  } else if(S.sensor === 'thermocouple'){
+    // Type K at 500°C → ~20 mV
+    Vraw = phys / 100 * 41; // 0-41 mV
+  } else if(S.sensor === 'encoder'){
+    // Digital: 5V pulses
+    Vraw = phys / 100 * 5000; // in mV
+  } else {
+    // LM35: 10 mV/°C, 0-1000 mV
+    Vraw = phys / 100 * 1000;
+  }
+
+  // Drift
+  Vraw += S.drift;
+
+  // Amplifier
+  let Vamp = Vraw * S.gain / 1000; // V
+
+  // Noise
+  const snrLinear = Math.pow(10, S.snr / 20);
+  const noiseAmplitude = Math.abs(Vamp) / Math.max(snrLinear, 1);
+  const noise = (Math.random() - 0.5) * noiseAmplitude * 2;
+  if(S.excessiveNoise){
+    Vamp += (Math.random() - 0.5) * 0.5;
+  } else {
+    Vamp += noise;
+  }
+
+  // ADC
+  const adcMax = Math.pow(2, S.bits) - 1;
+  const resolution = S.Vref / adcMax; // V per LSB
+  let adcCount = Math.round(Vamp / S.Vref * adcMax);
+  let saturated = false;
+  if(adcCount > adcMax){
+    adcCount = adcMax;
+    saturated = true;
+  } else if(adcCount < 0){
+    adcCount = 0;
+    saturated = true;
+  }
+  if(S.adcSaturated) saturated = true;
+
+  // Reconstructed value
+  const Vrec = adcCount / adcMax * S.Vref;
+
+  // Effective SNR
+  const effectiveSNR = S.snr;
+
+  return {
+    Vraw, Vamp, adcCount, resolution, Vrec, saturated,
+    sensor, actuator, effectiveSNR, adcMax, phys, noise, Vref: S.Vref
+  };
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawSignalChain(W, H);
+  drawSignalTrace(W, H);
+  drawADCDetail(W, H);
+}
+
+function drawSignalChain(W, H){
+  const cx = W * 0.35;
+  const cy = H * 0.35;
+
+  const info = computeChain();
+
+  const stages = [
+    { label: 'SENSOR', value: info.sensor.name, color: info.sensor.color, x: cx - 260 },
+    { label: 'AMPLIFIER', value: 'Gain ×' + S.gain, color: '#a78bfa', x: cx - 80 },
+    { label: 'ADC', value: S.bits + '-bit', color: '#4ade80', x: cx + 100 },
+    { label: 'MCU', value: 'Processing', color: '#22d3ee', x: cx + 280 }
+  ];
+
+  const boxW = 110;
+  const boxH = 70;
+  const boxY = cy - boxH/2;
+
+  for(let i=0;i<stages.length;i++){
+    const s = stages[i];
+
+    // Box
+    ctx.fillStyle = '#0a1220';
+    ctx.fillRect(s.x - boxW/2, boxY, boxW, boxH);
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(s.x - boxW/2, boxY, boxW, boxH);
+
+    // Label
+    ctx.fillStyle = s.color;
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(s.label, s.x, boxY + 18);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '9px Consolas, monospace';
+    ctx.fillText(s.value, s.x, boxY + 40);
+
+    // Value display for sensor, amp, adc
+    if(i === 0){
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillText(info.Vraw.toFixed(2) + ' mV', s.x, boxY + 56);
+    } else if(i === 1){
+      ctx.fillStyle = '#a78bfa';
+      ctx.fillText(info.Vamp.toFixed(3) + ' V', s.x, boxY + 56);
+    } else if(i === 2){
+      ctx.fillStyle = info.saturated ? '#f87171' : '#4ade80';
+      ctx.fillText(info.adcCount + '', s.x, boxY + 56);
+    }
+
+    ctx.textAlign = 'left';
+
+    // Arrow between stages
+    if(i < stages.length - 1){
+      const arrowX1 = s.x + boxW/2 + 5;
+      const arrowX2 = stages[i+1].x - boxW/2 - 5;
+      ctx.strokeStyle = '#22d3ee';
+      ctx.fillStyle = '#22d3ee';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(arrowX1, cy);
+      ctx.lineTo(arrowX2 - 5, cy);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(arrowX2, cy);
+      ctx.lineTo(arrowX2 - 8, cy - 5);
+      ctx.lineTo(arrowX2 - 8, cy + 5);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // Actuator output (below)
+  const actY = cy + 130;
+  const actW = 200;
+  ctx.fillStyle = '#0a1220';
+  ctx.fillRect(cx + 180, actY - 30, actW, 60);
+  ctx.strokeStyle = info.actuator.color;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(cx + 180, actY - 30, actW, 60);
+  ctx.fillStyle = info.actuator.color;
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('ACTUATOR', cx + 280, actY - 10);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText(info.actuator.name + ' (' + (info.actuator.responseTime*1000).toFixed(0) + ' ms)', cx + 280, actY + 12);
+  ctx.textAlign = 'left';
+
+  // Arrow to actuator
+  ctx.strokeStyle = '#22d3ee';
+  ctx.beginPath();
+  ctx.moveTo(cx + 280, cy + boxH/2 + 5);
+  ctx.lineTo(cx + 280, actY - 35);
+  ctx.stroke();
+
+  // Physical world bubble
+  ctx.fillStyle = '#0a1220';
+  ctx.beginPath();
+  ctx.arc(cx - 260, cy + 130, 40, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#64748b';
+  ctx.stroke();
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'bold 10px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('PHYSICAL', cx - 260, cy + 125);
+  ctx.fillText('WORLD', cx - 260, cy + 140);
+  ctx.textAlign = 'left';
+
+  // Feedback loop arrow
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  ctx.moveTo(cx - 260, cy + 90);
+  ctx.lineTo(cx - 260, cy + boxH/2 + 40);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Status indicators
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText('SIGNAL CHAIN', 20, 30);
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('Sensor: ' + info.sensor.name, 20, 50);
+  ctx.fillText('Range: ' + info.sensor.range, 20, 68);
+  ctx.fillText('Actuator: ' + info.actuator.name, 20, 86);
+
+  // Saturation warning
+  if(info.saturated){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 14px Consolas, monospace';
+    ctx.fillText('⚠ ADC SATURATED', cx + 20, cy + 90);
+  }
+}
+
+function drawSignalTrace(W, H){
+  const ox = 60;
+  const oy = H * 0.6;
+  const w = W * 0.55;
+  const h = H * 0.35;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('SIGNAL vs TIME (sampled)', ox, oy - 10);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const info = computeChain();
+  const pad = { l:40, r:20, t:20, b:30 };
+  const gw = w - pad.l - pad.r;
+  const gh = h - pad.t - pad.b;
+
+  // Y-axis: ADC counts
+  const yMax = info.adcMax;
+  const xOf = i => ox + pad.l + (i / Math.max(1, S.samples.length - 1)) * gw;
+  const yOf = v => oy + h - pad.b - (v / yMax) * gh;
+
+  // Target line (ideal)
+  ctx.strokeStyle = 'rgba(74,222,128,0.4)';
+  ctx.setLineDash([4,3]);
+  const idealCount = S.physical / 100 * yMax;
+  ctx.beginPath();
+  ctx.moveTo(ox + pad.l, yOf(idealCount));
+  ctx.lineTo(ox + w - pad.r, yOf(idealCount));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#4ade80';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('ideal', ox + w - pad.r - 35, yOf(idealCount) - 4);
+
+  // Sampled data
+  if(S.samples.length > 1){
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for(let i=0;i<S.samples.length;i++){
+      const x = xOf(i);
+      const y = yOf(S.samples[i]);
+      if(i===0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Grid
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  for(let i=0;i<=5;i++){
+    const y = oy + pad.t + gh * i / 5;
+    ctx.beginPath(); ctx.moveTo(ox + pad.l, y); ctx.lineTo(ox + pad.l + gw, y); ctx.stroke();
+  }
+  ctx.restore();
+
+  // Labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Sample # (last ' + S.samples.length + ')', ox + w/2, oy + h - 6);
+  ctx.textAlign = 'left';
+  ctx.fillText(yMax + ' counts', ox + 8, oy + 14);
+
+  // Noise annotation
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('SNR: ' + info.effectiveSNR + ' dB', ox + 8, oy + h - 20);
+  if(S.excessiveNoise){
+    ctx.fillStyle = '#f87171';
+    ctx.fillText('⚠ Excessive noise', ox + 120, oy + h - 20);
+  }
+}
+
+function drawADCDetail(W, H){
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 200;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('ADC CHARACTERISTIC', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const info = computeChain();
+  const pad = { l:40, r:15, t:20, b:30 };
+  const gw = w - pad.l - pad.r;
+  const gh = h - pad.t - pad.b;
+
+  // Input voltage vs code
+  const Vmax = S.Vref;
+  const CodeMax = info.adcMax;
+
+  const xOf = v => ox + pad.l + (v / Vmax) * gw;
+  const yOf = code => oy + h - pad.b - (code / CodeMax) * gh;
+
+  // Axes
+  ctx.strokeStyle = '#334155';
+  ctx.beginPath();
+  ctx.moveTo(ox + pad.l, oy + pad.t);
+  ctx.lineTo(ox + pad.l, oy + h - pad.b);
+  ctx.lineTo(ox + w - pad.r, oy + h - pad.b);
+  ctx.stroke();
+
+  // Transfer curve
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#4ade80';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  ctx.moveTo(xOf(0), yOf(0));
+  ctx.lineTo(xOf(Vmax), yOf(CodeMax));
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Current operating point
+  const px = xOf(Math.min(Vmax, info.Vamp));
+  const py = yOf(Math.min(CodeMax, info.adcCount));
+  ctx.beginPath();
+  ctx.arc(px, py, 6, 0, Math.PI * 2);
+  ctx.fillStyle = info.saturated ? '#f87171' : '#fbbf24';
+  ctx.shadowColor = ctx.fillStyle;
+  ctx.shadowBlur = 12;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Input voltage (V)', ox + w/2, oy + h - 6);
+  ctx.textAlign = 'left';
+  ctx.fillText('Code', ox + 8, oy + 14);
+
+  // Info
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText('Resolution: ' + (info.resolution*1000).toFixed(3) + ' mV', ox + 8, oy + h - 45);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillText('Bits: ' + S.bits + ' → ' + info.adcMax + ' codes', ox + 8, oy + h - 28);
+  ctx.fillStyle = info.saturated ? '#f87171' : '#4ade80';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText(info.saturated ? '⚠ OVERRANGE' : '✓ IN RANGE', ox + 8, oy + h - 8);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const info = computeChain();
+  document.querySelector('#mPhys .mvalue').textContent = S.physical.toFixed(0) + '%';
+  document.querySelector('#mVraw .mvalue').innerHTML = info.Vraw.toFixed(3) + '<span class="munit">mV</span>';
+  document.querySelector('#mVamp .mvalue').innerHTML = info.Vamp.toFixed(3) + '<span class="munit">V</span>';
+  document.querySelector('#mADC .mvalue').textContent = info.adcCount;
+  document.querySelector('#mRes .mvalue').innerHTML = (info.resolution*1000).toFixed(3) + '<span class="munit">mV</span>';
+  document.querySelector('#mSNR .mvalue').innerHTML = info.effectiveSNR + '<span class="munit">dB</span>';
+
+  document.getElementById('mVamp').className = 'metric' + (info.saturated ? ' bad' : '');
+  document.getElementById('mADC').className = 'metric' + (info.saturated ? ' bad' : ' ok');
+  document.getElementById('mSNR').className = 'metric' + (S.snr < 20 ? ' bad' : S.snr < 40 ? ' warn' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+let lastSample = 0;
+function loop(ts){
+  S.time += 1/60;
+
+  if(S.running){
+    // Sample at sample rate
+    if(S.time - lastSample > 1 / S.sampleRate){
+      lastSample = S.time;
+      const info = computeChain();
+      S.samples.push(info.adcCount);
+      if(S.samples.length > 100) S.samples.shift();
+    }
+
+    // Random drift
+    if(S.drift > 0.1 || S.drift < -0.1){
+      S.drift += (Math.random() - 0.5) * 0.05;
+      S.drift = Math.max(-5, Math.min(5, S.drift));
+    }
+  }
+
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+sensorSel.addEventListener('change', e => {
+  S.sensor = e.target.value;
+  const sensor = getSensor();
+  resetState();
+  teach('SENSOR', sensor.name + ': ' + sensor.sensitivity + ' ' + sensor.units + ', range ' + sensor.range + '.', 'concept');
+});
+
+actuatorSel.addEventListener('change', e => {
+  S.actuator = e.target.value;
+  const actuator = getActuator();
+  resetState();
+  teach('ACTUATOR', actuator.name + ': response time ' + (actuator.responseTime*1000).toFixed(1) + ' ms, ' + actuator.type + '. ' + 
+    (S.actuator === 'solenoid' ? 'On/off valve for fluid control.' :
+     S.actuator === 'rc-servo' ? 'Position control for RC models and robotics.' :
+     S.actuator === 'heater' ? 'Slow thermal actuator for temperature control.' :
+     'Fast piezo positioner for nanopositioning.'), 'concept');
+});
+
+gSlider.addEventListener('input', e => {
+  S.gain = parseFloat(e.target.value);
+  document.getElementById('gVal').textContent = S.gain + '×';
+});
+
+bitsSlider.addEventListener('input', e => {
+  S.bits = parseInt(e.target.value);
+  document.getElementById('bitsVal').textContent = S.bits + ' bit';
+});
+
+srSlider.addEventListener('input', e => {
+  S.sampleRate = parseFloat(e.target.value);
+  document.getElementById('srVal').textContent = S.sampleRate + ' Hz';
+});
+
+noiseSlider.addEventListener('input', e => {
+  S.snr = parseFloat(e.target.value);
+  document.getElementById('noiseVal').textContent = S.snr + ' dB';
+});
+
+physSlider.addEventListener('input', e => {
+  S.physical = parseFloat(e.target.value);
+  document.getElementById('physVal').textContent = S.physical + '%';
+});
+
+playBtn.addEventListener('click', () => {
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ RUN SIGNAL CHAIN';
+  if(S.running){
+    const info = computeChain();
+    teach('RUN', 'Signal chain active. Sensor output ' + info.Vraw.toFixed(2) + ' mV → amplified to ' + info.Vamp.toFixed(3) + ' V → ADC code ' + info.adcCount + '.', 'info');
+    if(info.saturated){
+      teach('SATURATION', 'ADC saturated! Amplified signal exceeds ' + S.Vref + 'V reference. Reduce gain or use higher Vref. Real systems need proper analog front-end design.', 'error');
+    }
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  if(!S.running){
+    S.running = true;
+    playBtn.textContent = '⏸ PAUSE';
+  }
+  for(let i=0;i<20;i++){
+    const info = computeChain();
+    S.samples.push(info.adcCount);
+    if(S.samples.length > 100) S.samples.shift();
+  }
+  const info = computeChain();
+  teach('STEP', 'Sensor: ' + info.Vraw.toFixed(2) + ' mV, amplified: ' + info.Vamp.toFixed(3) + ' V, ADC: ' + info.adcCount + '.', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.sensor = 'strain'; S.actuator = 'solenoid';
+  S.gain = 100; S.bits = 12; S.sampleRate = 100; S.snr = 40;
+  S.physical = 50;
+  S.time = 0; S.drift = 0; S.samples = [];
+  S.running = false; S.adcSaturated = false; S.excessiveNoise = false;
+  sensorSel.value = 'strain';
+  actuatorSel.value = 'solenoid';
+  gSlider.value = 100; bitsSlider.value = 12; srSlider.value = 100;
+  noiseSlider.value = 40; physSlider.value = 50;
+  document.getElementById('gVal').textContent = '100×';
+  document.getElementById('bitsVal').textContent = '12 bit';
+  document.getElementById('srVal').textContent = '100 Hz';
+  document.getElementById('noiseVal').textContent = '40 dB';
+  document.getElementById('physVal').textContent = '50%';
+  playBtn.textContent = '▶ RUN SIGNAL CHAIN';
+  teach('RESET', 'Signal chain reset to defaults.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('satBtn').addEventListener('click', () => {
+  S.gain = 500;
+  gSlider.value = 500;
+  document.getElementById('gVal').textContent = '500×';
+  const info = computeChain();
+  teach('SATURATION', 'Gain raised to 500×. Amplified signal ' + info.Vamp.toFixed(2) + 'V exceeds ADC reference ' + S.Vref + 'V. Codes clip at ' + info.adcMax + ' — information lost.', 'error');
+  toast('⚠ ADC saturated');
+});
+
+document.getElementById('noisyBtn').addEventListener('click', () => {
+  S.excessiveNoise = !S.excessiveNoise;
+  if(S.excessiveNoise){
+    teach('NOISE', 'Excessive noise injected. Poor grounding, EMI, or low-quality sensors all add noise. Real systems use shielded cables, differential inputs, and filtering.', 'warn');
+  } else {
+    teach('CLEAR', 'Noise reduced.', 'ok');
+  }
+});
+
+document.getElementById('driftBtn').addEventListener('click', () => {
+  S.drift = 3;
+  teach('DRIFT', 'Sensor drift: slow change in output unrelated to input. Causes: temperature, aging, mechanical stress. Calibration removes it. Gyroscopes drift notoriously.', 'warn');
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'loadcell'){
+      S.sensor = 'strain'; S.actuator = 'solenoid'; S.gain = 200; S.bits = 24; S.sampleRate = 10; S.snr = 60; S.physical = 70;
+      sensorSel.value = 'strain'; actuatorSel.value = 'solenoid';
+      gSlider.value = 200; bitsSlider.value = 24; srSlider.value = 10; noiseSlider.value = 60; physSlider.value = 70;
+      updateLabels(); resetState();
+      teach('LOAD CELL', 'Load cell: strain gauge bridge with 24-bit ADC (HX711). Detects gram-level changes in tonnes of load. Used in scales, force plates, and industrial weighing.', 'concept');
+    } else if(p === 'tempctrl'){
+      S.sensor = 'thermocouple'; S.actuator = 'heater'; S.gain = 100; S.bits = 12; S.sampleRate = 1; S.snr = 30; S.physical = 60;
+      sensorSel.value = 'thermocouple'; actuatorSel.value = 'heater';
+      gSlider.value = 100; bitsSlider.value = 12; srSlider.value = 1; noiseSlider.value = 30; physSlider.value = 60;
+      updateLabels(); resetState();
+      teach('TEMP CONTROL', 'Furnace temperature control: Type K thermocouple + PID-controlled heater. Slow thermal dynamics, requires good PID tuning.', 'concept');
+    } else if(p === 'motorpos'){
+      S.sensor = 'encoder'; S.actuator = 'rc-servo'; S.gain = 1; S.bits = 12; S.sampleRate = 1000; S.snr = 50; S.physical = 45;
+      sensorSel.value = 'encoder'; actuatorSel.value = 'rc-servo';
+      gSlider.value = 1; bitsSlider.value = 12; srSlider.value = 1000; noiseSlider.value = 50; physSlider.value = 45;
+      updateLabels(); resetState();
+      teach('MOTOR POS', 'Motor position control: quadrature encoder gives 0.1° resolution, servo actuator responds in 100ms. Closed-loop PID maintains position against disturbance.', 'concept');
+    } else {
+      S.sensor = 'lm35'; S.actuator = 'solenoid'; S.gain = 5; S.bits = 10; S.sampleRate = 100; S.snr = 45; S.physical = 40;
+      sensorSel.value = 'lm35'; actuatorSel.value = 'solenoid';
+      gSlider.value = 5; bitsSlider.value = 10; srSlider.value = 100; noiseSlider.value = 45; physSlider.value = 40;
+      updateLabels(); resetState();
+      teach('PRESSURE', 'Pressure sensor system: LM35 for temperature compensation, solenoid valve for pressure regulation. Common in hydraulic control.', 'concept');
+    }
+  });
+});
+
+function updateLabels(){
+  document.getElementById('gVal').textContent = S.gain + '×';
+  document.getElementById('bitsVal').textContent = S.bits + ' bit';
+  document.getElementById('srVal').textContent = S.sampleRate + ' Hz';
+  document.getElementById('noiseVal').textContent = S.snr + ' dB';
+  document.getElementById('physVal').textContent = S.physical + '%';
+}
+
+function resetState(){
+  S.time = 0; S.drift = 0; S.samples = [];
+  S.running = false;
+  S.adcSaturated = false; S.excessiveNoise = false;
+  playBtn.textContent = '▶ RUN SIGNAL CHAIN';
+}
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Sensors and Actuators. Sensors measure the physical world, actuators change it. Together they form the interface between electronics and reality.', 'concept');
+  teach('CHAIN', 'Signal chain: sensor → amplifier → ADC → processor → DAC → actuator. Each stage adds noise, limits bandwidth, and has its own characteristics. System design must balance them.', 'concept');
+  teach('HOWTO', 'Choose sensor and actuator. Adjust gain, ADC bits, sample rate, and noise. Press RUN SIGNAL CHAIN to see the signal flow. Try the fault buttons.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>

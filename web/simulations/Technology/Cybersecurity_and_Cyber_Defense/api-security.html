@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API Security — REST/GraphQL/gRPC OWASP API Top 10 Teaching Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--blue);
+    text-shadow:0 0 8px rgba(59,130,246,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--blue); color:#93c5fd; }
+  .header-actions button.active{
+    border-color:var(--blue); color:#93c5fd;
+    box-shadow:0 0 10px rgba(59,130,246,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--blue); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--blue); cursor:pointer; box-shadow:0 0 7px rgba(59,130,246,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--blue); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#93c5fd; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--blue); color:#93c5fd; }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f1a2a,#0a101a);
+    border-color:var(--blue); color:#93c5fd;
+    box-shadow:0 0 10px rgba(59,130,246,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(59,130,246,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulseBlue 1.4s infinite; }
+  @keyframes pulseBlue{
+    0%,100%{ box-shadow:0 0 6px rgba(59,130,246,.3); }
+    50%{ box-shadow:0 0 18px rgba(59,130,246,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.blue .m-value{ color:#93c5fd; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#93c5fd; }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .api-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .api-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .api-phase.done{ border-color:var(--blue); color:#93c5fd;
+    background:rgba(59,130,246,.12); }
+  .api-phase.active{ border-color:var(--blue); color:#93c5fd;
+    background:rgba(59,130,246,.2); box-shadow:0 0 10px rgba(59,130,246,.6);
+    animation:kcBlue 1.2s infinite; }
+  @keyframes kcBlue{ 50%{ box-shadow:0 0 16px rgba(59,130,246,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>API SECURITY</h1>
+    <span class="sub">REST · GRAPHQL · gRPC · OWASP API TOP 10 · CWE-639/918</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ API Type</h3>
+      <select id="apiSelect">
+        <option value="rest">REST (JSON over HTTPS)</option>
+        <option value="graphql">GraphQL</option>
+        <option value="grpc">gRPC (HTTP/2 + Protobuf)</option>
+        <option value="websocket">WebSocket</option>
+      </select>
+      <label class="ctl-label">OWASP API Top 10</label>
+      <select id="vulnSelect">
+        <option value="bola">API1 — Broken Object Level Auth (BOLA/IDOR)</option>
+        <option value="auth">API2 — Broken Authentication</option>
+        <option value="props">API3 — Excessive Data Exposure</option>
+        <option value="resource">API4 — Lack of Resources &amp; Rate Limiting</option>
+        <option value="function">API5 — Broken Function Level Auth</option>
+        <option value="mass">API6 — Mass Assignment</option>
+        <option value="ssrf">API7 — SSRF</option>
+        <option value="misconfig">API8 — Security Misconfiguration</option>
+        <option value="inventory">API9 — Improper Inventory Management</option>
+        <option value="unsafe">API10 — Unsafe Consumption of APIs</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Target Endpoint</h3>
+      <label class="ctl-label">Base URL</label>
+      <input type="text" id="urlInput" value="https://api.example-corp.com/v1">
+      <label class="ctl-label">Endpoint / Query</label>
+      <textarea id="endpointInput">GET /v1/users/1001
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...</textarea>
+      <label class="ctl-label">Payload</label>
+      <input type="text" id="payloadInput" value="{'id': 1002}">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Rate limit (req/s) <span class="slider-val" id="rateVal">100</span></label>
+      <input type="range" id="rateSlider" min="1" max="1000" value="100">
+      <label class="ctl-label">Object ID enumeration depth <span class="slider-val" id="enumVal">100</span></label>
+      <input type="range" id="enumSlider" min="1" max="10000" value="100">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ ATTACK</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="schemaBtn">📋 SCHEMA</button>
+        <button type="button" class="act ok" id="fixBtn">🛡 FIX API</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">pentester@kali:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — API attacks on production services without authorization are illegal.</div>
+    <div class="status-badges">
+      <div class="status-badge">API: <b id="badgeApi">REST</b></div>
+      <div class="status-badge">VULN: <b id="badgeVuln">API1 BOLA</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+      <div class="status-badge">DATA: <b id="badgeData">0 records</b></div>
+    </div>
+    <div class="api-chain" id="apiChain">
+      <div class="api-phase" id="ap-DISCOVER">DISCOVER</div>
+      <div class="api-phase" id="ap-AUTH">AUTH</div>
+      <div class="api-phase" id="ap-FUZZ">FUZZ</div>
+      <div class="api-phase" id="ap-EXPLOIT">EXPLOIT</div>
+      <div class="api-phase" id="ap-EXFIL">EXFIL</div>
+    </div>
+    <div class="footer-overlay">OWASP API Security Top 10 (2023) · CWE-639 (IDOR) · CWE-918 (SSRF) · MITRE T1190</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric blue" id="mReqs"><div class="m-label">Requests</div><div class="m-value" id="mReqsVal">0</div></div>
+      <div class="metric" id="mOK"><div class="m-label">HTTP 200</div><div class="m-value" id="mOKVal">0</div></div>
+      <div class="metric" id="m401"><div class="m-label">HTTP 401</div><div class="m-value" id="m401Val">0</div></div>
+      <div class="metric" id="m403"><div class="m-label">HTTP 403</div><div class="m-value" id="m403Val">0</div></div>
+      <div class="metric" id="m429"><div class="m-label">HTTP 429</div><div class="m-value" id="m429Val">0</div></div>
+      <div class="metric" id="mRecords"><div class="m-label">Records</div><div class="m-value" id="mRecordsVal">0</div></div>
+      <div class="metric" id="mRisk"><div class="m-label">Risk</div><div class="m-value" id="mRiskVal">0</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Defense</div><div class="m-value" id="mDefenseVal">OFF</div></div>
+    </div>
+    <div class="info-card">
+      <b>API Security — the modern attack surface.</b><br>
+      <span class="eq">BOLA/IDOR: change object ID → access others' data</span><br>
+      <span class="eq">Auth: weak JWT (alg:none), API keys in URL, no expiry</span><br>
+      <span class="eq">Rate limiting: prevents brute force + enumeration</span><br>
+      <span class="eq">Defense: OAuth2 + authz per object + gateway + schema validation</span><br>
+      <span style="color:var(--purple)">OWASP API Top 10 (2023) · NIST SP 800-204</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  api:'rest',
+  vuln:'bola',
+  url:'https://api.example-corp.com/v1',
+  endpoint:'GET /v1/users/1001',
+  payload:"{'id': 1002}",
+  rate:100,
+  enumDepth:100,
+  requests:0,
+  ok:0,
+  unauth:0,
+  forbidden:0,
+  ratelimited:0,
+  records:0,
+  risk:0,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['DISCOVER','AUTH','FUZZ','EXPLOIT','EXFIL'];
+
+var VULNS = {
+  bola:{
+    title:'API1 — BOLA/IDOR',
+    cwe:'CWE-639',
+    detail:'Object IDs in URL/body are not authorized. Change /users/1001 → /users/1002 and read another user\'s data.',
+    detection:'Log: multiple 200 responses for different object IDs from same session in short window.'
+  },
+  auth:{
+    title:'API2 — Broken Authentication',
+    cwe:'CWE-287',
+    detail:'Weak JWT (alg:none, weak secret), API keys in URL, no expiry, no rotation, missing MFA on privileged endpoints.',
+    detection:'JWT algorithm confusion, expired tokens still work, tokens without signature.'
+  },
+  props:{
+    title:'API3 — Excessive Data Exposure',
+    cwe:'CWE-213',
+    detail:'API returns more fields than UI needs (SSN, password hash, internal notes). Relies on client to filter.',
+    detection:'Compare API response fields to UI display fields. Fuzz for hidden fields.'
+  },
+  resource:{
+    title:'API4 — Lack of Resources & Rate Limiting',
+    cwe:'CWE-770',
+    detail:'No rate limiting on auth endpoint. Brute force, credential stuffing, enumeration at scale.',
+    detection:'High request rate from single IP; synchronized attack patterns.'
+  },
+  function:{
+    title:'API5 — Broken Function Level Auth',
+    cwe:'CWE-285',
+    detail:'Admin endpoints reachable by regular users. Often via predictable URL (/admin) or HTTP method confusion (GET→POST).',
+    detection:'403 patterns followed by 200 from same user for admin paths.'
+  },
+  mass:{
+    title:'API6 — Mass Assignment',
+    cwe:'CWE-915',
+    detail:'API accepts fields the client shouldn\'t control. Send {"role": "admin"} in registration and become admin.',
+    detection:'Compare request schema to allowed fields. Fuzz with extra fields.'
+  },
+  ssrf:{
+    title:'API7 — SSRF',
+    cwe:'CWE-918',
+    detail:'API fetches URLs from user input. Point to http://169.254.169.254/latest/meta-data/ to steal cloud IAM credentials.',
+    detection:'Outbound requests to private IPs (RFC1918) or metadata endpoints from app servers.'
+  },
+  misconfig:{
+    title:'API8 — Security Misconfiguration',
+    cwe:'CWE-16',
+    detail:'Debug endpoints, permissive CORS, verbose errors, missing security headers, default credentials.',
+    detection:'Missing HSTS, CORS with *, debug stack traces in errors.'
+  },
+  inventory:{
+    title:'API9 — Improper Inventory Management',
+    cwe:'CWE-1059',
+    detail:'Old API versions (v1 without auth), staging endpoints exposed, shadow APIs undocumented.',
+    detection:'Fingerprint API versions and compare to documented inventory.'
+  },
+  unsafe:{
+    title:'API10 — Unsafe Consumption of APIs',
+    cwe:'CWE-20',
+    detail:'App trusts third-party APIs without validation. If partner API is compromised, our app is too.',
+    detection:'Track egress to third-party APIs; validate their responses too.'
+  }
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'attacker', label:'attacker', ip:'external', x:0.10*W, y:0.40*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'gateway', label:'API Gateway', ip:'WAF + rate limit', x:0.32*W, y:0.40*H, icon:'firewall', color:'#22c55e', glow:0, blink:0},
+    {id:'api', label:'API Service', ip:'app.example.com', x:0.55*W, y:0.40*H, icon:'server', color:'#3b82f6', glow:0, blink:0},
+    {id:'db', label:'Database', ip:'postgres/redis', x:0.78*W, y:0.25*H, icon:'database', color:'#a855f7', glow:0, blink:0},
+    {id:'cache', label:'Cache', ip:'redis', x:0.78*W, y:0.55*H, icon:'server', color:'#f59e0b', glow:0, blink:0},
+    {id:'partner', label:'3rd-party', ip:'partner-api', x:0.55*W, y:0.70*H, icon:'cloud', color:'#a855f7', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(59,130,246,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'firewall': {
+      ctx.lineWidth = 1.2;
+      for(var row=0;row<3;row++){
+        var y2 = -10 + row*7;
+        var off = row%2===0 ? 0 : 5;
+        for(var col=0;col<4;col++) ctx.strokeRect(-16+col*9+off, y2, 8, 6);
+      }
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(0,-4); ctx.quadraticCurveTo(4,0,0,5); ctx.quadraticCurveTo(-4,0,0,-4);
+      ctx.fill();
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">pentester@kali:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'API attacks target the interface that powers mobile apps, SPAs, and partner integrations. Testing production APIs without written authorization violates CFAA/CMA and often violates the API terms of service. OWASP API Security Top 10 (2023) is the standard reference. Bug bounty programs (HackerOne, Bugcrowd) accept API vulnerabilities — report via their channels. Never exfiltrate real user data; use the minimum PoC needed to prove impact. Rate-limit your own testing to avoid DoS.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'APIs expose business logic, not just data. OWASP API Top 10 covers: BOLA/IDOR (object-level authz), Broken Auth, Excessive Data Exposure, Resource Limits, Broken Function-Level Auth, Mass Assignment, SSRF, Misconfiguration, Improper Inventory, and Unsafe Consumption of APIs. Modern defense: (1) Authenticate at gateway, authorize per object in app. (2) Schema validation (OpenAPI/GraphQL schema). (3) Rate limiting per identity + endpoint. (4) Response filtering (never return more than needed). (5) Log every authz decision. (6) Continuously inventory APIs.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('curl -H "Authorization: Bearer eyJ..." https://api.example-corp.com/v1/users/1001\n' +
+      '{\n  "id": 1001,\n  "email": "alice@example.com",\n  "name": "Alice",\n  "role": "user",\n  "ssn": "123-45-6789",\n  "password_hash": "$2b$12$..."\n}\n\n# Excessive Data Exposure: SSN + password_hash in response');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'API: ' + STATE.api.toUpperCase() + '. Vulnerability: ' + VULNS[STATE.vuln].title + '. Click ATTACK to begin.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  if(STATE.running && STATE.tick % 25 === 0){
+    spawnPacket('attacker','gateway','#3b82f6','REQ',0.02);
+  }
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.50*H, 'API SERVICE · api.example-corp.com', '#3b82f6');
+  drawZone(0.05*W, 0.62*H, 0.90*W, 0.30*H, 'DEPENDENCIES', '#a855f7');
+
+  var links = [
+    ['attacker','gateway'], ['gateway','api'], ['api','db'],
+    ['api','cache'], ['api','partner']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(59,130,246,0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+  });
+
+  // Request/response visualization
+  if(STATE.phaseIdx > 0){
+    ctx.save();
+    var ax = 0.05*W, ay = H - 180, aw = 0.60*W, ah = 150;
+    ctx.fillStyle = 'rgba(7,10,20,0.9)';
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#93c5fd';
+    ctx.textAlign = 'left';
+    var v = VULNS[STATE.vuln];
+    ctx.fillText('\u25B8 ' + v.title + ' \u2014 ' + v.cwe, ax + 8, ay + 16);
+    ctx.font = '8px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText(v.detail, ax + 8, ay + 34);
+    ctx.fillStyle = '#4ade80';
+    ctx.fillText('Requests: ' + STATE.requests + ' | 200: ' + STATE.ok + ' | 401: ' + STATE.unauth, ax + 8, ay + 54);
+    ctx.fillText('403: ' + STATE.forbidden + ' | 429: ' + STATE.ratelimited + ' | Records: ' + STATE.records, ax + 8, ay + 70);
+    ctx.fillStyle = '#fcd34d';
+    ctx.fillText('Endpoint: ' + STATE.endpoint.substring(0, 50), ax + 8, ay + 90);
+    ctx.fillText('Payload: ' + STATE.payload.substring(0, 50), ax + 8, ay + 106);
+    ctx.fillStyle = '#ef4444';
+    ctx.fillText('Risk: ' + STATE.risk + '/10', ax + 8, ay + 130);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('BOLA/IDOR: authorize object access on every request', 12, H - 74);
+  ctx.fillText('Rate limit: per identity + per endpoint + per method', 12, H - 62);
+  ctx.fillText('Schema validation: reject unknown fields (mass assignment)', 12, H - 50);
+  ctx.fillText('SSRF defense: allowlist egress destinations', 12, H - 38);
+  ctx.fillText('OWASP API Top 10 (2023) \u00B7 NIST SP 800-204 \u00B7 CWE-639/918', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeApi').textContent = STATE.api.toUpperCase();
+  document.getElementById('badgeVuln').textContent = VULNS[STATE.vuln].title.substring(0, 12);
+  document.getElementById('badgeStatus').textContent = STATE.running ? 'ATTACKING' : (STATE.phaseIdx >= 5 ? 'COMPLETE' : 'IDLE');
+  document.getElementById('badgeData').textContent = STATE.records + ' records';
+
+  document.getElementById('mReqsVal').textContent = STATE.requests;
+  document.getElementById('mOKVal').textContent = STATE.ok;
+  document.getElementById('m401Val').textContent = STATE.unauth;
+  document.getElementById('m403Val').textContent = STATE.forbidden;
+  document.getElementById('m429Val').textContent = STATE.ratelimited;
+  document.getElementById('mRecordsVal').textContent = STATE.records;
+  document.getElementById('mRiskVal').textContent = STATE.risk;
+  document.getElementById('mDefenseVal').textContent = STATE.ratelimited > 0 ? 'RATE LIMIT' : 'OFF';
+
+  document.getElementById('m429').className = 'metric' + (STATE.ratelimited > 10 ? ' warn' : '');
+  document.getElementById('mRecords').className = 'metric' + (STATE.records > 50 ? ' bad' : STATE.records > 5 ? ' warn' : '');
+  document.getElementById('mRisk').className = 'metric' + (STATE.risk > 7 ? ' bad' : STATE.risk > 4 ? ' warn' : '');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('ap-' + p);
+    if(!el) return;
+    el.className = 'api-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var v = VULNS[STATE.vuln];
+
+  switch(phase){
+    case 'DISCOVER':
+      addFeed('DISCOVER', 'API discovery: fetch /openapi.json or /swagger.json (misconfig), enumerate versions (/v1, /v2, /beta), compare to documented inventory. ' + (STATE.api === 'graphql' ? 'GraphQL: enable introspection or send __schema query.' : (STATE.api === 'grpc' ? 'gRPC: use grpcurl with reflection enabled.' : 'REST: harvest endpoints from JS bundles, mobile APKs, sitemap.')), 'info');
+      addCommandFeed('curl -s ' + STATE.url + '/openapi.json | jq ".paths | keys"',
+        '[\n  "/v1/users/{id}",\n  "/v1/orders",\n  "/v1/admin/users",\n  "/v1/internal/metrics"\n]');
+      break;
+
+    case 'AUTH':
+      STATE.requests++;
+      if(Math.random() < 0.7){
+        STATE.ok++;
+        addFeed('AUTH', 'Authenticated. Bearer token accepted (JWT). Decode header: {"alg":"HS256","typ":"JWT"} — check for weak secret or alg:none bypass.', 'info');
+      } else {
+        STATE.unauth++;
+        addFeed('AUTH', 'HTTP 401 Unauthorized. Token expired or invalid.', 'warn');
+      }
+      break;
+
+    case 'FUZZ':
+      var fuzzCount = Math.min(STATE.enumDepth, 50);
+      STATE.requests += fuzzCount;
+      var okCount = Math.floor(fuzzCount * 0.6);
+      STATE.ok += okCount;
+      STATE.forbidden += fuzzCount - okCount;
+      addFeed('FUZZ', 'Fuzzing ' + fuzzCount + ' object IDs. ' + okCount + ' returned 200 OK (authorization bypassed), ' + (fuzzCount - okCount) + ' returned 403 (properly protected).', okCount > fuzzCount * 0.3 ? 'error' : 'info');
+      addCommandFeed('ffuf -u ' + STATE.url + '/users/FUZZ -w ids.txt -H "Authorization: Bearer eyJ..." -mc 200',
+        Array(okCount).fill(0).map(function(_, i){ return '100' + (i + 1) + '  [Status: 200, Size: 512, Words: 32]'; }).join('\n') +
+        '\n[+] ' + okCount + ' valid IDs found');
+      break;
+
+    case 'EXPLOIT':
+      // Attack-specific impact
+      var successRate = STATE.ratelimited > 0 ? 0.3 : 0.9;
+      if(Math.random() < successRate){
+        var recs = 0;
+        if(STATE.vuln === 'bola') recs = Math.floor(Math.random() * 100) + 50;
+        else if(STATE.vuln === 'props') recs = Math.floor(Math.random() * 30) + 10;
+        else if(STATE.vuln === 'mass') recs = 1;
+        else if(STATE.vuln === 'ssrf') recs = 5;
+        else recs = Math.floor(Math.random() * 20) + 5;
+        STATE.records += recs;
+        STATE.risk = Math.min(10, STATE.risk + 3);
+        addFeed('EXPLOIT', 'EXPLOITED: ' + v.title + '. Impact: ' + recs + ' records affected. ' + v.detail, 'error');
+        if(STATE.vuln === 'ssrf'){
+          addCommandFeed('curl "' + STATE.url + '/fetch?url=http://169.254.169.254/latest/meta-data/iam/security-credentials/"',
+            '{\n  "AccessKeyId": "ASIA...",\n  "SecretAccessKey": "...",\n  "Token": "...",\n  "Expiration": "2024-01-15T18:00:00Z"\n}\n[!] AWS IAM credentials stolen via SSRF!');
+        } else if(STATE.vuln === 'mass'){
+          addCommandFeed('curl -X POST ' + STATE.url + '/register -d \'{"email":"pwn@evil.com","password":"x","role":"admin"}\'',
+            '{\n  "id": 5012,\n  "email": "pwn@evil.com",\n  "role": "admin"\n}\n[!] Admin account created via mass assignment');
+        }
+      } else {
+        STATE.forbidden++;
+        addFeed('EXPLOIT', 'Attack mitigated by rate limiting / WAF. ' + v.title + ' blocked.', 'ok');
+      }
+      break;
+
+    case 'EXFIL':
+      if(STATE.records > 0){
+        spawnPacket('api','attacker','#ef4444','DATA',0.02);
+        addFeed('EXFIL', 'Exfiltrated ' + STATE.records + ' records total. Data includes: emails, hashed passwords, SSNs, order history, internal notes. Now: notification obligations (GDPR Art. 33: 72h), user reset, incident response.', 'error');
+        addFeed('DEFENSE', 'Fixes: (1) Enforce object-level authz in app code, not just route. (2) Return only needed fields (response filtering / DTO). (3) Rate limit per identity + endpoint. (4) Schema validation (reject unknown fields). (5) SSRF: allowlist egress IPs. (6) Log every authz decision; alert on anomalies.', 'ok');
+      } else {
+        addFeed('EXFIL', 'No data exfiltrated — attack was blocked earlier.', 'ok');
+      }
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.requests = 0;
+  STATE.ok = 0;
+  STATE.unauth = 0;
+  STATE.forbidden = 0;
+  STATE.ratelimited = 0;
+  STATE.records = 0;
+  STATE.risk = 0;
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('ap-' + p); if(el) el.className = 'api-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'API state cleared.', 'info');
+  termWrite('reset --all\n[+] State cleared.');
+}
+
+document.getElementById('apiSelect').addEventListener('change', function(e){
+  STATE.api = e.target.value;
+  var info = {
+    rest:'REST: JSON over HTTPS. Fuzz methods (GET/POST/PUT/DELETE), IDs, params. Watch for inconsistent authz across methods.',
+    graphql:'GraphQL: introspection, nested queries (DoS), field-level authz, batch queries. Tools: graphql-cop, InQL.',
+    grpc:'gRPC: HTTP/2 + protobuf. Use grpcurl with reflection. Binary protocol — some tools miss it. Envoy/Linkerd mTLS helps.',
+    websocket:'WebSocket: long-lived connections. Auth often only at handshake. Watch for CSRF via WS, message injection.'
+  };
+  addFeed('API', 'API type: ' + STATE.api.toUpperCase() + '. ' + info[STATE.api], 'info');
+});
+
+document.getElementById('vulnSelect').addEventListener('change', function(e){
+  STATE.vuln = e.target.value;
+  var v = VULNS[STATE.vuln];
+  addFeed('VULN', 'Vulnerability: ' + v.title + ' (' + v.cwe + '). ' + v.detail, 'warn');
+});
+
+document.getElementById('urlInput').addEventListener('input', function(e){ STATE.url = e.target.value; });
+document.getElementById('endpointInput').addEventListener('input', function(e){ STATE.endpoint = e.target.value; });
+document.getElementById('payloadInput').addEventListener('input', function(e){ STATE.payload = e.target.value; });
+
+document.getElementById('rateSlider').addEventListener('input', function(e){
+  STATE.rate = parseInt(e.target.value);
+  document.getElementById('rateVal').textContent = e.target.value;
+});
+document.getElementById('enumSlider').addEventListener('input', function(e){
+  STATE.enumDepth = parseInt(e.target.value);
+  document.getElementById('enumVal').textContent = e.target.value;
+});
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.requests = 0;
+  STATE.ok = 0;
+  STATE.unauth = 0;
+  STATE.forbidden = 0;
+  STATE.ratelimited = 0;
+  STATE.records = 0;
+  STATE.risk = 0;
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('ATTACK', 'Starting API attack: ' + STATE.api.toUpperCase() + ' — ' + VULNS[STATE.vuln].title + '.', 'warn');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1600);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){ STATE.running = true; STATE.phaseIdx = 0; }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('schemaBtn').addEventListener('click', function(){
+  addFeed('SCHEMA', 'Fetched OpenAPI schema. Endpoints, methods, parameters, and expected request/response shapes now known. Every response field not in the schema is a potential info leak.', 'info');
+  addCommandFeed('curl -s ' + STATE.url + '/openapi.json | jq',
+    '{\n  "openapi": "3.0.0",\n  "paths": {\n    "/users/{id}": {"get": {"security": [{"bearerAuth": []}]}},\n    "/admin/users": {"get": {"security": [{"adminAuth": []}]}}\n  }\n}');
+});
+
+document.getElementById('fixBtn').addEventListener('click', function(){
+  addFeed('FIX', 'API fixed: (1) Object-level authorization added to every handler. (2) Response DTOs (only safe fields). (3) Rate limit 10/s per identity + 100/s per IP. (4) Strict schema validation — reject unknown fields. (5) SSRF: allowlist of egress destinations. (6) Continuous inventory via gateway. Risk reduced.', 'ok');
+  STATE.ratelimited = 100;
+  STATE.risk = Math.max(0, STATE.risk - 5);
+  addCommandFeed('git commit -m "Fix ' + VULNS[STATE.vuln].title + '"',
+    '[main 4a3b8c1] Fix ' + VULNS[STATE.vuln].title + '\n 3 files changed, 87 insertions(+), 12 deletions(-)\n create mode 100644 middleware/authorize_object.go\n create mode 100644 middleware/rate_limit.go\n create mode 100644 dto/user_response.go');
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

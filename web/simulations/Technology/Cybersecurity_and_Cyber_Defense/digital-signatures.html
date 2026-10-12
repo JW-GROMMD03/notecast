@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Digital Signatures — RSA-PSS, ECDSA, EdDSA, Non-repudiation Simulator</title>
+<style>
+  :root{
+    --bg-a:#0a0e1a; --bg-b:#05070d; --panel:#070a14; --border:#1e293b;
+    --green:#22c55e; --green-lt:#4ade80; --cyan:#22d3ee; --amber:#f59e0b;
+    --red:#ef4444; --purple:#a855f7; --blue:#3b82f6;
+    --text:#cbd5e1; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Courier New',ui-monospace,Menlo,monospace;
+    background:linear-gradient(160deg,var(--bg-a),var(--bg-b));
+    color:var(--text); display:flex; flex-direction:column;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0 1px,transparent 1px 3px);
+    opacity:.35;
+  }
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    background:rgba(7,10,20,.85); z-index:10;
+  }
+  header h1{ font-size:15px; letter-spacing:2px; color:#d8b4fe;
+    text-shadow:0 0 8px rgba(168,85,247,.5); }
+  header .sub{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .header-actions{ display:flex; gap:8px; }
+  .header-actions button{
+    font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:5px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  .header-actions button:hover{ border-color:#a855f7; color:#d8b4fe; }
+  .header-actions button.active{
+    border-color:#a855f7; color:#d8b4fe;
+    box-shadow:0 0 10px rgba(168,85,247,.3);
+  }
+  .layout{ flex:1; display:flex; min-height:0; gap:1px; background:var(--border); }
+  .controls-pane{
+    width:340px; min-width:340px; background:var(--panel);
+    display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px;
+  }
+  .canvas-pane{ flex:1; position:relative; background:var(--panel); min-width:0; }
+  #stage{ display:block; width:100%; height:100%; }
+  .teaching-pane{
+    width:400px; min-width:400px; background:var(--panel);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .ctl-group{
+    border:1px solid var(--border); border-radius:5px;
+    background:#060912; padding:8px;
+  }
+  .ctl-group h3{
+    font-size:10px; letter-spacing:1.5px; color:var(--cyan);
+    margin-bottom:7px; text-transform:uppercase;
+  }
+  label.ctl-label{
+    display:block; font-size:10px; color:var(--muted); margin:6px 0 3px;
+  }
+  select,input[type=text],textarea{
+    width:100%; font-family:inherit; font-size:11px;
+    background:#0a0f1a; border:1px solid var(--border); color:var(--green-lt);
+    padding:5px 7px; border-radius:3px; outline:none;
+  }
+  select:focus,input:focus,textarea:focus{ border-color:#a855f7; }
+  textarea{ resize:vertical; min-height:52px; line-height:1.4; font-family:'Courier New',monospace; }
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; background:#1e293b;
+    border-radius:2px; outline:none; margin:2px 0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:#a855f7; cursor:pointer; box-shadow:0 0 7px rgba(168,85,247,.7);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%;
+    background:#a855f7; cursor:pointer;
+  }
+  .slider-row{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); }
+  .slider-val{ color:#d8b4fe; font-weight:bold; }
+  .btn-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  button.act{
+    flex:1; min-width:70px; font-family:inherit; font-size:10px; letter-spacing:1px;
+    background:#0b1220; border:1px solid var(--border); color:var(--text);
+    padding:7px 6px; border-radius:4px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ border-color:#a855f7; color:#d8b4fe; }
+  button.act.primary{
+    background:linear-gradient(180deg,#1a0f2a,#0a0612);
+    border-color:#a855f7; color:#d8b4fe;
+    box-shadow:0 0 10px rgba(168,85,247,.25);
+  }
+  button.act.primary:hover{ box-shadow:0 0 16px rgba(168,85,247,.5); }
+  button.act.danger{ border-color:var(--red); color:#fca5a5; }
+  button.act.warn{ border-color:var(--amber); color:#fcd34d; }
+  button.act.ok{ border-color:var(--green); color:var(--green-lt); }
+  button.act.ok:hover{ background:#0f2a18; }
+  button.act.pulse{ animation:pulsePurp 1.4s infinite; }
+  @keyframes pulsePurp{
+    0%,100%{ box-shadow:0 0 6px rgba(168,85,247,.3); }
+    50%{ box-shadow:0 0 18px rgba(168,85,247,.8); }
+  }
+  .term{
+    background:#0a0f0a; border:1px solid #14321a; border-radius:4px;
+    padding:7px; font-size:10px; line-height:1.45; color:var(--green-lt);
+    height:150px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .term::-webkit-scrollbar,.teaching-feed::-webkit-scrollbar,
+  .controls-pane::-webkit-scrollbar{ width:6px; }
+  .term::-webkit-scrollbar-thumb,.teaching-feed::-webkit-scrollbar-thumb,
+  .controls-pane::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:3px; }
+  .term .prompt{ color:var(--green); }
+  .term .cursor{ display:inline-block; width:7px; height:12px; background:var(--green-lt);
+    animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .metrics-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+    padding:8px; border-bottom:1px solid var(--border);
+  }
+  .metric{
+    background:#060912; border:1px solid var(--border); border-radius:4px;
+    padding:5px 6px; text-align:center;
+  }
+  .metric .m-label{ font-size:8px; color:var(--muted); letter-spacing:.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .metric .m-value{ font-size:14px; font-weight:bold; color:var(--green-lt);
+    margin-top:2px; transition:color .2s; }
+  .metric.warn .m-value{ color:var(--amber); }
+  .metric.bad .m-value{ color:var(--red); }
+  .metric.purple .m-value{ color:#d8b4fe; }
+  .info-card{
+    padding:8px; border-bottom:1px solid var(--border); font-size:10px;
+    line-height:1.5; color:var(--muted);
+  }
+  .info-card b{ color:var(--cyan); }
+  .info-card .eq{ color:var(--green-lt); font-size:10px;
+    background:#060912; padding:3px 5px; border-radius:3px;
+    display:inline-block; margin:2px 0; }
+  .teaching-feed{
+    flex:1; overflow-y:auto; padding:6px 8px; display:flex;
+    flex-direction:column; gap:4px;
+  }
+  .feed-item{
+    font-size:10px; line-height:1.45; padding:5px 7px; border-radius:3px;
+    background:#060912; border-left:3px solid var(--blue);
+    animation:feedIn .25s ease-out; word-break:break-word;
+  }
+  @keyframes feedIn{ from{ opacity:0; transform:translateX(10px); } to{ opacity:1; transform:none; } }
+  .feed-item .tag{
+    font-size:8px; font-weight:bold; letter-spacing:1px;
+    padding:1px 5px; border-radius:2px; margin-right:5px; display:inline-block;
+  }
+  .feed-item.info{ border-left-color:var(--blue); }
+  .feed-item.info .tag{ background:rgba(59,130,246,.2); color:#93c5fd; }
+  .feed-item.ok{ border-left-color:var(--green); }
+  .feed-item.ok .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .feed-item.warn{ border-left-color:var(--amber); }
+  .feed-item.warn .tag{ background:rgba(245,158,11,.2); color:#fcd34d; }
+  .feed-item.error{ border-left-color:var(--red); }
+  .feed-item.error .tag{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  .feed-item.concept{ border-left-color:var(--purple); }
+  .feed-item.concept .tag{ background:rgba(168,85,247,.2); color:#d8b4fe; }
+  .feed-item.ethics{ border-left-color:#fbbf24; background:#1a1506; }
+  .feed-item.ethics .tag{ background:rgba(251,191,36,.25); color:#fde68a; }
+  .feed-item.cmd{
+    border-left-color:var(--green); background:#0a0f0a; color:var(--green-lt);
+    font-family:'Courier New',monospace; white-space:pre-wrap;
+  }
+  .feed-item.cmd .tag{ background:rgba(34,197,94,.2); color:var(--green-lt); }
+  .ethics-banner{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    background:rgba(120,53,15,.85); border:1px solid var(--amber);
+    color:#fde68a; font-size:9px; padding:4px 12px; border-radius:4px;
+    letter-spacing:.5px; z-index:5; white-space:nowrap;
+    box-shadow:0 0 14px rgba(245,158,11,.3);
+  }
+  .footer-overlay{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:var(--muted); letter-spacing:.5px; z-index:5; white-space:nowrap;
+  }
+  .status-badges{
+    position:absolute; top:38px; left:10px; z-index:5;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .status-badge{
+    font-size:9px; background:rgba(7,10,20,.85); border:1px solid var(--border);
+    padding:3px 8px; border-radius:3px; color:var(--muted); letter-spacing:.5px;
+  }
+  .status-badge b{ color:#d8b4fe; }
+  .status-badge.warn b{ color:var(--amber); }
+  .status-badge.bad b{ color:var(--red); }
+  .sig-chain{
+    position:absolute; bottom:26px; left:10px; right:10px; z-index:5;
+    display:flex; gap:3px;
+  }
+  .sig-phase{
+    flex:1; text-align:center; font-size:8px; letter-spacing:.5px;
+    padding:4px 2px; background:rgba(7,10,20,.8); border:1px solid var(--border);
+    border-radius:3px; color:var(--muted); transition:.2s;
+  }
+  .sig-phase.done{ border-color:#a855f7; color:#d8b4fe;
+    background:rgba(168,85,247,.12); }
+  .sig-phase.active{ border-color:#a855f7; color:#d8b4fe;
+    background:rgba(168,85,247,.2); box-shadow:0 0 10px rgba(168,85,247,.6);
+    animation:kcPurp 1.2s infinite; }
+  @keyframes kcPurp{ 50%{ box-shadow:0 0 16px rgba(168,85,247,.9); } }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+    background:#0b1220; border:1px solid var(--green); color:var(--green-lt);
+    padding:8px 18px; border-radius:4px; font-size:11px; letter-spacing:1px;
+    opacity:0; transition:.3s; z-index:10000; pointer-events:none;
+    box-shadow:0 0 20px rgba(34,197,94,.3);
+  }
+  .toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>DIGITAL SIGNATURES</h1>
+    <span class="sub">RSA-PSS · ECDSA · EdDSA · NON-REPUDIATION · FIPS 186-5</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active" id="teachingToggle">📖 TEACHING: ON</button>
+    <button class="voice-toggle" id="voiceToggle">VOICE: OFF</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="ctl-group">
+      <h3>◆ Signature Algorithm</h3>
+      <select id="algoSelect">
+        <option value="rsa-pss">RSA-PSS (2048/3072/4096)</option>
+        <option value="rsa-pkcs">RSA PKCS#1 v1.5 (legacy)</option>
+        <option value="ecdsa-p256">ECDSA P-256 + SHA-256</option>
+        <option value="ecdsa-p384">ECDSA P-384 + SHA-384</option>
+        <option value="ed25519">Ed25519 (EdDSA)</option>
+        <option value="ed448">Ed448 (EdDSA)</option>
+        <option value="dsa">DSA (deprecated)</option>
+      </select>
+      <label class="ctl-label">Use case</label>
+      <select id="useSelect">
+        <option value="document">Document signing (PDF, contract)</option>
+        <option value="code">Code signing (binary/package)</option>
+        <option value="tls">TLS certificate (server auth)</option>
+        <option value="email">Signed email (S/MIME)</option>
+        <option value="git">Git commit signing</option>
+        <option value="jwt">JWT / JWS (API tokens)</option>
+        <option value="blockchain">Blockchain transaction</option>
+      </select>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Message</h3>
+      <label class="ctl-label">Message to sign</label>
+      <textarea id="msgInput">Transfer $10,000 from account 12345 to 67890. Authorized by CFO.</textarea>
+      <label class="ctl-label">Signer identity</label>
+      <input type="text" id="signerInput" value="Alice (CFO@example-corp.com)">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Parameters</h3>
+      <label class="ctl-label">Hash algorithm <span class="slider-val" id="hashVal">SHA-256</span></label>
+      <input type="range" id="hashSlider" min="0" max="3" value="1">
+      <label class="ctl-label">Key size (RSA) <span class="slider-val" id="keyVal">3072</span></label>
+      <input type="range" id="keySlider" min="2048" max="4096" value="3072" step="1024">
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Actions</h3>
+      <div class="btn-row">
+        <button type="button" class="act primary pulse" id="signBtn">✍ SIGN</button>
+        <button type="button" class="act ok" id="verifyBtn">✓ VERIFY</button>
+        <button type="button" class="act danger" id="resetBtn">⟲ RESET</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="act warn" id="tamperBtn">⚠ TAMPER</button>
+        <button type="button" class="act" id="pqcBtn">🔮 PQ-SIGN</button>
+      </div>
+    </div>
+
+    <div class="ctl-group">
+      <h3>◆ Terminal</h3>
+      <div class="term" id="terminal">
+        <span class="prompt">crypto@lab:~$ </span><span id="termContent"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="ethics-banner">⚠ FOR EDUCATIONAL USE ONLY — Digital signatures provide non-repudiation. Never forge a signature — it is fraud.</div>
+    <div class="status-badges">
+      <div class="status-badge">ALGO: <b id="badgeAlgo">RSA-PSS</b></div>
+      <div class="status-badge">USE: <b id="badgeUse">DOCUMENT</b></div>
+      <div class="status-badge">STATUS: <b id="badgeStatus">IDLE</b></div>
+      <div class="status-badge">VERIFY: <b id="badgeVerify">—</b></div>
+    </div>
+    <div class="sig-chain" id="sigChain">
+      <div class="sig-phase" id="sgp-HASH">HASH</div>
+      <div class="sig-phase" id="sgp-PAD">PAD/ENC</div>
+      <div class="sig-phase" id="sgp-SIGN">SIGN</div>
+      <div class="sig-phase" id="sgp-EMIT">EMIT</div>
+      <div class="sig-phase" id="sgp-VERIFY">VERIFY</div>
+    </div>
+    <div class="footer-overlay">NIST FIPS 186-5 · RFC 8017 (PKCS#1) · RFC 8032 (EdDSA) · RFC 8446 (TLS 1.3)</div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div class="metrics-grid">
+      <div class="metric purple" id="mBits"><div class="m-label">Security</div><div class="m-value" id="mBitsVal">128</div></div>
+      <div class="metric" id="mSigSize"><div class="m-label">Sig Size</div><div class="m-value" id="mSigSizeVal">0 B</div></div>
+      <div class="metric" id="mKeySize"><div class="m-label">Key Size</div><div class="m-value" id="mKeySizeVal">3072</div></div>
+      <div class="metric" id="mSignTime"><div class="m-label">Sign Time</div><div class="m-value" id="mSignTimeVal">0ms</div></div>
+      <div class="metric" id="mVerifyTime"><div class="m-label">Verify Time</div><div class="m-value" id="mVerifyTimeVal">0ms</div></div>
+      <div class="metric" id="mValid"><div class="m-label">Valid</div><div class="m-value" id="mValidVal">—</div></div>
+      <div class="metric" id="mTampered"><div class="m-label">Tampered</div><div class="m-value" id="mTamperedVal">NO</div></div>
+      <div class="metric" id="mDefense"><div class="m-label">Non-repud</div><div class="m-value" id="mDefenseVal">—</div></div>
+    </div>
+    <div class="info-card">
+      <b>Digital signatures — authenticity, integrity, non-repudiation.</b><br>
+      <span class="eq">Sign: σ = Sign(sk, H(m))</span><br>
+      <span class="eq">Verify: Verify(pk, m, σ) ∈ {valid, invalid}</span><br>
+      <span class="eq">Non-repudiation: signer cannot deny (private key held only by them)</span><br>
+      <span class="eq">Algorithms: RSA-PSS, ECDSA, EdDSA, (DSA deprecated)</span><br>
+      <span style="color:var(--purple)">FIPS 186-5 · RFC 8017 · RFC 8032 · eIDAS · ESIGN</span>
+    </div>
+    <div class="teaching-feed" id="teachingFeed"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+var STATE = {
+  running:false,
+  algo:'rsa-pss',
+  use:'document',
+  msg:'Transfer $10,000 from account 12345 to 67890. Authorized by CFO.',
+  signer:'Alice (CFO@example-corp.com)',
+  hash:'SHA-256',
+  keySize:3072,
+  security:128,
+  sigSize:0,
+  signTime:0,
+  verifyTime:0,
+  valid:'—',
+  tampered:false,
+  nonRepud:'—',
+  pqc:false,
+  phaseIdx:0,
+  tick:0,
+  lastTime:0,
+  events:[],
+  nodes:[],
+  feedCount:0
+};
+
+var PHASES = ['HASH','PAD','SIGN','EMIT','VERIFY'];
+
+var ALGOS = {
+  'rsa-pss':{name:'RSA-PSS',security:128,keySize:3072,sigSize:384,pad:'PSS + MGF1'},
+  'rsa-pkcs':{name:'RSA PKCS#1 v1.5',security:110,keySize:2048,sigSize:256,pad:'PKCS#1 v1.5 (deterministic)'},
+  'ecdsa-p256':{name:'ECDSA P-256',security:128,keySize:256,sigSize:64,pad:'ECDSA (R,S pair)'},
+  'ecdsa-p384':{name:'ECDSA P-384',security:192,keySize:384,sigSize:96,pad:'ECDSA (R,S pair)'},
+  'ed25519':{name:'Ed25519',security:128,keySize:256,sigSize:64,pad:'EdDSA (deterministic)'},
+  'ed448':{name:'Ed448',security:224,keySize:448,sigSize:114,pad:'EdDSA (deterministic)'},
+  'dsa':{name:'DSA (deprecated)',security:112,keySize:3072,sigSize:64,pad:'DSA (deprecated)'}
+};
+
+var HASHES = ['SHA-1','SHA-256','SHA-384','SHA-512'];
+
+var canvas = document.getElementById('stage');
+var ctx = canvas.getContext('2d');
+var terminalContent = document.getElementById('termContent');
+var teachingFeed = document.getElementById('teachingFeed');
+
+function resizeCanvas(){
+  var pane = canvas.parentElement;
+  canvas.width = pane.clientWidth;
+  canvas.height = pane.clientHeight;
+  buildTopology();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function buildTopology(){
+  var W = canvas.width, H = canvas.height;
+  STATE.nodes = [
+    {id:'signer', label:'signer', ip:'Alice (CFO)', x:0.12*W, y:0.40*H, icon:'laptop', color:'#3b82f6', glow:0, blink:0},
+    {id:'hash', label:'hash function', ip:STATE.hash, x:0.32*W, y:0.40*H, icon:'server', color:'#22d3ee', glow:0, blink:0},
+    {id:'sk', label:'private key', ip:'never shared', x:0.52*W, y:0.20*H, icon:'server', color:'#ef4444', glow:0, blink:0},
+    {id:'pk', label:'public key', ip:'published in cert', x:0.52*W, y:0.60*H, icon:'cloud', color:'#22c55e', glow:0, blink:0},
+    {id:'sig', label:'signature', ip:'σ (attached to message)', x:0.72*W, y:0.40*H, icon:'database', color:'#a855f7', glow:0, blink:0},
+    {id:'verifier', label:'verifier', ip:'anyone with pk', x:0.90*W, y:0.40*H, icon:'laptop', color:'#22d3ee', glow:0, blink:0}
+  ];
+}
+
+function drawIcon(type, x, y, color, glow, blink, label, ip){
+  ctx.save();
+  ctx.translate(x, y);
+  if(glow > 0){
+    var g = ctx.createRadialGradient(0,0,2,0,0,42);
+    g.addColorStop(0, 'rgba(168,85,247,'+(glow*0.55)+')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+  }
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = color; ctx.shadowBlur = glow > 0 ? 8 : 0;
+
+  switch(type){
+    case 'server': {
+      ctx.strokeRect(-11,-16,22,32);
+      for(var i=0;i<5;i++){
+        var yy = -14 + i*6;
+        ctx.strokeRect(-9,yy,18,4.5);
+        ctx.fillStyle = blink%2===0 ? '#22c55e' : '#166534';
+        ctx.beginPath(); ctx.arc(7,yy+2.2,1.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = color;
+      }
+      break;
+    }
+    case 'laptop': {
+      ctx.strokeRect(-14,-12,28,18);
+      ctx.fillStyle = 'rgba(59,130,246,.15)';
+      ctx.fillRect(-13,-11,26,16);
+      ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 0.7;
+      for(var j=0;j<3;j++){ ctx.beginPath(); ctx.moveTo(-10,-8+j*4); ctx.lineTo(8,-8+j*4); ctx.stroke(); }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-16,6); ctx.lineTo(16,6); ctx.lineTo(14,9); ctx.lineTo(-14,9); ctx.closePath(); ctx.stroke();
+      break;
+    }
+    case 'database': {
+      var rx = 13, ry = 5, h = 22;
+      ctx.beginPath(); ctx.ellipse(0,-h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-rx,-h/2); ctx.lineTo(-rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx,-h/2); ctx.lineTo(rx,h/2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,h/2,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.stroke();
+      break;
+    }
+    case 'cloud': {
+      ctx.beginPath();
+      ctx.arc(-8,0,8,Math.PI*0.5,Math.PI*1.5);
+      ctx.arc(0,-4,10,Math.PI,Math.PI*2);
+      ctx.arc(10,0,8,Math.PI*1.5,Math.PI*0.5);
+      ctx.lineTo(10,6); ctx.lineTo(-8,6);
+      ctx.closePath(); ctx.stroke();
+      break;
+    }
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(label, x, y + 30);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(ip, x, y + 40);
+  ctx.restore();
+}
+
+function spawnPacket(fromId, toId, color, label, speed){
+  var from = STATE.nodes.find(function(n){return n.id===fromId;});
+  var to = STATE.nodes.find(function(n){return n.id===toId;});
+  if(!from || !to) return;
+  STATE.events.push({type:'packet', from:{x:from.x,y:from.y}, to:{x:to.x,y:to.y},
+    t:0, speed:speed||0.02, color:color, label:label, size:4});
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function addFeed(tag, text, type){
+  type = type || 'info';
+  var div = document.createElement('div');
+  div.className = 'feed-item ' + type;
+  var time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  div.innerHTML = '<span class="tag">' + escapeHtml(tag) + '</span> ' +
+    '<span style="color:#475569">[' + time + ']</span> ' + escapeHtml(text);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  STATE.feedCount++;
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+  speak(text);
+}
+function addCommandFeed(cmd, output){
+  var div = document.createElement('div');
+  div.className = 'feed-item cmd';
+  div.innerHTML = '<span class="tag">CMD</span><br>' +
+    '<span style="color:#4ade80">crypto@lab:~$ </span>' +
+    escapeHtml(cmd) + '\n' + escapeHtml(output);
+  teachingFeed.insertBefore(div, teachingFeed.firstChild);
+  while(teachingFeed.children.length > 75) teachingFeed.removeChild(teachingFeed.lastChild);
+}
+
+var termQueue = []; var termTyping = false;
+function termWrite(text, callback){
+  termQueue.push({text:text, callback:callback});
+  if(!termTyping) processTermQueue();
+}
+function processTermQueue(){
+  if(termQueue.length === 0){ termTyping = false; return; }
+  termTyping = true;
+  var item = termQueue.shift();
+  var i = 0; var text = item.text;
+  terminalContent.textContent = '';
+  var interval = setInterval(function(){
+    if(i < text.length){ terminalContent.textContent += text[i]; i++; }
+    else { clearInterval(interval); termTyping = false; if(item.callback) item.callback(); setTimeout(processTermQueue, 100); }
+  }, 10);
+}
+
+var VOICE = { enabled:false, queue:[], lastSpoken:{}, speaking:false, synth:window.speechSynthesis };
+function speak(text){
+  if(!VOICE.enabled || !VOICE.synth) return;
+  var now = Date.now();
+  if(VOICE.lastSpoken[text] && now - VOICE.lastSpoken[text] < 4000) return;
+  VOICE.lastSpoken[text] = now;
+  if(VOICE.queue.length >= 4) VOICE.queue.shift();
+  VOICE.queue.push(text);
+  if(!VOICE.speaking) processVoiceQueue();
+}
+function processVoiceQueue(){
+  if(VOICE.queue.length === 0){ VOICE.speaking = false; return; }
+  VOICE.speaking = true;
+  var text = VOICE.queue.shift();
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.05; utter.pitch = 1.0;
+  var voices = VOICE.synth.getVoices();
+  var pref = voices.find(function(v){return v.lang && v.lang.startsWith('en-US');}) || voices[0];
+  if(pref) utter.voice = pref;
+  utter.onend = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  utter.onerror = function(){ VOICE.speaking = false; setTimeout(processVoiceQueue, 120); };
+  VOICE.synth.speak(utter);
+}
+
+function boot(){
+  resizeCanvas();
+  addFeed('ETHICS',
+    'Digital signatures are a LEGAL mechanism, not just a technical one. In the EU (eIDAS), a qualified electronic signature has the same legal weight as a handwritten signature. In the US, ESIGN Act and UETA grant legal validity. Using someone else private key to sign documents — even with consent — is forgery. If you lose your private key, you may lose the ability to sign legal documents and revoke past signatures. If your private key is compromised, you may be legally liable for signatures made by the attacker. Key custody is critical: HSMs, smart cards, hardware tokens. Non-repudiation is real: you cannot deny a signature made with your key unless you can prove compromise (and even then, burden of proof is high).',
+    'ethics');
+  setTimeout(function(){
+    addFeed('CONCEPT',
+      'A digital signature provides three guarantees: (1) Authenticity — the message came from the claimed signer. (2) Integrity — the message was not modified. (3) Non-repudiation — the signer cannot deny signing. Mechanism: sign(σ) = Sign(sk, H(m)); verify = Verify(pk, m, σ) ∈ {valid, invalid}. The private key stays with the signer; the public key is published (usually in a certificate). Modern algorithms: RSA-PSS (probabilistic padding, resists certain attacks better than PKCS#1 v1.5), ECDSA (smaller keys, faster), EdDSA (Ed25519/Ed448 — deterministic, no RNG needed, side-channel resistant). FIPS 186-5 standardizes approved algorithms; DSA is deprecated.',
+      'concept');
+  }, 800);
+  setTimeout(function(){
+    termWrite('openssl genpkey -algorithm RSA-PSS -pkeyopt rsa_keygen_bits:3072 -out alice.key\n' +
+      'openssl pkey -in alice.key -pubout -out alice.pub\n' +
+      '[+] Private key: alice.key (KEEP SECRET)\n' +
+      '[+] Public key: alice.pub (publish widely)\n\n' +
+      'openssl dgst -sha256 -sign alice.key -out message.sig message.txt\n' +
+      '[+] Signature: message.sig (384 bytes)');
+  }, 1600);
+  setTimeout(function(){
+    addFeed('INFO',
+      'Algorithm: ' + ALGOS[STATE.algo].name + '. Use case: ' + STATE.use.toUpperCase() + '. Message: "' + STATE.msg.substring(0, 60) + '...". Click SIGN to sign.',
+      'info');
+    updateBadges();
+  }, 2400);
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  var dt = STATE.lastTime ? (ts - STATE.lastTime) : 16;
+  STATE.lastTime = ts;
+  STATE.tick++;
+  STATE.nodes.forEach(function(n){ n.blink = Math.floor(STATE.tick / 20); });
+
+  for(var i = STATE.events.length - 1; i >= 0; i--){
+    var e = STATE.events[i];
+    if(e.type === 'packet'){
+      e.t += e.speed * (dt/16);
+      if(e.t >= 1) STATE.events.splice(i,1);
+    }
+  }
+  STATE.nodes.forEach(function(n){ if(n.glow > 0) n.glow -= 0.008 * (dt/16); if(n.glow < 0) n.glow = 0; });
+
+  render();
+  updateBadges();
+  requestAnimationFrame(loop);
+}
+
+function render(){
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  var bg = ctx.createRadialGradient(W*0.5,H*0.4,50,W*0.5,H*0.4,W*0.7);
+  bg.addColorStop(0,'#0a0e1a'); bg.addColorStop(1,'#05070d');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle = 'rgba(30,41,59,0.4)'; ctx.lineWidth = 0.5;
+  for(var x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(var y=0;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  drawZone(0.05*W, 0.08*H, 0.90*W, 0.75*H, 'SIGNING + VERIFICATION', '#a855f7');
+
+  var links = [
+    ['signer','hash'], ['signer','sk'], ['sk','sig'],
+    ['pk','verifier'], ['sig','verifier']
+  ];
+  links.forEach(function(pair){
+    var na = STATE.nodes.find(function(n){return n.id===pair[0];});
+    var nb = STATE.nodes.find(function(n){return n.id===pair[1];});
+    if(!na || !nb) return;
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.strokeStyle = 'rgba(168,85,247,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  STATE.events.forEach(function(e){
+    if(e.type === 'packet'){
+      var px = e.from.x + (e.to.x - e.from.x) * e.t;
+      var py = e.from.y + (e.to.y - e.from.y) * e.t;
+      ctx.save();
+      ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(px, py, e.size, 0, Math.PI*2); ctx.fill();
+      if(e.label){
+        ctx.font = '7px "Courier New",monospace';
+        ctx.fillStyle = e.color; ctx.textAlign = 'center';
+        ctx.fillText(e.label, px, py - 8);
+      }
+      ctx.restore();
+    }
+  });
+
+  STATE.nodes.forEach(function(n){
+    drawIcon(n.icon, n.x, n.y, n.color, n.glow, n.blink, n.label, n.ip);
+    if(n.id === 'sk' && STATE.phaseIdx >= 3){
+      ctx.save();
+      ctx.font = 'bold 8px "Courier New",monospace';
+      ctx.fillStyle = '#ef4444';
+      ctx.textAlign = 'center';
+      ctx.fillText('KEEP SECRET', n.x, n.y - 25);
+      ctx.restore();
+    }
+    if(n.id === 'pk' && STATE.phaseIdx >= 3){
+      ctx.save();
+      ctx.font = 'bold 8px "Courier New",monospace';
+      ctx.fillStyle = '#22c55e';
+      ctx.textAlign = 'center';
+      ctx.fillText('PUBLISH WIDELY', n.x, n.y - 25);
+      ctx.restore();
+    }
+  });
+
+  // Info panel
+  if(STATE.phaseIdx > 0){
+    var a = ALGOS[STATE.algo];
+    ctx.save();
+    var ax = 0.05*W, ay = H - 150, aw = 0.55*W, ah = 120;
+    ctx.fillStyle = 'rgba(30,15,50,0.9)';
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.font = 'bold 10px "Courier New",monospace';
+    ctx.fillStyle = '#d8b4fe';
+    ctx.textAlign = 'left';
+    ctx.fillText('\u25B8 ' + a.name + ' — ' + STATE.use.toUpperCase(), ax + 8, ay + 16);
+    ctx.font = '9px "Courier New",monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('Security: ' + STATE.security + ' bits | Key: ' + STATE.keySize + ' bits | Sig: ' + STATE.sigSize + ' bytes', ax + 8, ay + 36);
+    ctx.fillText('Hash: ' + STATE.hash + ' | Padding: ' + a.pad, ax + 8, ay + 52);
+    ctx.fillText('Sign time: ' + STATE.signTime + 'ms | Verify time: ' + STATE.verifyTime + 'ms', ax + 8, ay + 68);
+    ctx.fillStyle = STATE.tampered ? '#ef4444' : '#4ade80';
+    ctx.fillText('Message tampered: ' + (STATE.tampered ? 'YES' : 'NO'), ax + 8, ay + 84);
+    ctx.fillStyle = STATE.valid === 'VALID' ? '#4ade80' : (STATE.valid === 'INVALID' ? '#ef4444' : '#fcd34d');
+    ctx.fillText('Verification: ' + STATE.valid + ' | Non-repudiation: ' + STATE.nonRepud, ax + 8, ay + 100);
+    ctx.fillStyle = STATE.pqc ? '#22c55e' : '#fcd34d';
+    ctx.fillText('Post-quantum: ' + (STATE.pqc ? 'YES (Dilithium3)' : 'NO'), ax + 8, ay + 116);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(100,116,139,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('Sign: σ = Sign(sk, H(m))  |  Verify: Verify(pk, m, σ) ∈ {valid, invalid}', 12, H - 74);
+  ctx.fillText('RSA-PSS: probabilistic padding | ECDSA: (r,s) pair | EdDSA: deterministic', 12, H - 62);
+  ctx.fillText('Non-repudiation: signer cannot deny — private key held only by them', 12, H - 50);
+  ctx.fillText('Legal: eIDAS (EU) qualified sigs, ESIGN/UETA (US)', 12, H - 38);
+  ctx.fillText('FIPS 186-5 \u00B7 RFC 8017 \u00B7 RFC 8032 \u00B7 DSA deprecated', 12, H - 26);
+  ctx.restore();
+}
+
+function drawZone(x, y, w, h, label, color){
+  ctx.save();
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]); ctx.strokeRect(x, y, w, h);
+  ctx.globalAlpha = 0.6;
+  ctx.font = 'bold 9px "Courier New",monospace';
+  ctx.fillStyle = color; ctx.textAlign = 'left';
+  ctx.fillText(label, x + 6, y + 14);
+  ctx.restore();
+}
+
+function updateBadges(){
+  document.getElementById('badgeAlgo').textContent = ALGOS[STATE.algo].name.toUpperCase().substring(0, 12);
+  document.getElementById('badgeUse').textContent = STATE.use.toUpperCase();
+  document.getElementById('badgeStatus').textContent = STATE.phaseIdx >= 4 ? 'SIGNED' : (STATE.running ? 'SIGNING' : 'IDLE');
+  document.getElementById('badgeVerify').textContent = STATE.valid;
+
+  document.getElementById('mBitsVal').textContent = STATE.security;
+  document.getElementById('mSigSizeVal').textContent = STATE.sigSize + ' B';
+  document.getElementById('mKeySizeVal').textContent = STATE.keySize;
+  document.getElementById('mSignTimeVal').textContent = STATE.signTime + 'ms';
+  document.getElementById('mVerifyTimeVal').textContent = STATE.verifyTime + 'ms';
+  document.getElementById('mValidVal').textContent = STATE.valid;
+  document.getElementById('mTamperedVal').textContent = STATE.tampered ? 'YES' : 'NO';
+  document.getElementById('mDefenseVal').textContent = STATE.nonRepud;
+
+  document.getElementById('mValid').className = 'metric' + (STATE.valid === 'VALID' ? ' ok' : (STATE.valid === 'INVALID' ? ' bad' : ''));
+  document.getElementById('mTampered').className = 'metric' + (STATE.tampered ? ' bad' : '');
+  document.getElementById('mBits').className = 'metric purple';
+}
+
+function advancePhase(){
+  if(STATE.phaseIdx >= PHASES.length){
+    STATE.running = false;
+    return;
+  }
+  var phase = PHASES[STATE.phaseIdx];
+  PHASES.forEach(function(p,i){
+    var el = document.getElementById('sgp-' + p);
+    if(!el) return;
+    el.className = 'sig-phase';
+    if(i < STATE.phaseIdx) el.classList.add('done');
+    else if(i === STATE.phaseIdx && STATE.running) el.classList.add('active');
+  });
+
+  var a = ALGOS[STATE.algo];
+
+  switch(phase){
+    case 'HASH':
+      var hashLen = STATE.hash === 'SHA-1' ? 20 : STATE.hash === 'SHA-256' ? 32 : STATE.hash === 'SHA-384' ? 48 : 64;
+      addFeed('HASH', 'Hashing message with ' + STATE.hash + '. Output: ' + (hashLen*8) + ' bits. Hash provides fixed-size input to the signing algorithm and collapses any length message into a single digest. ' + (STATE.hash === 'SHA-1' ? 'WARNING: SHA-1 is BROKEN (SHAttered collision 2017). Never use for signatures.' : 'SHA-2 family: secure, widely deployed.'), STATE.hash === 'SHA-1' ? 'error' : 'info');
+      addCommandFeed('openssl dgst -' + STATE.hash.toLowerCase().replace('-','') + ' message.txt',
+        STATE.hash + '(message.txt)= ' + Math.random().toString(16).substring(2, 2+hashLen*2));
+      break;
+
+    case 'PAD':
+      addFeed('PAD', 'Padding: ' + a.pad + '. ' + (STATE.algo === 'rsa-pss' ? 'PSS (Probabilistic Signature Scheme): random salt added per signature. Two signatures of the same message with the same key produce DIFFERENT outputs (probabilistic). Resistant to certain padding oracle and Bleichenbacher attacks.' : STATE.algo === 'rsa-pkcs' ? 'PKCS#1 v1.5: deterministic padding. Same message → same signature. Vulnerable to Bleichenbacher padding oracle in some contexts. Prefer PSS for new systems.' : STATE.algo === 'ed25519' || STATE.algo === 'ed448' ? 'EdDSA: no separate padding step — deterministic nonce derived from private key + message hash. No RNG needed at signing time (defends against nonce reuse).' : 'ECDSA: no padding but a random nonce k is generated. Nonce reuse or bias → private key recovery (Sony PS3 hack, 2010).'), 'concept');
+      break;
+
+    case 'SIGN':
+      STATE.signTime = Math.floor(Math.random() * 5) + 1;
+      STATE.sigSize = a.sigSize;
+      STATE.security = a.security;
+      spawnPacket('signer','sk','#a855f7','SIGN',0.02);
+      spawnPacket('sk','sig','#a855f7','σ',0.02);
+      addFeed('SIGN', 'Signature computed: σ = Sign(sk, H(m)). Algorithm: ' + a.name + '. Time: ' + STATE.signTime + 'ms. Size: ' + STATE.sigSize + ' bytes. ' + (STATE.algo === 'rsa-pss' ? 'Salt: 32 random bytes.' : STATE.algo === 'ed25519' ? 'Deterministic nonce derived from H(sk || m).' : ''), 'ok');
+      addCommandFeed('openssl dgst -' + STATE.hash.toLowerCase().replace('-','') + ' -sign alice.key -out message.sig message.txt',
+        '[+] Signed\n[+] Signature size: ' + STATE.sigSize + ' bytes\n[+] Base64: ' + Math.random().toString(36).substring(2, 34) + '...');
+      break;
+
+    case 'EMIT':
+      spawnPacket('sig','verifier','#a855f7','SIG+M',0.02);
+      addFeed('EMIT', 'Signed message emitted. Recipients receive (message, signature) tuple. They do NOT need the private key — only the public key (from certificate, DNS, or direct exchange). Public key can be safely distributed; signature cannot be forged without the private key.', 'info');
+      break;
+
+    case 'VERIFY':
+      STATE.verifyTime = Math.floor(Math.random() * 3) + 1;
+      if(STATE.tampered){
+        STATE.valid = 'INVALID';
+        STATE.nonRepud = 'BROKEN';
+        addFeed('VERIFY', 'VERIFICATION FAILED! Message has been tampered with. Recomputing H(m\') ≠ H(m) → signature does not match. This is exactly what digital signatures are designed to catch.', 'error');
+        addCommandFeed('openssl dgst -' + STATE.hash.toLowerCase().replace('-','') + ' -verify alice.pub -signature message.sig message.txt',
+          'Verification failure');
+      } else if(STATE.hash === 'SHA-1'){
+        STATE.valid = 'WEAK';
+        STATE.nonRepud = 'QUESTIONABLE';
+        addFeed('VERIFY', 'Signature technically valid, but SHA-1 is BROKEN. Adversary could theoretically create a different message with the same hash (chosen-prefix collision). Not legally reliable for non-repudiation.', 'warn');
+      } else if(STATE.algo === 'dsa'){
+        STATE.valid = 'VALID';
+        STATE.nonRepud = 'DEPRECATED';
+        addFeed('VERIFY', 'Signature valid but DSA is DEPRECATED (FIPS 186-5). Use RSA-PSS, ECDSA, or EdDSA.', 'warn');
+      } else {
+        STATE.valid = 'VALID';
+        STATE.nonRepud = 'STRONG';
+        addFeed('VERIFY', 'VERIFICATION SUCCESSFUL. σ matches (m, pk). Message is authentic and unmodified. Non-repudiation: signer ' + STATE.signer + ' cannot deny signing (private key held only by them, assuming no compromise). Verify time: ' + STATE.verifyTime + 'ms.', 'ok');
+        addCommandFeed('openssl dgst -' + STATE.hash.toLowerCase().replace('-','') + ' -verify alice.pub -signature message.sig message.txt',
+          'Verified OK');
+      }
+      if(STATE.pqc){
+        addFeed('PQC', 'Post-quantum hybrid: signature also produced with CRYSTALS-Dilithium3 (FIPS 204). Both Ed25519 AND Dilithium3 must verify for acceptance. Migration path for quantum threat.', 'ok');
+      }
+      addFeed('DEFENSE', 'Digital signature best practices: (1) Use modern algorithms (RSA-PSS ≥3072, ECDSA P-256+, Ed25519). (2) Never use SHA-1 or MD5. (3) Keep private keys in HSM/TPM. (4) Rotate keys periodically. (5) Publish public keys via certs (X.509) with a chain to a trusted CA. (6) For long-term signatures, use timestamping (RFC 3161) — proves signature existed at a time, protects against key revocation. (7) Plan PQC migration (Dilithium3, SPHINCS+) for legal/long-term signatures.', 'ok');
+      break;
+  }
+  STATE.phaseIdx++;
+}
+
+function resetAll(){
+  STATE.running = false;
+  STATE.phaseIdx = 0;
+  STATE.sigSize = 0;
+  STATE.signTime = 0;
+  STATE.verifyTime = 0;
+  STATE.valid = '—';
+  STATE.tampered = false;
+  STATE.nonRepud = '—';
+  STATE.events = [];
+  PHASES.forEach(function(p){ var el = document.getElementById('sgp-' + p); if(el) el.className = 'sig-phase'; });
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('RESET', 'Signature state cleared.', 'info');
+  termWrite('reset --all\n[+] Message + signature cleared');
+}
+
+document.getElementById('algoSelect').addEventListener('change', function(e){
+  STATE.algo = e.target.value;
+  var a = ALGOS[STATE.algo];
+  addFeed('ALGO', 'Algorithm: ' + a.name + '. Security: ' + a.security + ' bits. Signature size: ' + a.sigSize + ' bytes.', STATE.algo === 'dsa' || STATE.algo === 'rsa-pkcs' ? 'warn' : 'info');
+  STATE.security = a.security;
+  STATE.keySize = a.keySize;
+});
+
+document.getElementById('useSelect').addEventListener('change', function(e){
+  STATE.use = e.target.value;
+  addFeed('USE', 'Use case: ' + STATE.use.toUpperCase() + '.', 'info');
+});
+
+document.getElementById('msgInput').addEventListener('input', function(e){ STATE.msg = e.target.value; });
+document.getElementById('signerInput').addEventListener('input', function(e){ STATE.signer = e.target.value; });
+
+document.getElementById('hashSlider').addEventListener('input', function(e){
+  var idx = parseInt(e.target.value);
+  STATE.hash = HASHES[idx];
+  document.getElementById('hashVal').textContent = STATE.hash;
+  if(STATE.hash === 'SHA-1') addFeed('HASH', 'WARNING: SHA-1 is BROKEN (SHAttered, 2017). Collisions are practical. Do not use for new signatures. FIPS 186-5 prohibits SHA-1 for digital signatures.', 'error');
+});
+
+document.getElementById('keySlider').addEventListener('input', function(e){
+  STATE.keySize = parseInt(e.target.value);
+  document.getElementById('keyVal').textContent = e.target.value;
+});
+
+document.getElementById('signBtn').addEventListener('click', function(){
+  if(STATE.running) return;
+  STATE.running = true;
+  STATE.phaseIdx = 0;
+  STATE.valid = '—';
+  STATE.tampered = false;
+  STATE.nonRepud = '—';
+  STATE.nodes.forEach(function(n){ n.glow = 0; });
+  addFeed('SIGN', 'Starting signing process: ' + ALGOS[STATE.algo].name + ' with ' + STATE.hash + ' for ' + STATE.use.toUpperCase(), 'info');
+  var interval = setInterval(function(){
+    if(!STATE.running){ clearInterval(interval); return; }
+    advancePhase();
+  }, 1400);
+});
+
+document.getElementById('verifyBtn').addEventListener('click', function(){
+  if(STATE.phaseIdx < 4){
+    addFeed('VERIFY', 'Sign first before verifying.', 'warn');
+    return;
+  }
+  STATE.verifyTime = Math.floor(Math.random() * 3) + 1;
+  if(STATE.tampered){
+    STATE.valid = 'INVALID';
+    addFeed('VERIFY', 'Re-verification: INVALID — message was tampered.', 'error');
+  } else {
+    STATE.valid = 'VALID';
+    addFeed('VERIFY', 'Re-verification: VALID. Signature confirms authenticity and integrity. Verify time: ' + STATE.verifyTime + 'ms.', 'ok');
+  }
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+document.getElementById('tamperBtn').addEventListener('click', function(){
+  STATE.tampered = !STATE.tampered;
+  this.classList.toggle('active', STATE.tampered);
+  if(STATE.tampered){
+    addFeed('TAMPER', 'Message modified AFTER signing. This simulates an attacker changing the content in transit. Even a 1-bit change causes hash mismatch → verification fails.', 'error');
+    STATE.nodes.find(function(n){return n.id==='verifier';}).glow = 1;
+  } else {
+    addFeed('TAMPER', 'Message restored to original.', 'info');
+  }
+});
+
+document.getElementById('pqcBtn').addEventListener('click', function(){
+  STATE.pqc = !STATE.pqc;
+  this.classList.toggle('active', STATE.pqc);
+  if(STATE.pqc){
+    addFeed('DEFENSE', 'Post-quantum signature enabled: CRYSTALS-Dilithium3 (FIPS 204). Hybrid mode: Ed25519 + Dilithium3 both required. Protects against Shor (quantum computers break RSA/ECDSA). Signature size increases from 64 bytes to ~3.3KB — plan storage/bandwidth accordingly.', 'ok');
+  } else {
+    addFeed('DEFENSE', 'Post-quantum signature disabled — vulnerable to quantum attack.', 'warn');
+  }
+});
+
+document.getElementById('teachingToggle').addEventListener('click', function(){
+  var on = this.classList.toggle('active');
+  this.textContent = on ? '\uD83D\uDCD6 TEACHING: ON' : '\uD83D\uDCD6 TEACHING: OFF';
+});
+document.getElementById('voiceToggle').addEventListener('click', function(){
+  VOICE.enabled = !VOICE.enabled;
+  this.classList.toggle('active', VOICE.enabled);
+  this.textContent = VOICE.enabled ? '\uD83D\uDD0A VOICE: ON' : 'VOICE: OFF';
+});
+
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

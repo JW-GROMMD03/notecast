@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Additive Manufacturing (3D Printing) — Interactive Teaching Simulator</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:linear-gradient(135deg,#0a0e1a 0%,#05070d 100%);
+    color:#cbd5e1; overflow:hidden;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 20px; background:#070a14; border-bottom:1px solid #1e293b;
+  }
+  header h1 { font-size:16px; color:#22d3ee; letter-spacing:1.5px; font-weight:600; }
+  header .sub { font-size:10px; color:#64748b; letter-spacing:1px; font-family:'Consolas',monospace; margin-left:12px; }
+  .header-actions { display:flex; gap:8px; }
+  .header-actions button {
+    background:#0f172a; border:1px solid #1e293b; color:#94a3b8;
+    padding:6px 12px; border-radius:4px; cursor:pointer;
+    font-family:'Consolas',monospace; font-size:11px; transition:all 0.2s;
+  }
+  .header-actions button:hover { border-color:#22d3ee; color:#22d3ee; }
+  .header-actions button.active { background:#082f49; border-color:#22d3ee; color:#22d3ee; }
+  .layout { display:flex; height:calc(100vh - 53px); }
+  .controls-pane {
+    width:310px; background:#070a14; border-right:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+  }
+  .canvas-pane { flex:1; position:relative; background:#05070d; }
+  canvas { display:block; width:100%; height:100%; }
+  .teaching-pane {
+    width:360px; background:#070a14; border-left:1px solid #1e293b;
+    padding:14px; overflow-y:auto; flex-shrink:0;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .section-title {
+    font-size:10px; color:#64748b; letter-spacing:1.5px;
+    text-transform:uppercase; font-family:'Consolas',monospace;
+    margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #1e293b;
+  }
+  .control-group { margin-bottom:16px; }
+  .control-group label {
+    display:block; font-size:11px; color:#94a3b8;
+    margin-bottom:6px; font-family:'Consolas',monospace;
+  }
+  .control-group .val {
+    float:right; color:#22d3ee; font-family:'Consolas',monospace; font-size:11px;
+  }
+  input[type=range] {
+    width:100%; height:4px; -webkit-appearance:none;
+    background:#1e293b; border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    background:#22d3ee; border-radius:50%; cursor:pointer; box-shadow:0 0 8px #22d3ee88;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; background:#22d3ee;
+    border-radius:50%; cursor:pointer; border:none;
+  }
+  .btn {
+    width:100%; padding:9px; margin-bottom:6px;
+    background:#0f172a; border:1px solid #1e293b; color:#cbd5e1;
+    border-radius:4px; cursor:pointer; font-size:11px;
+    font-family:'Consolas',monospace; letter-spacing:0.5px; transition:all 0.15s;
+  }
+  .btn:hover { border-color:#22d3ee; color:#22d3ee; background:#0b1220; }
+  .btn.primary { background:#082f49; border-color:#0891b2; color:#67e8f9; }
+  .btn.primary:hover { background:#0e4a6e; }
+  .btn.danger { border-color:#7f1d1d; color:#fca5a5; }
+  .btn.danger:hover { background:#450a0a; border-color:#ef4444; color:#fecaca; }
+  .btn.warn { border-color:#78350f; color:#fcd34d; }
+  .btn.warn:hover { background:#451a03; border-color:#f59e0b; }
+  .btn-row { display:flex; gap:6px; }
+  .btn-row .btn { margin-bottom:6px; }
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric {
+    background:#0b1220; border:1px solid #1e293b;
+    border-radius:4px; padding:8px 10px; font-family:'Consolas',monospace;
+  }
+  .metric .mlabel { font-size:9px; color:#64748b; letter-spacing:0.5px; }
+  .metric .mvalue {
+    font-size:13px; color:#22d3ee; font-weight:600;
+    font-variant-numeric:tabular-nums; margin-top:2px;
+  }
+  .metric .munit { font-size:9px; color:#475569; margin-left:2px; }
+  .metric.ok .mvalue { color:#4ade80; }
+  .metric.warn .mvalue { color:#fbbf24; }
+  .metric.bad .mvalue { color:#f87171; }
+  .info-card {
+    background:#0b1220; border:1px solid #1e293b; border-left:2px solid #7c3aed;
+    border-radius:4px; padding:10px; font-size:11px;
+    font-family:'Consolas',monospace; line-height:1.6; color:#94a3b8;
+  }
+  .info-card .eq { color:#c4b5fd; font-size:12px; }
+  .info-card .def { color:#64748b; font-size:10px; margin-top:6px; }
+  .feed {
+    flex:1; min-height:200px; overflow-y:auto;
+    background:#0b1220; border:1px solid #1e293b; border-radius:4px;
+    padding:8px; font-size:11px; font-family:'Consolas',monospace;
+  }
+  .feed-entry {
+    padding:7px 9px; margin-bottom:6px;
+    background:#070a14; border-left:3px solid #3b82f6;
+    border-radius:3px; line-height:1.5; color:#94a3b8;
+    animation:slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+  .feed-entry .tag {
+    font-weight:700; font-size:9px; letter-spacing:1px;
+    display:inline-block; margin-right:6px; padding:1px 5px; border-radius:2px;
+  }
+  .feed-entry.info { border-left-color:#3b82f6; }
+  .feed-entry.info .tag { background:#1e3a8a; color:#93c5fd; }
+  .feed-entry.ok { border-left-color:#4ade80; }
+  .feed-entry.ok .tag { background:#14532d; color:#86efac; }
+  .feed-entry.warn { border-left-color:#fbbf24; }
+  .feed-entry.warn .tag { background:#78350f; color:#fcd34d; }
+  .feed-entry.error { border-left-color:#f87171; }
+  .feed-entry.error .tag { background:#7f1d1d; color:#fca5a5; }
+  .feed-entry.concept { border-left-color:#a78bfa; }
+  .feed-entry.concept .tag { background:#4c1d95; color:#c4b5fd; }
+  .overlay-eq {
+    position:absolute; bottom:12px; left:14px;
+    font-family:'Consolas',monospace; font-size:11px;
+    color:#475569; pointer-events:none;
+  }
+  .overlay-eq .hl { color:#22d3ee; }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#0f172a; border:1px solid #22d3ee; color:#67e8f9;
+    padding:10px 20px; border-radius:6px; font-family:'Consolas',monospace;
+    font-size:12px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:100;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>ADDITIVE MANUFACTURING</h1>
+    <span class="sub">FDM · SLA · SLS · LAYER · SUPPORT · ANISOTROPY</span>
+  </div>
+  <div class="header-actions">
+    <button class="teaching-toggle active">📖 TEACHING: ON</button>
+    <button class="voice-toggle">🔊 VOICE: OFF</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="controls-pane">
+    <div class="section-title">Process</div>
+    <div class="control-group">
+      <label>Technology</label>
+      <select id="techSelect" style="width:100%;padding:6px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;border-radius:4px;font-family:Consolas,monospace;font-size:11px;">
+        <option value="fdm">FDM (Fused Deposition)</option>
+        <option value="sla">SLA (Stereolithography)</option>
+        <option value="sls">SLS (Selective Laser Sintering)</option>
+        <option value="slm">SLM (Metal Laser Melting)</option>
+      </select>
+    </div>
+
+    <div class="section-title">Part Geometry</div>
+    <div class="control-group">
+      <label>Part Height <span class="val" id="hVal">40 mm</span></label>
+      <input type="range" id="hSlider" min="5" max="200" value="40" step="1">
+    </div>
+    <div class="control-group">
+      <label>Overhang Angle <span class="val" id="oaVal">30°</span></label>
+      <input type="range" id="oaSlider" min="0" max="80" value="30" step="1">
+    </div>
+    <div class="control-group">
+      <label>Wall Thickness <span class="val" id="wallVal">1.2 mm</span></label>
+      <input type="range" id="wallSlider" min="0.4" max="5" value="1.2" step="0.1">
+    </div>
+
+    <div class="section-title">Print Parameters</div>
+    <div class="control-group">
+      <label>Layer Height <span class="val" id="lhVal">0.20 mm</span></label>
+      <input type="range" id="lhSlider" min="0.05" max="0.5" value="0.2" step="0.01">
+    </div>
+    <div class="control-group">
+      <label>Infill Density <span class="val" id="infVal">20%</span></label>
+      <input type="range" id="infSlider" min="5" max="100" value="20" step="5">
+    </div>
+    <div class="control-group">
+      <label>Print Speed <span class="val" id="spVal">60 mm/s</span></label>
+      <input type="range" id="spSlider" min="10" max="200" value="60" step="5">
+    </div>
+
+    <div class="section-title">Simulation</div>
+    <button class="btn primary" id="playBtn">▶ START PRINT</button>
+    <div class="btn-row">
+      <button class="btn" id="stepBtn">⏭ LAYER</button>
+      <button class="btn" id="resetBtn">↺ RESET</button>
+    </div>
+
+    <div class="section-title">Fault Injection</div>
+    <button class="btn danger" id="failBtn">⚠ PRINT FAILURE</button>
+    <button class="btn warn" id="warpBtn">⚠ WARPING</button>
+    <button class="btn warn" id="supportBtn">⚠ NO SUPPORT</button>
+
+    <div class="section-title">Presets</div>
+    <button class="btn" data-preset="prototype">Prototype (fast)</button>
+    <button class="btn" data-preset="functional">Functional Part</button>
+    <button class="btn" data-preset="fine">Fine Detail</button>
+    <button class="btn" data-preset="metal">Metal Aerospace Part</button>
+  </aside>
+
+  <main class="canvas-pane">
+    <canvas id="stage"></canvas>
+    <div class="overlay-eq">
+      Print time ∝ V/(v·t_layer·w_bead) &nbsp;|&nbsp; Supports needed if overhang &gt; 45° &nbsp;|&nbsp; <span class="hl">σ_z = 0.6·σ_xy (layer adhesion)</span>
+    </div>
+  </main>
+
+  <aside class="teaching-pane">
+    <div>
+      <div class="section-title">Live Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric" id="mLayers">
+          <div class="mlabel">TOTAL LAYERS</div>
+          <div class="mvalue">0</div>
+        </div>
+        <div class="metric" id="mTime">
+          <div class="mlabel">PRINT TIME</div>
+          <div class="mvalue">0<span class="munit">min</span></div>
+        </div>
+        <div class="metric" id="mMat">
+          <div class="mlabel">MATERIAL</div>
+          <div class="mvalue">0<span class="munit">g</span></div>
+        </div>
+        <div class="metric" id="mCost">
+          <div class="mlabel">COST</div>
+          <div class="mvalue">$0</div>
+        </div>
+        <div class="metric" id="mOver">
+          <div class="mlabel">OVERHANG</div>
+          <div class="mvalue">0<span class="munit">%</span></div>
+        </div>
+        <div class="metric" id="mSupport">
+          <div class="mlabel">SUPPORT</div>
+          <div class="mvalue" style="font-size:11px;">NONE</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="eq">Layer height ↓ → finer detail, more time</div>
+      <div class="eq">Overhang &gt; 45° → needs supports</div>
+      <div class="eq">FDM: anisotropic (weaker Z)</div>
+      <div class="def">
+        AM builds parts layer by layer from digital models. FDM extrudes 
+        thermoplastic filament. SLA cures liquid resin with UV laser. SLS/SLM 
+        fuse powder. Each has trade-offs in speed, resolution, material 
+        properties, and cost. Layer adhesion makes parts anisotropic — 
+        weaker perpendicular to layers.
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Teaching Feed</div>
+      <div class="feed" id="feed"></div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+const TECH = {
+  fdm: { name:'FDM',       layerH:0.2,  speed:60,  color:'#22d3ee', materialDensity:1.24, costPerG:0.05 },
+  sla: { name:'SLA',       layerH:0.05, speed:40,  color:'#a78bfa', materialDensity:1.15, costPerG:0.15 },
+  sls: { name:'SLS',       layerH:0.12, speed:80,  color:'#fbbf24', materialDensity:1.01, costPerG:0.20 },
+  slm: { name:'SLM',       layerH:0.05, speed:100, color:'#f87171', materialDensity:7.85, costPerG:1.50 }
+};
+
+const S = {
+  tech: 'fdm',
+  h: 40,
+  overhangAngle: 30,
+  wall: 1.2,
+  layerH: 0.2,
+  infill: 20,
+  speed: 60,
+  running: false,
+  currentLayer: 0,
+  time: 0,
+  printFail: false,
+  warping: false,
+  noSupport: false,
+  pathLines: []
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const feedEl = document.getElementById('feed');
+const toastEl = document.getElementById('toast');
+const techSel = document.getElementById('techSelect');
+const hSlider = document.getElementById('hSlider');
+const oaSlider = document.getElementById('oaSlider');
+const wallSlider = document.getElementById('wallSlider');
+const lhSlider = document.getElementById('lhSlider');
+const infSlider = document.getElementById('infSlider');
+const spSlider = document.getElementById('spSlider');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function resize(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resize);
+
+const Voice = {
+  enabled:false, queue:[], speaking:false, lastText:'', lastTime:0,
+  synth: window.speechSynthesis, voices:[],
+  init(){ if(this.synth){ this.voices=this.synth.getVoices();
+    this.synth.onvoiceschanged=()=>{this.voices=this.synth.getVoices();}; } },
+  toggle(){
+    this.enabled = !this.enabled;
+    const btn = document.querySelector('.voice-toggle');
+    btn.textContent = this.enabled ? '🔊 VOICE: ON' : '🔇 VOICE: OFF';
+    btn.classList.toggle('active', this.enabled);
+    if(!this.enabled && this.synth) this.synth.cancel();
+    if(this.enabled) this.speak('Voice narration enabled.');
+  },
+  speak(text){
+    if(!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if(text === this.lastText && now - this.lastTime < 4000) return;
+    if(this.queue.length >= 4) this.queue.shift();
+    this.queue.push(text);
+    this.lastText = text; this.lastTime = now;
+    this.drain();
+  },
+  drain(){
+    if(this.speaking || this.queue.length === 0 || !this.synth) return;
+    const text = this.queue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05; u.pitch = 1.0;
+    const en = this.voices.find(v => v.lang.startsWith('en-US')) ||
+               this.voices.find(v => v.lang.startsWith('en'));
+    if(en) u.voice = en;
+    u.onend = () => { this.speaking = false; this.drain(); };
+    u.onerror = () => { this.speaking = false; this.drain(); };
+    this.speaking = true;
+    this.synth.speak(u);
+  }
+};
+Voice.init();
+
+function teach(tag, text, level){
+  level = level || 'info';
+  const entry = document.createElement('div');
+  entry.className = 'feed-entry ' + level;
+  entry.innerHTML = '<span class="tag">' + tag + '</span>' + text;
+  feedEl.insertBefore(entry, feedEl.firstChild);
+  while(feedEl.children.length > 60) feedEl.removeChild(feedEl.lastChild);
+  Voice.speak(text);
+}
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+// ─── AM CALCULATIONS ───────────────────────────────────────
+function getTech(){ return TECH[S.tech]; }
+
+function computePrint(){
+  const tech = getTech();
+
+  // Total layers
+  const layers = Math.ceil(S.h / S.layerH);
+
+  // Part volume: assume a cylinder with wall thickness
+  const radius = 15; // mm
+  const wallVol = Math.PI * (Math.pow(radius, 2) - Math.pow(radius - S.wall, 2)) * S.h;
+  const infillVol = Math.PI * Math.pow(radius - S.wall, 2) * S.h * (S.infill / 100);
+  const totalVol = wallVol + infillVol;
+
+  // Material mass
+  const mass = totalVol / 1000 * tech.materialDensity; // g
+
+  // Print time: volume / (bead area × speed)
+  const beadArea = S.layerH * 0.4; // approximate mm²
+  const flowRate = beadArea * S.speed; // mm³/s
+  const timeSec = totalVol / flowRate;
+  const timeMin = timeSec / 60;
+
+  // Cost
+  const cost = mass * tech.costPerG;
+
+  // Overhang percentage
+  const overhangPct = S.overhangAngle;
+
+  // Support needed?
+  const supportNeeded = S.overhangAngle > 45;
+  const supportType = supportNeeded ? (S.noSupport ? 'NEEDED (missing!)' : 'REQUIRED') : 'NONE';
+
+  // Layer resolution quality
+  const quality = S.layerH < 0.1 ? 'HIGH' : S.layerH < 0.2 ? 'MEDIUM' : 'LOW';
+
+  return {
+    layers, mass, timeMin, cost, overhangPct, supportNeeded, supportType,
+    totalVol, quality, tech, beadArea, flowRate
+  };
+}
+
+// ─── RENDER ────────────────────────────────────────────────
+function render(){
+  const W = canvas.width / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  drawPrinter(W, H);
+  drawLayerChart(W, H);
+  drawMaterialChart(W, H);
+}
+
+function drawPrinter(W, H){
+  const cx = W * 0.35;
+  const cy = H * 0.5;
+
+  const info = computePrint();
+  const tech = info.tech;
+  const scale = 3;
+
+  const partH = Math.min(180, S.h * scale);
+  const partW = 90;
+  const partX = cx - partW/2;
+  const partY = cy - partH/2;
+
+  // Print bed
+  const bedW = 200;
+  const bedY = partY + partH;
+  ctx.fillStyle = '#334155';
+  ctx.fillRect(cx - bedW/2, bedY, bedW, 15);
+  ctx.strokeStyle = '#64748b';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(cx - bedW/2, bedY, bedW, 15);
+
+  // Part outline (ghost)
+  ctx.strokeStyle = tech.color + '44';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3,3]);
+  ctx.strokeRect(partX, partY, partW, partH);
+  ctx.setLineDash([]);
+
+  // Printed layers
+  const layerH_px = S.layerH * scale;
+  const layersToShow = Math.floor(S.currentLayer);
+  for(let i=0;i<layersToShow;i++){
+    const layerY = bedY - (i + 1) * layerH_px;
+    // Check for overhang fault (gap)
+    const overhangFault = S.overhangAngle > 45 && S.noSupport;
+    const layerWidth = partW;
+    const layerX = partX;
+
+    ctx.fillStyle = tech.color;
+    if(i === 0 || (i < layersToShow - 1)){
+      // Solid bottom layers
+      ctx.globalAlpha = 0.85;
+    } else {
+      // Infill pattern for upper layers
+      ctx.globalAlpha = 0.7;
+    }
+
+    if(overhangFault && i > layersToShow * 0.7){
+      // Show failed overhang
+      ctx.fillStyle = '#f87171';
+      ctx.globalAlpha = 0.4;
+    }
+
+    ctx.fillRect(layerX, layerY, layerWidth, layerH_px);
+    ctx.globalAlpha = 1;
+  }
+
+  // Current layer indicator (nozzle)
+  if(S.running && S.currentLayer < info.layers){
+    const nozzleY = bedY - (S.currentLayer + 1) * layerH_px;
+    const nozzleX = partX + partW/2 + Math.sin(S.time * 4) * partW * 0.35;
+
+    // Nozzle
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillRect(nozzleX - 4, nozzleY - 20, 8, 20);
+    // Extrusion
+    ctx.fillStyle = tech.color;
+    ctx.beginPath();
+    ctx.arc(nozzleX, nozzleY, 3, 0, Math.PI * 2);
+    ctx.fill();
+    // Glow for laser-based
+    if(S.tech === 'slm' || S.tech === 'sls' || S.tech === 'sla'){
+      ctx.beginPath();
+      ctx.arc(nozzleX, nozzleY, 6, 0, Math.PI * 2);
+      ctx.fillStyle = tech.color + '66';
+      ctx.fill();
+    }
+  }
+
+  // Support columns (if needed and enabled)
+  if(info.supportNeeded && !S.noSupport){
+    ctx.fillStyle = 'rgba(251,191,36,0.4)';
+    const supportLeft = partX - 15;
+    const supportRight = partX + partW + 5;
+    ctx.fillRect(supportLeft, bedY - layersToShow * layerH_px, 10, layersToShow * layerH_px);
+    ctx.fillRect(supportRight, bedY - layersToShow * layerH_px, 10, layersToShow * layerH_px);
+  }
+
+  // Warping visualization
+  if(S.warping && S.currentLayer > 5){
+    ctx.strokeStyle = '#f87171';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(partX - 10, bedY + 5);
+    ctx.quadraticCurveTo(partX - 20, bedY + 10, partX - 25, bedY + 15);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(partX + partW + 10, bedY + 5);
+    ctx.quadraticCurveTo(partX + partW + 20, bedY + 10, partX + partW + 25, bedY + 15);
+    ctx.stroke();
+  }
+
+  // Print progress
+  const progress = info.layers > 0 ? S.currentLayer / info.layers : 0;
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('Layer ' + Math.floor(S.currentLayer) + ' / ' + info.layers, 20, 30);
+
+  // Progress bar
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(20, 42, 200, 12);
+  ctx.fillStyle = tech.color;
+  ctx.fillRect(20, 42, 200 * progress, 12);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(20, 42, 200, 12);
+
+  ctx.fillStyle = tech.color;
+  ctx.font = 'bold 12px Consolas, monospace';
+  ctx.fillText(tech.name + ' — ' + info.quality + ' QUALITY', 20, 75);
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px Consolas, monospace';
+  ctx.fillText('Layer height: ' + S.layerH.toFixed(2) + ' mm', 20, 95);
+  ctx.fillText('Infill: ' + S.infill + '%', 20, 113);
+
+  // Faults
+  if(S.printFail){
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'bold 16px Consolas, monospace';
+    ctx.fillText('⚠ PRINT FAILED', cx - 60, partY - 30);
+  }
+  if(S.noSupport && info.supportNeeded){
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 12px Consolas, monospace';
+    ctx.fillText('⚠ MISSING SUPPORTS', cx - 55, bedY + 40);
+  }
+}
+
+function drawLayerChart(W, H){
+  const ox = W - 280;
+  const oy = 60;
+  const w = 260;
+  const h = 180;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('LAYER HEIGHT TRADE-OFF', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const info = computePrint();
+  const pad = { l:40, r:15, t:20, b:30 };
+  const gw = w - pad.l - pad.r;
+  const gh = h - pad.t - pad.b;
+
+  // X-axis: layer height
+  const lhMin = 0.05, lhMax = 0.5;
+  const xOf = lh => ox + pad.l + (lh - lhMin) / (lhMax - lhMin) * gw;
+
+  // Curve 1: Print time (rises with thinner layers)
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#22d3ee';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  for(let i=0;i<=50;i++){
+    const lh = lhMin + (i / 50) * (lhMax - lhMin);
+    const timeRatio = 0.2 / lh;
+    const y = oy + h - pad.b - Math.min(1, timeRatio / 4) * gh;
+    const x = xOf(lh);
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Curve 2: Quality (falls with thicker layers)
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let i=0;i<=50;i++){
+    const lh = lhMin + (i / 50) * (lhMax - lhMin);
+    const quality = 1 - (lh - lhMin) / (lhMax - lhMin) * 0.9;
+    const y = oy + h - pad.b - quality * gh;
+    const x = xOf(lh);
+    if(i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Current point
+  const px = xOf(S.layerH);
+  const py1 = oy + h - pad.b - Math.min(1, (0.2/S.layerH) / 4) * gh;
+  ctx.beginPath();
+  ctx.arc(px, py1, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#22d3ee';
+  ctx.fill();
+
+  // Labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Layer height (mm)', ox + w/2, oy + h - 6);
+  ctx.textAlign = 'left';
+
+  // Legend
+  ctx.fillStyle = '#22d3ee';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('— Print time', ox + 8, oy + 16);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('— Quality', ox + 8, oy + 30);
+}
+
+function drawMaterialChart(W, H){
+  const ox = W - 280;
+  const oy = H - 200;
+  const w = 260;
+  const h = 180;
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px Consolas, monospace';
+  ctx.fillText('TECHNOLOGY COMPARISON', ox, oy - 6);
+
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(ox, oy, w, h);
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(ox, oy, w, h);
+
+  const techs = ['fdm', 'sla', 'sls', 'slm'];
+  const labels = ['FDM', 'SLA', 'SLS', 'SLM'];
+  const barW = (w - 40) / techs.length;
+
+  // Compare max part size / resolution / cost
+  const maxVal = 4;
+  const values = {
+    fdm: [3, 2, 1, 3], // speed, quality, cost, strength
+    sla: [2, 4, 3, 2],
+    sls: [3, 2, 4, 3],
+    slm: [2, 3, 4, 4]
+  };
+
+  for(let i=0;i<techs.length;i++){
+    const x = ox + 20 + i * barW;
+    const isCurrent = techs[i] === S.tech;
+    const bars = values[techs[i]];
+
+    for(let j=0;j<bars.length;j++){
+      const bh = (bars[j] / maxVal) * (h - 60) / bars.length;
+      const y = oy + h - 30 - (j + 1) * (h - 60) / bars.length + 2;
+      ctx.fillStyle = isCurrent ? TECH[techs[i]].color : '#475569';
+      ctx.fillRect(x + 2, y, barW - 4, bh - 2);
+    }
+
+    ctx.fillStyle = isCurrent ? '#22d3ee' : '#94a3b8';
+    ctx.font = isCurrent ? 'bold 10px Consolas, monospace' : '9px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(labels[i], x + barW/2, oy + h - 8);
+    ctx.textAlign = 'left';
+  }
+
+  // Legend at top
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText('Speed  Quality  Cost  Strength', ox + 20, oy + h - 110);
+
+  // Info
+  const info = computePrint();
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = 'bold 11px Consolas, monospace';
+  ctx.fillText(info.tech.name + ': ' + info.layers + ' layers', ox + 8, oy + 16);
+}
+
+// ─── METRICS ───────────────────────────────────────────────
+function updateMetrics(){
+  const info = computePrint();
+  document.querySelector('#mLayers .mvalue').textContent = info.layers;
+  document.querySelector('#mTime .mvalue').innerHTML = info.timeMin.toFixed(1) + '<span class="munit">min</span>';
+  document.querySelector('#mMat .mvalue').innerHTML = info.mass.toFixed(1) + '<span class="munit">g</span>';
+  document.querySelector('#mCost .mvalue').textContent = '$' + info.cost.toFixed(2);
+  document.querySelector('#mOver .mvalue').innerHTML = info.overhangPct + '<span class="munit">%</span>';
+  document.querySelector('#mSupport .mvalue').textContent = info.supportType;
+
+  document.getElementById('mTime').className = 'metric' + (info.timeMin > 120 ? ' warn' : ' ok');
+  document.getElementById('mOver').className = 'metric' + (S.overhangAngle > 60 ? ' warn' : ' ok');
+  document.getElementById('mSupport').className = 'metric' + (info.supportNeeded && S.noSupport ? ' bad' : info.supportNeeded ? ' warn' : ' ok');
+}
+
+// ─── LOOP ──────────────────────────────────────────────────
+let lastMetrics = 0;
+let lastLayerTaught = 0;
+function loop(ts){
+  if(S.running && S.currentLayer < computePrint().layers){
+    S.time += 1/60;
+    S.currentLayer += 0.5;
+
+    // Layer-based teaching every ~20%
+    const info = computePrint();
+    const progress = S.currentLayer / info.layers;
+    if(Math.floor(progress * 5) > lastLayerTaught){
+      lastLayerTaught = Math.floor(progress * 5);
+      const pct = Math.floor(progress * 100);
+      if(pct > 0 && pct % 20 < 5){
+        teach('PROGRESS', pct + '% complete. Layer ' + Math.floor(S.currentLayer) + ' of ' + info.layers + '.', 'info');
+      }
+    }
+
+    // Print failure detection
+    if(S.overhangAngle > 45 && S.noSupport && progress > 0.5 && !S.printFail){
+      S.printFail = true;
+      S.running = false;
+      playBtn.textContent = '▶ START PRINT';
+      teach('FAILURE', 'Print failed at layer ' + Math.floor(S.currentLayer) + '. Unsupported overhang (angle ' + S.overhangAngle + '°) collapsed. This is the most common FDM failure mode.', 'error');
+      toast('⚠ Print failed');
+    }
+
+    if(S.currentLayer >= info.layers){
+      S.currentLayer = info.layers;
+      S.running = false;
+      playBtn.textContent = '▶ START PRINT';
+      if(!S.printFail){
+        teach('COMPLETE', 'Print finished! ' + info.layers + ' layers, ' + info.mass.toFixed(1) + ' g of material, ' + info.timeMin.toFixed(1) + ' minutes.', 'ok');
+        toast('✓ Print complete');
+      }
+    }
+  }
+  render();
+  if(ts - lastMetrics > 100){
+    updateMetrics();
+    lastMetrics = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────
+techSel.addEventListener('change', e => {
+  S.tech = e.target.value;
+  const tech = getTech();
+  S.layerH = tech.layerH;
+  S.speed = tech.speed;
+  lhSlider.value = S.layerH;
+  spSlider.value = S.speed;
+  document.getElementById('lhVal').textContent = S.layerH.toFixed(2) + ' mm';
+  document.getElementById('spVal').textContent = S.speed + ' mm/s';
+  resetState();
+  teach('TECHNOLOGY', tech.name + ': layer ' + tech.layerH + ' mm, speed ' + tech.speed + ' mm/s. ' + 
+    (S.tech === 'fdm' ? 'FDM — hobbyist-friendly, cheap, but rough surface.' :
+     S.tech === 'sla' ? 'SLA — high resolution, smooth surface, brittle parts.' :
+     S.tech === 'sls' ? 'SLS — strong nylon parts, no supports needed, more expensive.' :
+     'SLM — metal parts, aerospace-grade, expensive and slow.'), 'concept');
+});
+
+hSlider.addEventListener('input', e => {
+  S.h = parseFloat(e.target.value);
+  document.getElementById('hVal').textContent = S.h + ' mm';
+});
+
+oaSlider.addEventListener('input', e => {
+  S.overhangAngle = parseFloat(e.target.value);
+  document.getElementById('oaVal').textContent = S.overhangAngle + '°';
+  if(S.overhangAngle > 45 && !S.noSupport){
+    // Just an info hint
+  }
+});
+
+wallSlider.addEventListener('input', e => {
+  S.wall = parseFloat(e.target.value);
+  document.getElementById('wallVal').textContent = S.wall.toFixed(1) + ' mm';
+});
+
+lhSlider.addEventListener('input', e => {
+  S.layerH = parseFloat(e.target.value);
+  document.getElementById('lhVal').textContent = S.layerH.toFixed(2) + ' mm';
+});
+
+infSlider.addEventListener('input', e => {
+  S.infill = parseFloat(e.target.value);
+  document.getElementById('infVal').textContent = S.infill + '%';
+});
+
+spSlider.addEventListener('input', e => {
+  S.speed = parseFloat(e.target.value);
+  document.getElementById('spVal').textContent = S.speed + ' mm/s';
+});
+
+playBtn.addEventListener('click', () => {
+  if(S.currentLayer >= computePrint().layers || S.printFail){
+    resetState();
+  }
+  S.running = !S.running;
+  playBtn.textContent = S.running ? '⏸ PAUSE' : '▶ START PRINT';
+  if(S.running){
+    const info = computePrint();
+    teach('START', 'Printing started. ' + info.layers + ' layers, estimated ' + info.timeMin.toFixed(1) + ' min, ' + info.mass.toFixed(1) + ' g material.', 'info');
+  }
+});
+
+stepBtn.addEventListener('click', () => {
+  const info = computePrint();
+  S.currentLayer = Math.min(info.layers, S.currentLayer + 1);
+  const pct = (S.currentLayer / info.layers * 100).toFixed(0);
+  teach('STEP', 'Layer ' + Math.floor(S.currentLayer) + ' / ' + info.layers + ' (' + pct + '%).', 'info');
+});
+
+resetBtn.addEventListener('click', () => {
+  S.tech = 'fdm'; S.h = 40; S.overhangAngle = 30; S.wall = 1.2;
+  S.layerH = 0.2; S.infill = 20; S.speed = 60;
+  S.running = false; S.currentLayer = 0; S.time = 0;
+  S.printFail = false; S.warping = false; S.noSupport = false;
+  techSel.value = 'fdm'; hSlider.value = 40; oaSlider.value = 30; wallSlider.value = 1.2;
+  lhSlider.value = 0.2; infSlider.value = 20; spSlider.value = 60;
+  document.getElementById('hVal').textContent = '40 mm';
+  document.getElementById('oaVal').textContent = '30°';
+  document.getElementById('wallVal').textContent = '1.2 mm';
+  document.getElementById('lhVal').textContent = '0.20 mm';
+  document.getElementById('infVal').textContent = '20%';
+  document.getElementById('spVal').textContent = '60 mm/s';
+  playBtn.textContent = '▶ START PRINT';
+  teach('RESET', 'Print job reset to defaults.', 'info');
+  toast('↺ Reset');
+});
+
+document.getElementById('failBtn').addEventListener('click', () => {
+  S.printFail = !S.printFail;
+  if(S.printFail){
+    S.running = false;
+    playBtn.textContent = '▶ START PRINT';
+    teach('FAILURE', 'Print failure injected. Common causes: layer shift (loose belt), clogged nozzle, warping from thermal stress, or tangled filament. Monitor first layers carefully.', 'error');
+  } else {
+    teach('CLEAR', 'Failure cleared.', 'ok');
+  }
+});
+
+document.getElementById('warpBtn').addEventListener('click', () => {
+  S.warping = !S.warping;
+  if(S.warping){
+    teach('WARPING', 'Warping: the part lifts off the bed due to thermal contraction during cooling. Solution: heated bed (60°C for PLA, 100°C for ABS), brim or raft, and enclosure.', 'warn');
+  } else {
+    teach('CLEAR', 'Warping resolved.', 'ok');
+  }
+});
+
+document.getElementById('supportBtn').addEventListener('click', () => {
+  S.noSupport = !S.noSupport;
+  if(S.noSupport){
+    teach('SUPPORT', 'Supports disabled. Overhangs above 45° will sag or collapse. Slicers auto-generate supports but they leave surface marks and waste material.', 'warn');
+  } else {
+    teach('SUPPORT ON', 'Supports enabled. They will be automatically generated for overhangs above 45°.', 'ok');
+  }
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.preset;
+    if(p === 'prototype'){
+      S.tech = 'fdm'; S.layerH = 0.3; S.speed = 100; S.infill = 10; S.wall = 0.8; S.h = 40;
+      techSel.value = 'fdm';
+      lhSlider.value = 0.3; spSlider.value = 100; infSlider.value = 10; wallSlider.value = 0.8;
+      updateLabels(); resetState();
+      teach('PROTOTYPE', 'Prototype mode: 0.3 mm layers, 100 mm/s, 10% infill. Fast and cheap for fit-check models. Surface will be rough.', 'concept');
+    } else if(p === 'functional'){
+      S.tech = 'fdm'; S.layerH = 0.2; S.speed = 50; S.infill = 40; S.wall = 2.0; S.h = 60;
+      techSel.value = 'fdm';
+      lhSlider.value = 0.2; spSlider.value = 50; infSlider.value = 40; wallSlider.value = 2.0;
+      hSlider.value = 60;
+      updateLabels(); resetState();
+      teach('FUNCTIONAL', 'Functional part: 0.2 mm layers, 40% infill, thicker walls. Balances strength and print time. Used for brackets, enclosures, and jigs.', 'concept');
+    } else if(p === 'fine'){
+      S.tech = 'sla'; S.layerH = 0.05; S.speed = 40; S.infill = 100; S.wall = 1.5; S.h = 40;
+      techSel.value = 'sla';
+      lhSlider.value = 0.05; spSlider.value = 40; infSlider.value = 100; wallSlider.value = 1.5;
+      updateLabels(); resetState();
+      teach('FINE', 'Fine detail: SLA resin, 0.05 mm layers, 100% infill. Jewelry-quality surface finish. Slow but beautiful.', 'concept');
+    } else {
+      S.tech = 'slm'; S.layerH = 0.05; S.speed = 100; S.infill = 100; S.wall = 3.0; S.h = 100;
+      techSel.value = 'slm';
+      lhSlider.value = 0.05; spSlider.value = 100; infSlider.value = 100; wallSlider.value = 3.0;
+      hSlider.value = 100;
+      updateLabels(); resetState();
+      teach('METAL', 'Metal AM (SLM): titanium or aluminum powder, laser melted. Used for aerospace brackets, medical implants, and rocket engine parts. Very expensive ($1000+/part).', 'concept');
+    }
+  });
+});
+
+function updateLabels(){
+  document.getElementById('hVal').textContent = S.h + ' mm';
+  document.getElementById('lhVal').textContent = S.layerH.toFixed(2) + ' mm';
+  document.getElementById('infVal').textContent = S.infill + '%';
+  document.getElementById('spVal').textContent = S.speed + ' mm/s';
+  document.getElementById('wallVal').textContent = S.wall.toFixed(1) + ' mm';
+}
+
+function resetState(){
+  S.running = false; S.currentLayer = 0; S.time = 0;
+  S.printFail = false; S.warping = false; S.noSupport = false;
+  playBtn.textContent = '▶ START PRINT';
+  lastLayerTaught = 0;
+}
+
+document.querySelector('.voice-toggle').addEventListener('click', () => Voice.toggle());
+document.querySelector('.teaching-toggle').addEventListener('click', (e) => {
+  const btn = e.target;
+  const on = btn.classList.toggle('active');
+  btn.textContent = on ? '📖 TEACHING: ON' : '📖 TEACHING: OFF';
+});
+
+// ─── BOOT ──────────────────────────────────────────────────
+function boot(){
+  resize();
+  teach('WELCOME', 'Welcome to Additive Manufacturing. 3D printing builds parts layer by layer from digital models — no molds, no tooling, just digital design to physical object.', 'concept');
+  teach('TRADE-OFF', 'Layer height vs print time: halving layer height doubles the print time. Thinner layers give finer detail and smoother surfaces but slower production.', 'concept');
+  teach('HOWTO', 'Choose a technology and set layer height, infill, speed. Press START PRINT to watch the part build layer by layer. Try the fault buttons to see warping and failures.', 'info');
+  updateMetrics();
+  requestAnimationFrame(loop);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>
