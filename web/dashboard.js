@@ -20,14 +20,14 @@ function applyTheme(theme) {
   localStorage.setItem("theme", theme);
   
   if (theme === "light") {
-    themeIcon.textContent = "🌙";
-    themeText.textContent = "Dark Mode";
+    if(themeIcon) themeIcon.textContent = "🌙";
+    if(themeText) themeText.textContent = "Dark Mode";
   } else {
-    themeIcon.textContent = "☀️";
-    themeText.textContent = "Light Mode";
+    if(themeIcon) themeIcon.textContent = "☀️";
+    if(themeText) themeText.textContent = "Light Mode";
   }
   
-  if (networkGraph && document.getElementById("pane-graph").classList.contains("active")) {
+  if (networkGraph && document.getElementById("pane-graph")?.classList.contains("active")) {
     loadGraph();
   }
 }
@@ -80,7 +80,6 @@ const FACULTY_DATA = {
 };
 
 // --- DYNAMIC MODULE ROUTING ENGINE ---
-// ONLY courses explicitly defined here will be clickable. All others will be disabled.
 const COURSE_MODULES = {
   "Database_Management_Systems": [
     { file: "single-node.html", name: "Single-Node Database Architecture" },
@@ -168,7 +167,6 @@ const COURSE_MODULES = {
     { file: "disk-scheduling.html", name: "Disk Scheduling (FIFO, SSTF, SCAN, LOOK, C-SCAN)" },
     { file: "io-buffering.html", name: "I/O Buffering & Interrupt Handling" },
     { file: "microkernel-monolithic.html", name: "Microkernel vs Monolithic Kernel Flows" },
-    { file: "cache-invalidation.html", name: "Cache Invalidation (already in batch 4)" },
     { file: "dijkstra.html", name: "Dijkstra's Shortest Path Execution" },
     { file: "a-star.html", name: "A* Search Tree Expansion" },
     { file: "dynamic-programming.html", name: "DP Matrix Filling (Knapsack, LCS)" },
@@ -231,7 +229,6 @@ const COURSE_MODULES = {
     { file: "disk-scheduling.html", name: "Disk Scheduling (FIFO, SSTF, SCAN, LOOK, C-SCAN)" },
     { file: "io-buffering.html", name: "I/O Buffering & Interrupt Handling" },
     { file: "microkernel-monolithic.html", name: "Microkernel vs Monolithic Kernel Flows" },
-    { file: "cache-invalidation.html", name: "Cache Invalidation (already in batch 4)" },
     { file: "dijkstra.html", name: "Dijkstra's Shortest Path Execution" },
     { file: "a-star.html", name: "A* Search Tree Expansion" },
     { file: "dynamic-programming.html", name: "DP Matrix Filling (Knapsack, LCS)" },
@@ -384,8 +381,7 @@ const originalAuthedFetch = window.authedFetch || fetch;
 window.authedFetch = async function(...args) {
   try {
     const response = await originalAuthedFetch(...args);
-    // If backend throws an HTTP exception (e.g. FastAPI raises HTTPException)
-    if (!response.ok && response.status === 402) {
+    if (response && !response.ok && response.status === 402) {
         const errorData = await response.json();
         throw new Error(errorData.detail || "Payment Required");
     }
@@ -400,9 +396,8 @@ window.authedFetch = async function(...args) {
   }
 };
 
-
 // --- PRICING UI RENDERING ---
-function openPaymentModal(itemCode, priceText) {
+window.openPaymentModal = function(itemCode, priceText) {
     const modalHtml = `
       <div id="paymentModal" class="modal-backdrop" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;">
         <div style="background:var(--bg-card, #1e293b);padding:2rem;border-radius:12px;max-width:400px;width:100%;color:#fff;">
@@ -433,7 +428,13 @@ function openPaymentModal(itemCode, priceText) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phone_number: phone, plan_name: itemCode })
         });
-        const data = await res.json();
+        
+        // Handle properly returned JSON from the authedFetch interceptor wrapper
+        let data = res;
+        if (res.json) {
+           data = await res.json();
+        }
+
         alert(data.message || "Please complete the PIN prompt on your phone.");
         document.getElementById('paymentModal').remove();
       } catch (err) {
@@ -445,7 +446,6 @@ function openPaymentModal(itemCode, priceText) {
 }
   
 function renderPricingTable() {
-    // If no pricing pane exists, append a full-screen overlay for the pricing table
     let container = document.getElementById("pane-pricing");
     if (!container) {
         container = document.createElement('div');
@@ -464,7 +464,6 @@ function renderPricingTable() {
       <div style="display:flex;flex-direction:column;gap:2rem;padding:3rem;">
         <h2 style="color:white;text-align:center;">Choose Your Plan</h2>
         
-        <!-- Pay As You Go row -->
         <div style="display:flex;gap:1.5rem;justify-content:center;">
           <div class="tier-card" style="border:1px dashed #64748b;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;width:250px;text-align:center;">
             <h4>Economy Note Gen</h4>
@@ -480,7 +479,6 @@ function renderPricingTable() {
           </div>
         </div>
 
-        <!-- Subscription row -->
         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:1.5rem;margin-top:1rem;">
           <div class="tier-card" style="border:1px solid #334155;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;">
             <h4>Startup</h4>
@@ -537,8 +535,8 @@ function renderPricingTable() {
 // --- INIT ENGINE ---
 async function init() {
   user = await requireAuth();
-  document.getElementById("userName").textContent = user.display_name || user.email;
-  document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan || 'Economy'}`;
+  if(document.getElementById("userName")) document.getElementById("userName").textContent = user.display_name || user.email;
+  if(document.getElementById("userPlanBadge")) document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan || 'Economy'}`;
   
   const tierDisplay = document.getElementById("currentTierDisplay");
   if (tierDisplay) {
@@ -622,7 +620,6 @@ async function init() {
 
       if (!faculty || !course || !moduleFile) return alert("Please make a complete selection.");
       
-      // Paywall Check via API before opening
       authedFetch(`/api/verify-entitlement?action=LAUNCH_STATIC_SIM`).then(res => {
           const rawFilePath = `simulations/${faculty}/${course}/${moduleFile}`;
           window.open(rawFilePath, '_blank');
@@ -644,11 +641,14 @@ async function init() {
       const timeoutId = setTimeout(() => controller.abort(), 120000); 
 
       try {
-        const schema = await authedFetch("/diagrams/generate-sim/", {
+        const res = await authedFetch("/diagrams/generate-sim/", {
           method: "POST",
           body: JSON.stringify({ topic }),
           signal: controller.signal
         });
+        
+        let schema = res;
+        if(res.json) schema = await res.json();
         
         clearTimeout(timeoutId);
 
@@ -661,7 +661,7 @@ async function init() {
       } catch (err) {
         clearTimeout(timeoutId);
         console.error("Simulation Generation Error:", err);
-        if (err.name !== 'Error' && !err.message.includes('Payment Required')) {
+        if (err.name !== 'Error' && err.message && !err.message.includes('Payment Required')) {
             alert(`Network Timeout: The cloud provider dropped the connection. Use static simulation instead.`);
         }
       } finally {
@@ -733,11 +733,9 @@ async function init() {
         return;
       }
 
-      // Check paywall before triggering LLM
       try {
           await authedFetch(`/api/verify-entitlement?action=DOC_SUMMARIZATION&resource_id=${currentSelectedDoc.id}`);
       } catch (err) {
-          // The global interceptor catches and shows the modal
           return;
       }
 
@@ -759,7 +757,7 @@ async function init() {
           genNotesBtn.disabled = false;
           progressSection.style.display = "none";
           
-          const generatedSummary = `# ${currentSelectedDoc.title} — Page ${currentPageNumber}\n\n## Instant Page Snapshot Analysis\nCaptured page successfully.\nExtracted core formulas and definitions.\n\n[DIAGRAM: Flowchart Box]`;
+          const generatedSummary = `# ${currentSelectedDoc.title || currentSelectedDoc.filename} — Page ${currentPageNumber}\n\n## Instant Page Snapshot Analysis\nCaptured page successfully.\nExtracted core formulas and definitions.\n\n[DIAGRAM: Flowchart Box]`;
           pageCache[cacheKey] = generatedSummary;
           
           summaryEditor.value = generatedSummary;
@@ -804,10 +802,13 @@ async function init() {
       formData.append("file", fileInput.files[0]);
 
       try {
-        const newDoc = await authedFetch("/documents/upload/", {
+        const res = await authedFetch("/documents/upload/", {
           method: "POST",
           body: formData
         });
+        
+        let newDoc = res;
+        if(res.json) newDoc = await res.json();
         
         alert("Document uploaded successfully! Loading viewer...");
         
@@ -818,7 +819,7 @@ async function init() {
         
         fileInput.value = "";
       } catch (err) {
-        if (!err.message.includes('Payment Required')) {
+        if (err.message && !err.message.includes('Payment Required')) {
             alert("Error uploading document. Check backend logs.");
         }
       } finally {
@@ -870,7 +871,7 @@ async function init() {
 
 function switchToPage(pageNum) {
   currentPageNumber = pageNum;
-  document.getElementById("pageIndicator").textContent = `Page ${currentPageNumber} of ${totalPages}`;
+  if(document.getElementById("pageIndicator")) document.getElementById("pageIndicator").textContent = `Page ${currentPageNumber} of ${totalPages}`;
   
   document.querySelectorAll(".thumb-card").forEach((t, idx) => {
     if (idx + 1 === currentPageNumber) {
@@ -883,10 +884,12 @@ function switchToPage(pageNum) {
   const cacheKey = `${currentSelectedDoc?.id}_p${currentPageNumber}`;
   const editor = document.getElementById("docSummaryEditor");
   
-  if (pageCache[cacheKey]) {
-    editor.value = pageCache[cacheKey];
-  } else {
-    editor.value = `Page ${currentPageNumber} active. Click 'Notes & Summary' on the top right to view or generate AI notes.`;
+  if (editor) {
+      if (pageCache[cacheKey]) {
+        editor.value = pageCache[cacheKey];
+      } else {
+        editor.value = `Page ${currentPageNumber} active. Click 'Notes & Summary' on the top right to view or generate AI notes.`;
+      }
   }
 }
 
@@ -895,8 +898,12 @@ function switchToPage(pageNum) {
 async function loadVideos() {
   try {
     const res = await authedFetch("/videos/");
-    const videos = await res.json();
+    let videos = res;
+    if(res.json) videos = await res.json();
+    
     const list = document.getElementById("videoList");
+    if (!list) return;
+
     if (!videos || !videos.length) {
       const emptyState = document.getElementById("emptyState");
       if (emptyState) emptyState.style.display = "block";
@@ -909,7 +916,7 @@ async function loadVideos() {
       <li>
         <a class="video-row" style="color: var(--text-main);" href="video.html?id=${v.id}">
           <div>
-            <div class="video-row-title">${v.title}</div>
+            <div class="video-row-title">${v.title || 'Untitled Session'}</div>
             <div class="video-row-meta" style="color: var(--text-muted);">${new Date(v.created_at).toLocaleDateString()}</div>
           </div>
           <span class="status-chip ${v.status}">${v.status}</span>
@@ -925,7 +932,13 @@ let cachedDocuments = [];
 async function loadDocuments() {
   try {
     const res = await authedFetch("/documents/");
-    cachedDocuments = await res.json();
+    if (res.json) {
+       cachedDocuments = await res.json();
+    } else {
+       cachedDocuments = res;
+    }
+    
+    if(!Array.isArray(cachedDocuments)) cachedDocuments = [];
   } catch (err) {
     console.error("Failed to load documents list", err);
     cachedDocuments = [];
@@ -944,7 +957,7 @@ async function loadDocuments() {
       const fileNameEl = document.getElementById("currentFileName");
 
       if (currentSelectedDoc) {
-        fileNameEl.textContent = currentSelectedDoc.filename || currentSelectedDoc.title;
+        if(fileNameEl) fileNameEl.textContent = currentSelectedDoc.filename || currentSelectedDoc.title;
         
         if (viewer) {
           const fileKey = currentSelectedDoc.storage_key || currentSelectedDoc.id;
@@ -952,17 +965,19 @@ async function loadDocuments() {
         }
 
         const thumbsContainer = document.getElementById("readerThumbsContainer");
-        thumbsContainer.innerHTML = `<div style="font-size: 0.6rem; font-weight: 700; color: var(--text-muted);">Pg</div>`;
-        for (let i = 1; i <= totalPages; i++) {
-          const thumb = document.createElement("div");
-          thumb.className = i === 1 ? "thumb-card active" : "thumb-card";
-          thumb.innerHTML = `${i}`;
-          thumb.onclick = () => switchToPage(i);
-          thumbsContainer.appendChild(thumb);
+        if(thumbsContainer) {
+            thumbsContainer.innerHTML = `<div style="font-size: 0.6rem; font-weight: 700; color: var(--text-muted);">Pg</div>`;
+            for (let i = 1; i <= totalPages; i++) {
+              const thumb = document.createElement("div");
+              thumb.className = i === 1 ? "thumb-card active" : "thumb-card";
+              thumb.innerHTML = `${i}`;
+              thumb.onclick = () => switchToPage(i);
+              thumbsContainer.appendChild(thumb);
+            }
         }
         switchToPage(1);
       } else {
-        fileNameEl.textContent = "No file selected";
+        if(fileNameEl) fileNameEl.textContent = "No file selected";
         if (viewer) {
           viewer.innerHTML = `<span style="color: #64748b; font-size: 0.85rem;">Upload or select a PDF to begin immersive reading</span>`;
         }
@@ -974,7 +989,13 @@ async function loadDocuments() {
 async function loadFlashcards() {
     try {
         const res = await authedFetch("/flashcards/due/");
-        dueFlashcards = await res.json();
+        if(res.json) {
+            dueFlashcards = await res.json();
+        } else {
+            dueFlashcards = res;
+        }
+        
+        if(!Array.isArray(dueFlashcards)) dueFlashcards = [];
         currentFcIndex = 0;
         renderCurrentFlashcard();
     } catch (err) {}
@@ -994,18 +1015,22 @@ function renderCurrentFlashcard() {
   if (activeState) activeState.style.display = "block";
   
   const card = dueFlashcards[currentFcIndex];
-  document.getElementById("fcFront").textContent = card.front_text;
-  document.getElementById("fcBack").textContent = card.back_text;
+  if(document.getElementById("fcFront")) document.getElementById("fcFront").textContent = card.front_text;
+  if(document.getElementById("fcBack")) document.getElementById("fcBack").textContent = card.back_text;
   
-  document.getElementById("fcBack").style.display = "none";
-  document.getElementById("fcControls").style.display = "none";
-  document.getElementById("fcShowBtn").style.display = "block";
+  if(document.getElementById("fcBack")) document.getElementById("fcBack").style.display = "none";
+  if(document.getElementById("fcControls")) document.getElementById("fcControls").style.display = "none";
+  if(document.getElementById("fcShowBtn")) document.getElementById("fcShowBtn").style.display = "block";
 }
 
 async function loadGraph() {
     try {
         const res = await authedFetch("/graph/");
-        const graphData = await res.json();
+        let graphData = res;
+        if(res.json) graphData = await res.json();
+        
+        if(!graphData || !graphData.nodes) return;
+
         const style = getComputedStyle(document.documentElement);
         const nodeBg = style.getPropertyValue('--graph-node-bg').trim();
         const nodeBorder = style.getPropertyValue('--graph-node-border').trim();
@@ -1030,7 +1055,7 @@ async function loadGraph() {
         })));
 
         const container = document.getElementById("networkGraph");
-        if (container) {
+        if (container && window.vis) {
             const data = { nodes, edges };
             const options = {
             physics: {

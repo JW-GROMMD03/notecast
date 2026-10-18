@@ -1,3 +1,4 @@
+import os
 import uuid
 import logging
 import requests
@@ -11,12 +12,14 @@ from ..database import get_db
 router = APIRouter(prefix="/payments", tags=["payments"])
 logger = logging.getLogger("notecast_payments")
 
-# M-Pesa Express Configuration
-MPESA_CONSUMER_KEY = "YOUR_CONSUMER_KEY"
-MPESA_CONSUMER_SECRET = "YOUR_CONSUMER_SECRET"
-MPESA_PASSKEY = "YOUR_PASSKEY"
-MPESA_BUSINESS_SHORTCODE = "YOUR_PAYBILL_OR_TILL"
-CALLBACK_URL = "https://notecast-web.onrender.com/api/payments/callback"
+# Environment Credentials for M-Pesa Express Configuration
+MPESA_CONSUMER_KEY = os.getenv("MPESA_CONSUMER_KEY", "YOUR_CONSUMER_KEY")
+MPESA_CONSUMER_SECRET = os.getenv("MPESA_CONSUMER_SECRET", "YOUR_CONSUMER_SECRET")
+MPESA_PASSKEY = os.getenv("MPESA_PASSKEY", "YOUR_PASSKEY")
+MPESA_BUSINESS_SHORTCODE = os.getenv("MPESA_BUSINESS_SHORTCODE", "YOUR_PAYBILL_OR_TILL")
+CALLBACK_URL = os.getenv("MPESA_CALLBACK_URL", "https://notecast-web.onrender.com/api/payments/callback")
+MPESA_ENV = os.getenv("MPESA_ENV", "sandbox")
+BASE_DARAJA_URL = "https://api.safaricom.co.ke" if MPESA_ENV == "production" else "https://sandbox.safaricom.co.ke"
 
 PRICING_CATALOG = {
     "STARTUP": {"amount": 100, "type": "PLAN_SUBSCRIPTION"},
@@ -30,18 +33,20 @@ PRICING_CATALOG = {
 
 def format_phone_number(phone: str) -> str:
     """Formats phone to 254XXXXXXXXX for Daraja API"""
-    phone = phone.strip()
+    phone = "".join([c for c in phone if c.isdigit()])
     if phone.startswith("0"):
         return "254" + phone[1:]
-    if phone.startswith("+254"):
-        return phone[1:]
     if phone.startswith("254"):
         return phone
+    if len(phone) == 9 and (phone.startswith("7") or phone.startswith("1")):
+        return "254" + phone
     raise ValueError("Invalid phone number format")
 
 def get_mpesa_access_token():
-    url = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-    response = requests.get(url, auth=(MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET))
+    url = f"{BASE_DARAJA_URL}/oauth/v1/generate?grant_type=client_credentials"
+    response = requests.get(url, auth=(MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET), timeout=10)
+    if response.status_code != 200:
+        raise HTTPException(status_code=500, detail="M-Pesa authorization failed. Check Daraja credentials.")
     return response.json().get("access_token")
 
 @router.post("/stk-push")
@@ -55,8 +60,10 @@ def initiate_payment(body: schemas.PaymentRequest, db: DbSession = Depends(get_d
     
     try:
         formatted_phone = format_phone_number(body.phone_number)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Please enter a valid Safaricom number (e.g., 0712345678).")
+        if len(formatted_phone) != 12:
+            raise ValueError("Phone number must contain exactly 12 digits")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     amount = catalog_item["amount"]
     purchase_type = catalog_item["type"]
@@ -83,7 +90,9 @@ def initiate_payment(body: schemas.PaymentRequest, db: DbSession = Depends(get_d
         }
 
         # 2. TRIGGER DARAJA API
-        res = requests.post("https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest", json=mpesa_body, headers=headers).json()
+        res = requests.post(f"{BASE_DARAJA_URL}/mpesa/stkpush/v1/processrequest", json=mpesa_body, headers=headers, timeout=15).json()
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Daraja API Error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to connect to Safaricom.")
@@ -108,7 +117,8 @@ def initiate_payment(body: schemas.PaymentRequest, db: DbSession = Depends(get_d
         logger.info(f"STK Push initiated for {formatted_phone}, Amount: {amount}")
         return {"message": "STK Push sent. Please check your phone to enter your PIN.", "transaction_id": internal_tx_id}
 
-    raise HTTPException(status_code=500, detail="Failed to initiate M-Pesa transaction.")
+    error_msg = res.get("errorMessage", "Safaricom rejected STK Push request.")
+    raise HTTPException(status_code=400, detail=error_msg)
 
 
 @router.post("/callback")
@@ -138,7 +148,8 @@ async def mpesa_callback(request: Request, db: DbSession = Depends(get_db)):
             
             # Update user model directly to reflect fast frontend queries
             user = db.query(models.User).filter(models.User.id == txn.user_id).first()
-            user.plan = txn.target_tier
+            if user:
+                user.plan = txn.target_tier
             
         else:
             # Add one-off token for Economy Note, Download, or AI Note
