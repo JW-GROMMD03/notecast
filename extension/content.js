@@ -1,18 +1,17 @@
 if (typeof window.noteCastInjected === 'undefined') {
   window.noteCastInjected = true;
 
-  // CRITICAL FIX: Changed from 1000ms to 15000ms to stop Chrome IPC memory crashes
   const FRAME_INTERVAL_MS = 15000; 
   const FRAME_MAX_WIDTH = 640;
 
   let frameTimer = null;
   let autoStarted = false;
+  let ncContainer = null;
 
   function getVideoElement() {
     return document.querySelector("video.html5-main-video") || document.querySelector("video");
   }
 
-  // Detects if a YouTube advertisement is currently playing
   function isAdShowing() {
     const player = document.querySelector("#movie_player") || document.querySelector(".html5-video-player");
     if (!player) return false;
@@ -49,15 +48,7 @@ if (typeof window.noteCastInjected === 'undefined') {
     if (video && !autoStarted) {
       video.addEventListener("play", () => {
         if (!autoStarted && chrome?.runtime?.id) {
-          autoStarted = true;
-          const meta = extractMeta();
-          try {
-            chrome.runtime.sendMessage({
-              scope: "notecast",
-              type: "AUTO_START_CAPTURE",
-              payload: { videoMeta: meta }
-            }).catch(() => {});
-          } catch (e) {}
+          // Do not auto-start silently; rely on the UI prompt
         }
       });
     }
@@ -80,7 +71,6 @@ if (typeof window.noteCastInjected === 'undefined') {
       return;
     }
 
-    // Skip frame capture entirely if a YouTube ad is currently showing
     if (isAdShowing()) {
       return;
     }
@@ -105,7 +95,6 @@ if (typeof window.noteCastInjected === 'undefined') {
           return;
         }
 
-        // Secondary ad check in case an ad started while processing the blob
         if (isAdShowing()) return;
 
         try {
@@ -130,6 +119,90 @@ if (typeof window.noteCastInjected === 'undefined') {
       reader.readAsDataURL(blob);
     });
   }
+
+  // --- FLOATING UI INJECTION ---
+  function injectNoteCastUI() {
+    if (document.getElementById('notecast-floating-ui')) return;
+    if (!window.location.href.includes('watch?v=')) return;
+  
+    ncContainer = document.createElement('div');
+    ncContainer.id = 'notecast-floating-ui';
+    
+    ncContainer.innerHTML = `
+      <div class="nc-header">
+        <span class="nc-title">NoteCast Studio</span>
+        <button id="nc-close-btn" class="nc-close">&times;</button>
+      </div>
+      <div class="nc-body">
+        <p>Automate notes for this video?</p>
+        <button id="nc-start-btn" class="nc-btn">Start NoteCast</button>
+        <div id="nc-status" class="nc-status hidden"></div>
+      </div>
+    `;
+    document.body.appendChild(ncContainer);
+  
+    document.getElementById('nc-close-btn').addEventListener('click', () => {
+      ncContainer.style.display = 'none';
+    });
+  
+    document.getElementById('nc-start-btn').addEventListener('click', () => {
+      const statusEl = document.getElementById('nc-status');
+      const btn = document.getElementById('nc-start-btn');
+      
+      statusEl.textContent = 'Verifying active plan...';
+      statusEl.className = 'nc-status';
+      btn.disabled = true;
+      
+      try {
+        chrome.runtime.sendMessage({ type: "CHECK_ENTITLEMENT", action: "YOUTUBE_CAPTURE" }, (response) => {
+            if (response && response.success) {
+                statusEl.textContent = '✅ Capturing! Notes will sync to your dashboard.';
+                statusEl.style.color = '#10b981';
+                btn.style.display = 'none';
+                
+                // Start capture pipeline if authorized
+                autoStarted = true;
+                const meta = extractMeta();
+                chrome.runtime.sendMessage({
+                    scope: "notecast",
+                    type: "AUTO_START_CAPTURE",
+                    payload: { videoMeta: meta }
+                }).catch(() => {});
+
+            } else {
+                statusEl.textContent = '❌ ' + (response?.error || 'Plan limit reached. Please upgrade.');
+                statusEl.style.color = '#ef4444';
+                btn.disabled = false;
+            }
+        });
+      } catch(e) {
+          statusEl.textContent = '❌ Extension error. Please reload.';
+          statusEl.style.color = '#ef4444';
+          btn.disabled = false;
+      }
+    });
+  }
+
+  document.addEventListener('yt-navigate-finish', () => {
+    if (ncContainer) {
+      ncContainer.style.display = window.location.href.includes('watch?v=') ? 'block' : 'none';
+      const statusEl = document.getElementById('nc-status');
+      if (statusEl) {
+          statusEl.className = 'nc-status hidden';
+          document.getElementById('nc-start-btn').style.display = 'block';
+          document.getElementById('nc-start-btn').disabled = false;
+      }
+      if(frameTimer) {
+          clearInterval(frameTimer);
+          frameTimer = null;
+      }
+      autoStarted = false;
+    } else {
+      injectNoteCastUI();
+    }
+  });
+  
+  setTimeout(injectNoteCastUI, 1500);
 
   if (chrome?.runtime?.onMessage) {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

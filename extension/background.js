@@ -80,14 +80,13 @@ function broadcast(message) {
 
 async function startCapturePipeline({ tabId, videoMeta }, sendResponse) {
   if (currentSession && currentSession.videoId) {
-    sendResponse({ ok: true, session: currentSession });
+    if(sendResponse) sendResponse({ ok: true, session: currentSession });
     return;
   }
 
   try {
     audioBuffer = [];
 
-    // Initialize the backend API session
     const token = await ensureFreshToken();
     const video = await apiFetch("/videos", { method: "POST", body: JSON.stringify(videoMeta) });
     await apiFetch(`/videos/${video.id}/consent`, { method: "POST", body: JSON.stringify({ scope: "audio,video,transcript" }) });
@@ -130,7 +129,6 @@ async function startCapturePipeline({ tabId, videoMeta }, sendResponse) {
       }, { once: true });
     });
 
-    // Flush any audio chunks sidepanel.js already captured while we connected
     while (audioBuffer.length > 0) {
       const bufferedPayload = audioBuffer.shift();
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -141,11 +139,11 @@ async function startCapturePipeline({ tabId, videoMeta }, sendResponse) {
     chrome.tabs.sendMessage(tabId, { scope: "notecast-content", type: "START_FRAMES" }).catch(() => {});
 
     broadcast({ scope: "notecast", type: "session_started", video, session });
-    sendResponse({ ok: true, video, session });
+    if(sendResponse) sendResponse({ ok: true, video, session });
 
   } catch (error) {
      console.error("Capture Pipeline Error:", error);
-     sendResponse({ ok: false, error: error.message });
+     if(sendResponse) sendResponse({ ok: false, error: error.message });
   }
 }
 
@@ -182,6 +180,30 @@ function sendWs(payload) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "CHECK_ENTITLEMENT") {
+    (async () => {
+      try {
+        const token = await ensureFreshToken();
+        const res = await fetch(`${API_BASE}/verify-entitlement?action=${message.action}`, {
+          method: "GET",
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        
+        if (res.ok) {
+          sendResponse({ success: true });
+        } else if (res.status === 402) {
+          const data = await res.json();
+          sendResponse({ success: false, error: data.detail || "Plan limit reached." });
+        } else {
+          sendResponse({ success: false, error: "Authentication failed. Session may be expired." });
+        }
+      } catch (e) {
+        sendResponse({ success: false, error: "Network error connecting to NoteCast server." });
+      }
+    })();
+    return true; 
+  }
+
   if (!message || message.scope !== "notecast") {
     return false;
   }
@@ -189,6 +211,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "START_CAPTURE_PIPELINE") {
      startCapturePipeline(message.payload, sendResponse);
      return true; 
+  }
+
+  if (message.type === "AUTO_START_CAPTURE") {
+    startCapturePipeline(message.payload);
+    return false;
   }
 
   (async () => {

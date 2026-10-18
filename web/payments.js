@@ -1,4 +1,4 @@
-import { apiFetch, requireAuth } from "./api.js";
+import { authedFetch, requireAuth } from "./api.js";
 
 const el = (id) => document.getElementById(id);
 
@@ -11,7 +11,6 @@ const PLANS = {
   "PREMIUM": { amount: 1199, name: "Premium Plan (Monthly)" }
 };
 
-// Aliases mapping old landing page keys to active backend keys
 const PLAN_ALIASES = {
   "quick": "ECONOMY_NOTE",
   "lecture": "STARTUP",
@@ -38,7 +37,6 @@ function getSelectedPlan() {
     if (urlParams.has("plan")) rawKey = urlParams.get("plan");
   }
 
-  // Resolve alias if needed
   if (PLAN_ALIASES[rawKey]) {
     rawKey = PLAN_ALIASES[rawKey];
   }
@@ -49,27 +47,20 @@ function getSelectedPlan() {
 currentPlanId = getSelectedPlan();
 const planInfo = PLANS[currentPlanId];
 
-// Update DOM
 if (el("planName")) el("planName").textContent = planInfo.name;
 if (el("planPrice")) el("planPrice").textContent = `${planInfo.amount} KES`;
 
-// Background auth check
 requireAuth().catch(() => {
   window.location.href = `login.html?redirect=payments.html%3Fplan=${currentPlanId}`;
 });
 
-// Sanitization for Safaricom phone numbers
 function cleanPhoneNumber(raw) {
   let digits = raw.replace(/[^0-9]/g, "");
-  if (digits.startsWith("0")) {
-    digits = "254" + digits.substring(1);
-  } else if (digits.length === 9 && (digits.startsWith("7") || digits.startsWith("1"))) {
-    digits = "254" + digits;
-  }
+  if (digits.startsWith("0")) digits = "254" + digits.substring(1);
+  else if (digits.length === 9 && (digits.startsWith("7") || digits.startsWith("1"))) digits = "254" + digits;
   return digits;
 }
 
-// Payment Form Submit
 const paymentForm = el("paymentForm");
 if (paymentForm) {
   paymentForm.addEventListener("submit", async (e) => {
@@ -93,14 +84,19 @@ if (paymentForm) {
     payBtn.innerHTML = `<div class="spinner"></div> Processing...`;
 
     try {
-      const data = await apiFetch("/payments/stk-push", {
+      // FIXED: Now using authedFetch to pass the Bearer token to the backend
+      const res = await authedFetch("/payments/stk-push", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phone_number: phone,
           plan_name: currentPlanId,
           amount: planInfo.amount
         })
       });
+      
+      let data = res;
+      if (res.json) data = await res.json();
       
       paymentForm.classList.add("hidden");
       if (el("pollingUI")) el("pollingUI").classList.remove("hidden");
@@ -110,7 +106,8 @@ if (paymentForm) {
       
     } catch (err) {
       if (errorEl) {
-        errorEl.textContent = err.detail || "Payment initiation failed. Please check your number.";
+        // Will now accurately display Daraja/Safaricom errors if they occur
+        errorEl.textContent = err.message || err.detail || "Payment initiation failed. Please check your number.";
         errorEl.classList.remove("hidden");
       }
       payBtn.disabled = false;
@@ -131,7 +128,9 @@ function startPolling() {
     }
     
     try {
-      const data = await apiFetch(`/payments/status/${currentTxId}`);
+      const res = await authedFetch(`/payments/status/${currentTxId}`);
+      let data = res;
+      if(res.json) data = await res.json();
       
       if (data.status === "COMPLETED") { 
         clearInterval(pollInterval);
