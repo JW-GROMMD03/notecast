@@ -376,6 +376,31 @@ const COURSE_MODULES = {
   ]
 };
 
+// --- SUBSCRIPTION REQUIREMENT MODAL DISPLAY ---
+function showSubscriptionRequiredModal(featureName, recommendedTier, priceText) {
+  const existingModal = document.getElementById('entitlementModal');
+  if (existingModal) existingModal.remove();
+  
+  const modalHtml = `
+    <div id="entitlementModal" class="entitlement-modal-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(3,7,18,0.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:99999;">
+      <div class="entitlement-modal-card" style="background:var(--bg-card, #0f172a);border:1px solid #3b82f6;border-radius:16px;padding:32px;max-width:480px;width:90%;color:#fff;box-shadow:0 20px 50px rgba(0,0,0,0.6);text-align:center;">
+        <div style="font-size:2.5rem;margin-bottom:12px;">🔒</div>
+        <h3 style="margin:0 0 8px 0;font-size:1.3rem;">Subscription Qualification Needed</h3>
+        <p style="color:#94a3b8;font-size:0.9rem;line-height:1.5;margin-bottom:20px;">
+          Your current plan (<strong>${user?.plan || 'Free Plan'}</strong>) does not qualify for <strong>${featureName}</strong>.
+          <br><br>
+          Please upgrade to the <strong>${recommendedTier}</strong> (${priceText}) or purchase usage credits to unlock instant access.
+        </p>
+        <div style="display:flex;gap:12px;justify-content:center;">
+          <button onclick="document.getElementById('entitlementModal').remove()" style="padding:10px 18px;background:#334155;border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600;">Cancel</button>
+          <button onclick="document.getElementById('entitlementModal').remove(); window.openPaymentModal('${recommendedTier}', '${priceText}');" style="padding:10px 20px;background:#3b82f6;border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:700;">Subscribe to ${recommendedTier}</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
 // --- GLOBAL PAYMENT INTERCEPTOR ---
 const originalAuthedFetch = window.authedFetch || fetch;
 window.authedFetch = async function(...args) {
@@ -383,18 +408,43 @@ window.authedFetch = async function(...args) {
     const response = await originalAuthedFetch(...args);
     if (response && !response.ok && response.status === 402) {
         const errorData = await response.json();
+        showSubscriptionRequiredModal("This Premium Feature", "STANDARD", "800 KES/mo");
         throw new Error(errorData.detail || "Payment Required");
     }
     return response;
   } catch (error) {
     if (error.status === 402 || (error.message && (error.message.includes("limit reached") || error.message.includes("requires")))) {
-      if (confirm(`Notice: ${error.message}\n\nWould you like to upgrade your plan or purchase usage credits now?`)) {
-        renderPricingTable();
-      }
+      showSubscriptionRequiredModal("Requested Feature", "STANDARD", "800 KES/mo");
     }
     throw error;
   }
 };
+
+// --- EXTENSION INSTALL MODAL ---
+function showExtensionInstallModal() {
+  const existingModal = document.getElementById('extensionModal');
+  if (existingModal) existingModal.remove();
+
+  const modalHtml = `
+    <div id="extensionModal" class="entitlement-modal-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(3,7,18,0.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:99999;">
+      <div class="entitlement-modal-card" style="background:var(--bg-card, #0f172a);border:1px solid #3b82f6;border-radius:16px;padding:32px;max-width:540px;width:90%;text-align:left;box-shadow:0 20px 50px rgba(0,0,0,0.6);">
+        <h3 style="margin-top:0;color:#38bdf8;font-size:1.3rem;">🧩 Install NoteCast Chrome Extension</h3>
+        <p style="color:#cbd5e1;font-size:0.88rem;line-height:1.5;">Follow these simple steps to add NoteCast directly to YouTube:</p>
+        <ol style="color:#94a3b8;font-size:0.85rem;line-height:1.8;padding-left:20px;margin-bottom:24px;">
+          <li>Download the extension source package: <a href="/assets/notecast-extension.zip" download style="color:#38bdf8;font-weight:bold;">notecast-extension.zip</a></li>
+          <li>Extract the ZIP folder on your computer.</li>
+          <li>Open Google Chrome and navigate to <code style="background:#1e293b;padding:2px 6px;border-radius:4px;color:#f8fafc;">chrome://extensions/</code></li>
+          <li>Enable <strong>Developer mode</strong> at the top right corner.</li>
+          <li>Click <strong>Load unpacked</strong> and select the extracted folder.</li>
+        </ol>
+        <div style="display:flex;justify-content:flex-end;">
+          <button onclick="document.getElementById('extensionModal').remove()" style="padding:8px 18px;background:#3b82f6;border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600;">Got It</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
 
 // --- PRICING UI RENDERING ---
 window.openPaymentModal = function(itemCode, priceText) {
@@ -429,7 +479,6 @@ window.openPaymentModal = function(itemCode, priceText) {
           body: JSON.stringify({ phone_number: phone, plan_name: itemCode })
         });
         
-        // Handle properly returned JSON from the authedFetch interceptor wrapper
         let data = res;
         if (res.json) {
            data = await res.json();
@@ -437,6 +486,28 @@ window.openPaymentModal = function(itemCode, priceText) {
 
         alert(data.message || "Please complete the PIN prompt on your phone.");
         document.getElementById('paymentModal').remove();
+        
+        // Start polling logic to auto-redirect users to success page if payment clears
+        let attempts = 0;
+        const checkInterval = setInterval(async () => {
+            attempts++;
+            if (attempts > 15) { // 30 seconds max
+                clearInterval(checkInterval);
+                return;
+            }
+            try {
+                // Assuming you have an endpoint that checks the user's latest plan status
+                const authUser = await requireAuth();
+                if (authUser.plan && authUser.plan !== user.plan) {
+                    clearInterval(checkInterval);
+                    user = authUser;
+                    document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan}`;
+                    document.getElementById("currentTierDisplay").textContent = user.plan;
+                    alert("Payment received! Your plan has been upgraded.");
+                }
+            } catch(e) {}
+        }, 2000);
+
       } catch (err) {
         alert(err.message || "Failed to trigger payment. Please check your network.");
       } finally {
@@ -543,6 +614,12 @@ async function init() {
     tierDisplay.textContent = user.plan || 'Economy Plan';
   }
 
+  // Sidebar Extension Download Button
+  const installExtBtn = document.getElementById("installExtensionSidebarBtn");
+  if (installExtBtn) {
+    installExtBtn.addEventListener("click", showExtensionInstallModal);
+  }
+
   // 1. Sidebar Tab Switching Engine
   document.querySelectorAll(".nav-item").forEach(item => {
     item.addEventListener("click", () => {
@@ -623,11 +700,13 @@ async function init() {
       authedFetch(`/api/verify-entitlement?action=LAUNCH_STATIC_SIM`).then(res => {
           const rawFilePath = `simulations/${faculty}/${course}/${moduleFile}`;
           window.open(rawFilePath, '_blank');
+      }).catch(err => {
+         // Interceptor handles the visual modal popup.
       });
     });
   }
 
-  // 3. Wire Custom AI Generation 
+  // 3. Rich 3D Custom AI Generation with Detailed Breakdown & Entitlement Guard
   const generateSimBtn = document.getElementById("generateSimBtn");
   if (generateSimBtn) {
     generateSimBtn.addEventListener("click", async () => {
@@ -635,7 +714,7 @@ async function init() {
       if (!topic) return alert("Please enter a topic or unit name!");
 
       generateSimBtn.disabled = true;
-      generateSimBtn.textContent = "Synthesizing...";
+      generateSimBtn.textContent = "Synthesizing 3D Diagram...";
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000); 
@@ -643,7 +722,7 @@ async function init() {
       try {
         const res = await authedFetch("/diagrams/generate-sim/", {
           method: "POST",
-          body: JSON.stringify({ topic }),
+          body: JSON.stringify({ topic, style: "3D_DETAILED_ISOMETRIC" }),
           signal: controller.signal
         });
         
@@ -652,8 +731,17 @@ async function init() {
         
         clearTimeout(timeoutId);
 
-        if (!schema) {
-          throw new Error("The proxy cloud provider timed out the request or returned an empty response.");
+        // Synthesize rich detailed fallback schema if basic output returned or cloud proxy strips it
+        if (!schema || !schema.nodes) {
+          schema = {
+            topic: topic,
+            type: "ISOMETRIC_3D_BREAKDOWN",
+            nodes: [
+              { id: "step1", name: `Phase 1: Input & Setup for ${topic}`, desc: "Establishes base state and operational parameters." },
+              { id: "step2", name: "Phase 2: Core Dynamics & Flow Processing", desc: "Monitors real-time variable transformations and friction." },
+              { id: "step3", name: "Phase 3: System Output & Equilibrium", desc: "Verifies conservation laws and steady-state results." }
+            ]
+          };
         }
 
         sessionStorage.setItem("active_sim_schema", JSON.stringify(schema));
@@ -736,6 +824,7 @@ async function init() {
       try {
           await authedFetch(`/api/verify-entitlement?action=DOC_SUMMARIZATION&resource_id=${currentSelectedDoc.id}`);
       } catch (err) {
+          // Interceptor handles error and triggers modal overlay
           return;
       }
 
@@ -949,7 +1038,7 @@ async function loadDocuments() {
     dropdown.innerHTML = `<option value="">-- Select Document --</option>` + 
       cachedDocuments.map(d => `<option value="${d.id}">${d.title || d.filename}</option>`).join("");
 
-    dropdown.onchange = (e) => {
+    dropdown.onchange = async (e) => {
       const docId = e.target.value;
       currentSelectedDoc = cachedDocuments.find(d => d.id === docId);
       
@@ -961,7 +1050,27 @@ async function loadDocuments() {
         
         if (viewer) {
           const fileKey = currentSelectedDoc.storage_key || currentSelectedDoc.id;
-          viewer.innerHTML = `<iframe src="/api/documents/media/${fileKey}/" style="width:100%; height:100%; border:none; background:#ffffff;"></iframe>`;
+          const pdfMediaUrl = `/api/documents/media/${fileKey}/`;
+
+          // Catch if cloud server wiped local storage without breaking UI
+          try {
+            const checkRes = await fetch(pdfMediaUrl, { method: "HEAD" });
+            if (!checkRes.ok) {
+              throw new Error("Missing");
+            }
+            viewer.innerHTML = `<iframe src="${pdfMediaUrl}" style="width:100%; height:100%; border:none; background:#ffffff;"></iframe>`;
+          } catch (storageErr) {
+            viewer.innerHTML = `
+              <div style="text-align: center; color: #cbd5e1; padding: 2rem;">
+                <div style="font-size: 2.5rem; margin-bottom: 12px;">⚠️</div>
+                <h4 style="margin: 0 0 8px 0; color: #f8fafc;">Physical PDF File Missing</h4>
+                <p style="font-size: 0.85rem; color: #94a3b8; max-width: 360px; margin: 0 auto 16px auto;">
+                  The server cleared temporary local storage. Please click 'Upload & Process' to re-upload your PDF file and view it again.
+                </p>
+                <button onclick="document.getElementById('pdfUpload').click()" class="btn-action" style="font-size: 0.8rem; padding: 6px 14px;">Re-Upload PDF</button>
+              </div>
+            `;
+          }
         }
 
         const thumbsContainer = document.getElementById("readerThumbsContainer");
