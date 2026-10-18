@@ -73,10 +73,14 @@ const FACULTY_DATA = {
     "Financial_Engineering", "Hospitality_and_Tourism_Management", "Human_Resource_Management", "International_Business", 
     "Logistics_and_Supply_Chain_Management", "Management_Information_Systems_MIS", "Marketing_and_Digital_Strategy", 
     "Operations_Management", "Project_Management", "Real_Estate_Management", "Strategic_Management"
+  ],
+  Medical_and_Health_Sciences: [
+    "School_of_Nursing", "Medicine_and_Surgery", "Anatomy", "Clinical_Medicine"
   ]
 };
 
 // --- DYNAMIC MODULE ROUTING ENGINE ---
+// ONLY courses explicitly defined here will be clickable. All others will be disabled.
 const COURSE_MODULES = {
   "Database_Management_Systems": [
     { file: "single-node.html", name: "Single-Node Database Architecture" },
@@ -372,22 +376,173 @@ const COURSE_MODULES = {
     { file: "iot-security.html", name: "IoT & Embedded Device Security" },
     { file: "ai-adversarial.html", name: "AI/ML Adversarial Attacks" },
     { file: "security-ethics.html", name: "Ethical Hacking, Law & Responsible Disclosure" }
-  ],
-  "default_fallback": [
-    { file: "fundamentals.html", name: "Fundamentals & Core Concepts" },
-    { file: "advanced_architecture.html", name: "Advanced Architecture & Systems" },
-    { file: "case_study_simulation.html", name: "Case Study & Real-World Simulation" }
   ]
 };
 
+// --- GLOBAL PAYMENT INTERCEPTOR ---
+const originalAuthedFetch = window.authedFetch || fetch;
+window.authedFetch = async function(...args) {
+  try {
+    const response = await originalAuthedFetch(...args);
+    // If backend throws an HTTP exception (e.g. FastAPI raises HTTPException)
+    if (!response.ok && response.status === 402) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Payment Required");
+    }
+    return response;
+  } catch (error) {
+    if (error.status === 402 || (error.message && (error.message.includes("limit reached") || error.message.includes("requires")))) {
+      if (confirm(`Notice: ${error.message}\n\nWould you like to upgrade your plan or purchase usage credits now?`)) {
+        renderPricingTable();
+      }
+    }
+    throw error;
+  }
+};
+
+
+// --- PRICING UI RENDERING ---
+function openPaymentModal(itemCode, priceText) {
+    const modalHtml = `
+      <div id="paymentModal" class="modal-backdrop" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;">
+        <div style="background:var(--bg-card, #1e293b);padding:2rem;border-radius:12px;max-width:400px;width:100%;color:#fff;">
+          <h3 style="margin-top:0;">Secure M-Pesa Checkout</h3>
+          <p>Item: <strong>${itemCode.replace(/_/g, ' ')}</strong><br>Amount: <strong>${priceText}</strong></p>
+          <label style="display:block;margin:1rem 0 0.5rem;font-size:0.85rem;">M-Pesa Phone Number:</label>
+          <input type="text" id="mpesaPhone" placeholder="0712345678" style="width:100%;padding:0.75rem;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:1rem;"/>
+          <div style="display:flex;gap:1rem;justify-content:flex-end;">
+            <button onclick="document.getElementById('paymentModal').remove()" style="padding:0.5rem 1rem;background:#64748b;border:none;border-radius:6px;color:#fff;cursor:pointer;">Cancel</button>
+            <button id="confirmPayBtn" style="padding:0.5rem 1rem;background:#6366f1;border:none;border-radius:6px;color:#fff;cursor:pointer;">Send STK Push</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+  
+    document.getElementById("confirmPayBtn").addEventListener("click", async () => {
+      const phone = document.getElementById("mpesaPhone").value.trim();
+      if (!phone) return alert("Please provide a valid M-Pesa phone number.");
+  
+      const btn = document.getElementById("confirmPayBtn");
+      btn.disabled = true;
+      btn.textContent = "Processing...";
+  
+      try {
+        const res = await authedFetch("/payments/stk-push", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone_number: phone, plan_name: itemCode })
+        });
+        const data = await res.json();
+        alert(data.message || "Please complete the PIN prompt on your phone.");
+        document.getElementById('paymentModal').remove();
+      } catch (err) {
+        alert(err.message || "Failed to trigger payment. Please check your network.");
+      } finally {
+        if(btn) btn.disabled = false;
+      }
+    });
+}
+  
+function renderPricingTable() {
+    // If no pricing pane exists, append a full-screen overlay for the pricing table
+    let container = document.getElementById("pane-pricing");
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'pane-pricing';
+        container.style.cssText = "position:absolute;top:10%;left:10%;width:80%;height:80%;background:#0f172a;z-index:9000;overflow-y:auto;border-radius:12px;box-shadow: 0 10px 30px rgba(0,0,0,0.8);";
+        document.body.appendChild(container);
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Close Pricing';
+        closeBtn.style.cssText = "position:absolute;top:10px;right:10px;padding:0.5rem;background:#ef4444;color:white;border:none;border-radius:4px;cursor:pointer;";
+        closeBtn.onclick = () => container.remove();
+        container.appendChild(closeBtn);
+    }
+    
+    const pricingHtml = `
+      <div style="display:flex;flex-direction:column;gap:2rem;padding:3rem;">
+        <h2 style="color:white;text-align:center;">Choose Your Plan</h2>
+        
+        <!-- Pay As You Go row -->
+        <div style="display:flex;gap:1.5rem;justify-content:center;">
+          <div class="tier-card" style="border:1px dashed #64748b;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;width:250px;text-align:center;">
+            <h4>Economy Note Gen</h4>
+            <h2>50 KES<span style="font-size:0.8rem">/ea</span></h2>
+            <p style="font-size:0.85rem;color:#94a3b8;">Generate notes for a single video. No downloads or AI.</p>
+            <button onclick="openPaymentModal('ECONOMY_NOTE', '50 KES')" style="width:100%;padding:0.75rem;background:#475569;border:none;border-radius:6px;color:#fff;cursor:pointer;margin-top:1rem;">Buy Token</button>
+          </div>
+          <div class="tier-card" style="border:1px dashed #64748b;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;width:250px;text-align:center;">
+            <h4>Single Download</h4>
+            <h2>20 KES<span style="font-size:0.8rem">/ea</span></h2>
+            <p style="font-size:0.85rem;color:#94a3b8;">Export a single document to PDF or PPT.</p>
+            <button onclick="openPaymentModal('SINGLE_DOWNLOAD', '20 KES')" style="width:100%;padding:0.75rem;background:#475569;border:none;border-radius:6px;color:#fff;cursor:pointer;margin-top:1rem;">Buy Token</button>
+          </div>
+        </div>
+
+        <!-- Subscription row -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:1.5rem;margin-top:1rem;">
+          <div class="tier-card" style="border:1px solid #334155;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;">
+            <h4>Startup</h4>
+            <h2>100 KES<span style="font-size:0.8rem">/mo</span></h2>
+            <ul style="padding-left:1rem;font-size:0.9rem;line-height:1.6;">
+              <li>1 Hr Daily YouTube Notes</li>
+              <li>No Downloads (20 KES/dl)</li>
+              <li>No AI Notes / Sims</li>
+            </ul>
+            <button onclick="openPaymentModal('STARTUP', '100 KES')" style="width:100%;padding:0.75rem;background:#3b82f6;border:none;border-radius:6px;color:#fff;cursor:pointer;margin-top:1rem;">Select Plan</button>
+          </div>
+    
+          <div class="tier-card" style="border:1px solid #334155;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;">
+            <h4>Basic</h4>
+            <h2>250 KES<span style="font-size:0.8rem">/mo</span></h2>
+            <ul style="padding-left:1rem;font-size:0.9rem;line-height:1.6;">
+              <li>2 Hrs Daily YouTube Notes</li>
+              <li>Free Downloads</li>
+              <li>AI Notes at 80 KES each</li>
+            </ul>
+            <button onclick="openPaymentModal('BASIC', '250 KES')" style="width:100%;padding:0.75rem;background:#3b82f6;border:none;border-radius:6px;color:#fff;cursor:pointer;margin-top:1rem;">Select Plan</button>
+          </div>
+    
+          <div class="tier-card" style="border:2px solid #6366f1;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;position:relative;">
+            <div style="position:absolute;top:-10px;right:10px;background:#6366f1;padding:2px 8px;border-radius:12px;font-size:0.7rem;font-weight:bold;">POPULAR</div>
+            <h4>Standard</h4>
+            <h2>800 KES<span style="font-size:0.8rem">/mo</span></h2>
+            <ul style="padding-left:1rem;font-size:0.9rem;line-height:1.6;">
+              <li>4 Hrs Daily YouTube Notes</li>
+              <li>Free Unlimited Downloads</li>
+              <li>2 AI Notes/day & 2 Sims/day</li>
+              <li>2 Doc Summaries/day</li>
+            </ul>
+            <button onclick="openPaymentModal('STANDARD', '800 KES')" style="width:100%;padding:0.75rem;background:#6366f1;border:none;border-radius:6px;color:#fff;cursor:pointer;margin-top:1rem;">Select Plan</button>
+          </div>
+    
+          <div class="tier-card" style="border:1px solid #10b981;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;">
+            <h4>Premium</h4>
+            <h2>1199 KES<span style="font-size:0.8rem">/mo</span></h2>
+            <ul style="padding-left:1rem;font-size:0.9rem;line-height:1.6;">
+              <li>12 Hrs Daily YouTube Notes</li>
+              <li>Unlimited Downloads & AI Notes</li>
+              <li>5 Static + 2 Live LLM Sims/day</li>
+              <li>6 Doc Summaries/day</li>
+            </ul>
+            <button onclick="openPaymentModal('PREMIUM', '1199 KES')" style="width:100%;padding:0.75rem;background:#10b981;border:none;border-radius:6px;color:#fff;cursor:pointer;margin-top:1rem;">Select Plan</button>
+          </div>
+        </div>
+      </div>
+    `;
+    container.innerHTML += pricingHtml;
+}
+
+// --- INIT ENGINE ---
 async function init() {
   user = await requireAuth();
   document.getElementById("userName").textContent = user.display_name || user.email;
-  document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan || 'Free'}`;
+  document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan || 'Economy'}`;
   
   const tierDisplay = document.getElementById("currentTierDisplay");
   if (tierDisplay) {
-    tierDisplay.textContent = user.plan || 'Free Plan';
+    tierDisplay.textContent = user.plan || 'Economy Plan';
   }
 
   // 1. Sidebar Tab Switching Engine
@@ -404,6 +559,7 @@ async function init() {
       if (tabName === "documents") loadDocuments();
       if (tabName === "flashcards") loadFlashcards();
       if (tabName === "graph") loadGraph();
+      if (tabName === "pricing") renderPricingTable();
     });
   });
 
@@ -426,7 +582,14 @@ async function init() {
         FACULTY_DATA[faculty].forEach(course => {
           const opt = document.createElement("option");
           opt.value = course;
-          opt.textContent = course.replace(/_/g, " ");
+          
+          if (COURSE_MODULES[course] && COURSE_MODULES[course].length > 0) {
+              opt.textContent = course.replace(/_/g, " ");
+          } else {
+              opt.textContent = course.replace(/_/g, " ") + " (Coming Soon)";
+              opt.disabled = true; 
+          }
+          
           courseDropdown.appendChild(opt);
         });
       }
@@ -438,10 +601,8 @@ async function init() {
       moduleDropdown.disabled = !course;
       launchBtn.disabled = true;
 
-      if (course) {
-        const modulesToLoad = COURSE_MODULES[course] || COURSE_MODULES["default_fallback"];
-        
-        modulesToLoad.forEach(mod => {
+      if (course && COURSE_MODULES[course]) {
+        COURSE_MODULES[course].forEach(mod => {
           const opt = document.createElement("option");
           opt.value = mod.file;
           opt.textContent = mod.name;
@@ -460,16 +621,16 @@ async function init() {
       const moduleFile = moduleDropdown.value;
 
       if (!faculty || !course || !moduleFile) return alert("Please make a complete selection.");
-
-      // Bypass the simulator wrapper completely and open the raw HTML file natively
-      const rawFilePath = `simulations/${faculty}/${course}/${moduleFile}`;
       
-      // Opens the simulation in a new tab giving it complete full-screen real estate
-      window.open(rawFilePath, '_blank');
+      // Paywall Check via API before opening
+      authedFetch(`/api/verify-entitlement?action=LAUNCH_STATIC_SIM`).then(res => {
+          const rawFilePath = `simulations/${faculty}/${course}/${moduleFile}`;
+          window.open(rawFilePath, '_blank');
+      });
     });
   }
 
-  // 3. Wire Custom AI Generation (Stays constrained in the LLM UI Wrapper)
+  // 3. Wire Custom AI Generation 
   const generateSimBtn = document.getElementById("generateSimBtn");
   if (generateSimBtn) {
     generateSimBtn.addEventListener("click", async () => {
@@ -496,17 +657,12 @@ async function init() {
         }
 
         sessionStorage.setItem("active_sim_schema", JSON.stringify(schema));
-        
-        // Custom generation safely routes to the simulator.html wrapper window
         window.location.href = `simulator.html?topic=${encodeURIComponent(topic)}`;
       } catch (err) {
         clearTimeout(timeoutId);
         console.error("Simulation Generation Error:", err);
-        
-        if (err.name === 'AbortError' || (err.message && (err.message.includes("502") || err.message.includes("504") || err.message.includes("empty response")))) {
-          alert(`Network Timeout: The cloud provider dropped the connection because the AI took longer than 30 seconds to generate the environment.\n\nPlease use the "Pre-Compiled Academic Library" dropdown above instead for instant access without generation limits.`);
-        } else {
-          alert("Failed to generate simulation. Please check your provider keys and try again.");
+        if (err.name !== 'Error' && !err.message.includes('Payment Required')) {
+            alert(`Network Timeout: The cloud provider dropped the connection. Use static simulation instead.`);
         }
       } finally {
         generateSimBtn.disabled = false;
@@ -571,11 +727,18 @@ async function init() {
       if (!currentSelectedDoc) return alert("Please select or upload a document first!");
       
       const cacheKey = `${currentSelectedDoc.id}_p${currentPageNumber}`;
-      
       if (pageCache[cacheKey]) {
         summaryEditor.value = pageCache[cacheKey];
         alert(`Loaded cached notes for Page ${currentPageNumber}`);
         return;
+      }
+
+      // Check paywall before triggering LLM
+      try {
+          await authedFetch(`/api/verify-entitlement?action=DOC_SUMMARIZATION&resource_id=${currentSelectedDoc.id}`);
+      } catch (err) {
+          // The global interceptor catches and shows the modal
+          return;
       }
 
       const progressSection = document.getElementById("aiProgressSection");
@@ -655,7 +818,9 @@ async function init() {
         
         fileInput.value = "";
       } catch (err) {
-        alert("Error uploading document. Check backend logs.");
+        if (!err.message.includes('Payment Required')) {
+            alert("Error uploading document. Check backend logs.");
+        }
       } finally {
         btn.disabled = false;
         btn.textContent = "Upload & Process";
@@ -728,33 +893,39 @@ function switchToPage(pageNum) {
 // --- DATA LOADING FUNCTIONS ---
 
 async function loadVideos() {
-  const videos = await authedFetch("/videos/");
-  const list = document.getElementById("videoList");
-  if (!videos || !videos.length) {
+  try {
+    const res = await authedFetch("/videos/");
+    const videos = await res.json();
+    const list = document.getElementById("videoList");
+    if (!videos || !videos.length) {
+      const emptyState = document.getElementById("emptyState");
+      if (emptyState) emptyState.style.display = "block";
+      return;
+    }
     const emptyState = document.getElementById("emptyState");
-    if (emptyState) emptyState.style.display = "block";
-    return;
+    if (emptyState) emptyState.style.display = "none";
+    
+    list.innerHTML = videos.map(v => `
+      <li>
+        <a class="video-row" style="color: var(--text-main);" href="video.html?id=${v.id}">
+          <div>
+            <div class="video-row-title">${v.title}</div>
+            <div class="video-row-meta" style="color: var(--text-muted);">${new Date(v.created_at).toLocaleDateString()}</div>
+          </div>
+          <span class="status-chip ${v.status}">${v.status}</span>
+        </a>
+      </li>`).join("");
+  } catch (err) {
+      // Fail silently if paywall triggers during load
   }
-  const emptyState = document.getElementById("emptyState");
-  if (emptyState) emptyState.style.display = "none";
-  
-  list.innerHTML = videos.map(v => `
-    <li>
-      <a class="video-row" style="color: var(--text-main);" href="video.html?id=${v.id}">
-        <div>
-          <div class="video-row-title">${v.title}</div>
-          <div class="video-row-meta" style="color: var(--text-muted);">${new Date(v.created_at).toLocaleDateString()}</div>
-        </div>
-        <span class="status-chip ${v.status}">${v.status}</span>
-      </a>
-    </li>`).join("");
 }
 
 let cachedDocuments = [];
 
 async function loadDocuments() {
   try {
-    cachedDocuments = await authedFetch("/documents/");
+    const res = await authedFetch("/documents/");
+    cachedDocuments = await res.json();
   } catch (err) {
     console.error("Failed to load documents list", err);
     cachedDocuments = [];
@@ -801,9 +972,12 @@ async function loadDocuments() {
 }
 
 async function loadFlashcards() {
-  dueFlashcards = await authedFetch("/flashcards/due/");
-  currentFcIndex = 0;
-  renderCurrentFlashcard();
+    try {
+        const res = await authedFetch("/flashcards/due/");
+        dueFlashcards = await res.json();
+        currentFcIndex = 0;
+        renderCurrentFlashcard();
+    } catch (err) {}
 }
 
 function renderCurrentFlashcard() {
@@ -829,47 +1003,49 @@ function renderCurrentFlashcard() {
 }
 
 async function loadGraph() {
-  const graphData = await authedFetch("/graph/");
-  
-  const style = getComputedStyle(document.documentElement);
-  const nodeBg = style.getPropertyValue('--graph-node-bg').trim();
-  const nodeBorder = style.getPropertyValue('--graph-node-border').trim();
-  const edgeColor = style.getPropertyValue('--graph-edge').trim();
-  const textColor = style.getPropertyValue('--graph-text').trim();
+    try {
+        const res = await authedFetch("/graph/");
+        const graphData = await res.json();
+        const style = getComputedStyle(document.documentElement);
+        const nodeBg = style.getPropertyValue('--graph-node-bg').trim();
+        const nodeBorder = style.getPropertyValue('--graph-node-border').trim();
+        const edgeColor = style.getPropertyValue('--graph-edge').trim();
+        const textColor = style.getPropertyValue('--graph-text').trim();
 
-  const nodes = new vis.DataSet(graphData.nodes.map(n => ({
-    id: n.id,
-    label: n.concept_name,
-    title: n.description_md,
-    color: { background: nodeBg, border: nodeBorder },
-    font: { color: textColor }
-  })));
+        const nodes = new vis.DataSet(graphData.nodes.map(n => ({
+            id: n.id,
+            label: n.concept_name,
+            title: n.description_md,
+            color: { background: nodeBg, border: nodeBorder },
+            font: { color: textColor }
+        })));
 
-  const edges = new vis.DataSet(graphData.edges.map(e => ({
-    from: e.source_node_id,
-    to: e.target_node_id,
-    label: e.relationship_type.replace("_", " "),
-    color: edgeColor,
-    font: { color: edgeColor, size: 10, align: 'middle' },
-    arrows: 'to'
-  })));
+        const edges = new vis.DataSet(graphData.edges.map(e => ({
+            from: e.source_node_id,
+            to: e.target_node_id,
+            label: e.relationship_type.replace("_", " "),
+            color: edgeColor,
+            font: { color: edgeColor, size: 10, align: 'middle' },
+            arrows: 'to'
+        })));
 
-  const container = document.getElementById("networkGraph");
-  if (container) {
-    const data = { nodes, edges };
-    const options = {
-      physics: {
-        solver: 'forceAtlas2Based',
-        forceAtlas2Based: { gravitationalConstant: -50, centralGravity: 0.01, springLength: 100 }
-      },
-      nodes: { shape: 'dot', size: 16, borderWidth: 2 },
-      edges: { smooth: true },
-      interaction: { hover: true, zoomView: true }
-    };
+        const container = document.getElementById("networkGraph");
+        if (container) {
+            const data = { nodes, edges };
+            const options = {
+            physics: {
+                solver: 'forceAtlas2Based',
+                forceAtlas2Based: { gravitationalConstant: -50, centralGravity: 0.01, springLength: 100 }
+            },
+            nodes: { shape: 'dot', size: 16, borderWidth: 2 },
+            edges: { smooth: true },
+            interaction: { hover: true, zoomView: true }
+            };
 
-    if (networkGraph) networkGraph.destroy();
-    networkGraph = new vis.Network(container, data, options);
-  }
+            if (networkGraph) networkGraph.destroy();
+            networkGraph = new vis.Network(container, data, options);
+        }
+    } catch (err) {}
 }
 
 init();

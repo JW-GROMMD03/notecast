@@ -2,16 +2,16 @@ import { apiFetch, requireAuth } from "./api.js";
 
 const el = (id) => document.getElementById(id);
 
-// Plan configuration matching your backend and landing page
+// Plan configuration matching your FastAPI backend and landing page
 const PLANS = {
-  "quick": { amount: 40, name: "Quick Crash Pass" },
-  "lecture": { amount: 60, name: "Standard Lecture" },
-  "master": { amount: 150, name: "Extended Master" },
-  "weekly": { amount: 500, name: "Weekly Scholar" },
-  "monthly": { amount: 1200, name: "Monthly Pro" }
+  "ECONOMY_NOTE": { amount: 50, name: "Economy Note Token (Pay-As-You-Go)" },
+  "STARTUP": { amount: 100, name: "Startup Plan (Monthly)" },
+  "BASIC": { amount: 250, name: "Basic Plan (Monthly)" },
+  "STANDARD": { amount: 800, name: "Standard Plan (Monthly)" },
+  "PREMIUM": { amount: 1199, name: "Premium Plan (Monthly)" }
 };
 
-let currentPlanId = "weekly"; // Default fallback
+let currentPlanId = "STANDARD"; // Default fallback
 let currentTxId = null;
 let pollInterval = null;
 
@@ -19,7 +19,7 @@ let pollInterval = null;
 function getSelectedPlan() {
   const fullSearch = window.location.search;
   
-  // Check if there's a nested redirect parameter (e.g., ?redirect=payments.html%3Fplan=weekly)
+  // Check if there's a nested redirect parameter (e.g., ?redirect=payments.html%3Fplan=STANDARD)
   if (fullSearch.includes("plan=")) {
     const parts = fullSearch.split("plan=");
     if (parts.length > 1) {
@@ -38,7 +38,7 @@ function getSelectedPlan() {
     return planParam;
   }
   
-  return "weekly";
+  return "STANDARD";
 }
 
 currentPlanId = getSelectedPlan();
@@ -53,7 +53,6 @@ requireAuth().catch(() => {
   // If not authenticated, redirect to login while preserving the exact plan choice
   window.location.href = `login.html?redirect=payments.html%3Fplan=${currentPlanId}`;
 });
-
 
 // 3. Handle Payment Form Submission
 const paymentForm = el("paymentForm");
@@ -113,14 +112,14 @@ function startPolling() {
     try {
       const data = await apiFetch(`/payments/status/${currentTxId}`);
       
-      if (data.status === "completed") {
+      if (data.status === "COMPLETED") { // Matched to backend schema casing
         clearInterval(pollInterval);
         if (el("pollingUI")) {
           el("pollingUI").innerHTML = `<h3 style="color: #10b981;">Payment Successful!</h3><p>Redirecting to your dashboard...</p>`;
         }
         setTimeout(() => window.location.href = "dashboard.html", 2000);
       } 
-      else if (data.status === "failed") {
+      else if (data.status === "FAILED") {
         clearInterval(pollInterval);
         alert("Payment failed or was cancelled.");
         window.location.reload();

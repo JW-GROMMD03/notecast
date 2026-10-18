@@ -1,7 +1,8 @@
 import uuid
 import datetime as dt
+import enum
 from sqlalchemy import (
-    Column, String, Integer, Float, Boolean, ForeignKey, Text, DateTime, JSON
+    Column, String, Integer, Float, Boolean, ForeignKey, Text, DateTime, JSON, Date
 )
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -15,12 +16,26 @@ def now() -> dt.datetime:
     return dt.datetime.utcnow()
 
 
+class PlanTier(str, enum.Enum):
+    ECONOMY = "ECONOMY"     # Default pay-as-you-go (50 KES per note)
+    STARTUP = "STARTUP"     # 100 KES
+    BASIC = "BASIC"         # 250 KES
+    STANDARD = "STANDARD"   # 800 KES
+    PREMIUM = "PREMIUM"     # 1199 KES
+
+class PurchaseType(str, enum.Enum):
+    PLAN_SUBSCRIPTION = "PLAN_SUBSCRIPTION"
+    ECONOMY_NOTE = "ECONOMY_NOTE"        # 50 KES
+    SINGLE_DOWNLOAD = "SINGLE_DOWNLOAD"  # 20 KES
+    SINGLE_AI_NOTE = "SINGLE_AI_NOTE"    # 80 KES
+
+
 class User(Base):
     __tablename__ = "users"
-    id = Column(String, primary_key=True)
+    id = Column(String, primary_key=True, default=uid)
     email = Column(String, unique=True, index=True, nullable=False)
     display_name = Column(String, default="")
-    plan = Column(String, default="free")  # free | pro | weekly | monthly
+    plan = Column(String, default=PlanTier.ECONOMY.value)  
     llm_credits = Column(Integer, default=0)
     created_at = Column(DateTime, default=now)
 
@@ -31,11 +46,17 @@ class User(Base):
     documents = relationship("Document", back_populates="user", cascade="all, delete-orphan")
     diagrams = relationship("InteractiveDiagram", back_populates="user", cascade="all, delete-orphan")
     flashcards = relationship("Flashcard", back_populates="user", cascade="all, delete-orphan")
+    
+    # Monetization Relationships
+    subscription = relationship("UserSubscription", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    daily_usages = relationship("DailyUsage", back_populates="user", cascade="all, delete-orphan")
+    one_off_credits = relationship("OneOffCredit", back_populates="user", cascade="all, delete-orphan")
 
 
 class Transaction(Base):
+    """Legacy transaction table, kept for backward compatibility."""
     __tablename__ = "transactions"
-    id = Column(String, primary_key=True, index=True)
+    id = Column(String, primary_key=True, index=True, default=uid)
     user_id = Column(String, ForeignKey("users.id"))
     amount = Column(Integer)
     plan_name = Column(String)
@@ -43,6 +64,70 @@ class Transaction(Base):
     created_at = Column(DateTime, default=now)
 
     user = relationship("User", back_populates="transactions")
+
+
+# ==========================================
+# MONETIZATION & USAGE TRACKING
+# ==========================================
+
+class UserSubscription(Base):
+    __tablename__ = "user_subscriptions"
+    id = Column(String, primary_key=True, default=uid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, unique=True)
+    tier = Column(String, default=PlanTier.ECONOMY.value, nullable=False)
+    expires_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+    user = relationship("User", back_populates="subscription")
+
+
+class DailyUsage(Base):
+    __tablename__ = "daily_usages"
+    id = Column(String, primary_key=True, default=uid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    usage_date = Column(Date, default=dt.date.today, nullable=False)
+    
+    youtube_seconds = Column(Integer, default=0)
+    ai_notes_count = Column(Integer, default=0)
+    static_sims_count = Column(Integer, default=0)
+    llm_sims_count = Column(Integer, default=0)
+    doc_summaries_count = Column(Integer, default=0)
+
+    user = relationship("User", back_populates="daily_usages")
+
+
+class ResourceNoteUsage(Base):
+    __tablename__ = "resource_note_usages"
+    id = Column(String, primary_key=True, default=uid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    resource_id = Column(String, nullable=False)  
+    ai_gen_attempts = Column(Integer, default=0)
+    summary_attempts = Column(Integer, default=0)
+
+
+class OneOffCredit(Base):
+    __tablename__ = "one_off_credits"
+    id = Column(String, primary_key=True, default=uid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    credit_type = Column(String, nullable=False) 
+    is_redeemed = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=now)
+
+    user = relationship("User", back_populates="one_off_credits")
+
+
+class PaymentTransaction(Base):
+    __tablename__ = "payment_transactions"
+    id = Column(String, primary_key=True, default=uid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    merchant_request_id = Column(String, nullable=True)
+    checkout_request_id = Column(String, nullable=True)
+    phone_number = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    purchase_type = Column(String, nullable=False)
+    target_tier = Column(String, nullable=True)
+    status = Column(String, default="PENDING") 
+    created_at = Column(DateTime, default=now)
 
 
 # ==========================================
@@ -152,8 +237,8 @@ class Document(Base):
     title = Column(String, default="Untitled Document")
     filename = Column(String, nullable=False)
     storage_key = Column(String, nullable=False)
-    status = Column(String, default="processing") # processing -> ready -> failed
-    ai_summary_md = Column(Text, nullable=True) # The synthesized, gap-filled study guide
+    status = Column(String, default="processing") 
+    ai_summary_md = Column(Text, nullable=True) 
     created_at = Column(DateTime, default=now)
 
     user = relationship("User", back_populates="documents")
@@ -167,7 +252,7 @@ class DocumentPage(Base):
     page_number = Column(Integer)
     image_storage_key = Column(String, nullable=False)
     ocr_text = Column(Text, default="")
-    ai_analysis = Column(Text, nullable=True) # Specifically extracts charts, removes fluff
+    ai_analysis = Column(Text, nullable=True) 
     created_at = Column(DateTime, default=now)
 
     document = relationship("Document", back_populates="pages")
@@ -182,9 +267,9 @@ class InteractiveDiagram(Base):
     id = Column(String, primary_key=True, default=uid)
     user_id = Column(String, ForeignKey("users.id"))
     title = Column(String, default="Untitled Diagram")
-    sim_type = Column(String, default="custom") # custom | load_balancer | circuit | chemistry
-    canvas_state = Column(JSON, default=dict) # Stores node/edge JSON for vector rendering
-    prompt_history = Column(JSON, default=list) # Stores the prompts used to generate/modify it
+    sim_type = Column(String, default="custom") 
+    canvas_state = Column(JSON, default=dict) 
+    prompt_history = Column(JSON, default=list) 
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
 
@@ -196,15 +281,13 @@ class InteractiveDiagram(Base):
 # ==========================================
 
 class Flashcard(Base):
-    """Implements SuperMemo-2 (SM-2) or similar spaced repetition algorithm tracking."""
     __tablename__ = "flashcards"
     id = Column(String, primary_key=True, default=uid)
     user_id = Column(String, ForeignKey("users.id"))
-    source_context = Column(String, nullable=True) # e.g., "Video: Load Balancing"
+    source_context = Column(String, nullable=True) 
     front_text = Column(Text, nullable=False)
     back_text = Column(Text, nullable=False)
     
-    # Spaced Repetition Tracking
     next_review_at = Column(DateTime, default=now)
     interval_days = Column(Integer, default=0)
     ease_factor = Column(Float, default=2.5)
@@ -225,7 +308,7 @@ class KnowledgeNode(Base):
     user_id = Column(String, ForeignKey("users.id"))
     concept_name = Column(String, index=True)
     description_md = Column(Text, default="")
-    source_references = Column(JSON, default=list) # Links back to Video IDs or Document IDs
+    source_references = Column(JSON, default=list) 
     created_at = Column(DateTime, default=now)
 
 
@@ -235,7 +318,7 @@ class KnowledgeEdge(Base):
     user_id = Column(String, ForeignKey("users.id"))
     source_node_id = Column(String, ForeignKey("knowledge_nodes.id"))
     target_node_id = Column(String, ForeignKey("knowledge_nodes.id"))
-    relationship_type = Column(String, default="related_to") # prerequisite_for, part_of, related_to
+    relationship_type = Column(String, default="related_to") 
     weight = Column(Float, default=1.0)
     created_at = Column(DateTime, default=now)
 
