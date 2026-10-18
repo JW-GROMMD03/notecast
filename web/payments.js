@@ -104,28 +104,44 @@ function startPolling() {
     attempts++;
     if (attempts > 60) { // Timeout after ~5 minutes
       clearInterval(pollInterval);
-      alert("Payment confirmation timed out. If you were charged, please contact support.");
-      window.location.reload();
+      showCompletionUI("TIMEOUT", "Payment confirmation timed out. If you were charged, please contact support.");
       return;
     }
     
     try {
       const data = await apiFetch(`/payments/status/${currentTxId}`);
       
-      if (data.status === "COMPLETED") { // Matched to backend schema casing
+      if (data.status === "COMPLETED") { 
         clearInterval(pollInterval);
-        if (el("pollingUI")) {
-          el("pollingUI").innerHTML = `<h3 style="color: #10b981;">Payment Successful!</h3><p>Redirecting to your dashboard...</p>`;
-        }
-        setTimeout(() => window.location.href = "dashboard.html", 2000);
+        showCompletionUI("SUCCESS", "Payment Successful! Your account has been upgraded.");
       } 
       else if (data.status === "FAILED") {
         clearInterval(pollInterval);
-        alert("Payment failed or was cancelled.");
-        window.location.reload();
+        showCompletionUI("FAILED", "Payment failed or was cancelled.");
       }
     } catch (e) {
       console.error("Polling error:", e);
     }
+  }, 5000);
+}
+
+// 5. Handle UI State on Success/Failure
+function showCompletionUI(status, message) {
+  const statusContainer = el("pollingStatus");
+  const actionButtons = el("actionButtons");
+
+  if (statusContainer) {
+    const color = status === "SUCCESS" ? "#10b981" : "#ef4444";
+    const heading = status === "SUCCESS" ? "Success!" : "Transaction Failed";
+    statusContainer.innerHTML = `<h3 style="color: ${color}; margin-top: 10px;">${heading}</h3><p style="color: var(--text-muted); font-size: 0.95rem;">${message}<br><br>Redirecting to plans in 5 seconds...</p>`;
+  }
+  
+  if (actionButtons) {
+    actionButtons.classList.remove("hidden");
+  }
+
+  // Automatically redirect to the plans section after 5 seconds
+  setTimeout(() => {
+    window.location.href = "index.html#pricing";
   }, 5000);
 }
