@@ -180,6 +180,14 @@ if (typeof window.noteCastInjected === 'undefined') {
       
       try {
         chrome.runtime.sendMessage({ type: "CHECK_ENTITLEMENT", action: "YOUTUBE_CAPTURE" }, (response) => {
+            // FIX: Gracefully handle disconnects/unregistered listeners without crashing
+            if (chrome.runtime.lastError) {
+                statusEl.textContent = '❌ Extension disconnected. Please reload the page.';
+                statusEl.style.color = '#ef4444';
+                btn.disabled = false;
+                return;
+            }
+
             if (response && response.success) {
                 statusEl.textContent = '✅ Capturing! Notes will sync to your dashboard.';
                 statusEl.style.color = '#10b981';
