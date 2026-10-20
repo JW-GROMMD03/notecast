@@ -41,6 +41,7 @@ class User(Base):
 
     videos = relationship("Video", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan")
+    exports = relationship("Export", back_populates="user", cascade="all, delete-orphan")
     
     # New Educational Pillars
     documents = relationship("Document", back_populates="user", cascade="all, delete-orphan")
@@ -243,6 +244,7 @@ class Document(Base):
 
     user = relationship("User", back_populates="documents")
     pages = relationship("DocumentPage", back_populates="document", cascade="all, delete-orphan")
+    exports = relationship("Export", back_populates="document", cascade="all, delete-orphan")
 
 
 class DocumentPage(Base):
@@ -363,3 +365,5 @@ class Export(Base):
     created_at = Column(DateTime, default=now)
 
     video = relationship("Video", back_populates="exports")
+    document = relationship("Document", back_populates="exports")
+    user = relationship("User", back_populates="exports")
