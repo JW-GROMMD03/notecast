@@ -118,8 +118,10 @@ def _clean_math_for_pdf(text: str) -> str:
     t = re.sub(r'\\mathrm\{([^}]+)\}', r'\1', t)
     
     # FIXED SYNTAX ERROR HERE
-    t = re.sub(r'\\left\(', '(', t) t = re.sub(r'\\right\)', ')', t)
-    t = re.sub(r'\\left\[', '[', t) t = re.sub(r'\\right\]', ']', t)
+    t = re.sub(r'\\left\(', '(', t) 
+    t = re.sub(r'\\right\)', ')', t)
+    t = re.sub(r'\\left\[', '[', t) 
+    t = re.sub(r'\\right\]', ']', t)
 
     # Safe scoped subscript/superscript conversion
     t = re.sub(r'_\{([^}]+)\}', r'<sub>\1</sub>', t)
