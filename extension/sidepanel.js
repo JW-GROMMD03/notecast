@@ -9,12 +9,15 @@ let activeTabId = null;
 let activeTabObj = null;
 let capturing = false;
 
-// --- Media Capture Variables ---
+// Media Capture Variables
 let currentStream = null;
 let rawCaptureStream = null;
 let isRecording = false;
 const CHUNK_DURATION_MS = 2000;
-// -------------------------------
+
+// Voice Defense Variables
+let isRecordingVoice = false;
+let recognition = null;
 
 function wireVisibilityToggle(inputEl, toggleEl) {
   toggleEl.addEventListener("click", () => {
@@ -23,7 +26,9 @@ function wireVisibilityToggle(inputEl, toggleEl) {
     toggleEl.textContent = showing ? "Show" : "Hide";
   });
 }
-wireVisibilityToggle(el("password"), el("toggleBtn"));
+if (el("password") && el("toggleBtn")) {
+  wireVisibilityToggle(el("password"), el("toggleBtn"));
+}
 
 async function checkAuth() {
   const auth = await chrome.runtime.sendMessage({ scope: "notecast", type: "GET_AUTH" });
@@ -73,7 +78,7 @@ el("authForm").addEventListener("submit", async (e) => {
 
   if (!result.ok) {
     errorEl.textContent = result.status === 429
-      ? "Too many attempts — please wait a few minutes and try again."
+      ? "Too many attempts — please wait a few minutes."
       : result.error;
     errorEl.classList.remove("hidden");
     return;
@@ -126,7 +131,6 @@ async function detectVideo() {
       });
       meta = await chrome.tabs.sendMessage(tab.id, { scope: "notecast-meta", type: "GET_META" });
     } catch (injectErr) {
-      console.warn("NoteCast: Could not extract metadata from tab.", injectErr);
       el("offSite").classList.remove("hidden");
       return;
     }
@@ -158,8 +162,6 @@ el("startBtn").addEventListener("click", async () => {
   try {
     el("statusLabel").textContent = "Awaiting tab selection...";
     
-    // 1. Get the stream ID and consume it INSTANTLY inside the exact same file.
-    // This permanently prevents the AbortError context-boundary crash.
     const streamId = await new Promise((resolve, reject) => {
       chrome.desktopCapture.chooseDesktopMedia(["tab", "audio"], (id) => {
         if (chrome.runtime.lastError) {
@@ -178,26 +180,22 @@ el("startBtn").addEventListener("click", async () => {
     capturing = true;
     el("idleControls").classList.add("hidden");
     el("activeControls").classList.remove("hidden");
-    el("tabs").classList.remove("hidden");
 
-    // 2. Tell the background script to initialize the backend AI session.
     chrome.runtime.sendMessage({ 
       scope: "notecast", 
       type: "START_CAPTURE_PIPELINE", 
-      payload: { tabId: activeTabId, videoMeta: meta } // streamId is no longer needed in backend!
+      payload: { tabId: activeTabId, videoMeta: meta }
     }).then(result => {
       if (!result || !result.ok) {
-        console.warn("Backend initialization delayed or failed:", result?.error);
         stopAudioCapture(); 
         capturing = false;
         el("idleControls").classList.remove("hidden");
         el("activeControls").classList.add("hidden");
-        el("statusLabel").textContent = "";
         alert(`Capture Failed: ${result?.error || "Unknown Error"}`);
       } else {
         el("statusLabel").textContent = "Connected (with latency)";
       }
-    }).catch(e => console.warn("Background script error:", e));
+    }).catch(e => console.warn(e));
 
   } catch (err) {
     capturing = false;
@@ -222,8 +220,7 @@ el("stopBtn").addEventListener("click", async () => {
   capturing = false;
 });
 
-// ---------- AUDIO CAPTURE LOGIC ----------
-
+// AUDIO CAPTURE PIPELINE
 async function startAudioCapture(streamId) {
   stopAudioCapture(); 
 
@@ -234,13 +231,13 @@ async function startAudioCapture(streamId) {
       video: { mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: streamId } }
     });
   } catch (err) {
-    throw new Error(`Please ensure 'Also share tab audio' is checked in the popup.`);
+    throw new Error(`Please ensure 'Also share tab audio' is checked.`);
   }
 
   const audioTracks = rawStream.getAudioTracks();
   if (audioTracks.length === 0) {
     rawStream.getTracks().forEach(t => t.stop());
-    throw new Error("No audio tracks found. Please check 'Also share tab audio'.");
+    throw new Error("No audio tracks found.");
   }
 
   rawCaptureStream = rawStream;
@@ -271,7 +268,6 @@ function recordStandaloneChunk() {
       reader.onloadend = () => {
         const base64data = reader.result.split(",")[1];
         if (base64data) {
-          // Send the audio chunks directly to the background script
           chrome.runtime.sendMessage({
             scope: "notecast",
             type: "AUDIO_CHUNK",
@@ -298,18 +294,80 @@ function stopAudioCapture() {
   if (rawCaptureStream) { rawCaptureStream.getTracks().forEach((t) => t.stop()); rawCaptureStream = null; }
 }
 
-// ---------- UI RENDERING ----------
+// SOCRATIC FEYNMAN VOICE HANDLER
+el("micBtn").addEventListener("click", () => {
+  if (isRecordingVoice) stopVoiceDefense();
+  else startVoiceDefense();
+});
 
+function startVoiceDefense() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert("Speech recognition is not supported in this browser.");
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onstart = () => {
+    isRecordingVoice = true;
+    el("micBtn").classList.add("recording");
+    el("micStatus").textContent = "Listening... Speak your explanation out loud.";
+  };
+
+  recognition.onresult = async (event) => {
+    const userSpeech = event.results[0][0].transcript;
+    el("micStatus").textContent = "Evaluating with Socratic AI...";
+    
+    try {
+      const auth = await chrome.runtime.sendMessage({ scope: "notecast", type: "GET_AUTH" });
+      const resp = await fetch(`${API_BASE}/socratic/evaluate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${auth.token}`
+        },
+        body: JSON.stringify({
+          concept: el("conceptSelect").value,
+          user_explanation: userSpeech,
+          context_notes: notes.map(n => n.body_md).join("\n")
+        })
+      });
+
+      const data = await resp.json();
+      el("socraticResult").classList.remove("hidden");
+      el("socraticScore").textContent = `Score: ${data.score}/100`;
+      el("socraticBody").textContent = data.feedback;
+      el("socraticQuestion").textContent = `💡 Socratic Question: ${data.socratic_question}`;
+      el("micStatus").textContent = "Click mic to record another attempt.";
+    } catch(e) {
+      el("micStatus").textContent = "Evaluation failed. Please try again.";
+    }
+  };
+
+  recognition.onend = () => stopVoiceDefense();
+  recognition.onerror = () => stopVoiceDefense();
+
+  recognition.start();
+}
+
+function stopVoiceDefense() {
+  isRecordingVoice = false;
+  el("micBtn").classList.remove("recording");
+  if (recognition) recognition.stop();
+}
+
+// UI RENDERING
 chrome.runtime.onMessage.addListener((message) => {
   if (message.scope !== "notecast") return;
   switch (message.type) {
     case "transcript":
     case "transcript_segment":
-      if (message.segment) {
-        transcript.push(message.segment);
-      } else if (message.text) {
-        transcript.push({ start_ms: message.start_ms || 0, text: message.text });
-      }
+      if (message.segment) transcript.push(message.segment);
+      else if (message.text) transcript.push({ start_ms: message.start_ms || 0, text: message.text });
       renderTranscript();
       break;
     case "note":
@@ -336,7 +394,7 @@ function renderNotes() {
   const panel = el("panel-notes");
   if (!panel) return;
   if (!notes.length) {
-    panel.innerHTML = `<div class="empty-state" style="padding: 20px; color: #64748b; text-align: center; font-style: italic;">Notes will appear here roughly every 30 seconds as the video plays.</div>`;
+    panel.innerHTML = `<div class="empty-state">Notes will appear here roughly every 30 seconds as the video plays.</div>`;
     return;
   }
   panel.innerHTML = notes
@@ -353,12 +411,12 @@ function renderTranscript() {
   const panel = el("panel-transcript");
   if (!panel) return;
   if (transcript.length === 0) {
-    panel.innerHTML = `<div class="empty-state" style="padding: 20px; color: #64748b; text-align: center; font-style: italic;">Live captions will appear here once audio is detected...</div>`;
+    panel.innerHTML = `<div class="empty-state">Live captions will appear here once audio is detected...</div>`;
     return;
   }
   panel.innerHTML = transcript
     .map(
-      (s) => `<div class="transcript-line" style="margin-bottom: 8px;"><span class="transcript-ts" style="color: #3b82f6; font-weight: 600; margin-right: 8px;">[${msToClock(s.start_ms)}]</span>${escapeHtml(s.text)}</div>`
+      (s) => `<div class="transcript-line"><span class="transcript-ts">[${msToClock(s.start_ms)}]</span>${escapeHtml(s.text)}</div>`
     )
     .join("");
   panel.scrollTop = panel.scrollHeight;
@@ -368,15 +426,15 @@ function renderVisuals() {
   const panel = el("panel-visuals");
   if (!panel) return;
   if (!visuals.length) {
-    panel.innerHTML = `<div class="empty-state" style="padding: 20px; color: #64748b; text-align: center; font-style: italic;">Diagrams, slides and code the video shows will be captured here.</div>`;
+    panel.innerHTML = `<div class="empty-state">Diagrams, slides and code shown in the video will be captured here.</div>`;
     return;
   }
   panel.innerHTML = visuals
     .map(
       (v) => `<div class="visual-card">
-        ${v.storage_key ? `<img src="${API_BASE}${v.storage_key}" style="max-width: 100%; border-radius: 4px; margin-bottom: 8px;" />` : ""}
-        <span class="visual-type" style="font-weight: 600; color: #0f172a;">${escapeHtml(v.type)}</span>
-        <div class="visual-desc" style="font-size: 0.9em; color: #475569;">${escapeHtml(v.description)}</div>
+        ${v.storage_key ? `<img src="${API_BASE}${v.storage_key}" class="visual-img" />` : ""}
+        <span class="visual-type">${escapeHtml(v.type)}</span>
+        <div class="visual-desc">${escapeHtml(v.description)}</div>
       </div>`
     )
     .join("");

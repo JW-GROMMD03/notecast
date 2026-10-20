@@ -48,7 +48,7 @@ if (typeof window.noteCastInjected === 'undefined') {
     if (video && !autoStarted) {
       video.addEventListener("play", () => {
         if (!autoStarted && chrome?.runtime?.id) {
-          // Do not auto-start silently; rely on the UI prompt
+          // Playback monitor hook
         }
       });
     }
@@ -71,9 +71,7 @@ if (typeof window.noteCastInjected === 'undefined') {
       return;
     }
 
-    if (isAdShowing()) {
-      return;
-    }
+    if (isAdShowing()) return;
 
     const video = getVideoElement();
     if (!video || video.paused || video.readyState < 2) return;
@@ -107,7 +105,7 @@ if (typeof window.noteCastInjected === 'undefined') {
         } catch (e) {}
       },
       "image/webp",
-      0.6
+      0.65
     );
   }
 
@@ -160,7 +158,6 @@ if (typeof window.noteCastInjected === 'undefined') {
                 statusEl.style.color = '#10b981';
                 btn.style.display = 'none';
                 
-                // Start capture pipeline if authorized
                 autoStarted = true;
                 const meta = extractMeta();
                 chrome.runtime.sendMessage({

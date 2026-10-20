@@ -13,7 +13,7 @@ import json
 from .. import models, schemas, auth
 from ..database import get_db
 from ..config import settings
-from ..services import llm, mdblocks, diagram
+from ..services import llm, mdblocks, diagram, ai_generator
 
 router = APIRouter(tags=["notes"])
 
@@ -57,7 +57,7 @@ def _clean_math_for_pdf(text: str) -> str:
     
     t = text
     t = t.replace("$$", "").replace("$", "")
-    t = t.replace(r"\[", "").replace(r"\]", "").replace(r"\(", "").replace(r"\)", "")
+    t = t.replace(r"[", "").replace(r"]", "").replace(r"\(", "").replace(r"\)", "")
     t = t.replace(r"\begin{aligned}", "").replace(r"\end{aligned}", "")
     t = t.replace(r"\begin{matrix}", "").replace(r"\end{matrix}", "")
     t = t.replace(r"\displaystyle", "")
@@ -116,10 +116,8 @@ def _clean_math_for_pdf(text: str) -> str:
     t = re.sub(r'\\overline\{([^}]+)\}', r'\1̄', t)
     t = re.sub(r'\\text\{([^}]+)\}', r'\1', t)
     t = re.sub(r'\\mathrm\{([^}]+)\}', r'\1', t)
-    t = re.sub(r'\\left\(', '(', t)
-    t = re.sub(r'\\right\)', ')', t)
-    t = re.sub(r'\\left\[', '[', t)
-    t = re.sub(r'\\right\]', ']', t)
+    t = re.sub(r'\\left\(', '(', t) t = re.sub(r'\\right\)', ')', t)
+    t = re.sub(r'\\left\[', '[', t) t = re.sub(r'\\right\]', ']', t)
 
     # Safe scoped subscript/superscript conversion (only when explicitly braced in LaTeX)
     t = re.sub(r'_\{([^}]+)\}', r'<sub>\1</sub>', t)
@@ -287,9 +285,9 @@ def trigger_generate_ai_notes(video_id: str, user: models.User = Depends(auth.ge
 
     CRITICAL_AI_RULES = """
     CRITICAL FORMATTING & CONTEXT-ADAPTIVE GUARDRAILS - YOU MUST OBEY THESE RULES:
-    1. CONTEXT-DRIVEN ADAPTABILITY: Dynamically adapt your output format and content to the specific discipline. 
-       - For programming: Include clean code snippets, algorithm breakdowns, and technical syntax examples.
-       - For theoretical, engineering, or mathematical courses: Focus on rigorous conceptual frameworks.
+1. CONTEXT-DRIVEN ADAPTABILITY: Dynamically adapt your output format and content to the specific discipline. 
+- For programming: Include clean code snippets, algorithm breakdowns, and technical syntax examples.
+- For theoretical, engineering, or mathematical courses: Focus on rigorous conceptual frameworks.
     2. WHITEBOARD & HANDWRITTEN MATH DERIVATIONS: If visual contexts or transcripts indicate handwritten equations on a whiteboard, you MUST explain the math contextually. Break down mathematical proofs, formulas, and derivations step-by-step. Define all variables explicitly. Never skip logical mathematical steps.
     3. PERFECT MARKDOWN TABLES: Every table MUST use standard markdown syntax with balanced pipes (|) and a separator row (|---|---|). Never put raw HTML line breaks (<br>) inside table cells.
     4. CLEAN MATHEMATICAL NOTATION: Write equations using clean Unicode math characters or standard subscript/superscript markup. Avoid complex nested LaTeX macros that break web and PDF rendering.
@@ -307,7 +305,15 @@ def trigger_generate_ai_notes(video_id: str, user: models.User = Depends(auth.ge
             visual_contexts=visual_contexts  
         )  
     except Exception:  
-        ai_markdown = _synthesize_truly_dynamic_notes(video, existing_sections, transcript_segs, visual_events)
+        try:
+            ai_markdown = ai_generator.generate_deep_research_notes(
+                title=video.title or "Untitled Session",
+                channel=video.channel or "Unknown Presenter",
+                full_transcript=comprehensive_context,
+                visual_contexts=visual_contexts
+            )
+        except Exception:
+            ai_markdown = _synthesize_truly_dynamic_notes(video, existing_sections, transcript_segs, visual_events)
 
     if not ai_markdown or "Error" in ai_markdown or "No provider" in ai_markdown:  
         ai_markdown = _synthesize_truly_dynamic_notes(video, existing_sections, transcript_segs, visual_events)
