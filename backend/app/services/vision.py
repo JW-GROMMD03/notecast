@@ -11,6 +11,7 @@ import base64
 import io
 import json
 import time
+import re
 import numpy as np
 from PIL import Image
 from openai import OpenAI
@@ -35,6 +36,55 @@ elif getattr(settings, "GEMINI_API_KEY", None):
 
 
 _last_frame_gray = {}  # session_id -> np.ndarray, for perceptual-diff gating
+
+# Strictly enforce JSON formatting and character escaping to prevent API 400 crashes
+VISION_PROMPT = """
+You analyse a single video frame for a note-taking tool.
+Respond ONLY with a valid JSON object matching this exact structure:
+{
+  "is_meaningful": true,
+  "type": "diagram|code|slide|chart|whiteboard|other",
+  "description": "Brief summary",
+  "extracted_text": "Plain text content without unescaped quotes",
+  "latex": null
+}
+
+CRITICAL RULES:
+1. is_meaningful is false for talking-head shots, ads, or frames with no useful information.
+2. You MUST escape all double quotes inside strings with a backslash (\\").
+3. Do NOT include raw backslashes or literal newline characters inside strings; use spaces or \\n instead.
+"""
+
+def clean_vision_json(raw_text: str) -> dict:
+    """
+    Parses LLM output and aggressively cleans unescaped quotes and newlines
+    to prevent json_validate_failed errors.
+    """
+    try:
+        # First attempt: Try standard JSON load
+        return json.loads(raw_text)
+    except json.JSONDecodeError:
+        # Second attempt: Strip markdown formatting and fix newlines
+        cleaned = re.sub(r'\\n', ' ', raw_text)
+        cleaned = re.sub(r'\\', '', cleaned)
+        
+        if "```json" in cleaned:
+            try:
+                cleaned = cleaned.split("```json")[1].split("```")[0]
+            except IndexError:
+                pass
+                
+        try:
+            return json.loads(cleaned)
+        except Exception:
+            # Final fallback: Return generic object so the pipeline does not crash
+            return {
+                "is_meaningful": True,
+                "type": "slide",
+                "description": "Visual captured (Text extraction formatting failed)",
+                "extracted_text": "",
+                "latex": None
+            }
 
 
 def should_capture(session_id: str, image_bytes: bytes) -> bool:
@@ -73,14 +123,7 @@ def analyze_frame(image_bytes: bytes, transcript_context: str) -> dict:
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        "You analyse a single video frame for a note-taking tool. "
-                        "Respond ONLY with JSON: {\"is_meaningful\": bool, "
-                        "\"type\": \"diagram|code|slide|chart|whiteboard|other\", "
-                        "\"description\": str, \"extracted_text\": str, "
-                        "\"latex\": str|null}. is_meaningful is false for talking-head "
-                        "shots, ads, or frames with no useful information."
-                    ),
+                    "content": VISION_PROMPT,
                 },
                 {
                     "role": "user",
@@ -93,12 +136,30 @@ def analyze_frame(image_bytes: bytes, transcript_context: str) -> dict:
             max_tokens=400,
         )
         latency_ms = int((time.time() - start) * 1000)
-        data = json.loads(resp.choices[0].message.content)
+        
+        # Parse and sanitize the response
+        raw_content = resp.choices[0].message.content
+        data = clean_vision_json(raw_content)
+        
         data["_latency_ms"] = latency_ms
         data["_tokens"] = getattr(resp.usage, "total_tokens", 0)
         
-    except (json.JSONDecodeError, IndexError, Exception) as e:
-        data = {"is_meaningful": False, "type": "other", "description": "", "extracted_text": "", "latex": None}
+    except Exception as e:
+        # If the API throws a 400 error (e.g. strict validation failed before returning), 
+        # log it and return a safe fallback instead of crashing the capture pipeline.
         print(f"Vision API Error: {e}")
+        
+        # If Groq returns the failed generation inside the exception, attempt to parse it
+        try:
+            if hasattr(e, "response") and e.response:
+                err_body = e.response.json()
+                if "failed_generation" in err_body.get("error", {}):
+                    failed_raw = err_body["error"]["failed_generation"]
+                    data = clean_vision_json(failed_raw)
+                    return data
+        except Exception:
+            pass
+
+        data = {"is_meaningful": False, "type": "other", "description": "", "extracted_text": "", "latex": None}
         
     return data

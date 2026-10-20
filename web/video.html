@@ -129,7 +129,6 @@
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
   <script type="module" src="video.js"></script>
   <script>
-    // Tab Switching Logic for Web App
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -139,7 +138,6 @@
       });
     });
 
-    // Web App Feynman Voice Logic
     let isWebRecording = false;
     let webRecognition = null;
     const webMicBtn = document.getElementById('webMicBtn');
@@ -173,12 +171,13 @@
       webRecognition.onresult = async (event) => {
         const text = event.results[0][0].transcript;
         webMicStatus.textContent = "Evaluating with Socratic AI...";
-        const token = localStorage.getItem("notecast_token");
+        const token = localStorage.getItem("notecast_token") || getCookie("nc_access");
         
         try {
           const params = new URLSearchParams(window.location.search);
           const videoId = params.get("id");
-          const resp = await fetch("https://notecast-53sj.onrender.com/socratic/evaluate", {
+          
+          const resp = await fetch("/socratic/evaluate", {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
             body: JSON.stringify({
@@ -187,12 +186,20 @@
               video_id: videoId
             })
           });
+          
           const data = await resp.json();
+          
+          // FIX: Safely parse score and feedback regardless of nested schema
+          const score = data.score ?? data.evaluation?.score ?? data.overall_score ?? "--";
+          const feedback = data.feedback ?? data.evaluation?.feedback ?? data.analysis ?? "No feedback generated.";
+          const question = data.socratic_question ?? data.evaluation?.socratic_question ?? data.question ?? "";
+
           document.getElementById('webSocraticResult').classList.remove('hidden');
-          document.getElementById('webSocraticScore').textContent = `Score: ${data.score}/100`;
-          document.getElementById('webSocraticBody').textContent = data.feedback;
-          document.getElementById('webSocraticQuestion').textContent = `💡 Question: ${data.socratic_question}`;
+          document.getElementById('webSocraticScore').textContent = `Score: ${score}/100`;
+          document.getElementById('webSocraticBody').textContent = feedback;
+          document.getElementById('webSocraticQuestion').textContent = question ? `💡 Question: ${question}` : "";
           webMicStatus.textContent = "Click mic to answer or try again.";
+          
         } catch(e) {
           webMicStatus.textContent = "Failed to reach AI. Try again.";
         }
@@ -205,6 +212,12 @@
       };
       
       webRecognition.start();
+    }
+    
+    function getCookie(name) {
+      const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+      if (match) return match[2];
+      return null;
     }
   </script>
 </body>
