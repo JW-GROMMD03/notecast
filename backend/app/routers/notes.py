@@ -116,8 +116,10 @@ def _clean_math_for_pdf(text: str) -> str:
     t = re.sub(r'\\overline\{([^}]+)\}', r'\1̄', t)
     t = re.sub(r'\\text\{([^}]+)\}', r'\1', t)
     t = re.sub(r'\\mathrm\{([^}]+)\}', r'\1', t)
-    t = re.sub(r'\\left\(', '(', t) t = re.sub(r'\\right\)', ')', t)
-    t = re.sub(r'\\left\[', '[', t) t = re.sub(r'\\right\]', ']', t)
+    t = re.sub(r'\\left\(', '(', t) 
+    t = re.sub(r'\\right\)', ')', t)
+    t = re.sub(r'\\left\[', '[', t) 
+    t = re.sub(r'\\right\]', ']', t)
 
     # Safe scoped subscript/superscript conversion (only when explicitly braced in LaTeX)
     t = re.sub(r'_\{([^}]+)\}', r'<sub>\1</sub>', t)
