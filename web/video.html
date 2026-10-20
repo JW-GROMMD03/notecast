@@ -47,6 +47,7 @@
     <nav class="tabs">
       <button class="tab" data-tab="notes">Notes</button>
       <button class="tab active" data-tab="ai-notes">AI Generated Notes</button>
+      <button class="tab" data-tab="feynman">Feynman Voice</button>
       <button class="tab" data-tab="transcript">Transcript</button>
       <button class="tab" data-tab="visuals">Captures</button>
     </nav>
@@ -72,7 +73,37 @@
         </div>
     </div>
 
-    <!-- Panel 3: Transcript Only -->
+    <!-- Panel 3: Feynman Voice Defense -->
+    <div id="panel-feynman" class="panel hidden">
+      <div class="card" style="text-align: center; padding: 40px 20px;">
+        <h3>🎙️ Socratic Feynman Voice Defense</h3>
+        <p style="color: var(--ink-soft); max-width: 600px; margin: 10px auto 20px;">
+          Select a concept from the study guide, click the microphone, and explain it out loud in your own words. The NoteCast AI will evaluate your reasoning.
+        </p>
+        
+        <div style="max-width: 400px; margin: 0 auto 30px; text-align: left;">
+          <label style="display: block; font-size: 13px; margin-bottom: 5px; color: var(--ink-soft);">Target Concept:</label>
+          <select id="webConceptSelect" style="width: 100%; padding: 10px; background: #020617; border: 1px solid var(--paper-line); color: white; border-radius: 6px;">
+            <option value="Core Working Principles">Core Working Principles</option>
+            <option value="Mathematical Derivations">Mathematical Derivations</option>
+            <option value="System Architecture">System Architecture</option>
+          </select>
+        </div>
+
+        <button id="webMicBtn" style="width: 80px; height: 80px; border-radius: 50%; background: #2563eb; color: white; font-size: 32px; border: none; cursor: pointer; box-shadow: 0 4px 15px rgba(37,99,235,0.4); margin-bottom: 15px; transition: transform 0.2s;">
+          🎙️
+        </button>
+        <div id="webMicStatus" style="font-size: 14px; color: var(--ink-soft);">Click microphone to start explaining</div>
+
+        <div id="webSocraticResult" class="hidden" style="margin-top: 30px; background: #020617; border: 1px solid var(--paper-line); padding: 20px; border-radius: 8px; text-align: left; max-width: 700px; margin-left: auto; margin-right: auto;">
+          <div id="webSocraticScore" style="color: #10b981; font-weight: bold; font-size: 18px; margin-bottom: 10px;">Score: --/100</div>
+          <div id="webSocraticBody" style="margin-bottom: 15px; line-height: 1.6; color: var(--ink);"></div>
+          <div id="webSocraticQuestion" style="color: #60a5fa; font-weight: bold; font-style: italic;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 4: Transcript Only -->
     <div id="panel-transcript" class="panel hidden">
         <div class="card">
             <h3>🎙 Verbatim Audio Transcript</h3>
@@ -80,7 +111,7 @@
         </div>
     </div>
 
-    <!-- Panel 4: Captures / Visuals Only -->
+    <!-- Panel 5: Captures / Visuals Only -->
     <div id="panel-visuals" class="panel hidden">
         <div class="card">
             <h3>🖼️ Captured Whiteboards & Slides</h3>
@@ -97,5 +128,84 @@
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
   <script type="module" src="video.js"></script>
+  <script>
+    // Tab Switching Logic for Web App
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
+        tab.classList.add('active');
+        document.getElementById(`panel-${tab.dataset.tab}`).classList.remove('hidden');
+      });
+    });
+
+    // Web App Feynman Voice Logic
+    let isWebRecording = false;
+    let webRecognition = null;
+    const webMicBtn = document.getElementById('webMicBtn');
+    const webMicStatus = document.getElementById('webMicStatus');
+    
+    webMicBtn.addEventListener('click', () => {
+      if (isWebRecording) {
+        if(webRecognition) webRecognition.stop();
+        isWebRecording = false;
+        webMicBtn.style.background = '#2563eb';
+        webMicBtn.style.transform = 'scale(1)';
+      } else {
+        startWebVoice();
+      }
+    });
+
+    function startWebVoice() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) { alert("Speech recognition not supported in this browser."); return; }
+      
+      webRecognition = new SpeechRecognition();
+      webRecognition.lang = "en-US";
+      
+      webRecognition.onstart = () => {
+        isWebRecording = true;
+        webMicBtn.style.background = '#ef4444';
+        webMicBtn.style.transform = 'scale(1.1)';
+        webMicStatus.textContent = "Listening... Speak clearly.";
+      };
+      
+      webRecognition.onresult = async (event) => {
+        const text = event.results[0][0].transcript;
+        webMicStatus.textContent = "Evaluating with Socratic AI...";
+        const token = localStorage.getItem("notecast_token");
+        
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const videoId = params.get("id");
+          const resp = await fetch("https://notecast-53sj.onrender.com/socratic/evaluate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify({
+              concept: document.getElementById('webConceptSelect').value,
+              user_explanation: text,
+              video_id: videoId
+            })
+          });
+          const data = await resp.json();
+          document.getElementById('webSocraticResult').classList.remove('hidden');
+          document.getElementById('webSocraticScore').textContent = `Score: ${data.score}/100`;
+          document.getElementById('webSocraticBody').textContent = data.feedback;
+          document.getElementById('webSocraticQuestion').textContent = `💡 Question: ${data.socratic_question}`;
+          webMicStatus.textContent = "Click mic to answer or try again.";
+        } catch(e) {
+          webMicStatus.textContent = "Failed to reach AI. Try again.";
+        }
+      };
+      
+      webRecognition.onend = () => {
+        isWebRecording = false;
+        webMicBtn.style.background = '#2563eb';
+        webMicBtn.style.transform = 'scale(1)';
+      };
+      
+      webRecognition.start();
+    }
+  </script>
 </body>
 </html>

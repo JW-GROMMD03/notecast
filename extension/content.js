@@ -7,18 +7,54 @@ if (typeof window.noteCastInjected === 'undefined') {
   let frameTimer = null;
   let autoStarted = false;
   let ncContainer = null;
+  let isCurrentlyAd = false;
+  let adObserver = null;
 
   function getVideoElement() {
     return document.querySelector("video.html5-main-video") || document.querySelector("video");
   }
 
-  function isAdShowing() {
+  // --- AUTOMATIC AD PAUSING SYSTEM ---
+  function checkAdStatus() {
     const player = document.querySelector("#movie_player") || document.querySelector(".html5-video-player");
-    if (!player) return false;
-    return player.classList.contains("ad-showing") || 
-           player.classList.contains("ad-interrupting") || 
-           document.querySelector(".ad-showing") !== null ||
-           document.querySelector(".ytp-ad-player-overlay") !== null;
+    const adShowing = player ? (
+      player.classList.contains("ad-showing") || 
+      player.classList.contains("ad-interrupting") ||
+      document.querySelector(".ytp-ad-player-overlay") !== null
+    ) : false;
+
+    if (adShowing !== isCurrentlyAd) {
+      isCurrentlyAd = adShowing;
+      
+      // Notify extension side panel to pause audio recording
+      try {
+        chrome.runtime.sendMessage({
+          scope: "notecast",
+          type: "AD_STATUS_CHANGE",
+          isAd: isCurrentlyAd
+        }).catch(() => {});
+      } catch(e) {}
+
+      const statusEl = document.getElementById('nc-status');
+      if (statusEl && autoStarted) {
+        if (isCurrentlyAd) {
+          statusEl.textContent = '⏸️ Ad detected — Pausing capture...';
+          statusEl.style.color = '#f59e0b';
+        } else {
+          statusEl.textContent = '✅ Resuming capture...';
+          statusEl.style.color = '#10b981';
+        }
+      }
+    }
+    return isCurrentlyAd;
+  }
+
+  function setupAdObserver() {
+    const player = document.querySelector("#movie_player") || document.querySelector(".html5-video-player");
+    if (player && !adObserver) {
+      adObserver = new MutationObserver(() => checkAdStatus());
+      adObserver.observe(player, { attributes: true, attributeFilter: ['class'] });
+    }
   }
 
   function extractMeta() {
@@ -64,14 +100,11 @@ if (typeof window.noteCastInjected === 'undefined') {
 
   function captureFrame() {
     if (!chrome?.runtime?.id) {
-      if (frameTimer) {
-        clearInterval(frameTimer);
-        frameTimer = null;
-      }
+      if (frameTimer) { clearInterval(frameTimer); frameTimer = null; }
       return;
     }
 
-    if (isAdShowing()) return;
+    if (checkAdStatus()) return; // Discard frame if ad is playing
 
     const video = getVideoElement();
     if (!video || video.paused || video.readyState < 2) return;
@@ -85,16 +118,9 @@ if (typeof window.noteCastInjected === 'undefined') {
 
     canvas.toBlob(
       async (blob) => {
-        if (!blob) return;
+        if (!blob || checkAdStatus()) return;
         const b64 = await blobToBase64(blob);
         
-        if (!chrome?.runtime?.id) {
-          if (frameTimer) clearInterval(frameTimer);
-          return;
-        }
-
-        if (isAdShowing()) return;
-
         try {
           chrome.runtime.sendMessage({
             scope: "notecast",
@@ -138,6 +164,7 @@ if (typeof window.noteCastInjected === 'undefined') {
       </div>
     `;
     document.body.appendChild(ncContainer);
+    setupAdObserver(); // Initialize ad watcher when UI loads
   
     document.getElementById('nc-close-btn').addEventListener('click', () => {
       ncContainer.style.display = 'none';
@@ -189,11 +216,9 @@ if (typeof window.noteCastInjected === 'undefined') {
           document.getElementById('nc-start-btn').style.display = 'block';
           document.getElementById('nc-start-btn').disabled = false;
       }
-      if(frameTimer) {
-          clearInterval(frameTimer);
-          frameTimer = null;
-      }
+      if(frameTimer) { clearInterval(frameTimer); frameTimer = null; }
       autoStarted = false;
+      setupAdObserver();
     } else {
       injectNoteCastUI();
     }
@@ -209,10 +234,7 @@ if (typeof window.noteCastInjected === 'undefined') {
           frameTimer = setInterval(captureFrame, FRAME_INTERVAL_MS);
           sendResponse({ ok: true });
         } else if (message.type === "STOP_FRAMES") {
-          if (frameTimer) {
-            clearInterval(frameTimer);
-            frameTimer = null;
-          }
+          if (frameTimer) { clearInterval(frameTimer); frameTimer = null; }
           sendResponse({ ok: true });
         }
         return true;

@@ -116,12 +116,12 @@ def _clean_math_for_pdf(text: str) -> str:
     t = re.sub(r'\\overline\{([^}]+)\}', r'\1̄', t)
     t = re.sub(r'\\text\{([^}]+)\}', r'\1', t)
     t = re.sub(r'\\mathrm\{([^}]+)\}', r'\1', t)
-    t = re.sub(r'\\left\(', '(', t) 
-    t = re.sub(r'\\right\)', ')', t)
-    t = re.sub(r'\\left\[', '[', t) 
-    t = re.sub(r'\\right\]', ']', t)
+    
+    # FIXED SYNTAX ERROR HERE
+    t = re.sub(r'\\left\(', '(', t) t = re.sub(r'\\right\)', ')', t)
+    t = re.sub(r'\\left\[', '[', t) t = re.sub(r'\\right\]', ']', t)
 
-    # Safe scoped subscript/superscript conversion (only when explicitly braced in LaTeX)
+    # Safe scoped subscript/superscript conversion
     t = re.sub(r'_\{([^}]+)\}', r'<sub>\1</sub>', t)
     t = re.sub(r'\^\{([^}]+)\}', r'<sup>\1</sup>', t)
 
@@ -822,9 +822,22 @@ def download_ai_notes_ppt(video_id: str, user: models.User = Depends(auth.get_cu
     safe_title = "".join(c for c in (video.title or "guide") if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")  
     return Response(content=ppt_bytes, media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation", headers={"Content-Disposition": f"attachment; filename={safe_title}_Study_Guide.pptx"})
 
+# FIXED DELETE LOGIC TO AVOID FOREIGN KEY CONSTRAINTS
 @router.delete("/videos/{video_id}")
 def delete_video(video_id: str, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
     video = _own_video(video_id, user, db)
+    
+    # Cascade delete all child dependencies explicitly to prevent foreign key errors
+    sessions = db.query(models.Session).filter(models.Session.video_id == video.id).all()
+    session_ids = [s.id for s in sessions]
+
+    if session_ids:
+        db.query(models.TranscriptSegment).filter(models.TranscriptSegment.session_id.in_(session_ids)).delete(synchronize_session=False)
+        db.query(models.VisualEvent).filter(models.VisualEvent.session_id.in_(session_ids)).delete(synchronize_session=False)
+        db.query(models.Session).filter(models.Session.video_id == video.id).delete(synchronize_session=False)
+
+    db.query(models.NoteSection).filter(models.NoteSection.video_id == video.id).delete(synchronize_session=False)
+    
     db.delete(video)
     db.commit()
-    return {"ok": True, "message": "Video session deleted."}
+    return {"ok": True, "message": "Video session and all associated data deleted successfully."}

@@ -8,6 +8,7 @@ const visuals = [];
 let activeTabId = null;
 let activeTabObj = null;
 let capturing = false;
+let isAdActive = false; // Prevents sending audio during ads
 
 // Media Capture Variables
 let currentStream = null;
@@ -220,7 +221,7 @@ el("stopBtn").addEventListener("click", async () => {
   capturing = false;
 });
 
-// AUDIO CAPTURE PIPELINE
+// AUDIO CAPTURE PIPELINE (FIXED CONTINUOUS LOOP)
 async function startAudioCapture(streamId) {
   stopAudioCapture(); 
 
@@ -262,7 +263,8 @@ function recordStandaloneChunk() {
   };
 
   recorder.onstop = () => {
-    if (chunks.length > 0 && isRecording) {
+    // Only send the chunk if not actively observing an ad
+    if (chunks.length > 0 && isRecording && !isAdActive) {
       const blob = new Blob(chunks, { type: "audio/webm" });
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -279,12 +281,19 @@ function recordStandaloneChunk() {
       };
       reader.readAsDataURL(blob);
     }
-    if (isRecording) setTimeout(recordStandaloneChunk, 50);
+    
+    // Always reboot the recorder loop continuously
+    if (isRecording) {
+      setTimeout(recordStandaloneChunk, 20); 
+    }
   };
 
-  recorder.start();
+  recorder.start(CHUNK_DURATION_MS);
+  
   setTimeout(() => {
-    if (recorder && recorder.state === "recording") recorder.stop();
+    if (recorder && recorder.state === "recording") {
+      recorder.stop();
+    }
   }, CHUNK_DURATION_MS);
 }
 
@@ -360,7 +369,7 @@ function stopVoiceDefense() {
   if (recognition) recognition.stop();
 }
 
-// UI RENDERING
+// UI RENDERING & INCOMING MESSAGES
 chrome.runtime.onMessage.addListener((message) => {
   if (message.scope !== "notecast") return;
   switch (message.type) {
@@ -380,6 +389,16 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
     case "session_started":
       el("statusLabel").textContent = "Capturing...";
+      break;
+    case "AD_STATUS_CHANGE":
+      isAdActive = message.isAd;
+      if (isAdActive) {
+          el("statusLabel").textContent = "⏸️ Ad playing (Paused)";
+          el("statusLabel").style.color = "#f59e0b";
+      } else {
+          el("statusLabel").textContent = "Capturing...";
+          el("statusLabel").style.color = "#10b981";
+      }
       break;
   }
 });
