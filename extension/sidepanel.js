@@ -41,16 +41,16 @@ async function checkAuth() {
 }
 
 function showAuth() {
-  el("authView").classList.remove("hidden");
-  el("mainView").classList.add("hidden");
-  el("userBadge").classList.add("hidden");
+  if (el("authView")) el("authView").classList.remove("hidden");
+  if (el("mainView")) el("mainView").classList.add("hidden");
+  if (el("userBadge")) el("userBadge").classList.add("hidden");
 }
 
 async function showMain(displayName) {
-  el("authView").classList.add("hidden");
-  el("mainView").classList.remove("hidden");
-  el("userBadge").classList.remove("hidden");
-  el("userName").textContent = displayName || "";
+  if (el("authView")) el("authView").classList.add("hidden");
+  if (el("mainView")) el("mainView").classList.remove("hidden");
+  if (el("userBadge")) el("userBadge").classList.remove("hidden");
+  if (el("userName")) el("userName").textContent = displayName || "";
   
   renderTranscript();
   renderNotes();
@@ -59,65 +59,79 @@ async function showMain(displayName) {
   await detectVideo();
 }
 
-el("authForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const errorEl = el("authError");
-  const loginBtn = el("loginBtn");
-  errorEl.classList.add("hidden");
-  loginBtn.disabled = true;
-  loginBtn.textContent = "Signing in…";
+if (el("authForm")) {
+  el("authForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorEl = el("authError");
+    const loginBtn = el("loginBtn");
+    if (errorEl) errorEl.classList.add("hidden");
+    if (loginBtn) {
+      loginBtn.disabled = true;
+      loginBtn.textContent = "Signing in…";
+    }
 
-  const result = await chrome.runtime.sendMessage({
-    scope: "notecast",
-    type: "LOGIN",
-    email: el("email").value.trim(),
-    password: el("password").value,
+    const result = await chrome.runtime.sendMessage({
+      scope: "notecast",
+      type: "LOGIN",
+      email: el("email").value.trim(),
+      password: el("password").value,
+    });
+
+    if (loginBtn) {
+      loginBtn.disabled = false;
+      loginBtn.textContent = "Sign in";
+    }
+
+    if (!result.ok) {
+      if (errorEl) {
+        errorEl.textContent = result.status === 429
+          ? "Too many attempts — please wait a few minutes."
+          : result.error;
+        errorEl.classList.remove("hidden");
+      }
+      return;
+    }
+    await showMain(result.displayName || result.email);
   });
+}
 
-  loginBtn.disabled = false;
-  loginBtn.textContent = "Sign in";
+if (el("signupLink")) {
+  el("signupLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: `${WEB_BASE}/signup.html` });
+  });
+}
 
-  if (!result.ok) {
-    errorEl.textContent = result.status === 429
-      ? "Too many attempts — please wait a few minutes."
-      : result.error;
-    errorEl.classList.remove("hidden");
-    return;
-  }
-  await showMain(result.displayName || result.email);
-});
+if (el("forgotLink")) {
+  el("forgotLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: `${WEB_BASE}/forgot-password.html` });
+  });
+}
 
-el("signupLink").addEventListener("click", (e) => {
-  e.preventDefault();
-  chrome.tabs.create({ url: `${WEB_BASE}/signup.html` });
-});
-
-el("forgotLink").addEventListener("click", (e) => {
-  e.preventDefault();
-  chrome.tabs.create({ url: `${WEB_BASE}/forgot-password.html` });
-});
-
-el("logoutBtn").addEventListener("click", async () => {
-  await chrome.runtime.sendMessage({ scope: "notecast", type: "LOGOUT" });
-  showAuth();
-});
+if (el("logoutBtn")) {
+  el("logoutBtn").addEventListener("click", async () => {
+    await chrome.runtime.sendMessage({ scope: "notecast", type: "LOGOUT" });
+    showAuth();
+  });
+}
 
 async function detectVideo() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || !tab.url || !/youtube\.com\/watch/.test(tab.url)) {
-    el("offSite").classList.remove("hidden");
-    el("idleControls").classList.add("hidden");
-    el("activeControls").classList.add("hidden");
+    if (el("offSite")) el("offSite").classList.remove("hidden");
+    if (el("idleControls")) el("idleControls").classList.add("hidden");
+    if (el("activeControls")) el("activeControls").classList.add("hidden");
     return;
   }
   
   activeTabId = tab.id;
   activeTabObj = tab; 
-  el("offSite").classList.add("hidden");
+  if (el("offSite")) el("offSite").classList.add("hidden");
 
   if (capturing) {
-    el("idleControls").classList.add("hidden");
-    el("activeControls").classList.remove("hidden");
+    if (el("idleControls")) el("idleControls").classList.add("hidden");
+    if (el("activeControls")) el("activeControls").classList.remove("hidden");
     return;
   }
 
@@ -132,20 +146,22 @@ async function detectVideo() {
       });
       meta = await chrome.tabs.sendMessage(tab.id, { scope: "notecast-meta", type: "GET_META" });
     } catch (injectErr) {
-      el("offSite").classList.remove("hidden");
+      if (el("offSite")) el("offSite").classList.remove("hidden");
       return;
     }
   }
 
   if (!meta || !meta.title) {
-    el("offSite").classList.add("hidden");
+    if (el("offSite")) el("offSite").classList.add("hidden");
     return;
   }
 
-  el("videoTitle").textContent = meta.title;
-  el("videoChannel").textContent = meta.channel;
-  el("idleControls").dataset.meta = JSON.stringify(meta);
-  el("idleControls").classList.remove("hidden");
+  if (el("videoTitle")) el("videoTitle").textContent = meta.title;
+  if (el("videoChannel")) el("videoChannel").textContent = meta.channel;
+  if (el("idleControls")) {
+    el("idleControls").dataset.meta = JSON.stringify(meta);
+    el("idleControls").classList.remove("hidden");
+  }
 }
 
 chrome.tabs.onActivated.addListener(detectVideo);
@@ -155,73 +171,77 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
 });
 
-el("startBtn").addEventListener("click", async () => {
-  const meta = JSON.parse(el("idleControls").dataset.meta || "{}");
-  const startBtn = el("startBtn");
-  startBtn.disabled = true;
+if (el("startBtn")) {
+  el("startBtn").addEventListener("click", async () => {
+    const meta = JSON.parse(el("idleControls")?.dataset?.meta || "{}");
+    const startBtn = el("startBtn");
+    startBtn.disabled = true;
 
-  try {
-    el("statusLabel").textContent = "Awaiting tab selection...";
-    
-    const streamId = await new Promise((resolve, reject) => {
-      chrome.desktopCapture.chooseDesktopMedia(["tab", "audio"], (id) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else if (!id) {
-          reject(new Error("Capture cancelled by user."));
-        } else {
-          resolve(id);
-        }
+    try {
+      if (el("statusLabel")) el("statusLabel").textContent = "Awaiting tab selection...";
+      
+      const streamId = await new Promise((resolve, reject) => {
+        chrome.desktopCapture.chooseDesktopMedia(["tab", "audio"], (id) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else if (!id) {
+            reject(new Error("Capture cancelled by user."));
+          } else {
+            resolve(id);
+          }
+        });
       });
-    });
 
-    el("statusLabel").textContent = "Starting audio stream...";
-    await startAudioCapture(streamId);
+      if (el("statusLabel")) el("statusLabel").textContent = "Starting audio stream...";
+      await startAudioCapture(streamId);
 
-    capturing = true;
-    el("idleControls").classList.add("hidden");
-    el("activeControls").classList.remove("hidden");
+      capturing = true;
+      if (el("idleControls")) el("idleControls").classList.add("hidden");
+      if (el("activeControls")) el("activeControls").classList.remove("hidden");
 
-    chrome.runtime.sendMessage({ 
-      scope: "notecast", 
-      type: "START_CAPTURE_PIPELINE", 
-      payload: { tabId: activeTabId, videoMeta: meta }
-    }).then(result => {
-      if (!result || !result.ok) {
-        stopAudioCapture(); 
-        capturing = false;
-        el("idleControls").classList.remove("hidden");
-        el("activeControls").classList.add("hidden");
-        alert(`Capture Failed: ${result?.error || "Unknown Error"}`);
-      } else {
-        el("statusLabel").textContent = "Connected (with latency)";
+      chrome.runtime.sendMessage({ 
+        scope: "notecast", 
+        type: "START_CAPTURE_PIPELINE", 
+        payload: { tabId: activeTabId, videoMeta: meta }
+      }).then(result => {
+        if (!result || !result.ok) {
+          stopAudioCapture(); 
+          capturing = false;
+          if (el("idleControls")) el("idleControls").classList.remove("hidden");
+          if (el("activeControls")) el("activeControls").classList.add("hidden");
+          alert(`Capture Failed: ${result?.error || "Unknown Error"}`);
+        } else {
+          if (el("statusLabel")) el("statusLabel").textContent = "Connected (with latency)";
+        }
+      }).catch(e => console.warn(e));
+
+    } catch (err) {
+      capturing = false;
+      if (el("idleControls")) el("idleControls").classList.remove("hidden");
+      if (el("activeControls")) el("activeControls").classList.add("hidden");
+      if (!err.message.includes("cancelled")) {
+        alert(`Capture Error: ${err.message}. Ensure 'Also share tab audio' is checked!`);
       }
-    }).catch(e => console.warn(e));
-
-  } catch (err) {
-    capturing = false;
-    el("idleControls").classList.remove("hidden");
-    el("activeControls").classList.add("hidden");
-    if (!err.message.includes("cancelled")) {
-      alert(`Capture Error: ${err.message}. Ensure 'Also share tab audio' is checked!`);
+    } finally {
+      startBtn.disabled = false;
     }
-  } finally {
-    startBtn.disabled = false;
-  }
-});
+  });
+}
 
-el("stopBtn").addEventListener("click", async () => {
-  el("stopBtn").disabled = true;
-  el("statusLabel").textContent = "Wrapping up…";
-  stopAudioCapture(); 
-  await chrome.runtime.sendMessage({ scope: "notecast", type: "STOP_CAPTURE" });
-  el("stopBtn").disabled = false;
-  el("activeControls").classList.add("hidden");
-  el("finalizingNotice").classList.remove("hidden");
-  capturing = false;
-});
+if (el("stopBtn")) {
+  el("stopBtn").addEventListener("click", async () => {
+    el("stopBtn").disabled = true;
+    if (el("statusLabel")) el("statusLabel").textContent = "Wrapping up…";
+    stopAudioCapture(); 
+    await chrome.runtime.sendMessage({ scope: "notecast", type: "STOP_CAPTURE" });
+    el("stopBtn").disabled = false;
+    if (el("activeControls")) el("activeControls").classList.add("hidden");
+    if (el("finalizingNotice")) el("finalizingNotice").classList.remove("hidden");
+    capturing = false;
+  });
+}
 
-// AUDIO CAPTURE PIPELINE (FIXED CONTINUOUS LOOP)
+// AUDIO CAPTURE PIPELINE (CONTINUOUS LOOP)
 async function startAudioCapture(streamId) {
   stopAudioCapture(); 
 
@@ -263,7 +283,6 @@ function recordStandaloneChunk() {
   };
 
   recorder.onstop = () => {
-    // Only send the chunk if not actively observing an ad
     if (chunks.length > 0 && isRecording && !isAdActive) {
       const blob = new Blob(chunks, { type: "audio/webm" });
       const reader = new FileReader();
@@ -282,7 +301,6 @@ function recordStandaloneChunk() {
       reader.readAsDataURL(blob);
     }
     
-    // Always reboot the recorder loop continuously
     if (isRecording) {
       setTimeout(recordStandaloneChunk, 20); 
     }
@@ -304,10 +322,12 @@ function stopAudioCapture() {
 }
 
 // SOCRATIC FEYNMAN VOICE HANDLER
-el("micBtn").addEventListener("click", () => {
-  if (isRecordingVoice) stopVoiceDefense();
-  else startVoiceDefense();
-});
+if (el("micBtn")) {
+  el("micBtn").addEventListener("click", () => {
+    if (isRecordingVoice) stopVoiceDefense();
+    else startVoiceDefense();
+  });
+}
 
 function startVoiceDefense() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -323,13 +343,13 @@ function startVoiceDefense() {
 
   recognition.onstart = () => {
     isRecordingVoice = true;
-    el("micBtn").classList.add("recording");
-    el("micStatus").textContent = "Listening... Speak your explanation out loud.";
+    if (el("micBtn")) el("micBtn").classList.add("recording");
+    if (el("micStatus")) el("micStatus").textContent = "Listening... Speak your explanation out loud.";
   };
 
   recognition.onresult = async (event) => {
     const userSpeech = event.results[0][0].transcript;
-    el("micStatus").textContent = "Evaluating with Socratic AI...";
+    if (el("micStatus")) el("micStatus").textContent = "Evaluating with Socratic AI...";
     
     try {
       const auth = await chrome.runtime.sendMessage({ scope: "notecast", type: "GET_AUTH" });
@@ -340,20 +360,25 @@ function startVoiceDefense() {
           "Authorization": `Bearer ${auth.token}`
         },
         body: JSON.stringify({
-          concept: el("conceptSelect").value,
+          concept: el("conceptSelect") ? el("conceptSelect").value : "General Concept",
           user_explanation: userSpeech,
           context_notes: notes.map(n => n.body_md).join("\n")
         })
       });
 
       const data = await resp.json();
-      el("socraticResult").classList.remove("hidden");
-      el("socraticScore").textContent = `Score: ${data.score}/100`;
-      el("socraticBody").textContent = data.feedback;
-      el("socraticQuestion").textContent = `💡 Socratic Question: ${data.socratic_question}`;
-      el("micStatus").textContent = "Click mic to record another attempt.";
+      
+      const score = data.score ?? data.evaluation?.score ?? data.overall_score ?? "--";
+      const feedback = data.feedback ?? data.evaluation?.feedback ?? data.analysis ?? "No feedback generated.";
+      const question = data.socratic_question ?? data.evaluation?.socratic_question ?? data.question ?? "";
+
+      if (el("socraticResult")) el("socraticResult").classList.remove("hidden");
+      if (el("socraticScore")) el("socraticScore").textContent = `Score: ${score}/100`;
+      if (el("socraticBody")) el("socraticBody").textContent = feedback;
+      if (el("socraticQuestion")) el("socraticQuestion").textContent = question ? `💡 Socratic Question: ${question}` : "";
+      if (el("micStatus")) el("micStatus").textContent = "Click mic to record another attempt.";
     } catch(e) {
-      el("micStatus").textContent = "Evaluation failed. Please try again.";
+      if (el("micStatus")) el("micStatus").textContent = "Evaluation failed. Please try again.";
     }
   };
 
@@ -365,7 +390,7 @@ function startVoiceDefense() {
 
 function stopVoiceDefense() {
   isRecordingVoice = false;
-  el("micBtn").classList.remove("recording");
+  if (el("micBtn")) el("micBtn").classList.remove("recording");
   if (recognition) recognition.stop();
 }
 
@@ -380,24 +405,30 @@ chrome.runtime.onMessage.addListener((message) => {
       renderTranscript();
       break;
     case "note":
-      upsertNote(message.section);
-      renderNotes();
+      if (message.section) {
+        upsertNote(message.section);
+        renderNotes();
+      }
       break;
     case "visual":
-      visuals.push(message.event);
-      renderVisuals();
+      if (message.event) {
+        visuals.push(message.event);
+        renderVisuals();
+      }
       break;
     case "session_started":
-      el("statusLabel").textContent = "Capturing...";
+      if (el("statusLabel")) el("statusLabel").textContent = "Capturing...";
       break;
     case "AD_STATUS_CHANGE":
       isAdActive = message.isAd;
-      if (isAdActive) {
+      if (el("statusLabel")) {
+        if (isAdActive) {
           el("statusLabel").textContent = "⏸️ Ad playing (Paused)";
           el("statusLabel").style.color = "#f59e0b";
-      } else {
+        } else {
           el("statusLabel").textContent = "Capturing...";
           el("statusLabel").style.color = "#10b981";
+        }
       }
       break;
   }
@@ -407,6 +438,13 @@ function upsertNote(section) {
   const idx = notes.findIndex((n) => n.id === section.id);
   if (idx >= 0) notes[idx] = section;
   else notes.push(section);
+}
+
+function buildImageUrl(storageKey) {
+  if (!storageKey) return "";
+  if (storageKey.startsWith("http://") || storageKey.startsWith("https://")) return storageKey;
+  const cleanKey = storageKey.startsWith("/") ? storageKey : `/${storageKey}`;
+  return `${API_BASE}${cleanKey}`;
 }
 
 function renderNotes() {
@@ -451,9 +489,9 @@ function renderVisuals() {
   panel.innerHTML = visuals
     .map(
       (v) => `<div class="visual-card">
-        ${v.storage_key ? `<img src="${API_BASE}${v.storage_key}" class="visual-img" />` : ""}
-        <span class="visual-type">${escapeHtml(v.type)}</span>
-        <div class="visual-desc">${escapeHtml(v.description)}</div>
+        ${v.storage_key ? `<img src="${buildImageUrl(v.storage_key)}" class="visual-img" alt="Captured visual" onerror="this.style.display='none'" />` : ""}
+        <span class="visual-type">${escapeHtml(v.type || "slide")}</span>
+        <div class="visual-desc">${escapeHtml(v.description || "")}</div>
       </div>`
     )
     .join("");
@@ -464,7 +502,9 @@ document.querySelectorAll(".tab").forEach((tab) => {
     document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
     tab.classList.add("active");
     document.querySelectorAll(".panel").forEach((p) => p.classList.add("hidden"));
-    el(`panel-${tab.dataset.tab}`).classList.remove("hidden");
+    if (el(`panel-${tab.dataset.tab}`)) {
+      el(`panel-${tab.dataset.tab}`).classList.remove("hidden");
+    }
   });
 });
 
