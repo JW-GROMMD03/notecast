@@ -1,6 +1,7 @@
 """
 Unified AI provider layer.
-Includes strict client timeouts, latency tracking, and diagnostic error logging.
+Includes strict client timeouts, latency tracking, diagnostic error logging, 
+and audio transcription routing.
 """
 import base64
 import io
@@ -162,6 +163,29 @@ class GroqProvider:
             "tokens": getattr(resp.usage, "total_tokens", 0),
         }
 
+    def transcribe(self, audio_bytes: bytes, filename: str, vocabulary_hint: str = "") -> dict:
+        """Transcribes audio using Groq's fast Whisper API."""
+        start = time.time()
+        
+        file_tuple = (filename, audio_bytes, "audio/webm")
+        prompt = vocabulary_hint if vocabulary_hint else "Technical video lecture with complex diagrams and terminology."
+        
+        resp = self._client.audio.transcriptions.create(
+            file=file_tuple,
+            model=settings.GROQ_ASR_MODEL,
+            prompt=prompt,
+            response_format="json",
+            temperature=0.0
+        )
+        
+        return {
+            "text": getattr(resp, "text", ""),
+            "confidence": 0.95,
+            "provider": self.name,
+            "model": settings.GROQ_ASR_MODEL,
+            "latency_ms": int((time.time() - start) * 1000),
+        }
+
 
 # ---------------------------------------------------------------------------
 # OpenRouter
@@ -291,11 +315,23 @@ def _get(name: str):
     return _instances[name]
 
 
-def call_with_fallback(order_csv: str, method_name: str, system: str, user: str, provider_overrides: dict = None, **kwargs) -> dict:
+def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dict:
+    """
+    Generic fallback router. Fully supports dynamic *args and **kwargs, preventing 
+    positional mismatches between LLM text generation and audio transcription routing.
+    """
     tried = []
     errors = {}
     provider_order = [p.strip() for p in order_csv.split(",")]
     
+    # Safely extract provider overrides if passed via legacy positional tracking
+    provider_overrides = kwargs.pop("provider_overrides", None)
+    if provider_overrides is None and len(args) >= 3 and isinstance(args[2], dict):
+        provider_overrides = args[2]
+        args_list = list(args)
+        args_list.pop(2)
+        args = tuple(args_list)
+
     for name in provider_order:
         if name not in _REGISTRY:
             continue
@@ -308,13 +344,20 @@ def call_with_fallback(order_csv: str, method_name: str, system: str, user: str,
             continue  
             
         tried.append(name)
-        current_system = system
+        
+        current_args = list(args)
+        current_kwargs = kwargs.copy()
+
+        # Apply system prompt override if applicable to chat methods
         if provider_overrides and name in provider_overrides:
-            current_system = provider_overrides[name]
+            if len(current_args) > 0 and isinstance(current_args[0], str):
+                current_args[0] = provider_overrides[name]
+            elif "system" in current_kwargs:
+                current_kwargs["system"] = provider_overrides[name]
 
         try:
             log.info(f"Attempting {name}.{method_name}...")
-            res = method(current_system, user, **kwargs)
+            res = method(*current_args, **current_kwargs)
             log.info(f"✅ SUCCESS: {name}.{method_name} completed in {res.get('latency_ms', 0)}ms")
             return res
         except Exception as e:
