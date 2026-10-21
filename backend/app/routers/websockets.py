@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from ..database import SessionLocal
 from .. import models, auth
-from ..services import llm, providers
+from ..services import llm, providers, vision, storage
 from ..config import settings
 
 router = APIRouter(tags=["websockets"])
@@ -66,7 +66,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, token: str):
     
     buffer_start_ms = 0
     last_frame_processed_ms = 0
-    FRAME_THROTTLE_MS = 60000 
+    # FIX: Lowered throttle from 60000ms (1 minute) to 2000ms (2 seconds). 
+    # This prevents the backend from blinding itself to rapid diagram changes.
+    FRAME_THROTTLE_MS = 2000 
 
     try:
         while True:
@@ -210,8 +212,78 @@ async def maybe_generate_live_note(session_id: str, db: DbSession):
 
 
 async def process_video_frame(frame_b64: str, timestamp_ms: int, session_id: str):
+    """
+    FIX: Fully implemented this function. Previously it was 'pass', meaning it threw 
+    away every frame it received, causing 0 visual captures.
+    """
     db = SessionLocal()
     try:
-        pass
+        try:
+            image_bytes = base64.b64decode(frame_b64)
+        except Exception as e:
+            logger.warning(f"Failed to decode base64 frame: {e}")
+            return
+
+        # Use the local heuristic gate to filter out static talking heads
+        capture = await asyncio.to_thread(vision.should_capture, session_id, image_bytes)
+        if not capture:
+            return
+
+        # Fetch a small window of recent transcripts to give the vision model context
+        recent_segments = db.query(models.TranscriptSegment)\
+            .filter(models.TranscriptSegment.session_id == session_id)\
+            .order_by(models.TranscriptSegment.start_ms.desc())\
+            .limit(10).all()
+        recent_transcript = " ".join([s.text for s in reversed(recent_segments)])
+
+        # Call the vision LLM
+        analysis = await asyncio.to_thread(vision.analyze_frame, image_bytes, recent_transcript)
+        
+        db.add(models.LlmJob(
+            session_id=session_id,
+            provider=analysis.get("_provider", ""),
+            model=analysis.get("_model", "vision"),
+            purpose="vision",
+            latency_ms=analysis.get("_latency_ms", 0),
+            tokens_out=analysis.get("_tokens", 0),
+        ))
+
+        if not analysis.get("is_meaningful"):
+            db.commit()
+            return
+
+        # Save the image to storage if it's a valuable diagram
+        storage_key = None
+        if not analysis.get("should_reconstruct"):
+            storage_key = storage.save_base64_image(session_id, frame_b64)
+
+        event = models.VisualEvent(
+            session_id=session_id,
+            timestamp_ms=timestamp_ms,
+            type=analysis.get("type", "slide"),
+            storage_key=storage_key,
+            ocr_text=analysis.get("extracted_text", ""),
+            description=analysis.get("description", ""),
+            latex=analysis.get("latex"),
+            salience_score=0.8,
+        )
+        db.add(event)
+        db.commit()
+        db.refresh(event)
+
+        # Broadcast the captured visual to the extension UI
+        await manager.send_message(session_id, {
+            "type": "visual",
+            "event": {
+                "id": event.id,
+                "timestamp_ms": timestamp_ms,
+                "type": event.type,
+                "description": event.description,
+                "storage_key": storage_key
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error processing video frame: {e}", exc_info=True)
+        db.rollback()
     finally:
         db.close()

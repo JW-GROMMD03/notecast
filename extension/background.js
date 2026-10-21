@@ -129,12 +129,16 @@ async function startCapturePipeline({ tabId, videoMeta }, sendResponse) {
       }, { once: true });
     });
 
-    while (audioBuffer.length > 0) {
+    // FIX: Progressive buffer offloading to avoid crashing backend with massive payloads at once
+    let bufferCount = 0;
+    while (audioBuffer.length > 0 && bufferCount < 10) {
       const bufferedPayload = audioBuffer.shift();
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(bufferedPayload));
+        bufferCount++;
       }
     }
+    if (audioBuffer.length > 0) audioBuffer = []; // Discard extremely stale packets if connection took too long
 
     chrome.tabs.sendMessage(tabId, { scope: "notecast-content", type: "START_FRAMES" }).catch(() => {});
 
@@ -175,7 +179,10 @@ function sendWs(payload) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
   } else {
-    audioBuffer.push(payload);
+    // Only buffer max 20 payloads to prevent memory leak and backend crash on reconnect
+    if (audioBuffer.length < 20) {
+        audioBuffer.push(payload);
+    }
   }
 }
 
@@ -253,11 +260,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         }
         case "AUDIO_CHUNK":
-          sendWs({ type: "audio_chunk", seq: message.seq, data_b64: message.data_b64, duration_ms: message.duration_ms, mime: "audio/webm" });
+          // Clean base64 payload to prevent backend parsing crashes
+          let cleanAudioB64 = message.data_b64;
+          if (cleanAudioB64 && cleanAudioB64.includes(",")) {
+              cleanAudioB64 = cleanAudioB64.split(",")[1];
+          }
+          sendWs({ type: "audio_chunk", seq: message.seq, data_b64: cleanAudioB64, duration_ms: message.duration_ms, mime: "audio/webm" });
           sendResponse({ ok: true });
           break;
         case "FRAME":
-          sendWs({ type: "frame", timestamp_ms: message.timestamp_ms, data_b64: message.data_b64 });
+          // Clean base64 payload to prevent backend parsing crashes
+          let cleanFrameB64 = message.data_b64;
+          if (cleanFrameB64 && cleanFrameB64.includes(",")) {
+              cleanFrameB64 = cleanFrameB64.split(",")[1];
+          }
+          sendWs({ type: "frame", timestamp_ms: message.timestamp_ms, data_b64: cleanFrameB64 });
           sendResponse({ ok: true });
           break;
         default:

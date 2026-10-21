@@ -64,7 +64,14 @@ async def session_ws(websocket: WebSocket, session_id: str, token: str = Query(.
     try:
         while True:
             raw = await websocket.receive_text()
-            msg = json.loads(raw)
+            
+            # FIX 1: JSON payload immunity. Do not crash socket on network fragmentation.
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError as err:
+                log.warning(f"Session {session_id}: Malformed JSON received, skipping payload. Error: {err}")
+                continue
+                
             mtype = msg.get("type")
 
             if mtype == "ping":
@@ -72,22 +79,31 @@ async def session_ws(websocket: WebSocket, session_id: str, token: str = Query(.
                 continue
 
             if mtype == "audio_chunk":
-                data = base64.b64decode(msg["data_b64"])
-                buf.audio_parts.append(data)
-                buf.audio_ms_buffered += msg.get("duration_ms", 250)
-                if buf.audio_ms_buffered >= AUDIO_FLUSH_MS:
-                    await _flush_audio(websocket, db, sess, buf, vocab_hint)
+                try:
+                    data = base64.b64decode(msg["data_b64"])
+                    buf.audio_parts.append(data)
+                    buf.audio_ms_buffered += msg.get("duration_ms", 250)
+                    if buf.audio_ms_buffered >= AUDIO_FLUSH_MS:
+                        await _flush_audio(websocket, db, sess, buf, vocab_hint)
+                except Exception as e:
+                    log.error(f"Audio chunk decoding failed: {e}")
 
             elif mtype == "frame":
-                data = base64.b64decode(msg["data_b64"])
-                ts_ms = msg.get("timestamp_ms", 0)
-                await _handle_frame(websocket, db, sess, buf, data, ts_ms)
+                try:
+                    data = base64.b64decode(msg["data_b64"])
+                    ts_ms = msg.get("timestamp_ms", 0)
+                    # FIX 2: Do not await blocking frame handler on main thread, run concurrently
+                    asyncio.create_task(_handle_frame(websocket, sess.id, buf, data, ts_ms))
+                except Exception as e:
+                    log.error(f"Frame decoding failed: {e}")
 
             else:
                 await websocket.send_text(json.dumps({"type": "error", "detail": f"unknown message type {mtype}"}))
 
     except WebSocketDisconnect:
         log.info("session %s disconnected", session_id)
+    except Exception as general_err:
+        log.error(f"WebSocket loop crash: {general_err}")
     finally:
         if buf.audio_parts:
             try:
@@ -138,10 +154,13 @@ async def _flush_audio(websocket: WebSocket, db, sess: models.Session, buf: Sess
 
     buf.recent_transcript = (buf.recent_transcript + " " + result["text"])[-2000:]
 
-    await websocket.send_text(json.dumps({
-        "type": "transcript",
-        "segment": {"id": segment.id, "start_ms": start_ms, "end_ms": end_ms, "text": segment.text, "confidence": segment.confidence, "is_final": True},
-    }))
+    try:
+        await websocket.send_text(json.dumps({
+            "type": "transcript",
+            "segment": {"id": segment.id, "start_ms": start_ms, "end_ms": end_ms, "text": segment.text, "confidence": segment.confidence, "is_final": True},
+        }))
+    except RuntimeError:
+        pass # socket closed
 
     if end_ms - buf.last_note_ms >= NOTE_TRIGGER_MS:
         buf.last_note_ms = end_ms
@@ -167,57 +186,63 @@ async def _run_note_draft(websocket: WebSocket, session_id: str):
                 }))
             except RuntimeError:
                 pass  # socket already closed
+    except Exception as e:
+        log.error(f"Error drafting note section: {e}")
     finally:
         db.close()
 
 
-async def _handle_frame(websocket: WebSocket, db, sess: models.Session, buf: SessionBuffer, data: bytes, ts_ms: int):
+async def _handle_frame(websocket: WebSocket, session_id: str, buf: SessionBuffer, data: bytes, ts_ms: int):
+    # This entire function is now running asynchronously to prevent blocking the WS stream
+    db = SessionLocal()
     try:
-        capture = await asyncio.to_thread(vision.should_capture, sess.id, data)
-    except Exception as e:
-        log.warning("gate error: %s", e)
-        return
-    if not capture:
-        return
+        capture = await asyncio.to_thread(vision.should_capture, session_id, data)
+        if not capture:
+            return
 
-    try:
         analysis = await asyncio.to_thread(vision.analyze_frame, data, buf.recent_transcript)
-    except RuntimeError as e:
-        await websocket.send_text(json.dumps({"type": "error", "detail": str(e)}))
-        return
 
-    db.add(models.LlmJob(
-        session_id=sess.id,
-        provider=analysis.get("_provider", ""),
-        model=analysis.get("_model", "vision"),
-        purpose="vision",
-        latency_ms=analysis.get("_latency_ms", 0),
-        tokens_out=analysis.get("_tokens", 0),
-    ))
+        db.add(models.LlmJob(
+            session_id=session_id,
+            provider=analysis.get("_provider", ""),
+            model=analysis.get("_model", "vision"),
+            purpose="vision",
+            latency_ms=analysis.get("_latency_ms", 0),
+            tokens_out=analysis.get("_tokens", 0),
+        ))
 
-    if not analysis.get("is_meaningful"):
+        if not analysis.get("is_meaningful"):
+            db.commit()
+            return
+
+        storage_key = None
+        if not analysis.get("should_reconstruct"):
+            storage_key = storage.save_base64_image(session_id, base64.b64encode(data).decode())
+
+        event = models.VisualEvent(
+            session_id=session_id,
+            timestamp_ms=ts_ms,
+            type=analysis.get("type", "slide"),
+            storage_key=storage_key,
+            ocr_text=analysis.get("extracted_text", ""),
+            description=analysis.get("description", ""),
+            latex=analysis.get("latex"),
+            salience_score=0.8,
+        )
+        db.add(event)
         db.commit()
-        return
+        db.refresh(event)
 
-    storage_key = None
-    if not analysis.get("should_reconstruct"):
-        storage_key = storage.save_base64_image(sess.id, base64.b64encode(data).decode())
-
-    event = models.VisualEvent(
-        session_id=sess.id,
-        timestamp_ms=ts_ms,
-        type=analysis.get("type", "slide"),
-        storage_key=storage_key,
-        ocr_text=analysis.get("extracted_text", ""),
-        description=analysis.get("description", ""),
-        latex=analysis.get("latex"),
-        salience_score=0.8,
-    )
-    db.add(event)
-    db.commit()
-    db.refresh(event)
-
-    await websocket.send_text(json.dumps({
-        "type": "visual",
-        "event": {"id": event.id, "timestamp_ms": ts_ms, "type": event.type, "description": event.description, "storage_key": storage_key},
-    }))
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "visual",
+                "event": {"id": event.id, "timestamp_ms": ts_ms, "type": event.type, "description": event.description, "storage_key": storage_key},
+            }))
+        except RuntimeError:
+            pass # socket closed
+            
+    except Exception as e:
+        log.error(f"Frame analysis pipeline error: {e}", exc_info=True)
+        db.rollback()
+    finally:
+        db.close()
