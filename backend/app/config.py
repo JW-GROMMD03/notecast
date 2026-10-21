@@ -83,7 +83,10 @@ class Settings(BaseSettings):
         return p
 
     def order(self, csv: str) -> list[str]:
-        return [p.strip().lower() for p in csv.split(",") if p.strip()]
+        if not csv or not isinstance(csv, str):
+            return ["groq", "gemini"]
+        res = [p.strip().lower() for p in csv.split(",") if p.strip()]
+        return res if res else ["groq", "gemini"]
 
 
 settings = Settings()

@@ -317,14 +317,18 @@ def _get(name: str):
 
 def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dict:
     """
-    Generic fallback router. Fully supports dynamic *args and **kwargs, preventing 
-    positional mismatches between LLM text generation and audio transcription routing.
+    Generic fallback router with automatic fallback safety defaults if order_csv is empty.
     """
     tried = []
     errors = {}
-    provider_order = [p.strip() for p in order_csv.split(",")]
     
-    # Safely extract provider overrides if passed via legacy positional tracking
+    if not order_csv or not isinstance(order_csv, str):
+        provider_order = ["groq", "gemini"]
+    else:
+        provider_order = [p.strip().lower() for p in order_csv.split(",") if p.strip()]
+        if not provider_order:
+            provider_order = ["groq", "gemini"]
+    
     provider_overrides = kwargs.pop("provider_overrides", None)
     if provider_overrides is None and len(args) >= 3 and isinstance(args[2], dict):
         provider_overrides = args[2]
@@ -348,7 +352,6 @@ def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dic
         current_args = list(args)
         current_kwargs = kwargs.copy()
 
-        # Apply system prompt override if applicable to chat methods
         if provider_overrides and name in provider_overrides:
             if len(current_args) > 0 and isinstance(current_args[0], str):
                 current_args[0] = provider_overrides[name]
