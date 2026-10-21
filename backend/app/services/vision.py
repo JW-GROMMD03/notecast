@@ -97,14 +97,19 @@ def should_capture(session_id: str, image_bytes: bytes) -> bool:
     _last_frame_gray[session_id] = arr
     if prev is not None:
         diff = np.mean(np.abs(arr - prev))
-        if diff < 4.0:  # near-identical frame
+        # FIX: Lowered threshold from 4.0 to 1.5. This ensures subtle slide 
+        # transitions and diagram build-outs are not falsely discarded.
+        if diff < 1.5:  
             return False
 
     # Edge density as a proxy for "slide/diagram/code" vs "talking head"
     gx = np.abs(np.diff(arr, axis=1))
     gy = np.abs(np.diff(arr, axis=0))
     edge_density = (np.mean(gx) + np.mean(gy)) / 2
-    return edge_density > 6.0
+    
+    # FIX: Lowered edge density threshold from 6.0 to 3.0. This allows clean 
+    # engineering charts, smooth 3D models, and sparse whiteboards to pass.
+    return edge_density > 3.0
 
 
 def analyze_frame(image_bytes: bytes, transcript_context: str) -> dict:
