@@ -120,10 +120,8 @@ class GroqProvider:
     name = "groq"
 
     def __init__(self):
-        # Fallback directly to os.getenv incase settings hasn't loaded properly
         self.api_key = settings.GROQ_API_KEY or os.getenv("GROQ_API_KEY", "")
         self.configured = bool(self.api_key)
-        log.info(f"GroqProvider initialized. Configured: {self.configured}, Key length: {len(self.api_key)}")
         self._client = OpenAI(
             api_key=self.api_key, 
             base_url="https://api.groq.com/openai/v1", 
@@ -168,10 +166,9 @@ class GroqProvider:
         }
 
     def transcribe(self, audio_bytes: bytes, filename: str, vocabulary_hint: str = "") -> dict:
-        """Transcribes audio using Groq's fast Whisper API."""
         start = time.time()
         if not self._client:
-            raise RuntimeError("Groq client is not initialized ( missing API key )")
+            raise RuntimeError("Groq client is not initialized (missing API key)")
             
         file_tuple = (filename, audio_bytes, "audio/webm")
         prompt = vocabulary_hint if vocabulary_hint else "Technical video lecture with complex diagrams and terminology."
@@ -297,7 +294,7 @@ class DeepSeekProvider:
         return {
             "text": text,
             "provider": self.name,
-            "model": settings.DEEPSEERT_TEXT_MODEL if hasattr(settings, "DEEPSEEK_TEXT_MODEL") else "deepseek-chat",
+            "model": settings.DEEPSEEK_TEXT_MODEL,
             "latency_ms": int((time.time() - start) * 1000),
             "tokens": getattr(resp.usage, "total_tokens", 0),
         }
@@ -323,10 +320,6 @@ def _get(name: str):
 
 
 def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dict:
-    """
-    Forced diagnostic fallback runner. Guarantees that providers in the order 
-    are attempted and logs exact failure reasons instead of returning Tried: [].
-    """
     tried = []
     errors = {}
     
@@ -346,18 +339,14 @@ def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dic
 
     for name in provider_order:
         if name not in _REGISTRY:
-            log.warning(f"Provider '{name}' not found in registry.")
             continue
             
         provider = _get(name)
-        
-        # Force attempt even if configured is False, to expose the exact config/key error in logs
         tried.append(name)
         
         method = getattr(provider, method_name, None)
         if method is None:
-            errors[name] = f"Method '{method_name}' not implemented on provider '{name}'"
-            log.warning(f"❌ FAIL: {name} lacks method {method_name}")
+            errors[name] = f"Method '{method_name}' not implemented"
             continue  
             
         current_args = list(args)
@@ -376,7 +365,7 @@ def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dic
             return res
         except Exception as e:
             errors[name] = str(e)
-            log.error(f"❌ FAIL: {name}.{method_name} encountered error: {e}", exc_info=True)
+            log.error(f"❌ FAIL: {name}.{method_name} error: {e}")
             continue
 
     raise RuntimeError(f"All configured providers failed for {method_name}. Tried: {tried}. Errors: {errors}")
