@@ -2,7 +2,8 @@ let currentStream = null;
 let rawCaptureStream = null;
 let isRecording = false;
 
-const CHUNK_DURATION_MS = 2000;
+// Increased to 5000ms. Matches the backend flush threshold to prevent byte-concatenation corruption.
+const CHUNK_DURATION_MS = 5000;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.scope !== "notecast-offscreen") return;
@@ -29,7 +30,6 @@ async function startAudioCapture(streamId) {
 
   let rawStream;
   try {
-    // CRITICAL FIX: Changed from "desktop" to "tab" to match the new tabCapture method.
     rawStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         mandatory: {
@@ -99,10 +99,12 @@ function recordStandaloneChunk() {
     }
 
     if (isRecording) {
-      setTimeout(recordStandaloneChunk, 50);
+      // Start immediately. Removed 50ms delay to prevent dropped words between chunks.
+      recordStandaloneChunk();
     }
   };
 
+  // Do NOT pass CHUNK_DURATION_MS here. It forces a timeslice which drops WebM headers.
   recorder.start();
 
   setTimeout(() => {

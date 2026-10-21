@@ -14,7 +14,8 @@ let isAdActive = false; // Prevents sending audio during ads
 let currentStream = null;
 let rawCaptureStream = null;
 let isRecording = false;
-const CHUNK_DURATION_MS = 2000;
+// Increased to 5000ms to bypass backend b"".join() corruption
+const CHUNK_DURATION_MS = 5000; 
 
 // Voice Defense Variables
 let isRecordingVoice = false;
@@ -258,7 +259,7 @@ if (el("resetBtn")) {
     renderVisuals();
     
     if (el("finalizingNotice")) el("finalizingNotice").classList.add("hidden");
-    detectVideo(); // Evaluates the active tab and switches to idleControls
+    detectVideo(); 
   });
 }
 
@@ -323,11 +324,13 @@ function recordStandaloneChunk() {
     }
     
     if (isRecording) {
-      setTimeout(recordStandaloneChunk, 20); 
+      // Start immediately without delay
+      recordStandaloneChunk(); 
     }
   };
 
-  recorder.start(CHUNK_DURATION_MS);
+  // Do NOT pass CHUNK_DURATION_MS here
+  recorder.start();
   
   setTimeout(() => {
     if (recorder && recorder.state === "recording") {
