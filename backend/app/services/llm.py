@@ -206,4 +206,5 @@ def generate_deep_research_notes(title: str, channel: str, full_transcript: str,
         md.append("- Cross-reference visual slide captures with transcript notes for complete comprehension.")
         md.append("- Apply discussed insights directly to relevant projects or study tasks.")
 
+
         return "\n".join(md)
