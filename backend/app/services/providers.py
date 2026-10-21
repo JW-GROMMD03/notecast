@@ -7,6 +7,7 @@ import base64
 import io
 import json
 import logging
+import os
 import re
 import time
 from openai import OpenAI
@@ -119,9 +120,12 @@ class GroqProvider:
     name = "groq"
 
     def __init__(self):
-        self.configured = bool(settings.GROQ_API_KEY)
+        # Fallback directly to os.getenv incase settings hasn't loaded properly
+        self.api_key = settings.GROQ_API_KEY or os.getenv("GROQ_API_KEY", "")
+        self.configured = bool(self.api_key)
+        log.info(f"GroqProvider initialized. Configured: {self.configured}, Key length: {len(self.api_key)}")
         self._client = OpenAI(
-            api_key=settings.GROQ_API_KEY, 
+            api_key=self.api_key, 
             base_url="https://api.groq.com/openai/v1", 
             timeout=85.0, 
             max_retries=1
@@ -166,13 +170,15 @@ class GroqProvider:
     def transcribe(self, audio_bytes: bytes, filename: str, vocabulary_hint: str = "") -> dict:
         """Transcribes audio using Groq's fast Whisper API."""
         start = time.time()
-        
+        if not self._client:
+            raise RuntimeError("Groq client is not initialized ( missing API key )")
+            
         file_tuple = (filename, audio_bytes, "audio/webm")
         prompt = vocabulary_hint if vocabulary_hint else "Technical video lecture with complex diagrams and terminology."
         
         resp = self._client.audio.transcriptions.create(
             file=file_tuple,
-            model=settings.GROQ_ASR_MODEL,
+            model=settings.GROQ_ASR_MODEL or "whisper-large-v3",
             prompt=prompt,
             response_format="json",
             temperature=0.0
@@ -182,7 +188,7 @@ class GroqProvider:
             "text": getattr(resp, "text", ""),
             "confidence": 0.95,
             "provider": self.name,
-            "model": settings.GROQ_ASR_MODEL,
+            "model": settings.GROQ_ASR_MODEL or "whisper-large-v3",
             "latency_ms": int((time.time() - start) * 1000),
         }
 
@@ -195,7 +201,7 @@ class OpenRouterProvider:
     name = "openrouter"
 
     def __init__(self):
-        key = getattr(settings, "OPENROUTER_API_KEY", None)
+        key = getattr(settings, "OPENROUTER_API_KEY", None) or os.getenv("OPENROUTER_API_KEY", "")
         self.configured = bool(key)
         self._client = OpenAI(
             api_key=key, 
@@ -253,9 +259,10 @@ class DeepSeekProvider:
     name = "deepseek"
 
     def __init__(self):
-        self.configured = bool(settings.DEEPSEEK_API_KEY)
+        key = getattr(settings, "DEEPSEEK_API_KEY", None) or os.getenv("DEEPSEEK_API_KEY", "")
+        self.configured = bool(key)
         self._client = OpenAI(
-            api_key=settings.DEEPSEEK_API_KEY, 
+            api_key=key, 
             base_url="https://api.deepseek.com", 
             timeout=85.0,
             max_retries=1
@@ -290,7 +297,7 @@ class DeepSeekProvider:
         return {
             "text": text,
             "provider": self.name,
-            "model": settings.DEEPSEEK_TEXT_MODEL,
+            "model": settings.DEEPSEERT_TEXT_MODEL if hasattr(settings, "DEEPSEEK_TEXT_MODEL") else "deepseek-chat",
             "latency_ms": int((time.time() - start) * 1000),
             "tokens": getattr(resp.usage, "total_tokens", 0),
         }
@@ -317,7 +324,8 @@ def _get(name: str):
 
 def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dict:
     """
-    Generic fallback router with automatic fallback safety defaults if order_csv is empty.
+    Forced diagnostic fallback runner. Guarantees that providers in the order 
+    are attempted and logs exact failure reasons instead of returning Tried: [].
     """
     tried = []
     errors = {}
@@ -338,17 +346,20 @@ def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dic
 
     for name in provider_order:
         if name not in _REGISTRY:
+            log.warning(f"Provider '{name}' not found in registry.")
             continue
+            
         provider = _get(name)
-        if not getattr(provider, "configured", False):
-            continue  
-            
-        method = getattr(provider, method_name, None)
-        if method is None:
-            continue  
-            
+        
+        # Force attempt even if configured is False, to expose the exact config/key error in logs
         tried.append(name)
         
+        method = getattr(provider, method_name, None)
+        if method is None:
+            errors[name] = f"Method '{method_name}' not implemented on provider '{name}'"
+            log.warning(f"❌ FAIL: {name} lacks method {method_name}")
+            continue  
+            
         current_args = list(args)
         current_kwargs = kwargs.copy()
 
@@ -365,7 +376,7 @@ def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dic
             return res
         except Exception as e:
             errors[name] = str(e)
-            log.warning(f"❌ FAIL: {name}.{method_name} encountered error: {e}")
+            log.error(f"❌ FAIL: {name}.{method_name} encountered error: {e}", exc_info=True)
             continue
 
     raise RuntimeError(f"All configured providers failed for {method_name}. Tried: {tried}. Errors: {errors}")
