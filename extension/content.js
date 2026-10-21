@@ -163,6 +163,11 @@ if (typeof window.noteCastInjected === 'undefined') {
         <div id="nc-status" class="nc-status hidden"></div>
       </div>
     `;
+    
+    // FIX: Permanently hide the floating UI pop-up to keep the screen clean,
+    // while keeping all the ad-observer logic running perfectly in the background.
+    ncContainer.style.display = 'none';
+
     document.body.appendChild(ncContainer);
     setupAdObserver(); // Initialize ad watcher when UI loads
   
@@ -217,7 +222,7 @@ if (typeof window.noteCastInjected === 'undefined') {
 
   document.addEventListener('yt-navigate-finish', () => {
     if (ncContainer) {
-      ncContainer.style.display = window.location.href.includes('watch?v=') ? 'block' : 'none';
+      ncContainer.style.display = 'none'; // Keep hidden on navigation
       const statusEl = document.getElementById('nc-status');
       if (statusEl) {
           statusEl.className = 'nc-status hidden';

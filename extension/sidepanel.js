@@ -171,6 +171,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
 });
 
+// START CAPTURING
 if (el("startBtn")) {
   el("startBtn").addEventListener("click", async () => {
     const meta = JSON.parse(el("idleControls")?.dataset?.meta || "{}");
@@ -228,12 +229,15 @@ if (el("startBtn")) {
   });
 }
 
+// FINALIZE CAPTURING
 if (el("stopBtn")) {
   el("stopBtn").addEventListener("click", async () => {
     el("stopBtn").disabled = true;
     if (el("statusLabel")) el("statusLabel").textContent = "Wrapping up…";
+    
     stopAudioCapture(); 
     await chrome.runtime.sendMessage({ scope: "notecast", type: "STOP_CAPTURE" });
+    
     el("stopBtn").disabled = false;
     if (el("activeControls")) el("activeControls").classList.add("hidden");
     if (el("finalizingNotice")) el("finalizingNotice").classList.remove("hidden");
@@ -241,7 +245,24 @@ if (el("stopBtn")) {
   });
 }
 
-// AUDIO CAPTURE PIPELINE (CONTINUOUS LOOP)
+// RESET EXTENSION STATE FOR NEW VIDEO
+if (el("resetBtn")) {
+  el("resetBtn").addEventListener("click", () => {
+    capturing = false;
+    notes.length = 0;
+    transcript.length = 0;
+    visuals.length = 0;
+    
+    renderNotes();
+    renderTranscript();
+    renderVisuals();
+    
+    if (el("finalizingNotice")) el("finalizingNotice").classList.add("hidden");
+    detectVideo(); // Evaluates the active tab and switches to idleControls
+  });
+}
+
+// AUDIO CAPTURE PIPELINE
 async function startAudioCapture(streamId) {
   stopAudioCapture(); 
 
@@ -448,7 +469,7 @@ function buildImageUrl(storageKey) {
 }
 
 function renderNotes() {
-  const panel = el("panel-notes");
+  const panel = el("notesContainer");
   if (!panel) return;
   if (!notes.length) {
     panel.innerHTML = `<div class="empty-state">Notes will appear here roughly every 30 seconds as the video plays.</div>`;
@@ -465,7 +486,7 @@ function renderNotes() {
 }
 
 function renderTranscript() {
-  const panel = el("panel-transcript");
+  const panel = el("transcriptContainer");
   if (!panel) return;
   if (transcript.length === 0) {
     panel.innerHTML = `<div class="empty-state">Live captions will appear here once audio is detected...</div>`;
@@ -480,7 +501,7 @@ function renderTranscript() {
 }
 
 function renderVisuals() {
-  const panel = el("panel-visuals");
+  const panel = el("capturesContainer");
   if (!panel) return;
   if (!visuals.length) {
     panel.innerHTML = `<div class="empty-state">Diagrams, slides and code shown in the video will be captured here.</div>`;
