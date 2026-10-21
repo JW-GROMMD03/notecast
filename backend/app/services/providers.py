@@ -134,7 +134,8 @@ class GroqProvider:
         if "json" not in system.lower():
             system += "\nImportant: You must respond exclusively in valid JSON format."
             
-        resp = self._client.chat.completions.create(
+        client = self._client or OpenAI(api_key=self.api_key or os.getenv("GROQ_API_KEY", ""), base_url="https://api.groq.com/openai/v1", timeout=85.0)
+        resp = client.chat.completions.create(
             model=settings.GROQ_TEXT_MODEL,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=max_tokens,
@@ -151,7 +152,8 @@ class GroqProvider:
 
     def chat_text(self, system: str, user: str, max_tokens: int = 2500) -> dict:
         start = time.time()
-        resp = self._client.chat.completions.create(
+        client = self._client or OpenAI(api_key=self.api_key or os.getenv("GROQ_API_KEY", ""), base_url="https://api.groq.com/openai/v1", timeout=85.0)
+        resp = client.chat.completions.create(
             model=settings.GROQ_TEXT_MODEL,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=max_tokens,
@@ -167,13 +169,17 @@ class GroqProvider:
 
     def transcribe(self, audio_bytes: bytes, filename: str, vocabulary_hint: str = "") -> dict:
         start = time.time()
-        if not self._client:
-            raise RuntimeError("Groq client is not initialized (missing API key)")
+        client = self._client
+        if not client:
+            k = self.api_key or os.getenv("GROQ_API_KEY", "")
+            if not k:
+                raise RuntimeError("Groq client is not initialized and no API key found.")
+            client = OpenAI(api_key=k, base_url="https://api.groq.com/openai/v1", timeout=85.0)
             
         file_tuple = (filename, audio_bytes, "audio/webm")
         prompt = vocabulary_hint if vocabulary_hint else "Technical video lecture with complex diagrams and terminology."
         
-        resp = self._client.audio.transcriptions.create(
+        resp = client.audio.transcriptions.create(
             file=file_tuple,
             model=settings.GROQ_ASR_MODEL or "whisper-large-v3",
             prompt=prompt,
