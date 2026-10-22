@@ -183,7 +183,7 @@ function renderMath(element) {
       window.renderMathInElement(element, {
         delimiters: [
           {left: "$$", right: "$$", display: true},
-          {left: "[", right: "]", display: true},
+          {left: "\\[", right: "\\]", display: true},
           {left: "$", right: "$", display: false},
           {left: "\\(", right: "\\)", display: false}
         ],
@@ -324,7 +324,7 @@ async function load() {
       authedFetch(`/videos/${videoId}/notes`),
       authedFetch(`/videos/${videoId}/ai-notes`),
       authedFetch(`/videos/${videoId}/transcript`),
-      authedFetch(`/videos/${videoId}/captures`), // Updated to use correct captures route
+      authedFetch(`/videos/${videoId}/captures`),
     ]);
 
     renderNotes(notes);
@@ -484,7 +484,6 @@ function renderVisuals(visuals) {
   }
   container.innerHTML = visuals
     .map((v) => {
-      // FIX: Use pre-signed image_url provided by backend instead of raw local path concatenation
       const imgSrc = v.image_url || (v.storage_key ? `${API_BASE}${v.storage_key}` : "");
       return `
       <div class="visual-card" style="margin-bottom: 20px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;">
@@ -707,9 +706,10 @@ function mdToHtml(md) {
 
           let textContent = isBullet ? line.substring(2) : line.replace(/^\d+\.\s/, '');
           let formattedText = escapeHtml(textContent)
+              .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%; border-radius:8px; border:1px solid var(--border); margin:12px 0; display:block;" />')
               .replace(/\*\*(.+?)\*\*/g, "<strong style='color: #2563eb; font-weight: 700;'>$1</strong>")
               .replace(/\*(.+?)\*/g, "<em style='color: #475569;'>$1</em>")
-              .replace(/`([^`\n]+)`/g, "<code style='background: #fee2e2; padding:3px 6px; border-radius:4px; color: #b91c1c; font-family: monospace; font-size: 0.9em;`>$1</code>");
+              .replace(/`([^`\n]+)`/g, "<code style='background: #fee2e2; padding:3px 6px; border-radius:4px; color: #b91c1c; font-family: monospace; font-size: 0.9em;'>$1</code>");
 
           listHtml.push(`<li style="margin-bottom:10px;">${formattedText}</li>`);
           continue;
@@ -719,7 +719,9 @@ function mdToHtml(md) {
       flushDiagram();
       flushTable();
       
+      // Convert Markdown images ![Alt](url) into actual responsive HTML images
       let safeLine = escapeHtml(rawLine)
+          .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%; border-radius:8px; border:1px solid var(--border); margin:16px 0; display:block;" />')
           .replace(/\*\*(.+?)\*\*/g, "<strong style='color: #2563eb; font-weight: 700;'>$1</strong>")
           .replace(/\*(.+?)\*/g, "<em style='color: #475569;'>$1</em>")
           .replace(/`([^`\n]+)`/g, "<code style='background: #fee2e2; padding:3px 6px; border-radius:4px; color: #b91c1c; font-family: monospace; font-size: 0.9em;'>$1</code>");

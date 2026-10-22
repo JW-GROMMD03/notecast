@@ -1,7 +1,7 @@
 """
 Unified AI provider layer.
 Includes strict client timeouts, latency tracking, diagnostic error logging, 
-and audio transcription routing.
+and audio transcription routing with fail-fast provider rotation.
 """
 import base64
 import io
@@ -66,6 +66,8 @@ class GeminiProvider:
             genai.configure(api_key=settings.GEMINI_API_KEY)
 
     def chat_json(self, system: str, user: str, max_tokens: int = 2500) -> dict:
+        if not self.configured:
+            raise RuntimeError("Gemini is not configured.")
         model = genai.GenerativeModel(settings.GEMINI_TEXT_MODEL, system_instruction=system)
         start = time.time()
         resp = model.generate_content(
@@ -84,6 +86,8 @@ class GeminiProvider:
         }
 
     def chat_text(self, system: str, user: str, max_tokens: int = 2500) -> dict:
+        if not self.configured:
+            raise RuntimeError("Gemini is not configured.")
         model = genai.GenerativeModel(settings.GEMINI_TEXT_MODEL, system_instruction=system)
         start = time.time()
         resp = model.generate_content(
@@ -102,6 +106,8 @@ class GeminiProvider:
         }
 
     def embed(self, texts: list[str]) -> dict:
+        if not self.configured:
+            raise RuntimeError("Gemini is not configured.")
         start = time.time()
         vectors = [genai.embed_content(model=f"models/{settings.GEMINI_EMBED_MODEL}", content=t)["embedding"] for t in texts]
         return {
@@ -130,12 +136,13 @@ class GroqProvider:
         ) if self.configured else None
 
     def chat_json(self, system: str, user: str, max_tokens: int = 2500) -> dict:
+        if not self.configured:
+            raise RuntimeError("Groq is not configured.")
         start = time.time()
         if "json" not in system.lower():
             system += "\nImportant: You must respond exclusively in valid JSON format."
             
-        client = self._client or OpenAI(api_key=self.api_key or os.getenv("GROQ_API_KEY", ""), base_url="https://api.groq.com/openai/v1", timeout=85.0)
-        resp = client.chat.completions.create(
+        resp = self._client.chat.completions.create(
             model=settings.GROQ_TEXT_MODEL,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=max_tokens,
@@ -151,9 +158,10 @@ class GroqProvider:
         }
 
     def chat_text(self, system: str, user: str, max_tokens: int = 2500) -> dict:
+        if not self.configured:
+            raise RuntimeError("Groq is not configured.")
         start = time.time()
-        client = self._client or OpenAI(api_key=self.api_key or os.getenv("GROQ_API_KEY", ""), base_url="https://api.groq.com/openai/v1", timeout=85.0)
-        resp = client.chat.completions.create(
+        resp = self._client.chat.completions.create(
             model=settings.GROQ_TEXT_MODEL,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=max_tokens,
@@ -168,18 +176,13 @@ class GroqProvider:
         }
 
     def transcribe(self, audio_bytes: bytes, filename: str, vocabulary_hint: str = "") -> dict:
+        if not self.configured:
+            raise RuntimeError("Groq is not configured.")
         start = time.time()
-        client = self._client
-        if not client:
-            k = self.api_key or os.getenv("GROQ_API_KEY", "")
-            if not k:
-                raise RuntimeError("Groq client is not initialized and no API key found.")
-            client = OpenAI(api_key=k, base_url="https://api.groq.com/openai/v1", timeout=85.0)
-            
         file_tuple = (filename, audio_bytes, "audio/webm")
         prompt = vocabulary_hint if vocabulary_hint else "Technical video lecture with complex diagrams and terminology."
         
-        resp = client.audio.transcriptions.create(
+        resp = self._client.audio.transcriptions.create(
             file=file_tuple,
             model=settings.GROQ_ASR_MODEL or "whisper-large-v3",
             prompt=prompt,
@@ -212,10 +215,11 @@ class OpenRouterProvider:
             timeout=85.0,
             max_retries=1
         ) if self.configured else None
-        
         self.model = getattr(settings, "OPENROUTER_TEXT_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
 
     def chat_json(self, system: str, user: str, max_tokens: int = 2500) -> dict:
+        if not self.configured:
+            raise RuntimeError("OpenRouter is not configured.")
         start = time.time()
         if "json" not in system.lower():
             system += "\nImportant: You must respond exclusively in valid JSON format."
@@ -237,6 +241,8 @@ class OpenRouterProvider:
         }
 
     def chat_text(self, system: str, user: str, max_tokens: int = 2500) -> dict:
+        if not self.configured:
+            raise RuntimeError("OpenRouter is not configured.")
         start = time.time()
         resp = self._client.chat.completions.create(
             model=self.model,
@@ -272,6 +278,8 @@ class DeepSeekProvider:
         ) if self.configured else None
 
     def chat_json(self, system: str, user: str, max_tokens: int = 2500) -> dict:
+        if not self.configured:
+            raise RuntimeError("DeepSeek is not configured.")
         start = time.time()
         resp = self._client.chat.completions.create(
             model=settings.DEEPSEEK_TEXT_MODEL,
@@ -290,6 +298,8 @@ class DeepSeekProvider:
         }
 
     def chat_text(self, system: str, user: str, max_tokens: int = 2500) -> dict:
+        if not self.configured:
+            raise RuntimeError("DeepSeek is not configured.")
         start = time.time()
         resp = self._client.chat.completions.create(
             model=settings.DEEPSEEK_TEXT_MODEL,
@@ -329,49 +339,40 @@ def call_with_fallback(order_csv: str, method_name: str, *args, **kwargs) -> dic
     tried = []
     errors = {}
     
-    if not order_csv or not isinstance(order_csv, str):
-        provider_order = ["groq", "gemini"]
-    else:
-        provider_order = [p.strip().lower() for p in order_csv.split(",") if p.strip()]
-        if not provider_order:
-            provider_order = ["groq", "gemini"]
-    
-    provider_overrides = kwargs.pop("provider_overrides", None)
-    if provider_overrides is None and len(args) >= 3 and isinstance(args[2], dict):
-        provider_overrides = args[2]
-        args_list = list(args)
-        args_list.pop(2)
-        args = tuple(args_list)
+    # Enforce strict fallback order prioritizing Groq / OpenRouter first to avoid Gemini 429 quota exhaustion
+    provider_order = ["groq", "openrouter", "gemini", "deepseek"]
+    if order_csv and isinstance(order_csv, str):
+        parsed_order = [p.strip().lower() for p in order_csv.split(",") if p.strip()]
+        if parsed_order:
+            provider_order = parsed_order
 
     for name in provider_order:
         if name not in _REGISTRY:
             continue
             
-        provider = _get(name)
+        try:
+            provider = _get(name)
+            if not getattr(provider, "configured", True):
+                errors[name] = "Provider not configured"
+                continue
+        except Exception as init_err:
+            errors[name] = f"Init error: {init_err}"
+            continue
+
         tried.append(name)
-        
         method = getattr(provider, method_name, None)
         if method is None:
             errors[name] = f"Method '{method_name}' not implemented"
             continue  
-            
-        current_args = list(args)
-        current_kwargs = kwargs.copy()
-
-        if provider_overrides and name in provider_overrides:
-            if len(current_args) > 0 and isinstance(current_args[0], str):
-                current_args[0] = provider_overrides[name]
-            elif "system" in current_kwargs:
-                current_kwargs["system"] = provider_overrides[name]
 
         try:
             log.info(f"Attempting {name}.{method_name}...")
-            res = method(*current_args, **current_kwargs)
+            res = method(*args, **kwargs)
             log.info(f"✅ SUCCESS: {name}.{method_name} completed in {res.get('latency_ms', 0)}ms")
             return res
         except Exception as e:
             errors[name] = str(e)
-            log.error(f"❌ FAIL: {name}.{method_name} error: {e}")
+            log.error(f"❌ FAIL: {name}.{method_name} error: {e}. Immediately failing over...")
             continue
 
     raise RuntimeError(f"All configured providers failed for {method_name}. Tried: {tried}. Errors: {errors}")
