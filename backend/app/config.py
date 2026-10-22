@@ -15,6 +15,14 @@ class Settings(BaseSettings):
     STORAGE_DIR: str = "./storage"
 
     # ---------------------------------------------------------------
+    # Cloudflare R2 Object Storage
+    # ---------------------------------------------------------------
+    R2_ENDPOINT_URL: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET_NAME: str = "notecast-frames"
+
+    # ---------------------------------------------------------------
     # Production Email Provider (Resend API)
     # ---------------------------------------------------------------
     RESEND_API_KEY: str = ""
