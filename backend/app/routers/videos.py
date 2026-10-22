@@ -7,7 +7,7 @@ from typing import List
 
 from .. import models, schemas, auth
 from ..database import get_db
-from ..services import llm
+from ..services import llm, storage as storage_service
 from ..workers import pipeline
 from ..config import settings
 
@@ -176,6 +176,48 @@ def finalize(video_id: str, request: Request, background_tasks: BackgroundTasks,
     db.commit()
     background_tasks.add_task(pipeline.finalize_video, video_id)
     return {"ok": True, "status": "processing"}
+
+
+@router.get("/{video_id}/captures", response_model=list)
+@router.get("/{video_id}/captures/", response_model=list)
+def get_video_captures(video_id: str, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
+    """Fetch all visual captures and slides associated with a video, returning secure R2 pre-signed URLs."""
+    video = db.query(models.Video).filter(models.Video.id == video_id, models.Video.user_id == user.id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    session_ids = [s.id for s in db.query(models.Session).filter(models.Session.video_id == video.id).all()]
+    visuals = []
+    if session_ids and hasattr(models, "VisualEvent"):
+        visuals = (
+            db.query(models.VisualEvent)
+            .filter(models.VisualEvent.session_id.in_(session_ids))
+            .order_by(models.VisualEvent.timestamp_ms)
+            .all()
+        )
+
+    result = []
+    for v in visuals:
+        storage_key = getattr(v, 'storage_key', None) or getattr(v, 'image_path', None) or ''
+        
+        img_url = ""
+        if storage_key:
+            try:
+                img_url = storage_service.local_url(storage_key)
+            except Exception:
+                img_url = storage_key if storage_key.startswith("http") else f"/{storage_key}"
+
+        result.append({
+            "id": getattr(v, 'id', ''),
+            "type": getattr(v, 'type', 'Visual'),
+            "description": getattr(v, 'description', '') or '',
+            "ocr_text": getattr(v, 'ocr_text', '') or '',
+            "timestamp_ms": getattr(v, 'timestamp_ms', 0),
+            "image_url": img_url,
+            "storage_key": storage_key
+        })
+        
+    return result
 
 
 @router.get("/{video_id}/download-pdf")
