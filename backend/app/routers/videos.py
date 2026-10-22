@@ -200,6 +200,7 @@ def get_video_captures(video_id: str, user: models.User = Depends(auth.get_curre
     for v in visuals:
         storage_key = getattr(v, 'storage_key', None) or getattr(v, 'image_path', None) or ''
         
+        # FIX: Resolve raw storage key into a valid Cloudflare R2 pre-signed URL so the browser loads it without 404ing
         img_url = ""
         if storage_key:
             try:

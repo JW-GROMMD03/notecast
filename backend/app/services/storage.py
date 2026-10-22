@@ -51,6 +51,8 @@ def local_url(key: str) -> str:
     Generates a secure, temporary pre-signed URL to view the image directly from Cloudflare R2.
     This eliminates local 404 errors on Render and allows WeasyPrint/browsers to load frames cleanly.
     """
+    if not key:
+        return ""
     if key.startswith("http://") or key.startswith("https://"):
         return key
     

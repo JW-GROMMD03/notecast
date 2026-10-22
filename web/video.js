@@ -183,7 +183,7 @@ function renderMath(element) {
       window.renderMathInElement(element, {
         delimiters: [
           {left: "$$", right: "$$", display: true},
-          {left: "\\[", right: "\\]", display: true},
+          {left: "[", right: "]", display: true},
           {left: "$", right: "$", display: false},
           {left: "\\(", right: "\\)", display: false}
         ],
@@ -324,7 +324,7 @@ async function load() {
       authedFetch(`/videos/${videoId}/notes`),
       authedFetch(`/videos/${videoId}/ai-notes`),
       authedFetch(`/videos/${videoId}/transcript`),
-      authedFetch(`/videos/${videoId}/visuals`),
+      authedFetch(`/videos/${videoId}/captures`), // Updated to use correct captures route
     ]);
 
     renderNotes(notes);
@@ -447,7 +447,8 @@ function renderAssets(assets) {
   return assets
     .map((a) => {
       if (a.asset_type === "image" && a.storage_key) {
-        return `<img src="${API_BASE}${a.storage_key}" style="max-width:100%; border:1px solid var(--border); border-radius:6px; margin:12px 0;" />`;
+        const imageUrl = a.image_url || `${API_BASE}${a.storage_key}`;
+        return `<img src="${imageUrl}" style="max-width:100%; border:1px solid var(--border); border-radius:6px; margin:12px 0;" />`;
       }
       if (a.asset_type === "code") {
         return `<pre style="background: var(--code-bg); color: var(--text-main); padding:16px; border-radius:8px; overflow-x:auto; margin:12px 0;"><code>${escapeHtml(a.content || "")}</code></pre>`;
@@ -482,13 +483,16 @@ function renderVisuals(visuals) {
     return;
   }
   container.innerHTML = visuals
-    .map((v) => `
+    .map((v) => {
+      // FIX: Use pre-signed image_url provided by backend instead of raw local path concatenation
+      const imgSrc = v.image_url || (v.storage_key ? `${API_BASE}${v.storage_key}` : "");
+      return `
       <div class="visual-card" style="margin-bottom: 20px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;">
-        ${v.storage_key ? `<img src="${API_BASE}${v.storage_key}" style="max-width: 100%; border-radius: 6px; margin-bottom: 12px;" />` : ""}
+        ${imgSrc ? `<img src="${imgSrc}" style="max-width: 100%; border-radius: 6px; margin-bottom: 12px;" />` : ""}
         <div class="visual-type" style="font-weight: 700; color: var(--primary); text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em;">${escapeHtml(v.type)}</div>
         <div class="visual-desc" style="font-size: 0.95em; color: var(--text-muted); margin-top: 6px; line-height: 1.5;">${escapeHtml(v.description)}</div>
-      </div>`
-    )
+      </div>`;
+    })
     .join("");
 }
 
@@ -705,7 +709,7 @@ function mdToHtml(md) {
           let formattedText = escapeHtml(textContent)
               .replace(/\*\*(.+?)\*\*/g, "<strong style='color: #2563eb; font-weight: 700;'>$1</strong>")
               .replace(/\*(.+?)\*/g, "<em style='color: #475569;'>$1</em>")
-              .replace(/`([^`\n]+)`/g, "<code style='background: #fee2e2; padding:3px 6px; border-radius:4px; color: #b91c1c; font-family: monospace; font-size: 0.9em;'>$1</code>");
+              .replace(/`([^`\n]+)`/g, "<code style='background: #fee2e2; padding:3px 6px; border-radius:4px; color: #b91c1c; font-family: monospace; font-size: 0.9em;`>$1</code>");
 
           listHtml.push(`<li style="margin-bottom:10px;">${formattedText}</li>`);
           continue;
