@@ -123,11 +123,21 @@ def run_incremental_note(session_id: str):
         if not draft or not draft.get("heading"):
             return
 
+        # SAFEGUARD: If the LLM dumped the JSON string directly inside body_md
+        body_content = draft.get("body_md", "")
+        if isinstance(body_content, str) and body_content.strip().startswith("{") and "body_md" in body_content:
+            try:
+                parsed = extract_clean_json(body_content)
+                draft["heading"] = parsed.get("heading", draft["heading"])
+                body_content = parsed.get("body_md", body_content)
+            except:
+                pass
+
         count = db.query(models.NoteSection).filter(models.NoteSection.video_id == sess.video_id).count()
         section = models.NoteSection(
             video_id=sess.video_id,
             heading=draft["heading"][:250],
-            body_md=draft.get("body_md", ""),
+            body_md=body_content,
             order_index=count,
             timestamp_ms=recent[0].start_ms,
         )
@@ -190,11 +200,22 @@ def finalize_video(video_id: str):
 
             def write_section(node: dict, parent_id: str | None):
                 nonlocal order
+                
+                # SAFEGUARD: Catch nested JSON strings during hierarchy reorganization
+                body_content = node.get("body_md", "")
+                if isinstance(body_content, str) and body_content.strip().startswith("{") and "body_md" in body_content:
+                    try:
+                        parsed = extract_clean_json(body_content)
+                        node["heading"] = parsed.get("heading", node.get("heading", "Note"))
+                        body_content = parsed.get("body_md", body_content)
+                    except:
+                        pass
+                        
                 sec = models.NoteSection(
                     video_id=video_id,
                     parent_id=parent_id,
                     heading=node.get("heading", "Note")[:250],
-                    body_md=node.get("body_md", ""),
+                    body_md=body_content,
                     order_index=order,
                     timestamp_ms=node.get("timestamp_ms", 0),
                 )

@@ -42,12 +42,13 @@ def draft_note_section(transcript_window: str, visual_context: str) -> dict:
     system = (
         "You are an elite, multi-disciplinary engineering professor. You write dense, highly technical study notes from a transcript window.\n"
         "Respond ONLY with JSON: {\"heading\": str, \"body_md\": str}. Use markdown in body_md.\n\n"
-        "CRITICAL DOMAIN RULES (Follow strictly to avoid hallucinations):\n"
-        "1. DYNAMIC OUTPUT: Adapt your response strictly to the topic being discussed in the transcript.\n"
-        "2. FOR SOFTWARE/CODING: If the topic is explicitly programming, IT, or software architecture, you MUST write out actual working code examples. Precede them with 'Here is the implementation in [Language]:'.\n"
-        "3. FOR MECHANICAL/ENGINEERING/MATH: If the topic is physical engineering (e.g., pumps, thermodynamics, mechanics), math, or physics, NEVER output code. Instead, you MUST write out the mathematical equations, physical formulas, and mechanical breakdown principles discussed.\n"
-        "4. EMBED VISUALS: If URL_PROVIDED links are found in the visual context, you MUST embed them directly into body_md using markdown syntax: `![Visual Description](URL_PROVIDED)`. Do NOT attempt to recreate 3D images using text.\n"
-        "CONTINUITY RULE: If the visual context indicates a 'WIPE_EVENT' (board wiped) AND the current concept is incomplete, append EXACTLY this HTML at the end of body_md: <div style='font-size: 0.9em; color: #d97706; font-style: italic; margin-top: 12px; font-weight: 600;'>...continues in the next slide/capture...</div>\n"
+        "CRITICAL FORMATTING RULES:\n"
+        "1. JSON STRUCTURE: Ensure you return ONLY a clean JSON object. Do not dump the JSON output as a raw string inside the body_md field.\n"
+        "2. LATEX/KATEX MATH: When writing LaTeX equations, DO NOT use double ampersands (`&&`) for alignment inside `\\begin{aligned}` blocks. You MUST use a single ampersand (`&`) for alignment to prevent frontend KaTeX parsing crashes.\n"
+        "3. FOR SOFTWARE/CODING: If the topic is explicitly programming, you MUST write out actual working code examples.\n"
+        "4. FOR MECHANICAL/MATH: If the topic is physical engineering or math, you MUST write out the mathematical equations using the correct single-ampersand LaTeX format.\n"
+        "5. EMBED VISUALS: If URL_PROVIDED links are found, embed them directly into body_md using: `![Visual Description](URL_PROVIDED)`.\n"
+        "CONTINUITY RULE: If the visual context indicates a 'WIPE_EVENT' AND the concept is incomplete, append: <div style='font-size: 0.9em; color: #d97706; font-style: italic; margin-top: 12px; font-weight: 600;'>...continues in the next slide/capture...</div>\n"
         "If the window has no substantive content, return {\"heading\": \"\", \"body_md\": \"\"}."
     )
     user = f"Transcript window:\n{transcript_window}\n\nVisual context (diagrams/slides seen):\n{visual_context}"
@@ -60,9 +61,9 @@ def reorganize_notes(full_transcript: str, flat_sections: list[dict]) -> dict:
     system = (
         "Reorganize a flat list of note sections into a hierarchical structure by "
         "topic/chapter. Fix headings, merge redundant sections, keep every "
-        "timestamp_ms value attached to the content it came from. Respond ONLY with "
-        "JSON: {\"sections\": [{\"heading\": str, \"body_md\": str, \"timestamp_ms\": int, "
-        "\"children\": [ ...same shape... ]}]}."
+        "timestamp_ms value attached to the content it came from.\n\n"
+        "CRITICAL LATEX RULE: When outputting math equations, DO NOT use double ampersands (`&&`) in `\\begin{aligned}` blocks. You MUST use a single ampersand (`&`).\n\n"
+        "Respond ONLY with a valid JSON object matching this schema: {\"sections\": [{\"heading\": str, \"body_md\": str, \"timestamp_ms\": int, \"children\": [ ... ]}]}."
     )
     user = (
         f"Full transcript (for context, do not repeat verbatim):\n{full_transcript[:6000]}\n\n"
