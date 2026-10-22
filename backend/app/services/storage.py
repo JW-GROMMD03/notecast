@@ -36,7 +36,6 @@ def save_base64_image(prefix: str, b64_data: str, ext: str = "webp") -> str:
     raw = base64.b64decode(b64_data)
     key = f"frames/{prefix}/{uuid.uuid4().hex}.{ext}"
     
-    # Save to R2 with the correct MIME type so browsers render it as an image
     content_type = f"image/{ext}"
     save_bytes(key, raw, content_type)
     return key
@@ -50,8 +49,11 @@ def read_bytes(key: str) -> bytes:
 def local_url(key: str) -> str:
     """
     Generates a secure, temporary pre-signed URL to view the image directly from Cloudflare R2.
-    This eliminates the need to route image traffic through your Render backend.
+    This eliminates local 404 errors on Render and allows WeasyPrint/browsers to load frames cleanly.
     """
+    if key.startswith("http://") or key.startswith("https://"):
+        return key
+    
     url = s3.generate_presigned_url(
         ClientMethod="get_object",
         Params={"Bucket": BUCKET, "Key": key},

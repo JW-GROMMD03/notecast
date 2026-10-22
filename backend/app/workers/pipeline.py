@@ -12,7 +12,7 @@ import re
 from sqlalchemy.orm import Session as DbSession
 from .. import models
 from ..database import SessionLocal
-from ..services import llm, verify, pdf as pdf_service
+from ..services import llm, verify, pdf as pdf_service, storage as storage_service
 
 log = logging.getLogger("notecast.pipeline")
 
@@ -86,7 +86,7 @@ def run_incremental_note(session_id: str):
         
         window_text = instruction + "\n".join(f"[{r.start_ms}ms] {r.text}" for r in recent)
 
-        # 2. Extract recent visuals and provide exact markdown URLs for embedding
+        # 2. Extract recent visuals and provide exact public pre-signed URLs or R2 URLs for embedding
         visuals = (
             db.query(models.VisualEvent)
             .filter(models.VisualEvent.session_id == session_id)
@@ -97,8 +97,14 @@ def run_incremental_note(session_id: str):
         
         visual_lines = []
         for v in visuals:
-            # Safely format the storage key so the frontend can render it natively
-            img_url = v.storage_key if v.storage_key and v.storage_key.startswith("/") else f"/{v.storage_key}"
+            # FIX: Ensure we use the secure pre-signed Cloudflare R2 URL so the browser and WeasyPrint can load it without 404ing
+            img_url = ""
+            if v.storage_key:
+                try:
+                    img_url = storage_service.local_url(v.storage_key)
+                except Exception:
+                    img_url = v.storage_key if v.storage_key.startswith("http") else f"/{v.storage_key}"
+
             visual_lines.append(
                 f"Visual Type: {v.type}\n"
                 f"Description: {v.description}\n"
