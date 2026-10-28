@@ -1,6 +1,6 @@
 import { authedFetch, requireAuth, logout, checkExtensionInstalled, CHROME_STORE_URL } from "./api.js";
 
-let user;
+let user = null;
 let dueFlashcards = [];
 let currentFcIndex = 0;
 let networkGraph = null;
@@ -20,11 +20,11 @@ function applyTheme(theme) {
   localStorage.setItem("theme", theme);
   
   if (theme === "light") {
-    if(themeIcon) themeIcon.textContent = "🌙";
-    if(themeText) themeText.textContent = "Dark Mode";
+    if (themeIcon) themeIcon.textContent = "🌙";
+    if (themeText) themeText.textContent = "Dark Mode";
   } else {
-    if(themeIcon) themeIcon.textContent = "☀️";
-    if(themeText) themeText.textContent = "Light Mode";
+    if (themeIcon) themeIcon.textContent = "☀️";
+    if (themeText) themeText.textContent = "Light Mode";
   }
   
   if (networkGraph && document.getElementById("pane-graph")?.classList.contains("active")) {
@@ -40,6 +40,72 @@ if (themeToggleBtn) {
     const currentTheme = document.documentElement.getAttribute("data-theme");
     applyTheme(currentTheme === "light" ? "dark" : "light");
   });
+}
+
+// --- UTC MIDNIGHT RESET TIMER CALCULATOR ---
+function getTimeUntilMidnightUTC() {
+  const now = new Date();
+  const tomorrowUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+  const diffMs = tomorrowUTC - now;
+  
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  return `${hours}h ${minutes}m`;
+}
+
+// --- DUAL-MODE SUBSCRIPTION & QUOTA EXHAUSTION ALERT MODAL ---
+function showEntitlementModal({ featureName, recommendedTier, priceText, isQuotaDepleted = false, detailMessage = null }) {
+  const existingModal = document.getElementById('entitlementModal');
+  if (existingModal) existingModal.remove();
+
+  const resetTimeStr = getTimeUntilMidnightUTC();
+  const currentPlanName = (user?.plan || 'FREE').toUpperCase();
+
+  const headerIcon = isQuotaDepleted ? "⏳" : "🔒";
+  const modalTitle = isQuotaDepleted ? "Daily Limit Reached" : "Subscription Pass Needed";
+  
+  let mainDescription = "";
+  if (isQuotaDepleted) {
+    mainDescription = detailMessage || `You have reached your daily privilege limit for <strong>${featureName}</strong> on the <strong>${currentPlanName} Plan</strong> today.`;
+  } else {
+    mainDescription = `Your current plan (<strong>${currentPlanName}</strong>) does not include access to <strong>${featureName}</strong>. Subscribe to an eligible pass to unlock access instantly.`;
+  }
+
+  const quotaBoxHtml = isQuotaDepleted ? `
+    <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 10px; padding: 12px; margin: 14px 0; text-align: center; color: #f59e0b; font-weight: 600; font-size: 0.88rem;">
+      🕒 Daily quota resets in <strong>${resetTimeStr}</strong> (00:00 UTC)
+    </div>
+  ` : '';
+
+  const modalHtml = `
+    <div id="entitlementModal" class="entitlement-modal-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(3,7,18,0.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:99999;">
+      <div class="entitlement-modal-card" style="background:var(--bg-card, #0f172a);border:1px solid #3b82f6;border-radius:16px;padding:28px;max-width:480px;width:90%;color:#fff;box-shadow:0 20px 50px rgba(0,0,0,0.6);text-align:center;">
+        <div style="font-size:2.5rem;margin-bottom:8px;">${headerIcon}</div>
+        <h3 style="margin:0 0 10px 0;font-size:1.3rem;">${modalTitle}</h3>
+        <p style="color:#94a3b8;font-size:0.88rem;line-height:1.5;margin-bottom:12px;">
+          ${mainDescription}
+        </p>
+
+        ${quotaBoxHtml}
+
+        <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 10px; padding: 12px; text-align: left; margin-bottom: 20px;">
+          <div style="font-size: 0.78rem; font-weight: 700; color: #60a5fa; text-transform: uppercase; margin-bottom: 6px;">Qualifying Subscription Passes:</div>
+          <ul style="margin: 0; padding-left: 18px; font-size: 0.82rem; color: #cbd5e1; line-height: 1.5;">
+            <li><strong>Startup Pass</strong> — 100 KES / mo (1 Hr YouTube Notes)</li>
+            <li><strong>Basic Pass</strong> — 250 KES / mo (2 Hrs Notes + Free Downloads)</li>
+            <li><strong>Standard Pass</strong> — 800 KES / mo (4 Hrs Notes + 2 Sims/day)</li>
+            <li><strong>Premium Pass</strong> — 1199 KES / mo (12 Hrs Notes + Unlimited AI)</li>
+          </ul>
+        </div>
+
+        <div style="display:flex;gap:12px;justify-content:center;">
+          <button onclick="document.getElementById('entitlementModal').remove()" style="padding:10px 18px;background:#334155;border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600;">Close</button>
+          <button onclick="document.getElementById('entitlementModal').remove(); window.openPaymentModal('${recommendedTier}', '${priceText}');" style="padding:10px 20px;background:#3b82f6;border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:700;">Subscribe to ${recommendedTier} (${priceText})</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
 // --- FACULTY & COURSE STATIC LIBRARY DATA ---
@@ -376,45 +442,34 @@ const COURSE_MODULES = {
   ]
 };
 
-// --- SUBSCRIPTION REQUIREMENT MODAL DISPLAY ---
-function showSubscriptionRequiredModal(featureName, recommendedTier, priceText) {
-  const existingModal = document.getElementById('entitlementModal');
-  if (existingModal) existingModal.remove();
-  
-  const modalHtml = `
-    <div id="entitlementModal" class="entitlement-modal-overlay">
-      <div class="entitlement-modal-card">
-        <div style="font-size:2.5rem;margin-bottom:12px;">🔒</div>
-        <h3 style="margin:0 0 8px 0;font-size:1.3rem;">Subscription Qualification Needed</h3>
-        <p style="color:#94a3b8;font-size:0.9rem;line-height:1.5;margin-bottom:20px;">
-          Your current plan (<strong>${user?.plan || 'Free Plan'}</strong>) does not qualify for <strong>${featureName}</strong>.
-          <br><br>
-          Please upgrade to the <strong>${recommendedTier}</strong> (${priceText}) or purchase usage credits to unlock instant access.
-        </p>
-        <div style="display:flex;gap:12px;justify-content:center;">
-          <button onclick="document.getElementById('entitlementModal').remove()" style="padding:10px 18px;background:#334155;border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600;">Cancel</button>
-          <button onclick="document.getElementById('entitlementModal').remove(); window.openPaymentModal('${recommendedTier}', '${priceText}');" style="padding:10px 20px;background:#3b82f6;border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:700;">Subscribe to ${recommendedTier}</button>
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.insertAdjacentHTML('beforeend', modalHtml);
-}
-
 // --- GLOBAL PAYMENT INTERCEPTOR ---
 const originalAuthedFetch = window.authedFetch || fetch;
 window.authedFetch = async function(...args) {
   try {
     const response = await originalAuthedFetch(...args);
     if (response && !response.ok && response.status === 402) {
-        const errorData = await response.json();
-        showSubscriptionRequiredModal("This Premium Feature", "STANDARD", "800 KES/mo");
+        const errorData = await response.json().catch(() => ({}));
+        const isDepleted = errorData.detail?.includes("limit reached") || errorData.detail?.includes("depleted");
+        showEntitlementModal({
+          featureName: "Requested Feature",
+          recommendedTier: "STANDARD",
+          priceText: "800 KES/mo",
+          isQuotaDepleted: isDepleted,
+          detailMessage: errorData.detail
+        });
         throw new Error(errorData.detail || "Payment Required");
     }
     return response;
   } catch (error) {
     if (error.status === 402 || (error.message && (error.message.includes("limit reached") || error.message.includes("requires")))) {
-      showSubscriptionRequiredModal("Requested Feature", "STANDARD", "800 KES/mo");
+      const isDepleted = error.message.includes("limit reached") || error.message.includes("depleted");
+      showEntitlementModal({
+        featureName: "Requested Feature",
+        recommendedTier: "STANDARD",
+        priceText: "800 KES/mo",
+        isQuotaDepleted: isDepleted,
+        detailMessage: error.message
+      });
     }
     throw error;
   }
@@ -456,7 +511,7 @@ window.openPaymentModal = function(itemCode, priceText) {
       <div id="paymentModal" class="modal-backdrop" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;">
         <div style="background:var(--bg-card, #1e293b);padding:2rem;border-radius:12px;max-width:400px;width:100%;color:#fff;">
           <h3 style="margin-top:0;">Secure M-Pesa Checkout</h3>
-          <p>Item: <strong>${itemCode.replace(/_/g, ' ')}</strong><br>Amount: <strong>${priceText}</strong></p>
+          <p>Pass: <strong>${itemCode.replace(/_/g, ' ')}</strong><br>Amount: <strong>${priceText}</strong></p>
           <label style="display:block;margin:1rem 0 0.5rem;font-size:0.85rem;">M-Pesa Phone Number:</label>
           <input type="text" id="mpesaPhone" placeholder="0712345678" style="width:100%;padding:0.75rem;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:1rem;"/>
           <div style="display:flex;gap:1rem;justify-content:flex-end;">
@@ -504,7 +559,7 @@ window.openPaymentModal = function(itemCode, priceText) {
                     clearInterval(checkInterval);
                     user = authUser;
                     document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan}`;
-                    document.getElementById("currentTierDisplay").textContent = user.plan;
+                    if(document.getElementById("currentTierDisplay")) document.getElementById("currentTierDisplay").textContent = user.plan;
                     alert("Payment received! Your plan has been upgraded.");
                 }
             } catch(e) {}
@@ -517,6 +572,25 @@ window.openPaymentModal = function(itemCode, priceText) {
       }
     });
 };
+
+// --- TAB & FEATURE ELIGIBILITY INTERCEPTOR ---
+function verifyTabEligibility(tabName) {
+  const currentPlan = (user?.plan || "FREE").toUpperCase();
+
+  if (tabName === "simulators") {
+    if (currentPlan === "FREE") {
+      showEntitlementModal({
+        featureName: "Interactive Simulation Library",
+        recommendedTier: "STARTUP",
+        priceText: "100 KES/mo",
+        isQuotaDepleted: false
+      });
+      return false;
+    }
+  }
+
+  return true;
+}
 
 // --- INIT ENGINE ---
 async function init() {
@@ -545,21 +619,23 @@ async function init() {
   } else {
     if (extBtn) {
       extBtn.onclick = (e) => {
-        // If popup blocker prevents Chrome Store, show instruction modal overlay
         showExtensionInstallModal();
       };
     }
   }
 
-  // 1. Sidebar Tab Switching Engine
+  // 1. Sidebar Tab Switching Engine with Eligibility Guard
   document.querySelectorAll(".nav-item").forEach(item => {
     item.addEventListener("click", () => {
+      const tabName = item.getAttribute("data-tab");
+
+      if (!verifyTabEligibility(tabName)) return;
+
       document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
       document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
 
       item.classList.add("active");
-      const tabName = item.getAttribute("data-tab");
-      document.getElementById(`pane-${tabName}`).classList.add("active");
+      document.getElementById(`pane-${tabName}`)?.classList.add("active");
 
       if (tabName === "notes") loadVideos();
       if (tabName === "documents") loadDocuments();
@@ -626,20 +702,49 @@ async function init() {
       const moduleFile = moduleDropdown.value;
 
       if (!faculty || !course || !moduleFile) return alert("Please make a complete selection.");
+
+      const currentPlan = (user?.plan || "FREE").toUpperCase();
+      if (currentPlan === "FREE") {
+        showEntitlementModal({
+          featureName: "Pre-Compiled Academic Simulations",
+          recommendedTier: "STARTUP",
+          priceText: "100 KES/mo",
+          isQuotaDepleted: false
+        });
+        return;
+      }
+
+      const simPath = `simulations/${faculty}/${course}/${moduleFile}`;
+      const simWindow = window.open("about:blank", "_blank");
+      if (simWindow) {
+        simWindow.document.write("<html><head><title>Loading NoteCast Simulation...</title></head><body style='background:#070a14;color:#f8fafc;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;'><h2>⚡ Loading Interactive Module...</h2></body></html>");
+      }
       
       authedFetch(`/api/verify-entitlement?action=LAUNCH_STATIC_SIM`).then(res => {
-          const rawFilePath = `simulations/${faculty}/${course}/${moduleFile}`;
-          window.open(rawFilePath, '_blank');
-      }).catch(err => {});
+        if (simWindow) simWindow.location.href = simPath;
+      }).catch(err => {
+        if (simWindow) simWindow.close();
+      });
     });
   }
 
-  // 3. Rich 3D Custom AI Generation
+  // 3. Rich 3D Custom AI Generation with Plan Guard
   const generateSimBtn = document.getElementById("generateSimBtn");
   if (generateSimBtn) {
     generateSimBtn.addEventListener("click", async () => {
       const topic = document.getElementById("simTopicInput").value.trim();
       if (!topic) return alert("Please enter a topic or unit name!");
+
+      const currentPlan = (user?.plan || "FREE").toUpperCase();
+      if (!["STANDARD", "PREMIUM"].includes(currentPlan)) {
+        showEntitlementModal({
+          featureName: "Rich 3D & Isometric Custom AI Simulations",
+          recommendedTier: "STANDARD",
+          priceText: "800 KES/mo",
+          isQuotaDepleted: false
+        });
+        return;
+      }
 
       generateSimBtn.disabled = true;
       generateSimBtn.textContent = "Synthesizing 3D Diagram...";
@@ -732,12 +837,23 @@ async function init() {
     });
   }
 
-  // 6. Generate Short Notes Prompt Workflow
+  // 6. Generate Short Notes Prompt Workflow with Quota Interceptor
   const genNotesBtn = document.getElementById("generateShortNotesBtn");
   if (genNotesBtn) {
     genNotesBtn.addEventListener("click", async () => {
       if (!currentSelectedDoc) return alert("Please select or upload a document first!");
       
+      const currentPlan = (user?.plan || "FREE").toUpperCase();
+      if (!["STANDARD", "PREMIUM"].includes(currentPlan)) {
+        showEntitlementModal({
+          featureName: "AI Document Summarization & Short Notes",
+          recommendedTier: "STANDARD",
+          priceText: "800 KES/mo",
+          isQuotaDepleted: false
+        });
+        return;
+      }
+
       const cacheKey = `${currentSelectedDoc.id}_p${currentPageNumber}`;
       if (pageCache[cacheKey]) {
         summaryEditor.value = pageCache[cacheKey];

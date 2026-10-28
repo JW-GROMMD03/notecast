@@ -4,6 +4,11 @@ let ws = null;
 let currentSession = null; 
 let audioBuffer = []; 
 
+// Real-Time Quota & Recording Ticker State
+let recordingTimer = null;
+let elapsedSeconds = 0;
+let maxDailyAllowedSeconds = 0;
+
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error("Side panel behavior error:", error));
 
@@ -78,14 +83,83 @@ function broadcast(message) {
   } catch (e) {}
 }
 
+function notifyUser(title, message) {
+  try {
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: "assets/icon.png",
+      title: title,
+      message: message,
+      priority: 2
+    });
+  } catch (e) {
+    console.log("Notification:", title, message);
+  }
+}
+
+// REAL-TIME SUBSCRIPTION & DAILY QUOTA CHECK
+async function checkRecordingEntitlement() {
+  try {
+    const token = await ensureFreshToken();
+    const res = await fetch(`${API_BASE}/payments/entitlement-status?action=GENERATE_YT_NOTES`, {
+      method: "GET",
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+
+    if (res.status === 402) {
+      const data = await res.json().catch(() => ({}));
+      return { allowed: false, reason: "PAYWALL", message: data.detail || "Subscription required to record YouTube lectures." };
+    }
+
+    if (!res.ok) {
+      return { allowed: false, reason: "AUTH_ERROR", message: "Failed to verify subscription." };
+    }
+
+    const data = await res.json();
+    const remainingSeconds = data.remaining_seconds ?? data.daily_limit_seconds ?? 3600;
+
+    if (remainingSeconds <= 0) {
+      return { allowed: false, reason: "DEPLETED", message: "Your daily recording limit is depleted for today." };
+    }
+
+    return { allowed: true, remainingSeconds };
+  } catch (e) {
+    // If endpoint is unmounted or offline, verify token exists
+    const session = await getSession();
+    if (!session) return { allowed: false, reason: "NOT_LOGGED_IN", message: "Please log in first." };
+    return { allowed: true, remainingSeconds: 3600 };
+  }
+}
+
 async function startCapturePipeline({ tabId, videoMeta }, sendResponse) {
   if (currentSession && currentSession.videoId) {
-    if(sendResponse) sendResponse({ ok: true, session: currentSession });
+    if (sendResponse) sendResponse({ ok: true, session: currentSession });
+    return;
+  }
+
+  // 1. Check Privilege & Daily Allowance
+  const entitlement = await checkRecordingEntitlement();
+  if (!entitlement.allowed) {
+    if (entitlement.reason === "DEPLETED") {
+      notifyUser(
+        "⏳ Daily Recording Quota Depleted",
+        "You have used all your daily recording time for today! Wait until 00:00 UTC or upgrade your pass to continue recording."
+      );
+    } else {
+      notifyUser(
+        "🔒 Active Pass Required",
+        "Your current plan does not allow YouTube lecture recording. Please upgrade your pass at NoteCast Dashboard."
+      );
+    }
+    if (sendResponse) sendResponse({ ok: false, error: entitlement.message, reason: entitlement.reason });
+    broadcast({ scope: "notecast", type: "ENTITLEMENT_BLOCKED", reason: entitlement.reason, message: entitlement.message });
     return;
   }
 
   try {
     audioBuffer = [];
+    elapsedSeconds = 0;
+    maxDailyAllowedSeconds = entitlement.remainingSeconds;
 
     const token = await ensureFreshToken();
     const video = await apiFetch("/videos", { method: "POST", body: JSON.stringify(videoMeta) });
@@ -141,16 +215,47 @@ async function startCapturePipeline({ tabId, videoMeta }, sendResponse) {
 
     chrome.tabs.sendMessage(tabId, { scope: "notecast-content", type: "START_FRAMES" }).catch(() => {});
 
-    broadcast({ scope: "notecast", type: "session_started", video, session });
-    if(sendResponse) sendResponse({ ok: true, video, session });
+    // START REAL-TIME DURATION TICKER TO ENFORCE PRIVILEGE LIMIT
+    if (recordingTimer) clearInterval(recordingTimer);
+    recordingTimer = setInterval(() => {
+      elapsedSeconds++;
+      
+      // BROADCAST REAL-TIME TICK TO SIDE PANEL
+      const remainingSecs = Math.max(0, maxDailyAllowedSeconds - elapsedSeconds);
+      broadcast({ scope: "notecast", type: "RECORDING_TICK", elapsedSeconds, remainingSecs });
+
+      // AUTOMATICALLY SHUT DOWN RECORDING WHEN DAILY ALLOWANCE IS DEPLETED
+      if (elapsedSeconds >= maxDailyAllowedSeconds) {
+        clearInterval(recordingTimer);
+        recordingTimer = null;
+        
+        notifyUser(
+          "⏱️ Recording Stopped — Daily Privilege Depleted",
+          "Your daily recording time limit was reached! Your session notes have been automatically saved. Upgrade your pass to keep recording."
+        );
+        
+        stopCapture().then(() => {
+          broadcast({ scope: "notecast", type: "RECORDING_AUTO_STOPPED_DEPLETED" });
+        }).catch(err => console.error("Error auto-stopping depleted session:", err));
+      }
+    }, 1000);
+
+    broadcast({ scope: "notecast", type: "session_started", video, session, remainingSeconds: maxDailyAllowedSeconds });
+    if (sendResponse) sendResponse({ ok: true, video, session, remainingSeconds: maxDailyAllowedSeconds });
 
   } catch (error) {
      console.error("Capture Pipeline Error:", error);
-     if(sendResponse) sendResponse({ ok: false, error: error.message });
+     if (recordingTimer) { clearInterval(recordingTimer); recordingTimer = null; }
+     if (sendResponse) sendResponse({ ok: false, error: error.message });
   }
 }
 
 async function stopCapture() {
+  if (recordingTimer) {
+    clearInterval(recordingTimer);
+    recordingTimer = null;
+  }
+
   if (!currentSession) return;
   const { tabId, videoId } = currentSession;
   
@@ -163,13 +268,19 @@ async function stopCapture() {
   audioBuffer = [];
 
   try {
-    const result = await apiFetch(`/videos/${videoId}/finalize`, { method: "POST" });
+    const result = await apiFetch(`/videos/${videoId}/finalize`, {
+      method: "POST",
+      body: JSON.stringify({ duration_seconds: elapsedSeconds })
+    }).catch(() => apiFetch(`/videos/${videoId}/finalize`, { method: "POST" }));
+
     broadcast({ scope: "notecast", type: "finalizing" });
     currentSession = null;
+    elapsedSeconds = 0;
     return result;
   } catch (err) {
     console.error("Error finalizing session:", err);
     currentSession = null;
+    elapsedSeconds = 0;
     throw err;
   }
 }
