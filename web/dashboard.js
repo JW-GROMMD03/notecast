@@ -15,7 +15,6 @@ function extractErrorMessage(data) {
   if (!data) return "An unknown error occurred.";
   if (typeof data === "string") return data;
   
-  // FastAPI 422 validation errors are arrays: [{ loc: [...], msg: "..." }]
   if (Array.isArray(data.detail)) {
     return data.detail
       .map(err => `${err.loc ? err.loc.slice(1).join(".") + ": " : ""}${err.msg}`)
@@ -533,7 +532,7 @@ function showExtensionInstallModal() {
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-// --- PRICING UI RENDERING & STK PUSH (WITH SANITIZATION & COMPATIBLE PAYLOAD) ---
+// --- PRICING UI RENDERING & STK PUSH (ALIGNED WITH BILLING ENDPOINT SCHEMA) ---
 window.openPaymentModal = function(itemCode, priceText) {
     const modalHtml = `
       <div id="paymentModal" class="modal-backdrop" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;">
@@ -541,7 +540,7 @@ window.openPaymentModal = function(itemCode, priceText) {
           <h3 style="margin-top:0;">Secure M-Pesa Checkout</h3>
           <p>Pass: <strong>${itemCode.replace(/_/g, ' ')}</strong><br>Amount: <strong>${priceText}</strong></p>
           <label style="display:block;margin:1rem 0 0.5rem;font-size:0.85rem;">M-Pesa Phone Number:</label>
-          <input type="text" id="mpesaPhone" placeholder="0712345678 or 254712345678" style="width:100%;padding:0.75rem;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:1rem;"/>
+          <input type="text" id="mpesaPhone" value="0703250550" placeholder="0712345678 or 254712345678" style="width:100%;padding:0.75rem;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:1rem;"/>
           <div style="display:flex;gap:1rem;justify-content:flex-end;">
             <button onclick="document.getElementById('paymentModal').remove()" style="padding:0.5rem 1rem;background:#64748b;border:none;border-radius:6px;color:#fff;cursor:pointer;">Cancel</button>
             <button id="confirmPayBtn" style="padding:0.5rem 1rem;background:#6366f1;border:none;border-radius:6px;color:#fff;cursor:pointer;">Send STK Push</button>
@@ -554,7 +553,6 @@ window.openPaymentModal = function(itemCode, priceText) {
     document.getElementById("confirmPayBtn").addEventListener("click", async () => {
       const rawPhone = document.getElementById("mpesaPhone").value.trim();
       
-      // Sanitize and format for M-Pesa Daraja (2547XXXXXXXX)
       let cleanedPhone = rawPhone.replace(/\D/g, "");
       if (cleanedPhone.startsWith("0")) {
         cleanedPhone = "254" + cleanedPhone.substring(1);
@@ -563,7 +561,7 @@ window.openPaymentModal = function(itemCode, priceText) {
       }
 
       if (cleanedPhone.length < 12) {
-        return alert("Please enter a valid Kenyan phone number (e.g. 0703250550 or 254703250550).");
+        return alert("Please enter a valid Kenyan phone number (e.g. 0703250550).");
       }
   
       const btn = document.getElementById("confirmPayBtn");
@@ -571,9 +569,8 @@ window.openPaymentModal = function(itemCode, priceText) {
       btn.textContent = "Processing...";
   
       try {
-        // Cast phone to Number and send exact original keys
         const requestPayload = {
-          phone_number: Number(cleanedPhone), 
+          phone_number: cleanedPhone,
           plan_name: itemCode
         };
 
@@ -583,27 +580,21 @@ window.openPaymentModal = function(itemCode, priceText) {
           body: JSON.stringify(requestPayload)
         });
         
-        // Explicitly catch and display 422 FastAPI schema validation errors
-        if (!res.ok) {
-           const errorData = await res.json().catch(() => null);
-           console.error("Backend Validation Error:", errorData);
-           
-           let errorMsg = "Payment Failed.";
-           if (errorData && errorData.detail && Array.isArray(errorData.detail)) {
-               errorMsg = errorData.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join('\n');
-           } else if (errorData && errorData.detail) {
-               errorMsg = errorData.detail;
-           }
-           
-           alert(`API Error (${res.status}):\n${errorMsg}`);
-           return;
+        let responseData = res;
+        if (res && typeof res.json === "function") {
+          responseData = await res.json();
         }
 
-        const data = await res.json();
-        alert(data.message || "STK Push sent! Please complete the PIN prompt on your phone.");
+        if (res && !res.ok) {
+          const errMsg = extractErrorMessage(responseData);
+          alert(`Payment Failed (${res.status}):\n${errMsg}`);
+          return;
+        }
+
+        const successMessage = extractErrorMessage(responseData) || "STK Push sent! Complete the PIN prompt on your phone.";
+        alert(successMessage);
         document.getElementById('paymentModal')?.remove();
         
-        // Subscription polling
         let attempts = 0;
         const checkInterval = setInterval(async () => {
             attempts++;
@@ -624,7 +615,7 @@ window.openPaymentModal = function(itemCode, priceText) {
         }, 2000);
 
       } catch (err) {
-        alert(err.message || "Failed to trigger payment. Please check your network.");
+        alert(extractErrorMessage(err));
       } finally {
         if(btn) btn.disabled = false;
       }
@@ -661,7 +652,6 @@ async function init() {
     tierDisplay.textContent = user.plan || 'Free Plan';
   }
 
-  // Live Extension Detection & Button State Update
   const extBtn = document.getElementById("installExtensionSidebarBtn");
   const extStatusText = document.getElementById("extStatusText");
   
@@ -682,7 +672,6 @@ async function init() {
     }
   }
 
-  // 1. Sidebar Tab Switching Engine with Eligibility Guard
   document.querySelectorAll(".nav-item").forEach(item => {
     item.addEventListener("click", () => {
       const tabName = item.getAttribute("data-tab");
@@ -702,7 +691,6 @@ async function init() {
     });
   });
 
-  // 2. Wire Cascading Dropdowns for Static Library
   const facultySelect = document.getElementById("facultySelect");
   const courseDropdown = document.getElementById("courseDropdown");
   const moduleDropdown = document.getElementById("moduleDropdown");
@@ -786,7 +774,6 @@ async function init() {
     });
   }
 
-  // 3. Rich 3D Custom AI Generation with Plan Guard
   const generateSimBtn = document.getElementById("generateSimBtn");
   if (generateSimBtn) {
     generateSimBtn.addEventListener("click", async () => {
@@ -846,7 +833,6 @@ async function init() {
     });
   }
 
-  // 4. Collapsible Sidebar Toggle for Notes & Summary
   const readerWorkspace = document.getElementById("readerWorkspace");
   const toggleSidebarBtn = document.getElementById("toggleSidebarBtn");
   const closeSidebarBtn = document.getElementById("closeSidebarBtn");
@@ -862,7 +848,6 @@ async function init() {
     });
   }
 
-  // 5. Docu-Vision Professional Editor & Shape Insertion
   const summaryEditor = document.getElementById("docSummaryEditor");
   if (summaryEditor) {
     summaryEditor.addEventListener("input", () => {
@@ -895,7 +880,6 @@ async function init() {
     });
   }
 
-  // 6. Generate Short Notes Prompt Workflow with Quota Interceptor
   const genNotesBtn = document.getElementById("generateShortNotesBtn");
   if (genNotesBtn) {
     genNotesBtn.addEventListener("click", async () => {
@@ -973,7 +957,6 @@ async function init() {
     });
   }
 
-  // 7. Wire PDF Upload
   const uploadPdfBtn = document.getElementById("uploadPdfBtn");
   if (uploadPdfBtn) {
     uploadPdfBtn.addEventListener("click", async () => {
@@ -1013,7 +996,6 @@ async function init() {
     });
   }
 
-  // 8. Flashcard Actions
   const fcShowBtn = document.getElementById("fcShowBtn");
   if (fcShowBtn) {
     fcShowBtn.addEventListener("click", () => {
@@ -1040,7 +1022,6 @@ async function init() {
     });
   });
 
-  // 9. Wire Logout
   const logoutBtn = document.getElementById("logoutBtn");
   if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
@@ -1076,8 +1057,6 @@ function switchToPage(pageNum) {
       }
   }
 }
-
-// --- DATA LOADING FUNCTIONS ---
 
 async function loadVideos() {
   try {
