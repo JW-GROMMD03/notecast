@@ -10,18 +10,6 @@ let currentPageNumber = 1;
 const totalPages = 5; 
 const pageCache = {}; 
 
-// --- HELPER: PHONE NUMBER SANITIZER FOR M-PESA DARAJA ---
-function formatMpesaPhone(phone) {
-  if (!phone) return "";
-  let cleaned = phone.replace(/\D/g, ""); // Strip non-numeric characters
-  if (cleaned.startsWith("0")) {
-    cleaned = "254" + cleaned.substring(1);
-  } else if (cleaned.startsWith("7") || cleaned.startsWith("1")) {
-    cleaned = "254" + cleaned;
-  }
-  return cleaned;
-}
-
 // --- HELPER: CLEAN ERROR MESSAGE EXTRACTOR ---
 function extractErrorMessage(data) {
   if (!data) return "An unknown error occurred.";
@@ -565,46 +553,57 @@ window.openPaymentModal = function(itemCode, priceText) {
   
     document.getElementById("confirmPayBtn").addEventListener("click", async () => {
       const rawPhone = document.getElementById("mpesaPhone").value.trim();
-      const formattedPhone = formatMpesaPhone(rawPhone);
-
-      if (!formattedPhone || formattedPhone.length < 12) {
-        return alert("Please enter a valid Kenyan phone number (e.g. 0703250550 or 254703250550).");
+      
+      // Sanitize and format for M-Pesa Daraja (2547XXXXXXXX)
+      let cleanedPhone = rawPhone.replace(/\D/g, "");
+      if (cleanedPhone.startsWith("0")) {
+        cleanedPhone = "254" + cleanedPhone.substring(1);
+      } else if (cleanedPhone.startsWith("7") || cleanedPhone.startsWith("1")) {
+        cleanedPhone = "254" + cleanedPhone;
       }
 
+      if (cleanedPhone.length < 12) {
+        return alert("Please enter a valid Kenyan phone number (e.g. 0703250550 or 254703250550).");
+      }
+  
       const btn = document.getElementById("confirmPayBtn");
       btn.disabled = true;
       btn.textContent = "Processing...";
-
-      // Send normalized variables compatible with all FastApi Pydantic schema variants
-      const requestPayload = {
-        phone_number: formattedPhone,
-        phone: formattedPhone,
-        plan_name: itemCode,
-        plan: itemCode
-      };
-
+  
       try {
+        // Cast phone to Number and send exact original keys
+        const requestPayload = {
+          phone_number: Number(cleanedPhone), 
+          plan_name: itemCode
+        };
+
         const res = await authedFetch("/payments/stk-push", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestPayload)
         });
         
-        let responseData = res;
-        if (res && typeof res.json === "function") {
-          responseData = await res.json();
+        // Explicitly catch and display 422 FastAPI schema validation errors
+        if (!res.ok) {
+           const errorData = await res.json().catch(() => null);
+           console.error("Backend Validation Error:", errorData);
+           
+           let errorMsg = "Payment Failed.";
+           if (errorData && errorData.detail && Array.isArray(errorData.detail)) {
+               errorMsg = errorData.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join('\n');
+           } else if (errorData && errorData.detail) {
+               errorMsg = errorData.detail;
+           }
+           
+           alert(`API Error (${res.status}):\n${errorMsg}`);
+           return;
         }
 
-        if (res && !res.ok) {
-          const errMsg = extractErrorMessage(responseData);
-          alert(`Payment Failed (${res.status}):\n${errMsg}`);
-          return;
-        }
-
-        const successMessage = extractErrorMessage(responseData) || "STK Push sent! Complete the PIN prompt on your phone.";
-        alert(successMessage);
+        const data = await res.json();
+        alert(data.message || "STK Push sent! Please complete the PIN prompt on your phone.");
         document.getElementById('paymentModal')?.remove();
         
+        // Subscription polling
         let attempts = 0;
         const checkInterval = setInterval(async () => {
             attempts++;
@@ -625,8 +624,7 @@ window.openPaymentModal = function(itemCode, priceText) {
         }, 2000);
 
       } catch (err) {
-        const errorMessage = extractErrorMessage(err);
-        alert(errorMessage);
+        alert(err.message || "Failed to trigger payment. Please check your network.");
       } finally {
         if(btn) btn.disabled = false;
       }
