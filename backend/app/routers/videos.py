@@ -1,5 +1,7 @@
 import io
 import os
+import tempfile
+import requests
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DbSession
@@ -16,12 +18,15 @@ router = APIRouter(prefix="/videos", tags=["videos"])
 
 
 def get_real_image_path(storage_key):
-    """Robustly resolve image file path across all possible storage configurations."""
+    """
+    Robustly resolve image file path, prioritizing direct downloads from 
+    Cloudflare R2 using pre-signed URLs to a temporary file for export engines.
+    """
     if not storage_key:
         return None
     s = str(storage_key).strip()
     
-    # FIX: Strip out frontend URL artifacts or API routing prefixes
+    # Clean prefixes if they accidentally got prepended
     s = s.replace("https://notecast-web.onrender.com/", "")
     s = s.replace("http://localhost:8000/", "")
     if s.startswith("api/"):
@@ -29,9 +34,42 @@ def get_real_image_path(storage_key):
     if s.startswith("/api/"):
         s = s[5:]
 
+    # =========================================================================
+    # 1. PRIMARY: FETCH FROM CLOUDFLARE R2
+    # =========================================================================
+    download_url = None
+    if s.startswith("http://") or s.startswith("https://"):
+        download_url = s
+    else:
+        try:
+            # Generate the Cloudflare R2 Pre-signed URL
+            service_url = storage_service.local_url(s)
+            if service_url and service_url.startswith("http"):
+                download_url = service_url
+        except Exception as e:
+            print(f"Failed to generate R2 URL for {s}: {e}")
+
+    if download_url:
+        try:
+            # Download the image directly from Cloudflare R2
+            resp = requests.get(download_url, timeout=10)
+            if resp.status_code == 200:
+                ext = os.path.splitext(s)[1] or ".webp"
+                fd, temp_path = tempfile.mkstemp(suffix=ext)
+                with os.fdopen(fd, 'wb') as f:
+                    f.write(resp.content)
+                return temp_path
+            else:
+                print(f"R2 download failed with status {resp.status_code} for {download_url}")
+        except Exception as e:
+            print(f"HTTP GET failed for R2 URL {download_url}: {e}")
+
+
+    # =========================================================================
+    # 2. FALLBACK: LOCAL DISK (If R2 fails or if running locally without R2)
+    # =========================================================================
     candidates = []
     
-    # 1. Absolute paths
     if os.path.isabs(s) and os.path.exists(s):
         return s
         
@@ -42,14 +80,12 @@ def get_real_image_path(storage_key):
         candidates.append(s.lstrip("/"))
         candidates.append(os.path.join(os.getcwd(), s.lstrip("/")))
         
-    # 2. Check common asset directories (media, frames, static)
     for prefix in ["media/", "frames/", "static/"]:
         if s.startswith(prefix):
             sub = s[len(prefix):]
             candidates.append(sub)
             candidates.append(os.path.join(os.getcwd(), sub))
             candidates.append(os.path.join(os.getcwd(), prefix.strip('/'), sub))
-            # Fallback: if it's frames/, it might be inside static/
             if prefix == "frames/":
                 candidates.append(os.path.join(os.getcwd(), "static", s))
         elif s.startswith(f"/{prefix}"):
@@ -61,34 +97,24 @@ def get_real_image_path(storage_key):
             candidates.append(os.path.join(prefix.strip('/'), s))
             candidates.append(os.path.join(os.getcwd(), prefix.strip('/'), s))
             
-    # 3. Check relative to this current Python file (router directory)
     current_dir = os.path.dirname(__file__)
     candidates.append(os.path.join(current_dir, s))
     candidates.append(os.path.join(current_dir, "..", s))
     candidates.append(os.path.join(current_dir, "..", "..", s))
     candidates.append(os.path.join(current_dir, "..", "static", s))
 
-    # 4. Storage paths from settings
     try:
         if hasattr(settings, "storage_path") and settings.storage_path:
             sp = str(settings.storage_path)
             candidates.append(os.path.join(sp, s))
             candidates.append(os.path.join(sp, s.lstrip("/")))
-            for prefix in ["media/", "frames/"]:
-                if s.startswith(prefix):
-                    candidates.append(os.path.join(sp, s[len(prefix):]))
     except Exception:
         pass
 
-    # 5. Check Render / Docker common persistent disk mounts
-    candidates.append(os.path.join("/data", s))
-    candidates.append(os.path.join("/tmp", s))
-
-    # Return the first path that genuinely exists on the disk
     for path in candidates:
         if path and os.path.exists(path) and os.path.isfile(path):
             return os.path.abspath(path)
-            
+
     return None
 
 
@@ -136,8 +162,6 @@ def get_video(video_id: str, user: models.User = Depends(auth.get_current_user),
 @router.post("", response_model=schemas.VideoOut)
 @router.post("/", response_model=schemas.VideoOut)
 def create_video(body: schemas.VideoCreateIn, request: Request, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
-    """Step 0.3: extension sends scraped YouTube metadata; we create (or
-    reuse) the video row. Actual capture starts once /sessions is called."""
     auth.verify_csrf(request)
     existing = (
         db.query(models.Video)
@@ -163,7 +187,6 @@ def create_video(body: schemas.VideoCreateIn, request: Request, user: models.Use
 @router.post("/{video_id}/consent", response_model=dict)
 @router.post("/{video_id}/consent/", response_model=dict)
 def give_consent(video_id: str, body: schemas.ConsentIn, request: Request, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
-    """Step 0.2: DPIA consent gate — required before a session can start."""
     auth.verify_csrf(request)
     video = db.query(models.Video).filter(models.Video.id == video_id, models.Video.user_id == user.id).first()
     if not video:
@@ -176,7 +199,6 @@ def give_consent(video_id: str, body: schemas.ConsentIn, request: Request, user:
 @router.post("/{video_id}/sessions", response_model=schemas.SessionOut)
 @router.post("/{video_id}/sessions/", response_model=schemas.SessionOut)
 def start_session(video_id: str, request: Request, seed_transcript: str = "", user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
-    """Step 0.4-0.5: build the topic model and open a capture session."""
     auth.verify_csrf(request)
     video = db.query(models.Video).filter(models.Video.id == video_id, models.Video.user_id == user.id).first()
     if not video:
@@ -200,7 +222,6 @@ def start_session(video_id: str, request: Request, seed_transcript: str = "", us
 @router.post("/{video_id}/finalize", response_model=dict)
 @router.post("/{video_id}/finalize/", response_model=dict)
 def finalize(video_id: str, request: Request, background_tasks: BackgroundTasks, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
-    """Step 4.0: video playback ended — kick off reorganize/enrich/verify/export."""
     auth.verify_csrf(request)
     video = db.query(models.Video).filter(models.Video.id == video_id, models.Video.user_id == user.id).first()
     if not video:
@@ -215,7 +236,6 @@ def finalize(video_id: str, request: Request, background_tasks: BackgroundTasks,
 @router.get("/{video_id}/captures", response_model=list)
 @router.get("/{video_id}/captures/", response_model=list)
 def get_video_captures(video_id: str, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
-    """Fetch all visual captures and slides associated with a video, returning secure R2 pre-signed URLs."""
     video = db.query(models.Video).filter(models.Video.id == video_id, models.Video.user_id == user.id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -234,7 +254,6 @@ def get_video_captures(video_id: str, user: models.User = Depends(auth.get_curre
     for v in visuals:
         storage_key = getattr(v, 'storage_key', None) or getattr(v, 'image_path', None) or ''
         
-        # FIX: Resolve raw storage key into a valid Cloudflare R2 pre-signed URL so the browser loads it without 404ing
         img_url = ""
         if storage_key:
             try:
@@ -258,7 +277,6 @@ def get_video_captures(video_id: str, user: models.User = Depends(auth.get_curre
 @router.get("/{video_id}/download-pdf")
 @router.get("/{video_id}/download-pdf/")
 def download_pdf(video_id: str, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
-    """Download all visual captures and slides as a magnificent, professionally formatted PDF document."""
     video = db.query(models.Video).filter(models.Video.id == video_id, models.Video.user_id == user.id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -379,7 +397,6 @@ def download_pdf(video_id: str, user: models.User = Depends(auth.get_current_use
 @router.get("/{video_id}/download-ppt")
 @router.get("/{video_id}/download-ppt/")
 def download_ppt(video_id: str, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
-    """Download all visual captures and slides as a modern, professionally designed PowerPoint presentation (.pptx)."""
     video = db.query(models.Video).filter(models.Video.id == video_id, models.Video.user_id == user.id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -422,11 +439,10 @@ def download_ppt(video_id: str, user: models.User = Depends(auth.get_current_use
 
         blank_layout = prs.slide_layouts[6]
         
-        # 1. Modern Title Slide
         title_slide = prs.slides.add_slide(blank_layout)
         bg = title_slide.shapes.add_shape(1, 0, 0, prs.slide_width, prs.slide_height)
         bg.fill.solid()
-        bg.fill.fore_color.rgb = RGBColor(15, 23, 42) # Slate 900
+        bg.fill.fore_color.rgb = RGBColor(15, 23, 42)
         bg.line.fill.background()
 
         tb = title_slide.shapes.add_textbox(Inches(1.0), Inches(2.2), Inches(11.333), Inches(3.0))
@@ -443,17 +459,16 @@ def download_ppt(video_id: str, user: models.User = Depends(auth.get_current_use
         p1 = tf.add_paragraph()
         p1.text = f"Channel: {video.channel or 'Unknown'}  |  Total Captures: {len(visuals)}"
         p1.font.size = Pt(18)
-        p1.font.color.rgb = RGBColor(148, 163, 184) # Slate 400
+        p1.font.color.rgb = RGBColor(148, 163, 184)
         p1.font.name = "Arial"
         p1.space_before = Pt(20)
 
-        # 2. Content Slides for each visual capture
         for v in visuals:
             slide = prs.slides.add_slide(blank_layout)
             
             header_bg = slide.shapes.add_shape(1, 0, 0, prs.slide_width, Inches(1.0))
             header_bg.fill.solid()
-            header_bg.fill.fore_color.rgb = RGBColor(30, 41, 59) # Slate 800
+            header_bg.fill.fore_color.rgb = RGBColor(30, 41, 59)
             header_bg.line.fill.background()
 
             v_type = str(getattr(v, 'type', 'Visual')).upper()
@@ -475,7 +490,7 @@ def download_ppt(video_id: str, user: models.User = Depends(auth.get_current_use
                 dp = d_tf.paragraphs[0]
                 dp.text = v_desc
                 dp.font.size = Pt(14)
-                dp.font.color.rgb = RGBColor(71, 85, 105) # Slate 600
+                dp.font.color.rgb = RGBColor(71, 85, 105)
                 dp.font.name = "Arial"
 
             storage_key = getattr(v, 'storage_key', None) or getattr(v, 'image_path', None) or getattr(v, 'path', None) or getattr(v, 'file_path', None)
