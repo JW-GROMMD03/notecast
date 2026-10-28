@@ -20,41 +20,75 @@ def get_real_image_path(storage_key):
     if not storage_key:
         return None
     s = str(storage_key).strip()
+    
+    # FIX: Strip out frontend URL artifacts or API routing prefixes
+    s = s.replace("https://notecast-web.onrender.com/", "")
+    s = s.replace("http://localhost:8000/", "")
+    if s.startswith("api/"):
+        s = s[4:]
+    if s.startswith("/api/"):
+        s = s[5:]
+
     candidates = []
+    
+    # 1. Absolute paths
     if os.path.isabs(s) and os.path.exists(s):
         return s
+        
     candidates.append(s)
     candidates.append(os.path.join(os.getcwd(), s))
+    
     if s.startswith("/"):
         candidates.append(s.lstrip("/"))
         candidates.append(os.path.join(os.getcwd(), s.lstrip("/")))
-    if s.startswith("media/"):
-        sub = s[len("media/"):]
-        candidates.append(sub)
-        candidates.append(os.path.join(os.getcwd(), sub))
-        candidates.append(os.path.join(os.getcwd(), "media", sub))
-    elif s.startswith("/media/"):
-        sub = s[len("/media/"):]
-        candidates.append(sub)
-        candidates.append(os.path.join(os.getcwd(), sub))
-        candidates.append(os.path.join(os.getcwd(), "media", sub))
-    else:
-        candidates.append(os.path.join("media", s))
-        candidates.append(os.path.join(os.getcwd(), "media", s))
+        
+    # 2. Check common asset directories (media, frames, static)
+    for prefix in ["media/", "frames/", "static/"]:
+        if s.startswith(prefix):
+            sub = s[len(prefix):]
+            candidates.append(sub)
+            candidates.append(os.path.join(os.getcwd(), sub))
+            candidates.append(os.path.join(os.getcwd(), prefix.strip('/'), sub))
+            # Fallback: if it's frames/, it might be inside static/
+            if prefix == "frames/":
+                candidates.append(os.path.join(os.getcwd(), "static", s))
+        elif s.startswith(f"/{prefix}"):
+            sub = s[len(f"/{prefix}"):]
+            candidates.append(sub)
+            candidates.append(os.path.join(os.getcwd(), sub))
+            candidates.append(os.path.join(os.getcwd(), prefix.strip('/'), sub))
+        else:
+            candidates.append(os.path.join(prefix.strip('/'), s))
+            candidates.append(os.path.join(os.getcwd(), prefix.strip('/'), s))
+            
+    # 3. Check relative to this current Python file (router directory)
+    current_dir = os.path.dirname(__file__)
+    candidates.append(os.path.join(current_dir, s))
+    candidates.append(os.path.join(current_dir, "..", s))
+    candidates.append(os.path.join(current_dir, "..", "..", s))
+    candidates.append(os.path.join(current_dir, "..", "static", s))
+
+    # 4. Storage paths from settings
     try:
         if hasattr(settings, "storage_path") and settings.storage_path:
             sp = str(settings.storage_path)
             candidates.append(os.path.join(sp, s))
             candidates.append(os.path.join(sp, s.lstrip("/")))
-            if s.startswith("media/"):
-                candidates.append(os.path.join(sp, s[len("media/"):]))
-            if s.startswith("/media/"):
-                candidates.append(os.path.join(sp, s[len("/media/"):]))
+            for prefix in ["media/", "frames/"]:
+                if s.startswith(prefix):
+                    candidates.append(os.path.join(sp, s[len(prefix):]))
     except Exception:
         pass
+
+    # 5. Check Render / Docker common persistent disk mounts
+    candidates.append(os.path.join("/data", s))
+    candidates.append(os.path.join("/tmp", s))
+
+    # Return the first path that genuinely exists on the disk
     for path in candidates:
         if path and os.path.exists(path) and os.path.isfile(path):
             return os.path.abspath(path)
+            
     return None
 
 
