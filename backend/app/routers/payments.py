@@ -1,25 +1,16 @@
-import os
 import uuid
 import logging
-import requests
-import base64
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session as DbSession
 from .. import models, schemas, auth
 from ..database import get_db
 
+# Import the new flat M-Pesa service
+from ..services import mpesa_service
+
 router = APIRouter(prefix="/payments", tags=["payments"])
 logger = logging.getLogger("notecast_payments")
-
-# Environment Credentials for M-Pesa Express Configuration
-MPESA_CONSUMER_KEY = os.getenv("MPESA_CONSUMER_KEY", "YOUR_CONSUMER_KEY")
-MPESA_CONSUMER_SECRET = os.getenv("MPESA_CONSUMER_SECRET", "YOUR_CONSUMER_SECRET")
-MPESA_PASSKEY = os.getenv("MPESA_PASSKEY", "YOUR_PASSKEY")
-MPESA_BUSINESS_SHORTCODE = os.getenv("MPESA_BUSINESS_SHORTCODE", "YOUR_PAYBILL_OR_TILL")
-CALLBACK_URL = os.getenv("MPESA_CALLBACK_URL", "https://notecast-web.onrender.com/api/payments/callback")
-MPESA_ENV = os.getenv("MPESA_ENV", "sandbox")
-BASE_DARAJA_URL = "https://api.safaricom.co.ke" if MPESA_ENV == "production" else "https://sandbox.safaricom.co.ke"
 
 PRICING_CATALOG = {
     "STARTUP": {"amount": 100, "type": "PLAN_SUBSCRIPTION"},
@@ -31,68 +22,21 @@ PRICING_CATALOG = {
     "SINGLE_AI_NOTE": {"amount": 80, "type": "SINGLE_AI_NOTE"}
 }
 
-def format_phone_number(phone: str) -> str:
-    """Formats phone to 254XXXXXXXXX for Daraja API"""
-    phone = "".join([c for c in phone if c.isdigit()])
-    if phone.startswith("0"):
-        return "254" + phone[1:]
-    if phone.startswith("254"):
-        return phone
-    if len(phone) == 9 and (phone.startswith("7") or phone.startswith("1")):
-        return "254" + phone
-    raise ValueError("Invalid phone number format")
-
-def get_mpesa_access_token():
-    url = f"{BASE_DARAJA_URL}/oauth/v1/generate?grant_type=client_credentials"
-    response = requests.get(url, auth=(MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET), timeout=10)
-    if response.status_code != 200:
-        raise HTTPException(status_code=500, detail="M-Pesa authorization failed. Check Daraja credentials.")
-    return response.json().get("access_token")
-
 @router.post("/stk-push")
 def initiate_payment(body: schemas.PaymentRequest, db: DbSession = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     """Triggered by the frontend to start the M-Pesa STK Push"""
-    
     if body.plan_name not in PRICING_CATALOG:
         raise HTTPException(status_code=400, detail="Invalid plan or token code.")
     
     catalog_item = PRICING_CATALOG[body.plan_name]
-    
-    try:
-        formatted_phone = format_phone_number(body.phone_number)
-        if len(formatted_phone) != 12:
-            raise ValueError("Phone number must contain exactly 12 digits")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
     amount = catalog_item["amount"]
     purchase_type = catalog_item["type"]
 
-    # 1. Generate M-Pesa Token and Password
     try:
-        token = get_mpesa_access_token()
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        password = base64.b64encode((MPESA_BUSINESS_SHORTCODE + MPESA_PASSKEY + timestamp).encode()).decode("utf-8")
-        
-        headers = {"Authorization": f"Bearer {token}"}
-        mpesa_body = {
-            "BusinessShortCode": MPESA_BUSINESS_SHORTCODE,
-            "Password": password,
-            "Timestamp": timestamp,
-            "TransactionType": "CustomerPayBillOnline",
-            "Amount": amount,
-            "PartyA": formatted_phone,
-            "PartyB": MPESA_BUSINESS_SHORTCODE,
-            "PhoneNumber": formatted_phone,
-            "CallBackURL": CALLBACK_URL,
-            "AccountReference": f"NoteCast-{body.plan_name}",
-            "TransactionDesc": f"Payment for {body.plan_name}"
-        }
-
-        # 2. TRIGGER DARAJA API
-        res = requests.post(f"{BASE_DARAJA_URL}/mpesa/stkpush/v1/processrequest", json=mpesa_body, headers=headers, timeout=15).json()
-    except HTTPException:
-        raise
+        # Delegate STK push logic to the flat M-Pesa service
+        res, formatted_phone = mpesa_service.initiate_stk_push(body.phone_number, amount, body.plan_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Daraja API Error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to connect to Safaricom.")
@@ -121,11 +65,26 @@ def initiate_payment(body: schemas.PaymentRequest, db: DbSession = Depends(get_d
     raise HTTPException(status_code=400, detail=error_msg)
 
 
+@router.post("/qr-code")
+def generate_qr(body: schemas.PaymentRequest, user: models.User = Depends(auth.get_current_user)):
+    """Generates a Safaricom Dynamic QR Code for desktop users to scan."""
+    if body.plan_name not in PRICING_CATALOG:
+        raise HTTPException(status_code=400, detail="Invalid plan.")
+    
+    amount = PRICING_CATALOG[body.plan_name]["amount"]
+    
+    try:
+        qr_code_base64 = mpesa_service.generate_qr_code(amount, merchant_name="Vectis unknown")
+        return {"qr_code": qr_code_base64}
+    except Exception as e:
+        logger.error(f"QR Code Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to connect to Safaricom QR service.")
+
+
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: DbSession = Depends(get_db)):
     """Safaricom hits this endpoint automatically when the user completes the PIN prompt."""
     payload = await request.json()
-    
     stk_callback = payload.get("Body", {}).get("stkCallback", {})
     result_code = stk_callback.get("ResultCode")
     checkout_id = stk_callback.get("CheckoutRequestID")
@@ -150,9 +109,8 @@ async def mpesa_callback(request: Request, db: DbSession = Depends(get_db)):
             user = db.query(models.User).filter(models.User.id == txn.user_id).first()
             if user:
                 user.plan = txn.target_tier
-            
         else:
-            # Add one-off token for Economy Note, Download, or AI Note
+            # Add one-off credit
             credit = models.OneOffCredit(
                 id=str(uuid.uuid4()),
                 user_id=txn.user_id,

@@ -76,6 +76,17 @@ class Settings(BaseSettings):
 
     FREE_MONTHLY_VIDEOS: int = 100
 
+    # ---------------------------------------------------------------
+    # M-Pesa Production Variables
+    # ---------------------------------------------------------------
+    MPESA_ENV: str = "production"
+    MPESA_CONSUMER_KEY: str = ""
+    MPESA_CONSUMER_SECRET: str = ""
+    MPESA_PASSKEY: str = ""
+    MPESA_BUSINESS_SHORTCODE: str = ""
+    MPESA_TILL_NUMBER: str = ""
+    MPESA_CALLBACK_URL: str = "https://notecast-web.onrender.com/api/payments/callback"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
