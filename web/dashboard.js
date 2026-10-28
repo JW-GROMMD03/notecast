@@ -10,6 +10,40 @@ let currentPageNumber = 1;
 const totalPages = 5; 
 const pageCache = {}; 
 
+// --- HELPER: PHONE NUMBER SANITIZER FOR M-PESA DARAJA ---
+function formatMpesaPhone(phone) {
+  if (!phone) return "";
+  let cleaned = phone.replace(/\D/g, ""); // Strip non-numeric characters
+  if (cleaned.startsWith("0")) {
+    cleaned = "254" + cleaned.substring(1);
+  } else if (cleaned.startsWith("7") || cleaned.startsWith("1")) {
+    cleaned = "254" + cleaned;
+  }
+  return cleaned;
+}
+
+// --- HELPER: CLEAN ERROR MESSAGE EXTRACTOR ---
+function extractErrorMessage(data) {
+  if (!data) return "An unknown error occurred.";
+  if (typeof data === "string") return data;
+  
+  // FastAPI 422 validation errors are arrays: [{ loc: [...], msg: "..." }]
+  if (Array.isArray(data.detail)) {
+    return data.detail
+      .map(err => `${err.loc ? err.loc.slice(1).join(".") + ": " : ""}${err.msg}`)
+      .join("\n");
+  }
+  
+  if (typeof data.detail === "string") return data.detail;
+  if (data.message && typeof data.message === "string") return data.message;
+  
+  try {
+    return JSON.stringify(data);
+  } catch (e) {
+    return "Request failed.";
+  }
+}
+
 // --- THEME ENGINE ---
 const themeToggleBtn = document.getElementById("themeToggleBtn");
 const themeIcon = document.getElementById("themeIcon");
@@ -452,7 +486,7 @@ window.authedFetch = async function(...args) {
         let isDepleted = false;
         try {
           const errorData = await response.json();
-          detailMsg = errorData.detail || detailMsg;
+          detailMsg = extractErrorMessage(errorData);
           isDepleted = detailMsg.includes("limit reached") || detailMsg.includes("depleted");
         } catch(e) {}
 
@@ -511,7 +545,7 @@ function showExtensionInstallModal() {
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-// --- PRICING UI RENDERING & STK PUSH (SAFE OBJECT UNPACKING FIX) ---
+// --- PRICING UI RENDERING & STK PUSH (WITH SANITIZATION & COMPATIBLE PAYLOAD) ---
 window.openPaymentModal = function(itemCode, priceText) {
     const modalHtml = `
       <div id="paymentModal" class="modal-backdrop" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;">
@@ -519,7 +553,7 @@ window.openPaymentModal = function(itemCode, priceText) {
           <h3 style="margin-top:0;">Secure M-Pesa Checkout</h3>
           <p>Pass: <strong>${itemCode.replace(/_/g, ' ')}</strong><br>Amount: <strong>${priceText}</strong></p>
           <label style="display:block;margin:1rem 0 0.5rem;font-size:0.85rem;">M-Pesa Phone Number:</label>
-          <input type="text" id="mpesaPhone" placeholder="0712345678" style="width:100%;padding:0.75rem;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:1rem;"/>
+          <input type="text" id="mpesaPhone" placeholder="0712345678 or 254712345678" style="width:100%;padding:0.75rem;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:1rem;"/>
           <div style="display:flex;gap:1rem;justify-content:flex-end;">
             <button onclick="document.getElementById('paymentModal').remove()" style="padding:0.5rem 1rem;background:#64748b;border:none;border-radius:6px;color:#fff;cursor:pointer;">Cancel</button>
             <button id="confirmPayBtn" style="padding:0.5rem 1rem;background:#6366f1;border:none;border-radius:6px;color:#fff;cursor:pointer;">Send STK Push</button>
@@ -530,26 +564,44 @@ window.openPaymentModal = function(itemCode, priceText) {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
   
     document.getElementById("confirmPayBtn").addEventListener("click", async () => {
-      const phone = document.getElementById("mpesaPhone").value.trim();
-      if (!phone) return alert("Please provide a valid M-Pesa phone number.");
-  
+      const rawPhone = document.getElementById("mpesaPhone").value.trim();
+      const formattedPhone = formatMpesaPhone(rawPhone);
+
+      if (!formattedPhone || formattedPhone.length < 12) {
+        return alert("Please enter a valid Kenyan phone number (e.g. 0703250550 or 254703250550).");
+      }
+
       const btn = document.getElementById("confirmPayBtn");
       btn.disabled = true;
       btn.textContent = "Processing...";
-  
+
+      // Send normalized variables compatible with all FastApi Pydantic schema variants
+      const requestPayload = {
+        phone_number: formattedPhone,
+        phone: formattedPhone,
+        plan_name: itemCode,
+        plan: itemCode
+      };
+
       try {
         const res = await authedFetch("/payments/stk-push", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone_number: phone, plan_name: itemCode })
+          body: JSON.stringify(requestPayload)
         });
         
-        let data = res;
+        let responseData = res;
         if (res && typeof res.json === "function") {
-           data = await res.json();
+          responseData = await res.json();
         }
 
-        const successMessage = (typeof data === "object") ? (data.message || data.detail || "STK Push sent! Complete the prompt on your phone.") : String(data);
+        if (res && !res.ok) {
+          const errMsg = extractErrorMessage(responseData);
+          alert(`Payment Failed (${res.status}):\n${errMsg}`);
+          return;
+        }
+
+        const successMessage = extractErrorMessage(responseData) || "STK Push sent! Complete the PIN prompt on your phone.";
         alert(successMessage);
         document.getElementById('paymentModal')?.remove();
         
@@ -573,7 +625,7 @@ window.openPaymentModal = function(itemCode, priceText) {
         }, 2000);
 
       } catch (err) {
-        const errorMessage = (err && typeof err === "object") ? (err.message || err.detail || "Failed to trigger payment. Please check your network.") : String(err);
+        const errorMessage = extractErrorMessage(err);
         alert(errorMessage);
       } finally {
         if(btn) btn.disabled = false;
@@ -581,12 +633,11 @@ window.openPaymentModal = function(itemCode, priceText) {
     });
 };
 
-// --- TAB & FEATURE ELIGIBILITY INTERCEPTOR (CORRECTED TIER CHECK FOR SIMULATIONS) ---
+// --- TAB & FEATURE ELIGIBILITY INTERCEPTOR ---
 function verifyTabEligibility(tabName) {
   const currentPlan = (user?.plan || "FREE").toUpperCase();
 
   if (tabName === "simulators") {
-    // Simulations require STANDARD (800 KES) or PREMIUM (1199 KES)
     if (!["STANDARD", "PREMIUM"].includes(currentPlan)) {
       showEntitlementModal({
         featureName: "Interactive Simulation Library",
