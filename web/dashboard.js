@@ -532,7 +532,7 @@ function showExtensionInstallModal() {
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-// --- PRICING UI RENDERING & STK PUSH (ALIGNED WITH BILLING ENDPOINT SCHEMA) ---
+// --- PRICING UI RENDERING & STK PUSH (WITH FIXED POLLING & TIMEOUT ERROR FEEDBACK) ---
 window.openPaymentModal = function(itemCode, priceText) {
     const modalHtml = `
       <div id="paymentModal" class="modal-backdrop" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;">
@@ -541,6 +541,7 @@ window.openPaymentModal = function(itemCode, priceText) {
           <p>Pass: <strong>${itemCode.replace(/_/g, ' ')}</strong><br>Amount: <strong>${priceText}</strong></p>
           <label style="display:block;margin:1rem 0 0.5rem;font-size:0.85rem;">M-Pesa Phone Number:</label>
           <input type="text" id="mpesaPhone" value="0703250550" placeholder="0712345678 or 254712345678" style="width:100%;padding:0.75rem;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:1rem;"/>
+          <div id="paymentStatusText" style="font-size:0.82rem;color:#38bdf8;margin-bottom:1rem;display:none;text-align:center;"></div>
           <div style="display:flex;gap:1rem;justify-content:flex-end;">
             <button onclick="document.getElementById('paymentModal').remove()" style="padding:0.5rem 1rem;background:#64748b;border:none;border-radius:6px;color:#fff;cursor:pointer;">Cancel</button>
             <button id="confirmPayBtn" style="padding:0.5rem 1rem;background:#6366f1;border:none;border-radius:6px;color:#fff;cursor:pointer;">Send STK Push</button>
@@ -565,8 +566,13 @@ window.openPaymentModal = function(itemCode, priceText) {
       }
   
       const btn = document.getElementById("confirmPayBtn");
+      const statusEl = document.getElementById("paymentStatusText");
       btn.disabled = true;
       btn.textContent = "Processing...";
+      if(statusEl) {
+        statusEl.style.display = "block";
+        statusEl.textContent = "📲 Sending STK push to your phone...";
+      }
   
       try {
         const requestPayload = {
@@ -587,19 +593,30 @@ window.openPaymentModal = function(itemCode, priceText) {
 
         if (res && !res.ok) {
           const errMsg = extractErrorMessage(responseData);
+          if(statusEl) statusEl.style.display = "none";
           alert(`Payment Failed (${res.status}):\n${errMsg}`);
+          btn.disabled = false;
+          btn.textContent = "Send STK Push";
           return;
         }
 
-        const successMessage = extractErrorMessage(responseData) || "STK Push sent! Complete the PIN prompt on your phone.";
-        alert(successMessage);
-        document.getElementById('paymentModal')?.remove();
-        
+        if(statusEl) {
+          statusEl.textContent = "⏳ STK Push sent! Please enter your M-Pesa PIN on your phone...";
+        }
+
+        // Subscription polling loop with explicit timeout feedback
         let attempts = 0;
+        const maxAttempts = 20; // 40 seconds total
         const checkInterval = setInterval(async () => {
             attempts++;
-            if (attempts > 15) {
+            if (attempts > maxAttempts) {
                 clearInterval(checkInterval);
+                if(statusEl) statusEl.style.display = "none";
+                alert("Payment request timed out or was cancelled. If you completed the payment, please refresh your page.");
+                if(btn) {
+                  btn.disabled = false;
+                  btn.textContent = "Send STK Push";
+                }
                 return;
             }
             try {
@@ -609,15 +626,19 @@ window.openPaymentModal = function(itemCode, priceText) {
                     user = authUser;
                     document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan}`;
                     if(document.getElementById("currentTierDisplay")) document.getElementById("currentTierDisplay").textContent = user.plan;
-                    alert("Payment received! Your plan has been upgraded.");
+                    alert("Payment received! Your plan has been successfully upgraded.");
+                    document.getElementById('paymentModal')?.remove();
                 }
             } catch(e) {}
         }, 2000);
 
       } catch (err) {
+        if(statusEl) statusEl.style.display = "none";
         alert(extractErrorMessage(err));
-      } finally {
-        if(btn) btn.disabled = false;
+        if(btn) {
+          btn.disabled = false;
+          btn.textContent = "Send STK Push";
+        }
       }
     });
 };
