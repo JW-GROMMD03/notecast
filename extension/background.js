@@ -129,7 +129,6 @@ async function startCapturePipeline({ tabId, videoMeta }, sendResponse) {
       }, { once: true });
     });
 
-    // FIX: Progressive buffer offloading to avoid crashing backend with massive payloads at once
     let bufferCount = 0;
     while (audioBuffer.length > 0 && bufferCount < 10) {
       const bufferedPayload = audioBuffer.shift();
@@ -138,7 +137,7 @@ async function startCapturePipeline({ tabId, videoMeta }, sendResponse) {
         bufferCount++;
       }
     }
-    if (audioBuffer.length > 0) audioBuffer = []; // Discard extremely stale packets if connection took too long
+    if (audioBuffer.length > 0) audioBuffer = [];
 
     chrome.tabs.sendMessage(tabId, { scope: "notecast-content", type: "START_FRAMES" }).catch(() => {});
 
@@ -179,13 +178,13 @@ function sendWs(payload) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
   } else {
-    // Only buffer max 20 payloads to prevent memory leak and backend crash on reconnect
     if (audioBuffer.length < 20) {
         audioBuffer.push(payload);
     }
   }
 }
 
+// Internal Extension Message Listener
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "CHECK_ENTITLEMENT") {
     (async () => {
@@ -260,7 +259,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         }
         case "AUDIO_CHUNK":
-          // Clean base64 payload to prevent backend parsing crashes
           let cleanAudioB64 = message.data_b64;
           if (cleanAudioB64 && cleanAudioB64.includes(",")) {
               cleanAudioB64 = cleanAudioB64.split(",")[1];
@@ -269,7 +267,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ ok: true });
           break;
         case "FRAME":
-          // Clean base64 payload to prevent backend parsing crashes
           let cleanFrameB64 = message.data_b64;
           if (cleanFrameB64 && cleanFrameB64.includes(",")) {
               cleanFrameB64 = cleanFrameB64.split(",")[1];
@@ -287,4 +284,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   })();
 
   return true; 
+});
+
+// External Message Listener (Website Handshake & Session Sync)
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  if (message.type === "PING") {
+    sendResponse({ installed: true, version: "1.0.0" });
+    return true;
+  }
+  if (message.type === "SYNC_SESSION") {
+    (async () => {
+      if (message.session) {
+        await saveSession(message.session);
+        sendResponse({ ok: true, synced: true });
+      } else {
+        sendResponse({ ok: false, error: "No session data provided" });
+      }
+    })();
+    return true;
+  }
+  if (message.type === "CHECK_AUTH") {
+    (async () => {
+      const session = await getSession();
+      sendResponse(session ? { loggedIn: true, email: session.email } : { loggedIn: false });
+    })();
+    return true;
+  }
 });

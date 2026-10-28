@@ -1,4 +1,4 @@
-import { authedFetch, requireAuth, logout } from "./api.js";
+import { authedFetch, requireAuth, logout, checkExtensionInstalled, CHROME_STORE_URL } from "./api.js";
 
 let user;
 let dueFlashcards = [];
@@ -382,8 +382,8 @@ function showSubscriptionRequiredModal(featureName, recommendedTier, priceText) 
   if (existingModal) existingModal.remove();
   
   const modalHtml = `
-    <div id="entitlementModal" class="entitlement-modal-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(3,7,18,0.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:99999;">
-      <div class="entitlement-modal-card" style="background:var(--bg-card, #0f172a);border:1px solid #3b82f6;border-radius:16px;padding:32px;max-width:480px;width:90%;color:#fff;box-shadow:0 20px 50px rgba(0,0,0,0.6);text-align:center;">
+    <div id="entitlementModal" class="entitlement-modal-overlay">
+      <div class="entitlement-modal-card">
         <div style="font-size:2.5rem;margin-bottom:12px;">🔒</div>
         <h3 style="margin:0 0 8px 0;font-size:1.3rem;">Subscription Qualification Needed</h3>
         <p style="color:#94a3b8;font-size:0.9rem;line-height:1.5;margin-bottom:20px;">
@@ -420,18 +420,22 @@ window.authedFetch = async function(...args) {
   }
 };
 
-// --- EXTENSION INSTALL MODAL ---
+// --- EXTENSION INSTALL MODAL FALLBACK ---
 function showExtensionInstallModal() {
   const existingModal = document.getElementById('extensionModal');
   if (existingModal) existingModal.remove();
 
   const modalHtml = `
-    <div id="extensionModal" class="entitlement-modal-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(3,7,18,0.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:99999;">
-      <div class="entitlement-modal-card" style="background:var(--bg-card, #0f172a);border:1px solid #3b82f6;border-radius:16px;padding:32px;max-width:540px;width:90%;text-align:left;box-shadow:0 20px 50px rgba(0,0,0,0.6);">
+    <div id="extensionModal" class="entitlement-modal-overlay">
+      <div class="entitlement-modal-card" style="max-width:540px;text-align:left;">
         <h3 style="margin-top:0;color:#38bdf8;font-size:1.3rem;">🧩 Install NoteCast Chrome Extension</h3>
-        <p style="color:#cbd5e1;font-size:0.88rem;line-height:1.5;">Follow these simple steps to add NoteCast directly to YouTube:</p>
+        <p style="color:#cbd5e1;font-size:0.88rem;line-height:1.5;">Get NoteCast directly from the Chrome Web Store or download the ZIP manually:</p>
+        <div style="margin-bottom:20px;text-align:center;">
+          <a href="${CHROME_STORE_URL}" target="_blank" class="btn-action" style="display:inline-block;padding:10px 20px;background:linear-gradient(135deg, #059669 0%, #047857 100%);text-decoration:none;">🛍️ Open Chrome Web Store Page</a>
+        </div>
+        <p style="color:#94a3b8;font-size:0.82rem;line-height:1.6;margin-bottom:12px;">Manual Developer Mode Installation:</p>
         <ol style="color:#94a3b8;font-size:0.85rem;line-height:1.8;padding-left:20px;margin-bottom:24px;">
-          <li>Download the extension source package: <a href="/assets/notecast-extension.zip" download style="color:#38bdf8;font-weight:bold;">notecast-extension.zip</a></li>
+          <li>Download the extension package: <a href="/assets/notecast-extension.zip" download style="color:#38bdf8;font-weight:bold;">notecast-extension.zip</a></li>
           <li>Extract the ZIP folder on your computer.</li>
           <li>Open Google Chrome and navigate to <code style="background:#1e293b;padding:2px 6px;border-radius:4px;color:#f8fafc;">chrome://extensions/</code></li>
           <li>Enable <strong>Developer mode</strong> at the top right corner.</li>
@@ -446,7 +450,7 @@ function showExtensionInstallModal() {
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-// --- PRICING UI RENDERING ---
+// --- PRICING UI RENDERING & STK PUSH ---
 window.openPaymentModal = function(itemCode, priceText) {
     const modalHtml = `
       <div id="paymentModal" class="modal-backdrop" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;">
@@ -487,16 +491,14 @@ window.openPaymentModal = function(itemCode, priceText) {
         alert(data.message || "Please complete the PIN prompt on your phone.");
         document.getElementById('paymentModal').remove();
         
-        // Start polling logic to auto-redirect users to success page if payment clears
         let attempts = 0;
         const checkInterval = setInterval(async () => {
             attempts++;
-            if (attempts > 15) { // 30 seconds max
+            if (attempts > 15) {
                 clearInterval(checkInterval);
                 return;
             }
             try {
-                // Assuming you have an endpoint that checks the user's latest plan status
                 const authUser = await requireAuth();
                 if (authUser.plan && authUser.plan !== user.plan) {
                     clearInterval(checkInterval);
@@ -514,110 +516,39 @@ window.openPaymentModal = function(itemCode, priceText) {
         if(btn) btn.disabled = false;
       }
     });
-}
-  
-function renderPricingTable() {
-    let container = document.getElementById("pane-pricing");
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'pane-pricing';
-        container.style.cssText = "position:absolute;top:10%;left:10%;width:80%;height:80%;background:#0f172a;z-index:9000;overflow-y:auto;border-radius:12px;box-shadow: 0 10px 30px rgba(0,0,0,0.8);";
-        document.body.appendChild(container);
-        
-        const closeBtn = document.createElement('button');
-        closeBtn.textContent = 'Close Pricing';
-        closeBtn.style.cssText = "position:absolute;top:10px;right:10px;padding:0.5rem;background:#ef4444;color:white;border:none;border-radius:4px;cursor:pointer;";
-        closeBtn.onclick = () => container.remove();
-        container.appendChild(closeBtn);
-    }
-    
-    const pricingHtml = `
-      <div style="display:flex;flex-direction:column;gap:2rem;padding:3rem;">
-        <h2 style="color:white;text-align:center;">Choose Your Plan</h2>
-        
-        <div style="display:flex;gap:1.5rem;justify-content:center;">
-          <div class="tier-card" style="border:1px dashed #64748b;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;width:250px;text-align:center;">
-            <h4>Economy Note Gen</h4>
-            <h2>50 KES<span style="font-size:0.8rem">/ea</span></h2>
-            <p style="font-size:0.85rem;color:#94a3b8;">Generate notes for a single video. No downloads or AI.</p>
-            <button onclick="openPaymentModal('ECONOMY_NOTE', '50 KES')" style="width:100%;padding:0.75rem;background:#475569;border:none;border-radius:6px;color:#fff;cursor:pointer;margin-top:1rem;">Buy Token</button>
-          </div>
-          <div class="tier-card" style="border:1px dashed #64748b;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;width:250px;text-align:center;">
-            <h4>Single Download</h4>
-            <h2>20 KES<span style="font-size:0.8rem">/ea</span></h2>
-            <p style="font-size:0.85rem;color:#94a3b8;">Export a single document to PDF or PPT.</p>
-            <button onclick="openPaymentModal('SINGLE_DOWNLOAD', '20 KES')" style="width:100%;padding:0.75rem;background:#475569;border:none;border-radius:6px;color:#fff;cursor:pointer;margin-top:1rem;">Buy Token</button>
-          </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:1.5rem;margin-top:1rem;">
-          <div class="tier-card" style="border:1px solid #334155;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;">
-            <h4>Startup</h4>
-            <h2>100 KES<span style="font-size:0.8rem">/mo</span></h2>
-            <ul style="padding-left:1rem;font-size:0.9rem;line-height:1.6;">
-              <li>1 Hr Daily YouTube Notes</li>
-              <li>No Downloads (20 KES/dl)</li>
-              <li>No AI Notes / Sims</li>
-            </ul>
-            <button onclick="openPaymentModal('STARTUP', '100 KES')" style="width:100%;padding:0.75rem;background:#3b82f6;border:none;border-radius:6px;color:#fff;cursor:pointer;margin-top:1rem;">Select Plan</button>
-          </div>
-    
-          <div class="tier-card" style="border:1px solid #334155;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;">
-            <h4>Basic</h4>
-            <h2>250 KES<span style="font-size:0.8rem">/mo</span></h2>
-            <ul style="padding-left:1rem;font-size:0.9rem;line-height:1.6;">
-              <li>2 Hrs Daily YouTube Notes</li>
-              <li>Free Downloads</li>
-              <li>AI Notes at 80 KES each</li>
-            </ul>
-            <button onclick="openPaymentModal('BASIC', '250 KES')" style="width:100%;padding:0.75rem;background:#3b82f6;border:none;border-radius:6px;color:#fff;cursor:pointer;margin-top:1rem;">Select Plan</button>
-          </div>
-    
-          <div class="tier-card" style="border:2px solid #6366f1;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;position:relative;">
-            <div style="position:absolute;top:-10px;right:10px;background:#6366f1;padding:2px 8px;border-radius:12px;font-size:0.7rem;font-weight:bold;">POPULAR</div>
-            <h4>Standard</h4>
-            <h2>800 KES<span style="font-size:0.8rem">/mo</span></h2>
-            <ul style="padding-left:1rem;font-size:0.9rem;line-height:1.6;">
-              <li>4 Hrs Daily YouTube Notes</li>
-              <li>Free Unlimited Downloads</li>
-              <li>2 AI Notes/day & 2 Sims/day</li>
-              <li>2 Doc Summaries/day</li>
-            </ul>
-            <button onclick="openPaymentModal('STANDARD', '800 KES')" style="width:100%;padding:0.75rem;background:#6366f1;border:none;border-radius:6px;color:#fff;cursor:pointer;margin-top:1rem;">Select Plan</button>
-          </div>
-    
-          <div class="tier-card" style="border:1px solid #10b981;padding:1.5rem;border-radius:12px;background:#1e293b;color:#fff;">
-            <h4>Premium</h4>
-            <h2>1199 KES<span style="font-size:0.8rem">/mo</span></h2>
-            <ul style="padding-left:1rem;font-size:0.9rem;line-height:1.6;">
-              <li>12 Hrs Daily YouTube Notes</li>
-              <li>Unlimited Downloads & AI Notes</li>
-              <li>5 Static + 2 Live LLM Sims/day</li>
-              <li>6 Doc Summaries/day</li>
-            </ul>
-            <button onclick="openPaymentModal('PREMIUM', '1199 KES')" style="width:100%;padding:0.75rem;background:#10b981;border:none;border-radius:6px;color:#fff;cursor:pointer;margin-top:1rem;">Select Plan</button>
-          </div>
-        </div>
-      </div>
-    `;
-    container.innerHTML += pricingHtml;
-}
+};
 
 // --- INIT ENGINE ---
 async function init() {
   user = await requireAuth();
   if(document.getElementById("userName")) document.getElementById("userName").textContent = user.display_name || user.email;
-  if(document.getElementById("userPlanBadge")) document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan || 'Economy'}`;
+  if(document.getElementById("userPlanBadge")) document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan || 'Free'}`;
   
   const tierDisplay = document.getElementById("currentTierDisplay");
   if (tierDisplay) {
-    tierDisplay.textContent = user.plan || 'Economy Plan';
+    tierDisplay.textContent = user.plan || 'Free Plan';
   }
 
-  // Sidebar Extension Download Button
-  const installExtBtn = document.getElementById("installExtensionSidebarBtn");
-  if (installExtBtn) {
-    installExtBtn.addEventListener("click", showExtensionInstallModal);
+  // Live Extension Detection & Button State Update
+  const extBtn = document.getElementById("installExtensionSidebarBtn");
+  const extStatusText = document.getElementById("extStatusText");
+  
+  const isInstalled = await checkExtensionInstalled();
+  if (isInstalled) {
+    if (extBtn) extBtn.classList.add("active-installed");
+    if (extStatusText) extStatusText.textContent = "✅ Extension Active & Synced";
+    if (extBtn) {
+      extBtn.href = "#";
+      extBtn.target = "_self";
+      extBtn.onclick = (e) => e.preventDefault();
+    }
+  } else {
+    if (extBtn) {
+      extBtn.onclick = (e) => {
+        // If popup blocker prevents Chrome Store, show instruction modal overlay
+        showExtensionInstallModal();
+      };
+    }
   }
 
   // 1. Sidebar Tab Switching Engine
@@ -634,7 +565,6 @@ async function init() {
       if (tabName === "documents") loadDocuments();
       if (tabName === "flashcards") loadFlashcards();
       if (tabName === "graph") loadGraph();
-      if (tabName === "pricing") renderPricingTable();
     });
   });
 
@@ -700,13 +630,11 @@ async function init() {
       authedFetch(`/api/verify-entitlement?action=LAUNCH_STATIC_SIM`).then(res => {
           const rawFilePath = `simulations/${faculty}/${course}/${moduleFile}`;
           window.open(rawFilePath, '_blank');
-      }).catch(err => {
-         // Interceptor handles the visual modal popup.
-      });
+      }).catch(err => {});
     });
   }
 
-  // 3. Rich 3D Custom AI Generation with Detailed Breakdown & Entitlement Guard
+  // 3. Rich 3D Custom AI Generation
   const generateSimBtn = document.getElementById("generateSimBtn");
   if (generateSimBtn) {
     generateSimBtn.addEventListener("click", async () => {
@@ -731,7 +659,6 @@ async function init() {
         
         clearTimeout(timeoutId);
 
-        // Synthesize rich detailed fallback schema if basic output returned or cloud proxy strips it
         if (!schema || !schema.nodes) {
           schema = {
             topic: topic,
@@ -749,9 +676,6 @@ async function init() {
       } catch (err) {
         clearTimeout(timeoutId);
         console.error("Simulation Generation Error:", err);
-        if (err.name !== 'Error' && err.message && !err.message.includes('Payment Required')) {
-            alert(`Network Timeout: The cloud provider dropped the connection. Use static simulation instead.`);
-        }
       } finally {
         generateSimBtn.disabled = false;
         generateSimBtn.textContent = "Generate Live";
@@ -824,7 +748,6 @@ async function init() {
       try {
           await authedFetch(`/api/verify-entitlement?action=DOC_SUMMARIZATION&resource_id=${currentSelectedDoc.id}`);
       } catch (err) {
-          // Interceptor handles error and triggers modal overlay
           return;
       }
 
@@ -908,9 +831,7 @@ async function init() {
         
         fileInput.value = "";
       } catch (err) {
-        if (err.message && !err.message.includes('Payment Required')) {
-            alert("Error uploading document. Check backend logs.");
-        }
+        console.error("Upload error", err);
       } finally {
         btn.disabled = false;
         btn.textContent = "Upload & Process";
@@ -1011,9 +932,7 @@ async function loadVideos() {
           <span class="status-chip ${v.status}">${v.status}</span>
         </a>
       </li>`).join("");
-  } catch (err) {
-      // Fail silently if paywall triggers during load
-  }
+  } catch (err) {}
 }
 
 let cachedDocuments = [];
@@ -1052,7 +971,6 @@ async function loadDocuments() {
           const fileKey = currentSelectedDoc.storage_key || currentSelectedDoc.id;
           const pdfMediaUrl = `/api/documents/media/${fileKey}/`;
 
-          // Catch if cloud server wiped local storage without breaking UI
           try {
             const checkRes = await fetch(pdfMediaUrl, { method: "HEAD" });
             if (!checkRes.ok) {

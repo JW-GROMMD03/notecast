@@ -1,5 +1,6 @@
-// Point to the local relative path so Render's Rewrite rule handles the proxying
 export const API_BASE = "/api";
+export const EXTENSION_ID = "oflgnhoaebicbfnfoomfkfjgjldjbglg";
+export const CHROME_STORE_URL = "https://chromewebstore.google.com/detail/notecast/oflgnhoaebicbfnfoomfkfjgjldjbglg";
 
 function readCookie(name) {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
@@ -27,9 +28,6 @@ export function clearCachedUser() {
   sessionStorage.removeItem("notecast_user");
 }
 
-/** Core fetch wrapper. Always sends cookies; attaches the CSRF header on
- * any state-changing method (GET/HEAD are exempt). 
- * Intelligently handles FormData (file uploads) without breaking Content-Type boundaries. */
 export async function apiFetch(path, options = {}) {
   const method = (options.method || "GET").toUpperCase();
   const needsCsrf = !["GET", "HEAD"].includes(method);
@@ -39,14 +37,13 @@ export async function apiFetch(path, options = {}) {
     ...(options.headers || {}),
   };
 
-  // Only set application/json automatically if we are NOT sending FormData (like file uploads)
   if (options.body && !(options.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
   const resp = await fetch(`${API_BASE}${path}`, {
     ...options,
-    credentials: "include", // Ensures cookies are transmitted
+    credentials: "include",
     headers,
   });
   
@@ -61,9 +58,6 @@ export async function apiFetch(path, options = {}) {
   return body ?? resp;
 }
 
-/** Tries a normal authenticated request; on a 401 (expired access token)
- * attempts one silent refresh via the httpOnly refresh cookie, then
- * retries once. This allows sessions to survive access-token expiration seamlessly. */
 export async function authedFetch(path, options = {}) {
   try {
     return await apiFetch(path, options);
@@ -76,11 +70,10 @@ export async function authedFetch(path, options = {}) {
       window.location.href = "login.html";
       throw err;
     }
-    return apiFetch(path, options); // Retry once with the newly minted access cookie
+    return apiFetch(path, options);
   }
 }
 
-/** Call at the top of any page that requires a signed-in user. */
 export async function requireAuth() {
   try {
     const user = await authedFetch("/auth/me");
@@ -99,4 +92,20 @@ export async function logout() {
   } finally {
     clearCachedUser();
   }
+}
+
+export function checkExtensionInstalled() {
+  return new Promise((resolve) => {
+    if (typeof window.chrome !== "undefined" && window.chrome.runtime && window.chrome.runtime.sendMessage) {
+      window.chrome.runtime.sendMessage(EXTENSION_ID, { type: "PING" }, (response) => {
+        if (window.chrome.runtime.lastError || !response || !response.installed) {
+          resolve(false);
+        } else {
+          resolve(true);
+        }
+      });
+    } else {
+      resolve(false);
+    }
+  });
 }
