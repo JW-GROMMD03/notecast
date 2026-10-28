@@ -10,6 +10,22 @@ let currentPageNumber = 1;
 const totalPages = 5; 
 const pageCache = {}; 
 
+// --- PLANS CATALOG ---
+const PLANS_CATALOG = {
+  "ECONOMY_NOTE": { amount: 50, name: "Economy Note Token (Pay-As-You-Go)" },
+  "STARTUP": { amount: 100, name: "Startup Plan (Monthly)" },
+  "BASIC": { amount: 250, name: "Basic Plan (Monthly)" },
+  "STANDARD": { amount: 800, name: "Standard Plan (Monthly)" },
+  "PREMIUM": { amount: 1199, name: "Premium Plan (Monthly)" }
+};
+
+function cleanPhoneNumber(raw) {
+  let digits = raw.replace(/[^0-9]/g, "");
+  if (digits.startsWith("0")) digits = "254" + digits.substring(1);
+  else if (digits.length === 9 && (digits.startsWith("7") || digits.startsWith("1"))) digits = "254" + digits;
+  return digits;
+}
+
 // --- HELPER: CLEAN ERROR MESSAGE EXTRACTOR ---
 function extractErrorMessage(data) {
   if (!data) return "An unknown error occurred.";
@@ -532,19 +548,44 @@ function showExtensionInstallModal() {
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-// --- PRICING UI RENDERING & STK PUSH (WITH FIXED POLLING & TIMEOUT ERROR FEEDBACK) ---
+// --- PAYMENTS.JS MATCHING STK PUSH & STATUS POLLING MODAL ---
 window.openPaymentModal = function(itemCode, priceText) {
+    const planInfo = PLANS_CATALOG[itemCode] || { amount: 800, name: itemCode };
+    
+    const existing = document.getElementById('paymentModal');
+    if (existing) existing.remove();
+
     const modalHtml = `
       <div id="paymentModal" class="modal-backdrop" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;">
-        <div style="background:var(--bg-card, #1e293b);padding:2rem;border-radius:12px;max-width:400px;width:100%;color:#fff;">
-          <h3 style="margin-top:0;">Secure M-Pesa Checkout</h3>
-          <p>Pass: <strong>${itemCode.replace(/_/g, ' ')}</strong><br>Amount: <strong>${priceText}</strong></p>
-          <label style="display:block;margin:1rem 0 0.5rem;font-size:0.85rem;">M-Pesa Phone Number:</label>
-          <input type="text" id="mpesaPhone" value="0703250550" placeholder="0712345678 or 254712345678" style="width:100%;padding:0.75rem;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:1rem;"/>
-          <div id="paymentStatusText" style="font-size:0.82rem;color:#38bdf8;margin-bottom:1rem;display:none;text-align:center;"></div>
-          <div style="display:flex;gap:1rem;justify-content:flex-end;">
-            <button onclick="document.getElementById('paymentModal').remove()" style="padding:0.5rem 1rem;background:#64748b;border:none;border-radius:6px;color:#fff;cursor:pointer;">Cancel</button>
-            <button id="confirmPayBtn" style="padding:0.5rem 1rem;background:#6366f1;border:none;border-radius:6px;color:#fff;cursor:pointer;">Send STK Push</button>
+        <div style="background:var(--bg-card, #1e293b);padding:2rem;border-radius:12px;max-width:420px;width:100%;color:#fff;box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
+          <div id="paymentFormContainer">
+            <h3 style="margin-top:0;font-size:1.25rem;">Secure M-Pesa Checkout</h3>
+            <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:1rem;">Pass: <strong>${planInfo.name}</strong><br>Amount: <strong style="color:#38bdf8;">${planInfo.amount} KES</strong></p>
+            
+            <label style="display:block;margin:1rem 0 0.5rem;font-size:0.85rem;">Safaricom Phone Number:</label>
+            <input type="text" id="mpesaPhone" value="0703250550" placeholder="0712345678 or 254712345678" style="width:100%;padding:0.75rem;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:0.75rem;box-sizing:border-box;"/>
+            
+            <div id="paymentError" style="background:rgba(239, 68, 68, 0.1);border:1px solid #ef4444;color:#fca5a5;padding:10px;border-radius:6px;font-size:0.82rem;margin-bottom:1rem;display:none;"></div>
+
+            <div style="display:flex;gap:1rem;justify-content:flex-end;">
+              <button onclick="document.getElementById('paymentModal').remove()" style="padding:0.5rem 1rem;background:#64748b;border:none;border-radius:6px;color:#fff;cursor:pointer;">Cancel</button>
+              <button id="confirmPayBtn" style="padding:0.5rem 1.25rem;background:#3b82f6;border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:600;">Pay Now</button>
+            </div>
+          </div>
+
+          <!-- Polling UI Container -->
+          <div id="pollingUI" style="text-align:center;padding:1rem 0;display:none;">
+            <div style="font-size: 2.5rem; margin-bottom: 10px;">📱</div>
+            <h4 style="margin:0 0 8px 0;color:#f8fafc;">Check your phone</h4>
+            <p id="pollingStatusMsg" style="color:#94a3b8;font-size:0.88rem;line-height:1.5;margin-bottom:1.5rem;">
+              An M-Pesa prompt has been sent to your phone. Enter your PIN to complete the transaction.
+            </p>
+            <div id="pollingSpinner" style="display:flex;align-items:center;justify-content:center;gap:8px;color:#38bdf8;font-size:0.85rem;font-weight:600;margin-bottom:1.5rem;">
+              <span class="spinner" style="width:16px;height:16px;border:2px solid #38bdf8;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></span> Waiting for confirmation...
+            </div>
+            <div id="actionButtons" style="display:none;gap:10px;justify-content:center;">
+              <button onclick="document.getElementById('paymentModal').remove(); location.reload();" style="padding:0.5rem 1rem;background:#3b82f6;border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:600;">Done / Return</button>
+            </div>
           </div>
         </div>
       </div>
@@ -552,96 +593,111 @@ window.openPaymentModal = function(itemCode, priceText) {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
   
     document.getElementById("confirmPayBtn").addEventListener("click", async () => {
-      const rawPhone = document.getElementById("mpesaPhone").value.trim();
-      
-      let cleanedPhone = rawPhone.replace(/\D/g, "");
-      if (cleanedPhone.startsWith("0")) {
-        cleanedPhone = "254" + cleanedPhone.substring(1);
-      } else if (cleanedPhone.startsWith("7") || cleanedPhone.startsWith("1")) {
-        cleanedPhone = "254" + cleanedPhone;
+      const phoneInput = document.getElementById("mpesaPhone").value.trim();
+      const phone = cleanPhoneNumber(phoneInput);
+      const errorEl = document.getElementById("paymentError");
+      const payBtn = document.getElementById("confirmPayBtn");
+
+      if (phone.length !== 12 || !phone.startsWith("254")) {
+        if (errorEl) {
+          errorEl.textContent = "Please enter a valid Safaricom phone number (e.g. 0703250550).";
+          errorEl.style.display = "block";
+        }
+        return;
       }
 
-      if (cleanedPhone.length < 12) {
-        return alert("Please enter a valid Kenyan phone number (e.g. 0703250550).");
-      }
-  
-      const btn = document.getElementById("confirmPayBtn");
-      const statusEl = document.getElementById("paymentStatusText");
-      btn.disabled = true;
-      btn.textContent = "Processing...";
-      if(statusEl) {
-        statusEl.style.display = "block";
-        statusEl.textContent = "📲 Sending STK push to your phone...";
-      }
-  
+      if (errorEl) errorEl.style.display = "none";
+      payBtn.disabled = true;
+      payBtn.textContent = "Processing...";
+
       try {
-        const requestPayload = {
-          phone_number: cleanedPhone,
-          plan_name: itemCode
-        };
-
         const res = await authedFetch("/payments/stk-push", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestPayload)
+          body: JSON.stringify({
+            phone_number: phone,
+            plan_name: itemCode,
+            amount: planInfo.amount
+          })
         });
         
-        let responseData = res;
-        if (res && typeof res.json === "function") {
-          responseData = await res.json();
+        let data = res;
+        if (res.json) data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.detail || data.message || "Payment initiation failed.");
         }
-
-        if (res && !res.ok) {
-          const errMsg = extractErrorMessage(responseData);
-          if(statusEl) statusEl.style.display = "none";
-          alert(`Payment Failed (${res.status}):\n${errMsg}`);
-          btn.disabled = false;
-          btn.textContent = "Send STK Push";
-          return;
-        }
-
-        if(statusEl) {
-          statusEl.textContent = "⏳ STK Push sent! Please enter your M-Pesa PIN on your phone...";
-        }
-
-        // Subscription polling loop with explicit timeout feedback
-        let attempts = 0;
-        const maxAttempts = 20; // 40 seconds total
-        const checkInterval = setInterval(async () => {
-            attempts++;
-            if (attempts > maxAttempts) {
-                clearInterval(checkInterval);
-                if(statusEl) statusEl.style.display = "none";
-                alert("Payment request timed out or was cancelled. If you completed the payment, please refresh your page.");
-                if(btn) {
-                  btn.disabled = false;
-                  btn.textContent = "Send STK Push";
-                }
-                return;
-            }
-            try {
-                const authUser = await requireAuth();
-                if (authUser.plan && authUser.plan !== user.plan) {
-                    clearInterval(checkInterval);
-                    user = authUser;
-                    document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan}`;
-                    if(document.getElementById("currentTierDisplay")) document.getElementById("currentTierDisplay").textContent = user.plan;
-                    alert("Payment received! Your plan has been successfully upgraded.");
-                    document.getElementById('paymentModal')?.remove();
-                }
-            } catch(e) {}
-        }, 2000);
-
+        
+        document.getElementById("paymentFormContainer").style.display = "none";
+        document.getElementById("pollingUI").style.display = "block";
+        
+        startModalPolling(data.transaction_id);
+        
       } catch (err) {
-        if(statusEl) statusEl.style.display = "none";
-        alert(extractErrorMessage(err));
-        if(btn) {
-          btn.disabled = false;
-          btn.textContent = "Send STK Push";
+        if (errorEl) {
+          errorEl.textContent = err.message || "Payment initiation failed. Please check your number.";
+          errorEl.style.display = "block";
         }
+        payBtn.disabled = false;
+        payBtn.textContent = "Pay Now";
       }
     });
 };
+
+function startModalPolling(currentTxId) {
+  let attempts = 0;
+  
+  const pollInterval = setInterval(async () => {
+    attempts++;
+    if (attempts > 60) {
+      clearInterval(pollInterval);
+      showModalCompletion("FAILED", "Payment confirmation timed out. Contact support if charged.");
+      return;
+    }
+    
+    try {
+      const res = await authedFetch(`/payments/status/${currentTxId}`);
+      let data = res;
+      if(res.json) data = await res.json();
+      
+      if (data.status === "COMPLETED") { 
+        clearInterval(pollInterval);
+        showModalCompletion("SUCCESS", "Payment Successful! Your account features have been updated.");
+      } 
+      else if (data.status === "FAILED") {
+        clearInterval(pollInterval);
+        showModalCompletion("FAILED", "Payment was cancelled or rejected on M-Pesa.");
+      }
+    } catch (e) {
+      console.error("Polling error:", e);
+    }
+  }, 5000);
+}
+
+function showModalCompletion(status, message) {
+  const spinnerEl = document.getElementById("pollingSpinner");
+  const msgEl = document.getElementById("pollingStatusMsg");
+  const actionBtns = document.getElementById("actionButtons");
+
+  if (spinnerEl) spinnerEl.style.display = "none";
+  if (msgEl) {
+    const color = status === "SUCCESS" ? "#10b981" : "#ef4444";
+    msgEl.innerHTML = `<strong style="color: ${color}; font-size:1.1rem; display:block; margin-bottom:6px;">${status === "SUCCESS" ? "Payment Successful 🎉" : "Transaction Failed ❌"}</strong>${message}`;
+  }
+  if (actionBtns) {
+    actionBtns.style.display = "flex";
+  }
+  
+  if (status === "SUCCESS") {
+    setTimeout(async () => {
+      try {
+        const authUser = await requireAuth();
+        user = authUser;
+        if(document.getElementById("userPlanBadge")) document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan}`;
+      } catch(e){}
+    }, 1000);
+  }
+}
 
 // --- TAB & FEATURE ELIGIBILITY INTERCEPTOR ---
 function verifyTabEligibility(tabName) {
