@@ -564,8 +564,11 @@ window.openPaymentModal = function(itemCode, priceText) {
             
             <label style="display:block;margin:1rem 0 0.5rem;font-size:0.85rem;">Safaricom Phone Number:</label>
             <input type="text" id="mpesaPhone" value="0703250550" placeholder="0712345678 or 254712345678" style="width:100%;padding:0.75rem;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:0.75rem;box-sizing:border-box;"/>
-            
-            <div id="paymentError" style="background:rgba(239, 68, 68, 0.1);border:1px solid #ef4444;color:#fca5a5;padding:10px;border-radius:6px;font-size:0.82rem;margin-bottom:1rem;display:none;"></div>
+            <!-- Error Box (Red) -->
+<div id="paymentError" style="background:rgba(239, 68, 68, 0.1);border:1px solid #ef4444;color:#fca5a5;padding:10px;border-radius:6px;font-size:0.82rem;margin-bottom:1rem;display:none;"></div>
+
+<!-- Status / Info Box (Blue/Neutral) -->
+<div id="paymentStatusText" style="background:rgba(59, 130, 246, 0.1);border:1px solid #3b82f6;color:#93c5fd;padding:10px;border-radius:6px;font-size:0.82rem;margin-bottom:1rem;display:none;"></div><div id="paymentError" style="background:rgba(239, 68, 68, 0.1);border:1px solid #ef4444;color:#fca5a5;padding:10px;border-radius:6px;font-size:0.82rem;margin-bottom:1rem;display:none;"></div>
 
             <div style="display:flex;gap:1rem;justify-content:flex-end;">
               <button onclick="document.getElementById('paymentModal').remove()" style="padding:0.5rem 1rem;background:#64748b;border:none;border-radius:6px;color:#fff;cursor:pointer;">Cancel</button>
