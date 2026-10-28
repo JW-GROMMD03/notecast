@@ -1,12 +1,10 @@
 import uuid
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session as DbSession
 from .. import models, schemas, auth
 from ..database import get_db
-
-# Import the new flat M-Pesa service
 from ..services import mpesa_service
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -22,9 +20,14 @@ PRICING_CATALOG = {
     "SINGLE_AI_NOTE": {"amount": 80, "type": "SINGLE_AI_NOTE"}
 }
 
+
 @router.post("/stk-push")
-def initiate_payment(body: schemas.PaymentRequest, db: DbSession = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    """Triggered by the frontend to start the M-Pesa STK Push"""
+def initiate_payment(
+    body: schemas.PaymentRequest, 
+    db: DbSession = Depends(get_db), 
+    user: models.User = Depends(auth.get_current_user)
+):
+    """Triggers M-Pesa STK Push via Daraja API and records a pending transaction."""
     if body.plan_name not in PRICING_CATALOG:
         raise HTTPException(status_code=400, detail="Invalid plan or token code.")
     
@@ -33,7 +36,6 @@ def initiate_payment(body: schemas.PaymentRequest, db: DbSession = Depends(get_d
     purchase_type = catalog_item["type"]
 
     try:
-        # Delegate STK push logic to the flat M-Pesa service
         res, formatted_phone = mpesa_service.initiate_stk_push(body.phone_number, amount, body.plan_name)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -42,7 +44,7 @@ def initiate_payment(body: schemas.PaymentRequest, db: DbSession = Depends(get_d
         raise HTTPException(status_code=500, detail="Failed to connect to Safaricom.")
 
     if res.get("ResponseCode") == "0":
-        internal_tx_id = f"tx_{uuid.uuid4().hex[:8]}"
+        internal_tx_id = f"tx_{uuid.uuid4().hex[:12]}"
         
         new_tx = models.PaymentTransaction(
             id=internal_tx_id,
@@ -58,18 +60,25 @@ def initiate_payment(body: schemas.PaymentRequest, db: DbSession = Depends(get_d
         db.add(new_tx)
         db.commit()
 
-        logger.info(f"STK Push initiated for {formatted_phone}, Amount: {amount}")
-        return {"message": "STK Push sent. Please check your phone to enter your PIN.", "transaction_id": internal_tx_id}
+        logger.info(f"STK Push initiated for {formatted_phone}, Amount: KES {amount}")
+        return {
+            "message": "STK Push sent. Please check your phone to enter your PIN.",
+            "transaction_id": internal_tx_id,
+            "checkout_request_id": res.get("CheckoutRequestID")
+        }
 
     error_msg = res.get("errorMessage", "Safaricom rejected STK Push request.")
     raise HTTPException(status_code=400, detail=error_msg)
 
 
 @router.post("/qr-code")
-def generate_qr(body: schemas.PaymentRequest, user: models.User = Depends(auth.get_current_user)):
+def generate_qr(
+    body: schemas.PaymentRequest, 
+    user: models.User = Depends(auth.get_current_user)
+):
     """Generates a Safaricom Dynamic QR Code for desktop users to scan."""
     if body.plan_name not in PRICING_CATALOG:
-        raise HTTPException(status_code=400, detail="Invalid plan.")
+        raise HTTPException(status_code=400, detail="Invalid plan name.")
     
     amount = PRICING_CATALOG[body.plan_name]["amount"]
     
@@ -83,34 +92,48 @@ def generate_qr(body: schemas.PaymentRequest, user: models.User = Depends(auth.g
 
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: DbSession = Depends(get_db)):
-    """Safaricom hits this endpoint automatically when the user completes the PIN prompt."""
+    """Automatic webhook invoked by Safaricom Daraja when payment completes or fails."""
     payload = await request.json()
     stk_callback = payload.get("Body", {}).get("stkCallback", {})
     result_code = stk_callback.get("ResultCode")
     checkout_id = stk_callback.get("CheckoutRequestID")
 
-    txn = db.query(models.PaymentTransaction).filter(models.PaymentTransaction.checkout_request_id == checkout_id).first()
+    txn = db.query(models.PaymentTransaction).filter(
+        models.PaymentTransaction.checkout_request_id == checkout_id
+    ).first()
+    
     if not txn:
+        logger.warning(f"Callback received for unknown checkout_id: {checkout_id}")
         return {"ResultCode": 1, "ResultDesc": "Transaction not found"}
 
     if result_code == 0:
-        logger.info("Payment successful.")
+        logger.info(f"Payment successful for transaction {txn.id}")
         txn.status = "COMPLETED"
+        now_utc = datetime.now(timezone.utc)
         
         if txn.purchase_type == "PLAN_SUBSCRIPTION":
-            sub = db.query(models.UserSubscription).filter(models.UserSubscription.user_id == txn.user_id).first()
-            if not sub:
-                sub = models.UserSubscription(id=str(uuid.uuid4()), user_id=txn.user_id)
-                db.add(sub)
-            sub.tier = txn.target_tier
-            sub.expires_at = datetime.utcnow() + timedelta(days=30)
+            sub = db.query(models.UserSubscription).filter(
+                models.UserSubscription.user_id == txn.user_id
+            ).first()
             
-            # Update user model directly to reflect fast frontend queries
+            if not sub:
+                sub = models.UserSubscription(
+                    id=str(uuid.uuid4()), 
+                    user_id=txn.user_id,
+                    starts_at=now_utc
+                )
+                db.add(sub)
+                
+            sub.tier = txn.target_tier
+            sub.status = "active"
+            sub.expires_at = now_utc + timedelta(days=30)
+            
+            # Sync directly to User model for fast querying
             user = db.query(models.User).filter(models.User.id == txn.user_id).first()
             if user:
                 user.plan = txn.target_tier
         else:
-            # Add one-off credit
+            # Grant one-off usage credit token
             credit = models.OneOffCredit(
                 id=str(uuid.uuid4()),
                 user_id=txn.user_id,
@@ -121,7 +144,7 @@ async def mpesa_callback(request: Request, db: DbSession = Depends(get_db)):
         
         db.commit()
     else:
-        logger.warning(f"Payment failed: {stk_callback.get('ResultDesc')}")
+        logger.warning(f"Payment failed for transaction {txn.id}: {stk_callback.get('ResultDesc')}")
         txn.status = "FAILED"
         db.commit()
         
@@ -129,8 +152,12 @@ async def mpesa_callback(request: Request, db: DbSession = Depends(get_db)):
 
 
 @router.get("/status/{transaction_id}", response_model=schemas.PaymentStatusOut)
-def check_payment_status(transaction_id: str, db: DbSession = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    """Frontend polls this endpoint to know when to show success and redirect."""
+def check_payment_status(
+    transaction_id: str, 
+    db: DbSession = Depends(get_db), 
+    user: models.User = Depends(auth.get_current_user)
+):
+    """Frontend polling endpoint to verify transaction status."""
     tx = db.query(models.PaymentTransaction).filter(
         models.PaymentTransaction.id == transaction_id, 
         models.PaymentTransaction.user_id == user.id
