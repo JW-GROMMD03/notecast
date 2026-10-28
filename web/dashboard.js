@@ -54,7 +54,7 @@ function getTimeUntilMidnightUTC() {
 }
 
 // --- DUAL-MODE SUBSCRIPTION & QUOTA EXHAUSTION ALERT MODAL ---
-function showEntitlementModal({ featureName, recommendedTier, priceText, isQuotaDepleted = false, detailMessage = null }) {
+function showEntitlementModal({ featureName, recommendedTier = "STANDARD", priceText = "800 KES/mo", isQuotaDepleted = false, detailMessage = null }) {
   const existingModal = document.getElementById('entitlementModal');
   if (existingModal) existingModal.remove();
 
@@ -93,8 +93,8 @@ function showEntitlementModal({ featureName, recommendedTier, priceText, isQuota
           <ul style="margin: 0; padding-left: 18px; font-size: 0.82rem; color: #cbd5e1; line-height: 1.5;">
             <li><strong>Startup Pass</strong> — 100 KES / mo (1 Hr YouTube Notes)</li>
             <li><strong>Basic Pass</strong> — 250 KES / mo (2 Hrs Notes + Free Downloads)</li>
-            <li><strong>Standard Pass</strong> — 800 KES / mo (4 Hrs Notes + 2 Sims/day)</li>
-            <li><strong>Premium Pass</strong> — 1199 KES / mo (12 Hrs Notes + Unlimited AI)</li>
+            <li><strong style="color: #60a5fa;">Standard Pass</strong> — 800 KES / mo (4 Hrs Notes + 2 Sims/day)</li>
+            <li><strong style="color: #60a5fa;">Premium Pass</strong> — 1199 KES / mo (12 Hrs Notes + Unlimited AI)</li>
           </ul>
         </div>
 
@@ -448,16 +448,22 @@ window.authedFetch = async function(...args) {
   try {
     const response = await originalAuthedFetch(...args);
     if (response && !response.ok && response.status === 402) {
-        const errorData = await response.json().catch(() => ({}));
-        const isDepleted = errorData.detail?.includes("limit reached") || errorData.detail?.includes("depleted");
+        let detailMsg = "Payment required";
+        let isDepleted = false;
+        try {
+          const errorData = await response.json();
+          detailMsg = errorData.detail || detailMsg;
+          isDepleted = detailMsg.includes("limit reached") || detailMsg.includes("depleted");
+        } catch(e) {}
+
         showEntitlementModal({
           featureName: "Requested Feature",
           recommendedTier: "STANDARD",
           priceText: "800 KES/mo",
           isQuotaDepleted: isDepleted,
-          detailMessage: errorData.detail
+          detailMessage: detailMsg
         });
-        throw new Error(errorData.detail || "Payment Required");
+        throw new Error(detailMsg);
     }
     return response;
   } catch (error) {
@@ -505,7 +511,7 @@ function showExtensionInstallModal() {
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-// --- PRICING UI RENDERING & STK PUSH ---
+// --- PRICING UI RENDERING & STK PUSH (SAFE OBJECT UNPACKING FIX) ---
 window.openPaymentModal = function(itemCode, priceText) {
     const modalHtml = `
       <div id="paymentModal" class="modal-backdrop" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;">
@@ -539,12 +545,13 @@ window.openPaymentModal = function(itemCode, priceText) {
         });
         
         let data = res;
-        if (res.json) {
+        if (res && typeof res.json === "function") {
            data = await res.json();
         }
 
-        alert(data.message || "Please complete the PIN prompt on your phone.");
-        document.getElementById('paymentModal').remove();
+        const successMessage = (typeof data === "object") ? (data.message || data.detail || "STK Push sent! Complete the prompt on your phone.") : String(data);
+        alert(successMessage);
+        document.getElementById('paymentModal')?.remove();
         
         let attempts = 0;
         const checkInterval = setInterval(async () => {
@@ -566,23 +573,25 @@ window.openPaymentModal = function(itemCode, priceText) {
         }, 2000);
 
       } catch (err) {
-        alert(err.message || "Failed to trigger payment. Please check your network.");
+        const errorMessage = (err && typeof err === "object") ? (err.message || err.detail || "Failed to trigger payment. Please check your network.") : String(err);
+        alert(errorMessage);
       } finally {
         if(btn) btn.disabled = false;
       }
     });
 };
 
-// --- TAB & FEATURE ELIGIBILITY INTERCEPTOR ---
+// --- TAB & FEATURE ELIGIBILITY INTERCEPTOR (CORRECTED TIER CHECK FOR SIMULATIONS) ---
 function verifyTabEligibility(tabName) {
   const currentPlan = (user?.plan || "FREE").toUpperCase();
 
   if (tabName === "simulators") {
-    if (currentPlan === "FREE") {
+    // Simulations require STANDARD (800 KES) or PREMIUM (1199 KES)
+    if (!["STANDARD", "PREMIUM"].includes(currentPlan)) {
       showEntitlementModal({
         featureName: "Interactive Simulation Library",
-        recommendedTier: "STARTUP",
-        priceText: "100 KES/mo",
+        recommendedTier: "STANDARD",
+        priceText: "800 KES/mo",
         isQuotaDepleted: false
       });
       return false;
@@ -704,11 +713,11 @@ async function init() {
       if (!faculty || !course || !moduleFile) return alert("Please make a complete selection.");
 
       const currentPlan = (user?.plan || "FREE").toUpperCase();
-      if (currentPlan === "FREE") {
+      if (!["STANDARD", "PREMIUM"].includes(currentPlan)) {
         showEntitlementModal({
           featureName: "Pre-Compiled Academic Simulations",
-          recommendedTier: "STARTUP",
-          priceText: "100 KES/mo",
+          recommendedTier: "STANDARD",
+          priceText: "800 KES/mo",
           isQuotaDepleted: false
         });
         return;

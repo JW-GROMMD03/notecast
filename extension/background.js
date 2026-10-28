@@ -124,7 +124,6 @@ async function checkRecordingEntitlement() {
 
     return { allowed: true, remainingSeconds };
   } catch (e) {
-    // If endpoint is unmounted or offline, verify token exists
     const session = await getSession();
     if (!session) return { allowed: false, reason: "NOT_LOGGED_IN", message: "Please log in first." };
     return { allowed: true, remainingSeconds: 3600 };
@@ -220,11 +219,9 @@ async function startCapturePipeline({ tabId, videoMeta }, sendResponse) {
     recordingTimer = setInterval(() => {
       elapsedSeconds++;
       
-      // BROADCAST REAL-TIME TICK TO SIDE PANEL
       const remainingSecs = Math.max(0, maxDailyAllowedSeconds - elapsedSeconds);
       broadcast({ scope: "notecast", type: "RECORDING_TICK", elapsedSeconds, remainingSecs });
 
-      // AUTOMATICALLY SHUT DOWN RECORDING WHEN DAILY ALLOWANCE IS DEPLETED
       if (elapsedSeconds >= maxDailyAllowedSeconds) {
         clearInterval(recordingTimer);
         recordingTimer = null;
