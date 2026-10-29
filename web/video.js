@@ -250,7 +250,14 @@ function bindUIEvents() {
         }
       } catch (err) {
         console.error("AI Generation error:", err);
-        if (container) container.innerHTML = `<div class="empty-state" style="color: var(--danger);">Failed to trigger AI generation. Check your connection or plan limits.</div>`;
+        // Check tier constraints for AI generation
+        if (err.message && (err.message.includes("402") || err.message.includes("subscription") || err.message.includes("constraint"))) {
+          if (confirm("Your current subscription constraints do not permit generating new AI notes. Would you like to upgrade?")) {
+            window.location.href = "payments.html?plan=STANDARD";
+          }
+        } else if (container) {
+          container.innerHTML = `<div class="empty-state" style="color: var(--danger);">Failed to trigger AI generation. ${err.message || 'Check your connection or plan limits.'}</div>`;
+        }
       }
     });
   }
@@ -340,6 +347,7 @@ async function load() {
     const metaEl = document.getElementById("videoMeta");
     if (metaEl) metaEl.textContent = `${video.channel || "Unknown Channel"} · ${statusLabel(video.status)}`;
 
+    // Freely fetch notes, captures, and transcripts for videos already created/paid for
     const [notes, aiNotesData, transcript, visuals] = await Promise.all([
       authedFetch(`/videos/${videoId}/notes`),
       authedFetch(`/videos/${videoId}/ai-notes`),
@@ -357,14 +365,8 @@ async function load() {
       pollTimer = setTimeout(load, 4000);
     }
   } catch (err) {
-    console.error("Error loading video data:", err);
-
-    // Automatically catch 402 Payment Required / Subscription gating
-    if (err.message && (err.message.includes("402") || err.message.includes("subscription"))) {
-      if (confirm("You need an active subscription or plan to unlock notes, transcripts, and captures. Would you like to choose a plan now?")) {
-        window.location.href = "payments.html?plan=STANDARD";
-      }
-    }
+    // Log gracefully — viewing existing paid/created captures and notes is never blocked on load
+    console.warn("Notice loading session assets:", err);
   }
 }
 
@@ -375,8 +377,12 @@ async function secureDownload(endpoint, filename, mimeType) {
       credentials: 'include',
     });
 
+    // Check if 50/100 plans require the 20 KES weekly download pass (status 402)
     if (response.status === 402) {
-      throw new Error("Active subscription required for downloads.");
+      if (confirm("Downloads on your current plan require a 20 KES weekly download pass. Proceed to payment?")) {
+        window.location.href = "payments.html?plan=DOWNLOAD_PASS";
+      }
+      return;
     }
 
     if (!response.ok) {
@@ -398,13 +404,7 @@ async function secureDownload(endpoint, filename, mimeType) {
     a.remove();
   } catch (error) {
     console.error("Download failed:", error);
-    if (error.message.includes("402") || error.message.includes("subscription")) {
-      if (confirm("Subscription required to download study materials. Proceed to payment?")) {
-        window.location.href = "payments.html?plan=STANDARD";
-      }
-    } else {
-      alert(`Download failed: ${error.message}`);
-    }
+    alert(`Download failed: ${error.message}`);
   }
 }
 
