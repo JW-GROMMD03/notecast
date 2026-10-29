@@ -14,6 +14,7 @@ function getAbsoluteImageUrl(url) {
   if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
     return url;
   }
+  // Strip leading slashes and redundant api/ paths to avoid double-nesting
   const cleanPath = url.replace(/^\/?(api\/)?/, "");
   return `https://notecast-web.onrender.com/api/${cleanPath}`;
 }
@@ -38,10 +39,12 @@ export class SmartWhiteboardCapture {
     this.STABLE_FRAMES_NEEDED = 2;
     this.stableCount = 0;
 
+    // Tuned for real-world lighting, shadows, and auto-exposure
     this.INSTANT_MOTION_THRESHOLD = 0.5;
     this.SIGNIFICANT_CONTENT_CHANGE = 2.0;
     this.WIPE_THRESHOLD = 15.0;
 
+    // Prevent spamming the backend (10 seconds between standard captures)
     this.CAPTURE_COOLDOWN = 10000;
     this.lastCaptureTime = 0;
 
@@ -60,6 +63,7 @@ export class SmartWhiteboardCapture {
   analyzeFrame() {
     if (!this.video || this.video.paused || this.video.ended) return;
 
+    // Ensure canvas matches video resolution dynamically
     if (this.canvas.width !== this.video.videoWidth || this.canvas.height !== this.video.videoHeight) {
       if (this.video.videoWidth && this.video.videoHeight) {
         this.canvas.width = this.video.videoWidth;
@@ -71,8 +75,11 @@ export class SmartWhiteboardCapture {
 
     try {
       this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+
+      // Extract raw image data (Fast, no JPEG compression overhead)
       const currentFrame = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
 
+      // Maintain the rolling buffer with raw ImageData to save CPU/Memory
       this.frameBuffer.push(currentFrame);
       if (this.frameBuffer.length > this.BUFFER_SIZE) {
         this.frameBuffer.shift();
@@ -87,6 +94,7 @@ export class SmartWhiteboardCapture {
       const motionDiff = this.calculateDifference(this.previousFrameData, currentFrame);
       const now = Date.now();
 
+      // 1. WIPE OR CAMERA CUT DETECTION
       if (motionDiff > this.WIPE_THRESHOLD) {
         let preWipeFrameData = null;
         if (this.frameBuffer.length >= 4) {
@@ -104,14 +112,19 @@ export class SmartWhiteboardCapture {
           }
         }
         this.stableCount = 0;
-      } else if (motionDiff > this.INSTANT_MOTION_THRESHOLD) {
+      }
+      // 2. PROFESSOR WRITING / POINTING (Motion Occurring)
+      else if (motionDiff > this.INSTANT_MOTION_THRESHOLD) {
         this.stableCount = 0;
-      } else {
+      }
+      // 3. SCENE IS STILL (Professor stepped away)
+      else {
         this.stableCount++;
 
         if (this.stableCount >= this.STABLE_FRAMES_NEEDED) {
           const contentDiff = this.calculateDifference(this.lastCapturedData, currentFrame);
 
+          // Only capture if enough content changed AND cooldown has expired
           if (contentDiff > this.SIGNIFICANT_CONTENT_CHANGE && (now - this.lastCaptureTime > this.CAPTURE_COOLDOWN)) {
             this.dispatchCapture(currentFrame, "Unobstructed Whiteboard Capture");
             this.lastCapturedData = currentFrame;
@@ -126,6 +139,7 @@ export class SmartWhiteboardCapture {
     }
   }
 
+  // Helper: Only compress to DataURL when we actually decide to send to the backend
   dispatchCapture(imageData, reason) {
     if (typeof this.callback !== 'function') return;
     this.ctx.putImageData(imageData, 0, 0);
@@ -140,7 +154,9 @@ export class SmartWhiteboardCapture {
     const data2 = frame2.data;
     const len = data1.length;
 
+    // Check every 4th pixel (step by 16 bytes: RGBA) for high-speed accuracy
     for (let i = 0; i < len; i += 16) {
+      // Convert to grayscale/luminance to ignore minor color shifts & soft shadows
       const lum1 = 0.299 * data1[i] + 0.587 * data1[i+1] + 0.114 * data1[i+2];
       const lum2 = 0.299 * data2[i] + 0.587 * data2[i+1] + 0.114 * data2[i+2];
 
@@ -528,6 +544,9 @@ function escapeHtml(str) {
   return (str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// =========================================================================
+// O(N) LINE-BY-LINE "SMART ENGINE" (Safely handles lists, diagrams, tables)
+// =========================================================================
 function mdToHtml(md) {
   if (!md) return "";
 
