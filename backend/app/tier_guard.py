@@ -4,7 +4,6 @@ from datetime import date, datetime, timezone
 import uuid
 from .models import User, UserSubscription, DailyUsage, OneOffCredit, ResourceNoteUsage
 
-# Matrix Definition
 TIER_LIMITS = {
     "ECONOMY": { 
         "yt_seconds": 0, "free_downloads": False, "ai_notes_daily": 0,
@@ -91,7 +90,6 @@ def verify_action_entitlement(
             has_pass = pass_until > now
 
         if not limits["free_downloads"] and not has_pass:
-            # Check for either a DOWNLOAD_PASS credit or a SINGLE_DOWNLOAD credit
             credit = db.query(OneOffCredit).filter(
                 OneOffCredit.user_id == user_id,
                 OneOffCredit.credit_type.in_(["SINGLE_DOWNLOAD", "DOWNLOAD_PASS"]),
@@ -104,30 +102,32 @@ def verify_action_entitlement(
                 )
 
     elif action_type == "GENERATE_AI_NOTES":
-        if tier in ["STARTUP", "ECONOMY"]:
-            raise HTTPException(
-                status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                detail="AI Note generation is unavailable on this plan. Upgrade to Basic or higher."
-            )
-        
-        if tier == "BASIC":
-            credit = db.query(OneOffCredit).filter(
-                OneOffCredit.user_id == user_id,
-                OneOffCredit.credit_type == "SINGLE_AI_NOTE",
-                OneOffCredit.is_redeemed == False
-            ).first()
-            if not credit:
-                raise HTTPException(
-                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail="Basic plan requires an 80 KES token per AI Note generation."
-                )
+        # 20 KES pay-per-use token or active pass check for AI notes
+        user_record = db.query(User).filter(User.id == user_id).first()
+        pass_until = getattr(user_record, "unlimited_downloads_until", None)
+        has_pass = False
+        if pass_until:
+            if pass_until.tzinfo is None:
+                pass_until = pass_until.replace(tzinfo=timezone.utc)
+            has_pass = pass_until > now
+
+        has_ai_credit = db.query(OneOffCredit).filter(
+            OneOffCredit.user_id == user_id,
+            OneOffCredit.credit_type.in_(["SINGLE_AI_NOTE", "SINGLE_DOWNLOAD", "DOWNLOAD_PASS"]),
+            OneOffCredit.is_redeemed == False
+        ).first() is not None
 
         if tier in ["STANDARD", "PREMIUM"]:
-            if usage.ai_notes_count >= limits["ai_notes_daily"]:
+            if usage.ai_notes_count >= limits["ai_notes_daily"] and not has_ai_credit:
                 raise HTTPException(
                     status_code=status.HTTP_402_PAYMENT_REQUIRED,
                     detail=f"Daily limit of {limits['ai_notes_daily']} AI notes reached for {tier} plan."
                 )
+        elif not has_pass and not has_ai_credit:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail="AI Note generation requires a 20 KES pass/token or an upgraded plan."
+            )
 
         if resource_id:
             res_usage = db.query(ResourceNoteUsage).filter(

@@ -251,8 +251,8 @@ function bindUIEvents() {
       } catch (err) {
         console.error("AI Generation error:", err);
         if (err.message && (err.message.includes("402") || err.message.includes("subscription"))) {
-          if (confirm("Your subscription constraints do not permit generating new AI notes. Would you like to upgrade?")) {
-            window.location.href = "payments.html?plan=STANDARD";
+          if (confirm("AI Note generation requires a 20 KES weekly download pass. Proceed to payment?")) {
+            window.location.href = "payments.html?plan=DOWNLOAD_PASS&redirect=" + encodeURIComponent(window.location.href);
           }
         } else if (container) {
           container.innerHTML = `<div class="empty-state" style="color: var(--danger);">Failed to trigger AI generation. ${err.message || 'Check your connection.'}</div>`;
@@ -284,25 +284,27 @@ function bindUIEvents() {
     });
   }
 
-  document.querySelectorAll(".dl-pdf, .btn-pdf, #downloadPdfNotesBtn, #downloadPdfAiBtn, #downloadPdfTranscriptBtn, #downloadPdfBtn, #downloadPdfAiNotesBtn").forEach(btn => {
+  // --- AI NOTES EXPORTS ---
+  document.querySelectorAll("#downloadPdfAiNotesBtn, #downloadPdfAiBtn").forEach(btn => {
     if (btn) {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
-        secureDownload(`/videos/${videoId}/ai-notes/download-pdf`, `${sanitizeFilename(currentVideoTitle)}_Study_Guide.pdf`, 'application/pdf');
+        secureDownload(`/videos/${videoId}/ai-notes/download-pdf`, `${sanitizeFilename(currentVideoTitle)}_AI_Notes.pdf`, 'application/pdf');
       });
     }
   });
 
-  document.querySelectorAll(".dl-ppt, .btn-ppt, #downloadPptNotesBtn, #downloadPptAiBtn, #downloadPptAiNotesBtn").forEach(btn => {
+  document.querySelectorAll("#downloadPptAiNotesBtn, #downloadPptAiBtn").forEach(btn => {
     if (btn) {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
-        secureDownload(`/videos/${videoId}/ai-notes/download-ppt`, `${sanitizeFilename(currentVideoTitle)}_Master_Deck.pptx`, 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+        secureDownload(`/videos/${videoId}/ai-notes/download-ppt`, `${sanitizeFilename(currentVideoTitle)}_AI_Notes.pptx`, 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
       });
     }
   });
 
-  const downloadPdfCapturesBtn = document.getElementById("downloadPdfCapturesBtn");
+  // --- CAPTURES EXPORTS (Slide Captures & PPT Decks) ---
+  const downloadPdfCapturesBtn = document.getElementById("downloadPdfCapturesBtn") || document.getElementById("downloadPdfBtn") || document.getElementById("downloadPdfNotesBtn");
   if (downloadPdfCapturesBtn) {
     downloadPdfCapturesBtn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -310,7 +312,7 @@ function bindUIEvents() {
     });
   }
 
-  const downloadPptCapturesBtn = document.getElementById("downloadPptCapturesBtn");
+  const downloadPptCapturesBtn = document.getElementById("downloadPptCapturesBtn") || document.getElementById("downloadPptNotesBtn");
   if (downloadPptCapturesBtn) {
     downloadPptCapturesBtn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -349,7 +351,6 @@ async function load() {
     console.warn("Video metadata fetch notice:", err.message);
   }
 
-  // Independently fetch and render each resource so a 402/error on one never blocks the others
   try {
     const notes = await authedFetch(`/videos/${videoId}/notes`);
     renderNotes(notes);
@@ -388,10 +389,9 @@ async function secureDownload(endpoint, filename, mimeType) {
       credentials: 'include',
     });
 
-    // Inside secureDownload() in video.js:
     if (response.status === 402) {
-      if (confirm("Downloads on your current plan require a 20 KES weekly download pass. Proceed to payment?")) {
-        window.location.href = "payments.html?plan=DOWNLOAD_PASS"; // Updated to DOWNLOAD_PASS
+      if (confirm("Downloads and AI features require a 20 KES weekly download pass. Proceed to payment?")) {
+        window.location.href = `payments.html?plan=DOWNLOAD_PASS&redirect=${encodeURIComponent(window.location.href)}`;
       }
       return;
     }
