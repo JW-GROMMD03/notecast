@@ -2,7 +2,7 @@ import { authedFetch, requireAuth } from "./api.js";
 
 const el = (id) => document.getElementById(id);
 
-// Config catalog - Updated with Weekly 100 KES
+// Config catalog - Updated with Weekly 100 KES & Download Pass
 const PLANS = {
   "ECONOMY_NOTE": { amount: 50, name: "Economy Note Token (Pay-As-You-Go)" },
   "STARTUP": { amount: 100, name: "Startup Plan (Weekly)" },
@@ -121,29 +121,31 @@ function startPolling() {
   
   pollInterval = setInterval(async () => {
     attempts++;
-    if (attempts > 60) {
+    
+    // Timeout after 90 seconds (30 attempts * 3s)
+    if (attempts > 30) {
       clearInterval(pollInterval);
-      showCompletionUI("TIMEOUT", "Payment confirmation timed out. Contact support if charged.");
+      showCompletionUI("FAILED", "Payment timed out or was cancelled. Please try again.");
       return;
     }
     
     try {
       const res = await authedFetch(`/payments/status/${currentTxId}`);
       let data = res;
-      if(res.json) data = await res.json();
+      if (res.json) data = await res.json();
       
       if (data.status === "COMPLETED") { 
         clearInterval(pollInterval);
-        showCompletionUI("SUCCESS", "Payment Successful! Your account features have been updated.");
+        showCompletionUI("SUCCESS", "Payment Successful! Your download pass is now active.");
       } 
       else if (data.status === "FAILED") {
         clearInterval(pollInterval);
-        showCompletionUI("FAILED", "Payment was cancelled or rejected on M-Pesa.");
+        showCompletionUI("FAILED", "Transaction was cancelled or failed on your phone.");
       }
     } catch (e) {
       console.error("Polling error:", e);
     }
-  }, 5000);
+  }, 3000);
 }
 
 function showCompletionUI(status, message) {
@@ -152,10 +154,14 @@ function showCompletionUI(status, message) {
 
   if (statusContainer) {
     const color = status === "SUCCESS" ? "#10b981" : "#ef4444";
-    const heading = status === "SUCCESS" ? "Payment Successful" : "Transaction Failed";
+    const heading = status === "SUCCESS" ? "Payment Successful 🎉" : "Payment Cancelled / Failed ❌";
+    
     statusContainer.innerHTML = `
-      <h3 style="color: ${color}; margin-top: 10px;">${heading}</h3>
-      <p style="color: var(--text-muted); font-size: 0.95rem;">${message}</p>
+      <div style="margin-bottom: 16px;">
+        <h3 style="color: ${color}; margin-top: 10px; font-size: 1.4rem;">${heading}</h3>
+        <p style="color: var(--text-muted); font-size: 0.95rem; margin-top: 8px;">${message}</p>
+      </div>
+      ${status === "FAILED" ? `<button onclick="window.location.reload()" class="btn-primary" style="margin-top: 12px; padding: 10px 20px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer;">Try Again</button>` : ''}
     `;
   }
   
