@@ -347,26 +347,41 @@ async function load() {
     const metaEl = document.getElementById("videoMeta");
     if (metaEl) metaEl.textContent = `${video.channel || "Unknown Channel"} · ${statusLabel(video.status)}`;
 
-    // Freely fetch notes, captures, and transcripts for videos already created/paid for
-    const [notes, aiNotesData, transcript, visuals] = await Promise.all([
-      authedFetch(`/videos/${videoId}/notes`),
-      authedFetch(`/videos/${videoId}/ai-notes`),
-      authedFetch(`/videos/${videoId}/transcript`),
-      authedFetch(`/videos/${videoId}/captures`),
-    ]);
+    // Fetch each resource independently so a 402 on one doesn't block the others
+    try {
+      const notes = await authedFetch(`/videos/${videoId}/notes`);
+      renderNotes(notes);
+    } catch (e) {
+      console.warn("Notes restricted or unavailable:", e.message);
+    }
 
-    renderNotes(notes);
-    renderAiNotes(aiNotesData);
-    renderTranscript(transcript);
-    renderVisuals(visuals);
+    try {
+      const aiNotesData = await authedFetch(`/videos/${videoId}/ai-notes`);
+      renderAiNotes(aiNotesData);
+    } catch (e) {
+      console.warn("AI notes restricted or unavailable:", e.message);
+    }
+
+    try {
+      const transcript = await authedFetch(`/videos/${videoId}/transcript`);
+      renderTranscript(transcript);
+    } catch (e) {
+      console.warn("Transcript restricted or unavailable:", e.message);
+    }
+
+    try {
+      const visuals = await authedFetch(`/videos/${videoId}/captures`);
+      renderVisuals(visuals);
+    } catch (e) {
+      console.warn("Captures restricted or unavailable:", e.message);
+    }
 
     clearTimeout(pollTimer);
     if (["initializing", "capturing", "processing"].includes(video.status)) {
       pollTimer = setTimeout(load, 4000);
     }
   } catch (err) {
-    // Log gracefully — viewing existing paid/created captures and notes is never blocked on load
-    console.warn("Notice loading session assets:", err);
+    console.error("Error loading video session:", err);
   }
 }
 
