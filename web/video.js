@@ -61,78 +61,87 @@ export class SmartWhiteboardCapture {
   }
 
   analyzeFrame() {
-    if (this.video.paused || this.video.ended) return;
+    if (!this.video || this.video.paused || this.video.ended) return;
 
     // Ensure canvas matches video resolution dynamically
     if (this.canvas.width !== this.video.videoWidth || this.canvas.height !== this.video.videoHeight) {
-      this.canvas.width = this.video.videoWidth;
-      this.canvas.height = this.video.videoHeight;
+      if (this.video.videoWidth && this.video.videoHeight) {
+        this.canvas.width = this.video.videoWidth;
+        this.canvas.height = this.video.videoHeight;
+      } else {
+        return;
+      }
     }
 
-    this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+    try {
+      this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
 
-    // Extract raw image data (Fast, no JPEG compression overhead)
-    const currentFrame = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+      // Extract raw image data (Fast, no JPEG compression overhead)
+      const currentFrame = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
 
-    // Maintain the rolling buffer with raw ImageData to save CPU/Memory
-    this.frameBuffer.push(currentFrame);
-    if (this.frameBuffer.length > this.BUFFER_SIZE) {
-      this.frameBuffer.shift();
-    }
+      // Maintain the rolling buffer with raw ImageData to save CPU/Memory
+      this.frameBuffer.push(currentFrame);
+      if (this.frameBuffer.length > this.BUFFER_SIZE) {
+        this.frameBuffer.shift();
+      }
 
-    if (!this.previousFrameData) {
+      if (!this.previousFrameData) {
+        this.previousFrameData = currentFrame;
+        this.lastCapturedData = currentFrame;
+        return;
+      }
+
+      const motionDiff = this.calculateDifference(this.previousFrameData, currentFrame);
+      const now = Date.now();
+
+      // 1. WIPE OR CAMERA CUT DETECTION
+      if (motionDiff > this.WIPE_THRESHOLD) {
+        let preWipeFrameData = null;
+        if (this.frameBuffer.length >= 4) {
+          preWipeFrameData = this.frameBuffer[this.frameBuffer.length - 4];
+        } else if (this.frameBuffer.length > 0) {
+          preWipeFrameData = this.frameBuffer[0];
+        }
+
+        if (preWipeFrameData) {
+          const contentDiff = this.calculateDifference(this.lastCapturedData, preWipeFrameData);
+          if (contentDiff > this.SIGNIFICANT_CONTENT_CHANGE) {
+            this.dispatchCapture(preWipeFrameData, "WIPE_EVENT: Board Erased / Transitioned");
+            this.lastCapturedData = currentFrame;
+            this.lastCaptureTime = now;
+          }
+        }
+        this.stableCount = 0;
+      }
+      // 2. PROFESSOR WRITING / POINTING (Motion Occurring)
+      else if (motionDiff > this.INSTANT_MOTION_THRESHOLD) {
+        this.stableCount = 0;
+      }
+      // 3. SCENE IS STILL (Professor stepped away)
+      else {
+        this.stableCount++;
+
+        if (this.stableCount >= this.STABLE_FRAMES_NEEDED) {
+          const contentDiff = this.calculateDifference(this.lastCapturedData, currentFrame);
+
+          // Only capture if enough content changed AND cooldown has expired
+          if (contentDiff > this.SIGNIFICANT_CONTENT_CHANGE && (now - this.lastCaptureTime > this.CAPTURE_COOLDOWN)) {
+            this.dispatchCapture(currentFrame, "Unobstructed Whiteboard Capture");
+            this.lastCapturedData = currentFrame;
+            this.lastCaptureTime = now;
+          }
+        }
+      }
+
       this.previousFrameData = currentFrame;
-      this.lastCapturedData = currentFrame;
-      return;
+    } catch (err) {
+      console.warn("Frame analysis warning:", err);
     }
-
-    const motionDiff = this.calculateDifference(this.previousFrameData, currentFrame);
-    const now = Date.now();
-
-    // 1. WIPE OR CAMERA CUT DETECTION
-    if (motionDiff > this.WIPE_THRESHOLD) {
-      let preWipeFrameData = null;
-      if (this.frameBuffer.length >= 4) {
-        preWipeFrameData = this.frameBuffer[this.frameBuffer.length - 4];
-      } else if (this.frameBuffer.length > 0) {
-        preWipeFrameData = this.frameBuffer[0];
-      }
-
-      if (preWipeFrameData) {
-        const contentDiff = this.calculateDifference(this.lastCapturedData, preWipeFrameData);
-        if (contentDiff > this.SIGNIFICANT_CONTENT_CHANGE) {
-          this.dispatchCapture(preWipeFrameData, "WIPE_EVENT: Board Erased / Transitioned");
-          this.lastCapturedData = currentFrame;
-          this.lastCaptureTime = now;
-        }
-      }
-      this.stableCount = 0;
-    }
-    // 2. PROFESSOR WRITING / POINTING (Motion Occurring)
-    else if (motionDiff > this.INSTANT_MOTION_THRESHOLD) {
-      this.stableCount = 0;
-    }
-    // 3. SCENE IS STILL (Professor stepped away)
-    else {
-      this.stableCount++;
-
-      if (this.stableCount >= this.STABLE_FRAMES_NEEDED) {
-        const contentDiff = this.calculateDifference(this.lastCapturedData, currentFrame);
-
-        // Only capture if enough content changed AND cooldown has expired
-        if (contentDiff > this.SIGNIFICANT_CONTENT_CHANGE && (now - this.lastCaptureTime > this.CAPTURE_COOLDOWN)) {
-          this.dispatchCapture(currentFrame, "Unobstructed Whiteboard Capture");
-          this.lastCapturedData = currentFrame;
-          this.lastCaptureTime = now;
-        }
-      }
-    }
-
-    this.previousFrameData = currentFrame;
   }
 
   // Helper: Only compress to DataURL when we actually decide to send to the backend
   dispatchCapture(imageData, reason) {
+    if (typeof this.callback !== 'function') return;
     this.ctx.putImageData(imageData, 0, 0);
     const dataURL = this.canvas.toDataURL('image/jpeg', 0.8);
     this.callback(dataURL, reason);
