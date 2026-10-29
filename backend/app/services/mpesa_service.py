@@ -48,10 +48,10 @@ def initiate_stk_push(phone_number: str, amount: int, plan_name: str) -> tuple[d
         "BusinessShortCode": settings.MPESA_BUSINESS_SHORTCODE,
         "Password": password,
         "Timestamp": timestamp,
-        "TransactionType": "CustomerPayBillOnline",  # Updated for Paybill
+        "TransactionType": "CustomerPayBillOnline",
         "Amount": amount,
         "PartyA": formatted_phone,
-        "PartyB": settings.MPESA_BUSINESS_SHORTCODE, # Paybill shortcode (1392922)
+        "PartyB": settings.MPESA_BUSINESS_SHORTCODE,
         "PhoneNumber": formatted_phone,
         "CallBackURL": settings.MPESA_CALLBACK_URL,
         "AccountReference": f"NC-{plan_name[:10]}",
@@ -63,6 +63,28 @@ def initiate_stk_push(phone_number: str, amount: int, plan_name: str) -> tuple[d
     
     return response.json(), formatted_phone
 
+def query_stk_status(checkout_request_id: str) -> dict:
+    """Queries Safaricom Daraja API for the actual status of an STK push."""
+    token = get_access_token()
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    password = base64.b64encode(
+        f"{settings.MPESA_BUSINESS_SHORTCODE}{settings.MPESA_PASSKEY}{timestamp}".encode()
+    ).decode("utf-8")
+    
+    payload = {
+        "BusinessShortCode": settings.MPESA_BUSINESS_SHORTCODE,
+        "Password": password,
+        "Timestamp": timestamp,
+        "CheckoutRequestID": checkout_request_id,
+    }
+    r = requests.post(
+        f"{BASE_DARAJA_URL}/mpesa/stkpushquery/v1/query",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    return r.json()
+
 def generate_qr_code(amount: int, merchant_name: str = "Vectis unknown") -> str:
     """Generates a Safaricom Dynamic QR Code for Paybill."""
     token = get_access_token()
@@ -72,8 +94,8 @@ def generate_qr_code(amount: int, merchant_name: str = "Vectis unknown") -> str:
         "MerchantName": merchant_name,
         "RefNo": f"NC-{uuid.uuid4().hex[:6].upper()}",
         "Amount": amount,
-        "TrxCode": "PB",  # "PB" for Paybill
-        "CPI": settings.MPESA_BUSINESS_SHORTCODE, # 1392922
+        "TrxCode": "PB",
+        "CPI": settings.MPESA_BUSINESS_SHORTCODE,
         "Size": "300"
     }
     
@@ -81,6 +103,6 @@ def generate_qr_code(amount: int, merchant_name: str = "Vectis unknown") -> str:
     res = requests.post(url, json=qr_payload, headers=headers, timeout=15).json()
     
     if res.get("ResponseCode") == "00":
-        return res.get("QRCode") # Returns base64 string of the QR code image
+        return res.get("QRCode")
     
     raise Exception(res.get("errorMessage", "Failed to generate QR Code"))

@@ -1,8 +1,8 @@
 from fastapi import HTTPException, status, Depends
 from sqlalchemy.orm import Session
-from datetime import date
+from datetime import date, datetime, timezone
 import uuid
-from .models import UserSubscription, DailyUsage, OneOffCredit, ResourceNoteUsage
+from .models import User, UserSubscription, DailyUsage, OneOffCredit, ResourceNoteUsage
 
 # Matrix Definition
 TIER_LIMITS = {
@@ -45,8 +45,15 @@ def verify_action_entitlement(
     resource_id: str = None,
     db: Session = None
 ):
+    now = datetime.now(timezone.utc)
     sub = db.query(UserSubscription).filter(UserSubscription.user_id == user_id).first()
-    tier = sub.tier if sub and sub.tier in TIER_LIMITS else "ECONOMY"
+    
+    tier = "ECONOMY"
+    if sub and sub.tier in TIER_LIMITS:
+        # Enforce subscription expiration
+        if not sub.expires_at or sub.expires_at.replace(tzinfo=timezone.utc) > now:
+            tier = sub.tier
+
     limits = TIER_LIMITS[tier]
     usage = get_or_create_daily_usage(db, user_id)
 
@@ -72,7 +79,11 @@ def verify_action_entitlement(
             )
 
     elif action_type == "DOWNLOAD_DOCUMENT":
-        if not limits["free_downloads"]:
+        user_record = db.query(User).filter(User.id == user_id).first()
+        pass_until = getattr(user_record, "unlimited_downloads_until", None)
+        has_pass = bool(pass_until and pass_until.replace(tzinfo=timezone.utc) > now)
+
+        if not limits["free_downloads"] and not has_pass:
             # Check for 20 KES credit
             credit = db.query(OneOffCredit).filter(
                 OneOffCredit.user_id == user_id,

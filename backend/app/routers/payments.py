@@ -1,5 +1,6 @@
 import uuid
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session as DbSession
@@ -9,6 +10,8 @@ from ..services import mpesa_service
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 logger = logging.getLogger("notecast_payments")
+
+_last_query: dict = {}
 
 PRICING_CATALOG = {
     "STARTUP": {"amount": 100, "type": "PLAN_SUBSCRIPTION"},
@@ -20,6 +23,74 @@ PRICING_CATALOG = {
     "DOWNLOAD_PASS": {"amount": 20, "type": "DOWNLOAD_PASS"},
     "SINGLE_AI_NOTE": {"amount": 80, "type": "SINGLE_AI_NOTE"}
 }
+
+
+def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, desc=""):
+    if txn.status != "PENDING":   # idempotent: callback and query can both fire
+        return
+        
+    if int(result_code) == 0:
+        txn.status = "COMPLETED"
+        now_utc = datetime.now(timezone.utc)
+        
+        if txn.purchase_type == "PLAN_SUBSCRIPTION":
+            sub = db.query(models.UserSubscription).filter(
+                models.UserSubscription.user_id == txn.user_id
+            ).first()
+            
+            if not sub:
+                sub = models.UserSubscription(
+                    id=str(uuid.uuid4()), 
+                    user_id=txn.user_id,
+                    starts_at=now_utc
+                )
+                db.add(sub)
+                
+            sub.tier = txn.target_tier
+            sub.status = "active"
+            
+            # If 100 KES Startup Plan, set expiration to 7 days instead of 30
+            if txn.target_tier == "STARTUP":
+                sub.expires_at = now_utc + timedelta(days=7)
+            else:
+                sub.expires_at = now_utc + timedelta(days=30)
+            
+            # Sync directly to User model for fast querying
+            user = db.query(models.User).filter(models.User.id == txn.user_id).first()
+            if user:
+                user.plan = txn.target_tier
+
+        elif txn.purchase_type == "DOWNLOAD_PASS":
+            # Grant 1 week of unlimited downloads by updating user's pass expiration
+            user = db.query(models.User).filter(models.User.id == txn.user_id).first()
+            if user:
+                current_expiry = getattr(user, "unlimited_downloads_until", None)
+                base_time = max(current_expiry.replace(tzinfo=timezone.utc) if current_expiry else now_utc, now_utc)
+                user.unlimited_downloads_until = base_time + timedelta(days=7)
+                
+            credit = models.OneOffCredit(
+                id=str(uuid.uuid4()),
+                user_id=txn.user_id,
+                credit_type=txn.purchase_type,
+                is_redeemed=True
+            )
+            db.add(credit)
+
+        else:
+            # Grant one-off usage credit token
+            credit = models.OneOffCredit(
+                id=str(uuid.uuid4()),
+                user_id=txn.user_id,
+                credit_type=txn.purchase_type,
+                is_redeemed=False
+            )
+            db.add(credit)
+        
+        db.commit()
+    else:
+        logger.warning(f"Payment failed {txn.id}: {desc}")
+        txn.status = "FAILED"
+        db.commit()
 
 
 @router.post("/stk-push")
@@ -95,78 +166,17 @@ def generate_qr(
 async def mpesa_callback(request: Request, db: DbSession = Depends(get_db)):
     """Automatic webhook invoked by Safaricom Daraja when payment completes or fails."""
     payload = await request.json()
-    stk_callback = payload.get("Body", {}).get("stkCallback", {})
-    result_code = stk_callback.get("ResultCode")
-    checkout_id = stk_callback.get("CheckoutRequestID")
-
+    logger.info(f"CALLBACK RECEIVED: {payload}")
+    cb = payload.get("Body", {}).get("stkCallback", {})
+    
     txn = db.query(models.PaymentTransaction).filter(
-        models.PaymentTransaction.checkout_request_id == checkout_id
+        models.PaymentTransaction.checkout_request_id == cb.get("CheckoutRequestID")
     ).first()
     
     if not txn:
-        logger.warning(f"Callback received for unknown checkout_id: {checkout_id}")
         return {"ResultCode": 1, "ResultDesc": "Transaction not found"}
-
-    if result_code == 0:
-        logger.info(f"Payment successful for transaction {txn.id}")
-        txn.status = "COMPLETED"
-        now_utc = datetime.now(timezone.utc)
         
-        if txn.purchase_type == "PLAN_SUBSCRIPTION":
-            sub = db.query(models.UserSubscription).filter(
-                models.UserSubscription.user_id == txn.user_id
-            ).first()
-            
-            if not sub:
-                sub = models.UserSubscription(
-                    id=str(uuid.uuid4()), 
-                    user_id=txn.user_id,
-                    starts_at=now_utc
-                )
-                db.add(sub)
-                
-            sub.tier = txn.target_tier
-            sub.status = "active"
-            
-            if txn.target_tier == "STARTUP":
-                sub.expires_at = now_utc + timedelta(days=7)
-            else:
-                sub.expires_at = now_utc + timedelta(days=30)
-            
-            user = db.query(models.User).filter(models.User.id == txn.user_id).first()
-            if user:
-                user.plan = txn.target_tier
-
-        elif txn.purchase_type == "DOWNLOAD_PASS":
-            user = db.query(models.User).filter(models.User.id == txn.user_id).first()
-            if user:
-                current_expiry = getattr(user, "unlimited_downloads_until", None)
-                base_time = max(current_expiry.replace(tzinfo=timezone.utc) if current_expiry else now_utc, now_utc)
-                user.unlimited_downloads_until = base_time + timedelta(days=7)
-                
-            credit = models.OneOffCredit(
-                id=str(uuid.uuid4()),
-                user_id=txn.user_id,
-                credit_type=txn.purchase_type,
-                is_redeemed=True
-            )
-            db.add(credit)
-
-        else:
-            credit = models.OneOffCredit(
-                id=str(uuid.uuid4()),
-                user_id=txn.user_id,
-                credit_type=txn.purchase_type,
-                is_redeemed=False
-            )
-            db.add(credit)
-        
-        db.commit()
-    else:
-        logger.warning(f"Payment failed for transaction {txn.id}: {stk_callback.get('ResultDesc')}")
-        txn.status = "FAILED"
-        db.commit()
-        
+    _apply_result(db, txn, cb.get("ResultCode"), cb.get("ResultDesc", ""))
     return {"ResultCode": 0, "ResultDesc": "Accepted"}
 
 
@@ -184,5 +194,16 @@ def check_payment_status(
     
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found.")
-    
+
+    # Ask Safaricom directly (throttled to avoid Daraja rate limits)
+    if tx.status == "PENDING" and time.time() - _last_query.get(tx.id, 0) >= 3:
+        _last_query[tx.id] = time.time()
+        try:
+            q = mpesa_service.query_stk_status(tx.checkout_request_id)
+            if "ResultCode" in q:
+                _apply_result(db, tx, q["ResultCode"], q.get("ResultDesc", ""))
+                db.refresh(tx)
+        except Exception as e:
+            logger.warning(f"STK query failed for {tx.id}: {e}")
+
     return {"status": tx.status}

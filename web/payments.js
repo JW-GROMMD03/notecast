@@ -107,26 +107,21 @@ if (paymentForm) {
 }
 
 function startFastPolling() {
-  let attempts = 0;
-  
-  // Poll every 1 second (1000ms) to instantly catch the callback
-  pollInterval = setInterval(async () => {
-    attempts++;
-    
-    // Increased timeout to 120 seconds (120 attempts) to give Safaricom time to process
-    if (attempts > 120) {
-      clearInterval(pollInterval);
-      showCompletionUI("FAILED", "Payment timed out. Please try again.");
+  const startedAt = Date.now();
+  const MAX_MS = 120000; // Allow exactly 120 seconds maximum timeout
+
+  const tick = async () => {
+    if (Date.now() - startedAt > MAX_MS) {
+      showCompletionUI("TIMEOUT", "We couldn't confirm your payment. If money was deducted, your access will unlock automatically within a few minutes.");
       return;
     }
-    
+
     try {
       const res = await authedFetch(`/payments/status/${currentTxId}`);
       let data = res;
       if (res.json) data = await res.json();
       
       if (data.status === "COMPLETED") { 
-        clearInterval(pollInterval);
         showCompletionUI("SUCCESS", "Payment Successful! Unlocking your downloads & redirecting...");
         
         setTimeout(() => {
@@ -136,15 +131,22 @@ function startFastPolling() {
             window.location.href = "dashboard.html";
           }
         }, 1500);
+        return; // Break the recursive loop
       } 
-      else if (data.status === "FAILED") {
-        clearInterval(pollInterval);
+      
+      if (data.status === "FAILED") {
         showCompletionUI("FAILED", "Transaction was cancelled or failed on your phone.");
+        return; // Break the recursive loop
       }
     } catch (e) {
       console.error("Polling error:", e);
     }
-  }, 1000);
+    
+    // Check again in 2 seconds (non-overlapping chain so Daraja has time to breathe)
+    pollInterval = setTimeout(tick, 2000);
+  };
+  
+  tick();
 }
 
 function showCompletionUI(status, message) {
@@ -152,15 +154,15 @@ function showCompletionUI(status, message) {
   const actionButtons = el("actionButtons");
 
   if (statusContainer) {
-    const color = status === "SUCCESS" ? "#10b981" : "#ef4444";
-    const heading = status === "SUCCESS" ? "Payment Successful 🎉" : "Payment Cancelled / Failed ❌";
+    const color = status === "SUCCESS" ? "#10b981" : (status === "TIMEOUT" ? "#f59e0b" : "#ef4444");
+    const heading = status === "SUCCESS" ? "Payment Successful 🎉" : (status === "TIMEOUT" ? "Payment Pending ⏳" : "Payment Cancelled / Failed ❌");
     
     statusContainer.innerHTML = `
       <div style="margin-bottom: 16px;">
         <h3 style="color: ${color}; margin-top: 10px; font-size: 1.4rem;">${heading}</h3>
         <p style="color: var(--text-muted); font-size: 0.95rem; margin-top: 8px;">${message}</p>
       </div>
-      ${status === "FAILED" ? `<button onclick="window.location.reload()" class="btn-primary" style="margin-top: 12px; padding: 10px 20px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer;">Try Again</button>` : ''}
+      ${status !== "SUCCESS" ? `<button onclick="window.location.reload()" class="btn-primary" style="margin-top: 12px; padding: 10px 20px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer;">Try Again</button>` : ''}
     `;
   }
   
