@@ -27,6 +27,7 @@ class PurchaseType(str, enum.Enum):
     PLAN_SUBSCRIPTION = "PLAN_SUBSCRIPTION"
     ECONOMY_NOTE = "ECONOMY_NOTE"        # 50 KES
     SINGLE_DOWNLOAD = "SINGLE_DOWNLOAD"  # 20 KES
+    DOWNLOAD_PASS = "DOWNLOAD_PASS"      # 20 KES Weekly Pass
     SINGLE_AI_NOTE = "SINGLE_AI_NOTE"    # 80 KES
 
 
@@ -37,6 +38,7 @@ class User(Base):
     display_name = Column(String, default="")
     plan = Column(String, default=PlanTier.ECONOMY.value)  
     llm_credits = Column(Integer, default=0)
+    unlimited_downloads_until = Column(DateTime(timezone=True), nullable=True) # Supports Weekly Download Passes
     created_at = Column(DateTime, default=now)
 
     videos = relationship("Video", back_populates="user", cascade="all, delete-orphan")

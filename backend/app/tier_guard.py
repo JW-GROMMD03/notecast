@@ -6,24 +6,24 @@ from .models import User, UserSubscription, DailyUsage, OneOffCredit, ResourceNo
 
 # Matrix Definition
 TIER_LIMITS = {
-    "ECONOMY": { # Base state, requires tokens for everything
+    "ECONOMY": { 
         "yt_seconds": 0, "free_downloads": False, "ai_notes_daily": 0,
         "static_sims_daily": 0, "llm_sims_daily": 0, "doc_summaries_daily": 0
     },
-    "STARTUP": { # 100 KES
+    "STARTUP": { 
         "yt_seconds": 3600, "free_downloads": False, "ai_notes_daily": 0,
         "static_sims_daily": 0, "llm_sims_daily": 0, "doc_summaries_daily": 0
     },
-    "BASIC": { # 250 KES
-        "yt_seconds": 7200, "free_downloads": True, "ai_notes_daily": 0, # requires 80 KES pay-per-use
+    "BASIC": { 
+        "yt_seconds": 7200, "free_downloads": True, "ai_notes_daily": 0, 
         "static_sims_daily": 0, "llm_sims_daily": 0, "doc_summaries_daily": 0
     },
-    "STANDARD": { # 800 KES
+    "STANDARD": { 
         "yt_seconds": 14400, "free_downloads": True, "ai_notes_daily": 2,
         "static_sims_daily": 2, "llm_sims_daily": 0, "doc_summaries_daily": 2
     },
-    "PREMIUM": { # 1199 KES
-        "yt_seconds": 43200, "free_downloads": True, "ai_notes_daily": 999, # unlimited daily
+    "PREMIUM": { 
+        "yt_seconds": 43200, "free_downloads": True, "ai_notes_daily": 999, 
         "static_sims_daily": 5, "llm_sims_daily": 2, "doc_summaries_daily": 6
     }
 }
@@ -50,8 +50,13 @@ def verify_action_entitlement(
     
     tier = "ECONOMY"
     if sub and sub.tier in TIER_LIMITS:
-        # Enforce subscription expiration
-        if not sub.expires_at or sub.expires_at.replace(tzinfo=timezone.utc) > now:
+        exp = sub.expires_at
+        if exp:
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            if exp > now:
+                tier = sub.tier
+        else:
             tier = sub.tier
 
     limits = TIER_LIMITS[tier]
@@ -59,7 +64,6 @@ def verify_action_entitlement(
 
     if action_type == "YOUTUBE_GENERATE":
         if tier == "ECONOMY":
-            # Must have a 50 KES Economy Note generation token
             credit = db.query(OneOffCredit).filter(
                 OneOffCredit.user_id == user_id,
                 OneOffCredit.credit_type == "ECONOMY_NOTE",
@@ -70,8 +74,6 @@ def verify_action_entitlement(
                     status_code=status.HTTP_402_PAYMENT_REQUIRED,
                     detail="Economy Plan requires a 50 KES token per YouTube note generation."
                 )
-            # If generating consumes the token, you would mark `credit.is_redeemed = True` here or in the route
-
         elif usage.youtube_seconds + video_duration_seconds > limits["yt_seconds"]:
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
@@ -81,19 +83,24 @@ def verify_action_entitlement(
     elif action_type == "DOWNLOAD_DOCUMENT":
         user_record = db.query(User).filter(User.id == user_id).first()
         pass_until = getattr(user_record, "unlimited_downloads_until", None)
-        has_pass = bool(pass_until and pass_until.replace(tzinfo=timezone.utc) > now)
+        
+        has_pass = False
+        if pass_until:
+            if pass_until.tzinfo is None:
+                pass_until = pass_until.replace(tzinfo=timezone.utc)
+            has_pass = pass_until > now
 
         if not limits["free_downloads"] and not has_pass:
-            # Check for 20 KES credit
+            # Check for either a DOWNLOAD_PASS credit or a SINGLE_DOWNLOAD credit
             credit = db.query(OneOffCredit).filter(
                 OneOffCredit.user_id == user_id,
-                OneOffCredit.credit_type == "SINGLE_DOWNLOAD",
+                OneOffCredit.credit_type.in_(["SINGLE_DOWNLOAD", "DOWNLOAD_PASS"]),
                 OneOffCredit.is_redeemed == False
             ).first()
             if not credit:
                 raise HTTPException(
                     status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail="Downloads require a Basic subscription or a 20 KES pay-per-download token."
+                    detail="Downloads require a Basic subscription or a 20 KES weekly download pass."
                 )
 
     elif action_type == "GENERATE_AI_NOTES":
@@ -104,7 +111,6 @@ def verify_action_entitlement(
             )
         
         if tier == "BASIC":
-            # Must have an 80 KES pay-per-use token
             credit = db.query(OneOffCredit).filter(
                 OneOffCredit.user_id == user_id,
                 OneOffCredit.credit_type == "SINGLE_AI_NOTE",
@@ -123,7 +129,6 @@ def verify_action_entitlement(
                     detail=f"Daily limit of {limits['ai_notes_daily']} AI notes reached for {tier} plan."
                 )
 
-        # Enforce max 2 generations per specific note across ALL plans
         if resource_id:
             res_usage = db.query(ResourceNoteUsage).filter(
                 ResourceNoteUsage.user_id == user_id,
