@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session as DbSession
 from .. import models, schemas, auth
 from ..database import get_db
 
+# Import the manager to secure flashcards
+from .videos import SubscriptionManager 
+
 router = APIRouter(prefix="/flashcards", tags=["flashcards"])
 logger = logging.getLogger("notecast_flashcards")
 
@@ -35,6 +38,9 @@ def review_flashcard(
     """Updates card review interval based on SM-2 algorithm:
     q (quality): 0=Blackout, 3=Pass with difficulty, 5=Perfect recall.
     """
+    # Enforce Daily Limit before saving the review
+    SubscriptionManager.check_feature_daily_limit(user, db, "flashcards")
+    
     card = db.query(models.Flashcard).filter(
         models.Flashcard.id == card_id,
         models.Flashcard.user_id == user.id
@@ -68,4 +74,8 @@ def review_flashcard(
     
     db.commit()
     db.refresh(card)
+    
+    # Log usage after successful review
+    SubscriptionManager.log_usage(db, user.id, "flashcards", card.id)
+    
     return card

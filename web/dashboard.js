@@ -10,13 +10,13 @@ let currentPageNumber = 1;
 const totalPages = 5; 
 const pageCache = {}; 
 
-// --- PLANS CATALOG ---
+// --- PLANS CATALOG (Updated to Weekly 100 KES) ---
 const PLANS_CATALOG = {
   "ECONOMY_NOTE": { amount: 50, name: "Economy Note Token (Pay-As-You-Go)" },
-  "STARTUP": { amount: 100, name: "Startup Plan (Monthly)" },
+  "STARTUP": { amount: 100, name: "Startup Plan (Weekly)" },
   "BASIC": { amount: 250, name: "Basic Plan (Monthly)" },
   "STANDARD": { amount: 800, name: "Standard Plan (Monthly)" },
-  "PREMIUM": { amount: 1199, name: "Premium Plan (Monthly)" }
+  "PREMIUM": { amount: 2500, name: "Premium Plan (Monthly)" }
 };
 
 function cleanPhoneNumber(raw) {
@@ -128,10 +128,10 @@ function showEntitlementModal({ featureName, recommendedTier = "STANDARD", price
         <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 10px; padding: 12px; text-align: left; margin-bottom: 20px;">
           <div style="font-size: 0.78rem; font-weight: 700; color: #60a5fa; text-transform: uppercase; margin-bottom: 6px;">Qualifying Subscription Passes:</div>
           <ul style="margin: 0; padding-left: 18px; font-size: 0.82rem; color: #cbd5e1; line-height: 1.5;">
-            <li><strong>Startup Pass</strong> — 100 KES / mo (1 Hr YouTube Notes)</li>
+            <li><strong>Startup Pass</strong> — 100 KES / week (1 Hr YouTube Notes / Day)</li>
             <li><strong>Basic Pass</strong> — 250 KES / mo (2 Hrs Notes + Free Downloads)</li>
             <li><strong style="color: #60a5fa;">Standard Pass</strong> — 800 KES / mo (4 Hrs Notes + 2 Sims/day)</li>
-            <li><strong style="color: #60a5fa;">Premium Pass</strong> — 1199 KES / mo (12 Hrs Notes + Unlimited AI)</li>
+            <li><strong style="color: #60a5fa;">Premium Pass</strong> — 2500 KES / mo (Unlimited Capture + Unlimited AI)</li>
           </ul>
         </div>
 
@@ -502,10 +502,26 @@ window.authedFetch = async function(...args) {
         });
         throw new Error(detailMsg);
     }
+    // Also catch 429 globally for limits
+    if (response && !response.ok && response.status === 429) {
+      let detailMsg = "Limit Reached";
+      try {
+        const errorData = await response.json();
+        detailMsg = extractErrorMessage(errorData);
+      } catch(e) {}
+      showEntitlementModal({
+        featureName: "Requested Feature",
+        recommendedTier: "STANDARD",
+        priceText: "800 KES/mo",
+        isQuotaDepleted: true,
+        detailMessage: detailMsg
+      });
+      throw new Error(detailMsg);
+    }
     return response;
   } catch (error) {
-    if (error.status === 402 || (error.message && (error.message.includes("limit reached") || error.message.includes("requires")))) {
-      const isDepleted = error.message.includes("limit reached") || error.message.includes("depleted");
+    if (error.status === 402 || error.status === 429 || (error.message && (error.message.includes("limit reached") || error.message.includes("requires")))) {
+      const isDepleted = error.status === 429 || error.message.includes("limit reached") || error.message.includes("depleted");
       showEntitlementModal({
         featureName: "Requested Feature",
         recommendedTier: "STANDARD",
@@ -717,7 +733,6 @@ function verifyTabEligibility(tabName) {
       return false;
     }
   }
-
   return true;
 }
 
@@ -846,7 +861,7 @@ async function init() {
         simWindow.document.write("<html><head><title>Loading NoteCast Simulation...</title></head><body style='background:#070a14;color:#f8fafc;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;'><h2>⚡ Loading Interactive Module...</h2></body></html>");
       }
       
-      authedFetch(`/api/verify-entitlement?action=LAUNCH_STATIC_SIM`).then(res => {
+      authedFetch(`/videos/verify-entitlement?action=LAUNCH_STATIC_SIM`).then(res => {
         if (simWindow) simWindow.location.href = simPath;
       }).catch(err => {
         if (simWindow) simWindow.close();
@@ -965,17 +980,6 @@ async function init() {
     genNotesBtn.addEventListener("click", async () => {
       if (!currentSelectedDoc) return alert("Please select or upload a document first!");
       
-      const currentPlan = (user?.plan || "FREE").toUpperCase();
-      if (!["STANDARD", "PREMIUM"].includes(currentPlan)) {
-        showEntitlementModal({
-          featureName: "AI Document Summarization & Short Notes",
-          recommendedTier: "STANDARD",
-          priceText: "800 KES/mo",
-          isQuotaDepleted: false
-        });
-        return;
-      }
-
       const cacheKey = `${currentSelectedDoc.id}_p${currentPageNumber}`;
       if (pageCache[cacheKey]) {
         summaryEditor.value = pageCache[cacheKey];
@@ -983,8 +987,9 @@ async function init() {
         return;
       }
 
+      // Hit Backend Auth Interceptor to verify & consume Daily Quota
       try {
-          await authedFetch(`/api/verify-entitlement?action=DOC_SUMMARIZATION&resource_id=${currentSelectedDoc.id}`);
+          await authedFetch(`/videos/verify-entitlement?action=DOC_SUMMARIZATION&resource_id=${currentSelectedDoc.id}`);
       } catch (err) {
           return;
       }

@@ -461,7 +461,6 @@ function renderAssets(assets) {
   return assets
     .map((a) => {
       if (a.asset_type === "image" && a.storage_key) {
-        // Updated to use the absolute URL resolver for PDF generation
         const imageUrl = getAbsoluteImageUrl(a.image_url || a.storage_key);
         return `<img src="${imageUrl}" style="max-width:100%; border:1px solid var(--border); border-radius:6px; margin:12px 0;" />`;
       }
@@ -499,7 +498,6 @@ function renderVisuals(visuals) {
   }
   container.innerHTML = visuals
     .map((v) => {
-      // Updated to use the absolute URL resolver for PDF generation
       const imgSrc = getAbsoluteImageUrl(v.image_url || v.storage_key);
       return `
       <div class="visual-card" style="margin-bottom: 20px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;">
@@ -722,7 +720,6 @@ function mdToHtml(md) {
 
       let textContent = isBullet ? line.substring(2) : line.replace(/^\d+\.\s/, '');
       
-      // Updated Markdown inline image regex inside lists to use the absolute URL resolver
       let formattedText = escapeHtml(textContent)
         .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => `<img src="${getAbsoluteImageUrl(url)}" alt="${alt}" style="max-width:100%; border-radius:8px; border:1px solid var(--border); margin:12px 0; display:block;" />`)
         .replace(/\*\*(.+?)\*\*/g, "<strong style='color: #2563eb; font-weight: 700;'>$1</strong>")
@@ -737,7 +734,6 @@ function mdToHtml(md) {
     flushDiagram();
     flushTable();
 
-    // Updated Markdown inline image regex for standard paragraphs to use absolute URL resolver
     let safeLine = escapeHtml(rawLine)
       .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => `<img src="${getAbsoluteImageUrl(url)}" alt="${alt}" style="max-width:100%; border-radius:8px; border:1px solid var(--border); margin:16px 0; display:block;" />`)
       .replace(/\*\*(.+?)\*\*/g, "<strong style='color: #2563eb; font-weight: 700;'>$1</strong>")

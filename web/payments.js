@@ -2,13 +2,13 @@ import { authedFetch, requireAuth } from "./api.js";
 
 const el = (id) => document.getElementById(id);
 
-// Config catalog
+// Config catalog - Updated with Weekly 100 KES
 const PLANS = {
   "ECONOMY_NOTE": { amount: 50, name: "Economy Note Token (Pay-As-You-Go)" },
-  "STARTUP": { amount: 100, name: "Startup Plan (Monthly)" },
+  "STARTUP": { amount: 100, name: "Startup Plan (Weekly)" },
   "BASIC": { amount: 250, name: "Basic Plan (Monthly)" },
   "STANDARD": { amount: 800, name: "Standard Plan (Monthly)" },
-  "PREMIUM": { amount: 1199, name: "Premium Plan (Monthly)" }
+  "PREMIUM": { amount: 2500, name: "Premium Plan (Monthly)" }
 };
 
 const PLAN_ALIASES = {
@@ -84,7 +84,6 @@ if (paymentForm) {
     payBtn.innerHTML = `<div class="spinner"></div> Processing...`;
 
     try {
-      // FIXED: Now using authedFetch to pass the Bearer token to the backend
       const res = await authedFetch("/payments/stk-push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -106,7 +105,6 @@ if (paymentForm) {
       
     } catch (err) {
       if (errorEl) {
-        // Will now accurately display Daraja/Safaricom errors if they occur
         errorEl.textContent = err.message || err.detail || "Payment initiation failed. Please check your number.";
         errorEl.classList.remove("hidden");
       }

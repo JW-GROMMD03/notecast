@@ -14,7 +14,7 @@ PRICING_CATALOG = {
     "STARTUP": {"amount": 100, "type": "PLAN_SUBSCRIPTION"},
     "BASIC": {"amount": 250, "type": "PLAN_SUBSCRIPTION"},
     "STANDARD": {"amount": 800, "type": "PLAN_SUBSCRIPTION"},
-    "PREMIUM": {"amount": 1199, "type": "PLAN_SUBSCRIPTION"},
+    "PREMIUM": {"amount": 2500, "type": "PLAN_SUBSCRIPTION"},
     "ECONOMY_NOTE": {"amount": 50, "type": "ECONOMY_NOTE"},
     "SINGLE_DOWNLOAD": {"amount": 20, "type": "SINGLE_DOWNLOAD"},
     "SINGLE_AI_NOTE": {"amount": 80, "type": "SINGLE_AI_NOTE"}
@@ -126,7 +126,12 @@ async def mpesa_callback(request: Request, db: DbSession = Depends(get_db)):
                 
             sub.tier = txn.target_tier
             sub.status = "active"
-            sub.expires_at = now_utc + timedelta(days=30)
+            
+            # If 100 KES Startup Plan, set expiration to 7 days instead of 30
+            if txn.target_tier == "STARTUP":
+                sub.expires_at = now_utc + timedelta(days=7)
+            else:
+                sub.expires_at = now_utc + timedelta(days=30)
             
             # Sync directly to User model for fast querying
             user = db.query(models.User).filter(models.User.id == txn.user_id).first()

@@ -9,6 +9,9 @@ from .. import models, schemas, auth
 from ..database import get_db
 from ..config import settings
 
+# Import the manager to secure documents
+from .videos import SubscriptionManager 
+
 router = APIRouter(prefix="/documents", tags=["documents"])
 logger = logging.getLogger("notecast_documents")
 

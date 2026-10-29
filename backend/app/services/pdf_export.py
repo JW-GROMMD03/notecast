@@ -1,6 +1,39 @@
 import io
+import os
+import tempfile
+import requests
 import markdown
 from weasyprint import HTML
+from ..services import storage
+
+def resolve_weasyprint_uri(storage_key: str) -> str:
+    """Downloads an R2 image to a temporary file and returns a WeasyPrint-compatible file:// URI."""
+    if not storage_key: return ""
+    s = str(storage_key).strip().replace("https://notecast-web.onrender.com/", "").replace("http://localhost:8000/", "")
+    if s.startswith("api/"): s = s[4:]
+    if s.startswith("/api/"): s = s[5:]
+
+    download_url = s if s.startswith("http") else None
+    if not download_url:
+        try:
+            url = storage.local_url(s)
+            if url and url.startswith("http"): download_url = url
+        except Exception: pass
+
+    if download_url:
+        try:
+            resp = requests.get(download_url, timeout=5)
+            if resp.status_code == 200:
+                ext = os.path.splitext(s)[1] or ".webp"
+                fd, temp_path = tempfile.mkstemp(suffix=ext)
+                with os.fdopen(fd, 'wb') as f:
+                    f.write(resp.content)
+                return f"file://{os.path.abspath(temp_path)}"
+        except Exception: pass
+
+    for path in [s, f"/data/{s}", os.path.join(os.getcwd(), s), os.path.join(os.getcwd(), "static", s)]:
+        if os.path.exists(path): return f"file://{os.path.abspath(path)}"
+    return ""
 
 
 def generate_notecast_pdf(title: str, channel: str, note_sections: list, transcript_segments: list, visual_events: list) -> bytes:
@@ -9,7 +42,6 @@ def generate_notecast_pdf(title: str, channel: str, note_sections: list, transcr
     featuring the NoteCast logo, professional typography, and a background watermark.
     Includes robust fallback handling if structured database notes are not yet generated.
     """
-    
     sections_html = ""
 
     # 1. Use structured note sections if they exist in the database
@@ -34,11 +66,11 @@ def generate_notecast_pdf(title: str, channel: str, note_sections: list, transcr
                 for asset in assets:
                     storage_key = getattr(asset, "storage_key", "")
                     description = getattr(asset, "description", "")
-                    if storage_key:
-                        clean_path = storage_key.lstrip("/")
+                    img_uri = resolve_weasyprint_uri(storage_key)
+                    if img_uri:
                         sections_html += f"""
                         <div class="asset-card">
-                            <img src="{clean_path}" alt="Diagram capture" />
+                            <img src="{img_uri}" alt="Diagram capture" />
                             <p class="asset-desc">{description}</p>
                         </div>
                         """
@@ -66,11 +98,11 @@ def generate_notecast_pdf(title: str, channel: str, note_sections: list, transcr
             for event in visual_events:
                 storage_key = getattr(event, "storage_key", "")
                 ocr_text = getattr(event, "ocr_text", "") or "Whiteboard / Slide capture"
-                if storage_key:
-                    clean_path = storage_key.lstrip("/")
+                img_uri = resolve_weasyprint_uri(storage_key)
+                if img_uri:
                     sections_html += f"""
                     <div class="asset-card">
-                        <img src="{clean_path}" alt="Visual capture" />
+                        <img src="{img_uri}" alt="Visual capture" />
                         <p class="asset-desc">{ocr_text}</p>
                     </div>
                     """
@@ -81,7 +113,7 @@ def generate_notecast_pdf(title: str, channel: str, note_sections: list, transcr
     <html>
     <head>
         <meta charset="utf-8">
-        <title>{title} - NoteCast Master Study Guide</title>
+        <title>{title} NoteCast Master Study Guide</title>
         <style>
             @page {{
                 size: A4;
@@ -107,7 +139,6 @@ def generate_notecast_pdf(title: str, channel: str, note_sections: list, transcr
                 margin: 0;
                 padding: 0;
             }}
-            /* Fixed diagonal background watermark */
             .watermark {{
                 position: fixed;
                 top: 40%;

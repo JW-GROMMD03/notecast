@@ -7,11 +7,6 @@
 
 "use strict";
 
-/**
- * ============================================================================
- * 1. CONFIGURATION & STATE MANAGEMENT
- * ============================================================================
- */
 const CONFIG = {
   CACHE_TTL_MS: 1000 * 60 * 60, // 1 Hour Cache validity
   MAX_TIMEOUT_MS: 120000,       // Extended 120-second socket window
@@ -32,11 +27,6 @@ const STATE = {
   loadingIntervalId: null
 };
 
-/**
- * ============================================================================
- * 2. SECURE DOM BINDINGS & LOGGING
- * ============================================================================
- */
 const DOM = {
   iframe: document.getElementById('simIframe'),
   explanationText: document.getElementById('explanationText'),
@@ -58,11 +48,6 @@ const Logger = {
   error: (msg, ...args) => console.error(`%c[NoteCast:ERROR] %c${msg}`, "color: #ef4444; font-weight: bold", "color: inherit", ...args)
 };
 
-/**
- * ============================================================================
- * 3. URL PARSING & INITIALIZATION
- * ============================================================================
- */
 function parseRequest() {
   try {
     const urlParams = new URLSearchParams(window.location.search);
@@ -86,11 +71,6 @@ function parseRequest() {
   }
 }
 
-/**
- * ============================================================================
- * 4. ADVANCED CACHE MANAGER
- * ============================================================================
- */
 const CacheManager = {
   getKey: () => `notecast_sim_${STATE.requestedTopic.toLowerCase().replace(/\s+/g, '_')}`,
 
@@ -139,11 +119,6 @@ const CacheManager = {
   }
 };
 
-/**
- * ============================================================================
- * 5. EXTENDED CONNECTION FETCH ENGINE (120s TIMEOUT NO ABORT PREMATURELY)
- * ============================================================================
- */
 async function fetchWithExtendedTimeout(url, options, timeoutMs = CONFIG.MAX_TIMEOUT_MS) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
@@ -155,7 +130,7 @@ async function fetchWithExtendedTimeout(url, options, timeoutMs = CONFIG.MAX_TIM
     const res = await fetch(url, {
       ...options,
       signal: controller.signal,
-      credentials: "include" // Preserves cross-origin session authentication
+      credentials: "include" 
     });
     clearTimeout(timeoutId);
 
@@ -172,10 +147,6 @@ async function fetchWithExtendedTimeout(url, options, timeoutMs = CONFIG.MAX_TIM
   }
 }
 
-/**
- * Animated Loading State with cycling progress indicators so users know
- * the connection is active during long multi-provider fallback cycles.
- */
 function injectLoadingState() {
   DOM.iframe.classList.add('loading');
   DOM.headerTitle.textContent = `Synthesizing: ${STATE.requestedTopic}...`;
@@ -227,7 +198,6 @@ async function initializeSimulation(forceRefresh = false) {
   if (STATE.isGenerating) return;
   STATE.isGenerating = true;
 
-  // Handle Static Syllabus File Mode
   if (STATE.isStaticMode) {
     if (DOM.modeMetricVal) DOM.modeMetricVal.textContent = "Pre-compiled Static";
     DOM.headerTitle.textContent = STATE.requestedTopic;
@@ -245,14 +215,12 @@ async function initializeSimulation(forceRefresh = false) {
     return;
   }
 
-  // Handle AI Dynamic Generation Mode
   if (DOM.modeMetricVal) DOM.modeMetricVal.textContent = "Live AI Dynamic";
   if (forceRefresh) CacheManager.invalidate();
 
   let schema = CacheManager.get();
 
   if (!schema) {
-    // Check if passed via sessionStorage from dashboard search
     const sessionActive = sessionStorage.getItem("active_sim_schema");
     if (sessionActive && !forceRefresh) {
       try {
@@ -298,13 +266,11 @@ async function initializeSimulation(forceRefresh = false) {
 
   STATE.currentSchema = schema;
 
-  // Hydrate UI Shell
   DOM.headerTitle.textContent = schema.title || STATE.requestedTopic;
   DOM.simHeading.textContent = "Architecture Details";
   DOM.simDesc.textContent = schema.description || `Live interactive model for ${STATE.requestedTopic}`;
   DOM.explanationText.innerHTML = schema.detailed_lecture || "<em>No detailed lecture generated for this context.</em>";
 
-  // Safely inject code into iframe
   DOM.iframe.onload = () => {
     Logger.info("Iframe execution initialized successfully.");
     DOM.iframe.classList.remove('loading');
@@ -314,7 +280,6 @@ async function initializeSimulation(forceRefresh = false) {
   DOM.iframe.srcdoc = schema.html_code;
 }
 
-// Bind Refresh Button
 if (DOM.refreshSimBtn) {
   DOM.refreshSimBtn.addEventListener('click', () => {
     if (confirm("This will trigger a new AI generation and overwrite the current visualizer layout. Continue?")) {
@@ -323,22 +288,15 @@ if (DOM.refreshSimBtn) {
   });
 }
 
-/**
- * ============================================================================
- * 6. SECURE CROSS-FRAME TELEMETRY (IFRAME -> PARENT POSTMESSAGE)
- * ============================================================================
- */
 window.addEventListener("message", (event) => {
   if (!event.data || typeof event.data !== 'object') return;
 
-  // Handle static module metadata injection
   if (event.data.type === 'SIM_META') {
     if (event.data.lecture) DOM.explanationText.innerHTML = event.data.lecture;
     if (event.data.desc) DOM.simDesc.textContent = event.data.desc;
     return;
   }
 
-  // Handle live metric updates
   if (event.data.type === 'UPDATE_METRIC') {
     const { title, value } = event.data;
     if (!title || value === undefined) return;
@@ -375,12 +333,6 @@ window.addEventListener("message", (event) => {
   }
 });
 
-/**
- * ============================================================================
- * 7. ENTERPRISE TEXT-TO-SPEECH (TTS) CHUNKING ENGINE
- * Splits text into sentence boundaries to avoid 15-second browser audio drops.
- * ============================================================================
- */
 class TTSEngine {
   constructor() {
     this.voices = [];
@@ -503,18 +455,12 @@ class TTSEngine {
   }
 }
 
-// Instantiate and Bind TTS Engine
 const Narrator = new TTSEngine();
 
 if (DOM.speakBtn) DOM.speakBtn.addEventListener('click', () => Narrator.play());
 if (DOM.pauseSpeakBtn) DOM.pauseSpeakBtn.addEventListener('click', () => Narrator.pause());
 if (DOM.stopSpeakBtn) DOM.stopSpeakBtn.addEventListener('click', () => Narrator.stop());
 
-/**
- * ============================================================================
- * 8. SYSTEM BOOT
- * ============================================================================
- */
 document.addEventListener('DOMContentLoaded', () => {
   Logger.info("NoteCast Interactive Visualizer Online.");
   parseRequest();
