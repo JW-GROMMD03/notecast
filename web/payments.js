@@ -109,12 +109,12 @@ if (paymentForm) {
 function startFastPolling() {
   let attempts = 0;
   
-  // Poll every 1 second for instant detection once you input your PIN or cancel
+  // Poll every 1 second (1000ms) to instantly catch the callback
   pollInterval = setInterval(async () => {
     attempts++;
     
-    // Allow up to 90 seconds (90 attempts * 1s) for user interaction before timing out
-    if (attempts > 90) {
+    // Increased timeout to 120 seconds (120 attempts) to give Safaricom time to process
+    if (attempts > 120) {
       clearInterval(pollInterval);
       showCompletionUI("FAILED", "Payment timed out. Please try again.");
       return;
