@@ -17,7 +17,7 @@ PRICING_CATALOG = {
     "PREMIUM": {"amount": 2500, "type": "PLAN_SUBSCRIPTION"},
     "ECONOMY_NOTE": {"amount": 50, "type": "ECONOMY_NOTE"},
     "SINGLE_DOWNLOAD": {"amount": 20, "type": "SINGLE_DOWNLOAD"},
-    "DOWNLOAD_PASS": {"amount": 20, "type": "DOWNLOAD_PASS"}, # Weekly download pass (20 KES for 7 days)
+    "DOWNLOAD_PASS": {"amount": 20, "type": "DOWNLOAD_PASS"},
     "SINGLE_AI_NOTE": {"amount": 80, "type": "SINGLE_AI_NOTE"}
 }
 
@@ -138,7 +138,6 @@ async def mpesa_callback(request: Request, db: DbSession = Depends(get_db)):
                 user.plan = txn.target_tier
 
         elif txn.purchase_type == "DOWNLOAD_PASS":
-            # Grant 1 week of unlimited downloads by updating user's pass expiration
             user = db.query(models.User).filter(models.User.id == txn.user_id).first()
             if user:
                 current_expiry = getattr(user, "unlimited_downloads_until", None)
@@ -177,7 +176,7 @@ def check_payment_status(
     db: DbSession = Depends(get_db), 
     user: models.User = Depends(auth.get_current_user)
 ):
-    """Frontend polling endpoint to verify transaction status."""
+    """Frontend polling endpoint to verify transaction status with Daraja fallback."""
     tx = db.query(models.PaymentTransaction).filter(
         models.PaymentTransaction.id == transaction_id, 
         models.PaymentTransaction.user_id == user.id
@@ -186,4 +185,30 @@ def check_payment_status(
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found.")
     
+    # FALLBACK: If transaction is still pending, query Safaricom directly or allow manual completion if webhook failed
+    if tx.status == "PENDING" and tx.checkout_request_id:
+        try:
+            status_res = mpesa_service.query_stk_status(tx.checkout_request_id)
+            result_code = status_res.get("ResultCode")
+            
+            if result_code == "0":
+                tx.status = "COMPLETED"
+                now_utc = datetime.now(timezone.utc)
+                
+                if tx.purchase_type == "DOWNLOAD_PASS":
+                    user_obj = db.query(models.User).filter(models.User.id == tx.user_id).first()
+                    if user_obj:
+                        current_expiry = getattr(user_obj, "unlimited_downloads_until", None)
+                        base_time = max(current_expiry.replace(tzinfo=timezone.utc) if current_expiry else now_utc, now_utc)
+                        user_obj.unlimited_downloads_until = base_time + timedelta(days=7)
+                elif tx.purchase_type == "PLAN_SUBSCRIPTION" and tx.target_tier:
+                    user_obj = db.query(models.User).filter(models.User.id == tx.user_id).first()
+                    if user_obj:
+                        user_obj.plan = tx.target_tier
+                
+                db.commit()
+                logger.info(f"Transaction {tx.id} verified and completed via Daraja query fallback.")
+        except Exception as e:
+            logger.warning(f"Daraja status query fallback error: {str(e)}")
+
     return {"status": tx.status}
