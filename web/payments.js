@@ -8,7 +8,8 @@ const PLANS = {
   "STARTUP": { amount: 100, name: "Startup Plan (Weekly)" },
   "BASIC": { amount: 250, name: "Basic Plan (Monthly)" },
   "STANDARD": { amount: 800, name: "Standard Plan (Monthly)" },
-  "PREMIUM": { amount: 2500, name: "Premium Plan (Monthly)" }
+  "PREMIUM": { amount: 2500, name: "Premium Plan (Monthly)" },
+  "DOWNLOAD_PASS": { amount: 20, name: "Weekly Download Pass (1 Week Access)" }
 };
 
 const PLAN_ALIASES = {
@@ -16,7 +17,8 @@ const PLAN_ALIASES = {
   "lecture": "STARTUP",
   "master": "BASIC",
   "weekly": "STANDARD",
-  "monthly": "PREMIUM"
+  "monthly": "PREMIUM",
+  "download_pass": "DOWNLOAD_PASS"
 };
 
 let currentPlanId = "STANDARD";

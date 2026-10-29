@@ -17,6 +17,7 @@ PRICING_CATALOG = {
     "PREMIUM": {"amount": 2500, "type": "PLAN_SUBSCRIPTION"},
     "ECONOMY_NOTE": {"amount": 50, "type": "ECONOMY_NOTE"},
     "SINGLE_DOWNLOAD": {"amount": 20, "type": "SINGLE_DOWNLOAD"},
+    "DOWNLOAD_PASS": {"amount": 20, "type": "DOWNLOAD_PASS"}, # Weekly download pass (20 KES for 7 days)
     "SINGLE_AI_NOTE": {"amount": 80, "type": "SINGLE_AI_NOTE"}
 }
 
@@ -127,18 +128,32 @@ async def mpesa_callback(request: Request, db: DbSession = Depends(get_db)):
             sub.tier = txn.target_tier
             sub.status = "active"
             
-            # If 100 KES Startup Plan, set expiration to 7 days instead of 30
             if txn.target_tier == "STARTUP":
                 sub.expires_at = now_utc + timedelta(days=7)
             else:
                 sub.expires_at = now_utc + timedelta(days=30)
             
-            # Sync directly to User model for fast querying
             user = db.query(models.User).filter(models.User.id == txn.user_id).first()
             if user:
                 user.plan = txn.target_tier
+
+        elif txn.purchase_type == "DOWNLOAD_PASS":
+            # Grant 1 week of unlimited downloads by updating user's pass expiration
+            user = db.query(models.User).filter(models.User.id == txn.user_id).first()
+            if user:
+                current_expiry = getattr(user, "unlimited_downloads_until", None)
+                base_time = max(current_expiry.replace(tzinfo=timezone.utc) if current_expiry else now_utc, now_utc)
+                user.unlimited_downloads_until = base_time + timedelta(days=7)
+                
+            credit = models.OneOffCredit(
+                id=str(uuid.uuid4()),
+                user_id=txn.user_id,
+                credit_type=txn.purchase_type,
+                is_redeemed=True
+            )
+            db.add(credit)
+
         else:
-            # Grant one-off usage credit token
             credit = models.OneOffCredit(
                 id=str(uuid.uuid4()),
                 user_id=txn.user_id,

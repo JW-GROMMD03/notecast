@@ -48,14 +48,18 @@ class SubscriptionManager:
 
     @staticmethod
     def can_download(user: models.User):
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
         tier = getattr(user, "subscription_tier", "free")
-        has_pass = getattr(user, "unlimited_downloads_until", None) and getattr(user, "unlimited_downloads_until").replace(tzinfo=None) > now
         
-        if tier != "PREMIUM" and not has_pass:
+        # Check active weekly download pass validity
+        pass_until = getattr(user, "unlimited_downloads_until", None)
+        has_pass = pass_until and pass_until.replace(tzinfo=datetime.timezone.utc) > now
+        
+        # Allow if tier is STANDARD/PREMIUM or if user holds a valid 20 KES download pass
+        if tier not in ["STANDARD", "PREMIUM"] and not has_pass:
             raise HTTPException(
                 status_code=402, 
-                detail="Download locked. Upgrade to Premium, or pay 20 KES for unlimited monthly downloads."
+                detail="Downloads on your current plan require a 20 KES weekly download pass."
             )
 
     @staticmethod

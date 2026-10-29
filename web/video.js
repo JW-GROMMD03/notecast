@@ -388,9 +388,10 @@ async function secureDownload(endpoint, filename, mimeType) {
       credentials: 'include',
     });
 
+    // Inside secureDownload() in video.js:
     if (response.status === 402) {
       if (confirm("Downloads on your current plan require a 20 KES weekly download pass. Proceed to payment?")) {
-        window.location.href = "payments.html?plan=DOWNLOAD_PASS";
+        window.location.href = "payments.html?plan=DOWNLOAD_PASS"; // Updated to DOWNLOAD_PASS
       }
       return;
     }
