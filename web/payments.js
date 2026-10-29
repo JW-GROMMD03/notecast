@@ -2,7 +2,7 @@ import { authedFetch, requireAuth } from "./api.js";
 
 const el = (id) => document.getElementById(id);
 
-// Config catalog - Updated with Weekly 100 KES & Download Pass
+// Config catalog
 const PLANS = {
   "ECONOMY_NOTE": { amount: 50, name: "Economy Note Token (Pay-As-You-Go)" },
   "STARTUP": { amount: 100, name: "Startup Plan (Weekly)" },
@@ -25,24 +25,14 @@ let currentPlanId = "STANDARD";
 let currentTxId = null;
 let pollInterval = null;
 
-function getSelectedPlan() {
-  const fullSearch = window.location.search;
-  let rawKey = "STANDARD";
-  
-  if (fullSearch.includes("plan=")) {
-    const parts = fullSearch.split("plan=");
-    if (parts.length > 1) {
-      rawKey = parts[1].split("&")[0].trim();
-    }
-  } else {
-    const urlParams = new URLSearchParams(fullSearch);
-    if (urlParams.has("plan")) rawKey = urlParams.get("plan");
-  }
+const urlParams = new URLSearchParams(window.location.search);
+let returnUrl = urlParams.get("redirect") || "";
 
+function getSelectedPlan() {
+  let rawKey = urlParams.get("plan") || "STANDARD";
   if (PLAN_ALIASES[rawKey]) {
     rawKey = PLAN_ALIASES[rawKey];
   }
-  
   return PLANS[rawKey] ? rawKey : "STANDARD";
 }
 
@@ -103,7 +93,7 @@ if (paymentForm) {
       if (el("pollingUI")) el("pollingUI").classList.remove("hidden");
       
       currentTxId = data.transaction_id;
-      startPolling();
+      startFastPolling();
       
     } catch (err) {
       if (errorEl) {
@@ -116,16 +106,17 @@ if (paymentForm) {
   });
 }
 
-function startPolling() {
+function startFastPolling() {
   let attempts = 0;
   
+  // Poll every 1 second for instant detection once you input your PIN or cancel
   pollInterval = setInterval(async () => {
     attempts++;
     
-    // Timeout after 90 seconds (30 attempts * 3s)
-    if (attempts > 30) {
+    // Allow up to 90 seconds (90 attempts * 1s) for user interaction before timing out
+    if (attempts > 90) {
       clearInterval(pollInterval);
-      showCompletionUI("FAILED", "Payment timed out or was cancelled. Please try again.");
+      showCompletionUI("FAILED", "Payment timed out. Please try again.");
       return;
     }
     
@@ -136,7 +127,15 @@ function startPolling() {
       
       if (data.status === "COMPLETED") { 
         clearInterval(pollInterval);
-        showCompletionUI("SUCCESS", "Payment Successful! Your download pass is now active.");
+        showCompletionUI("SUCCESS", "Payment Successful! Unlocking your downloads & redirecting...");
+        
+        setTimeout(() => {
+          if (returnUrl) {
+            window.location.href = decodeURIComponent(returnUrl);
+          } else {
+            window.location.href = "dashboard.html";
+          }
+        }, 1500);
       } 
       else if (data.status === "FAILED") {
         clearInterval(pollInterval);
@@ -145,7 +144,7 @@ function startPolling() {
     } catch (e) {
       console.error("Polling error:", e);
     }
-  }, 3000);
+  }, 1000);
 }
 
 function showCompletionUI(status, message) {
