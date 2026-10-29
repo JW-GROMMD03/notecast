@@ -250,13 +250,12 @@ function bindUIEvents() {
         }
       } catch (err) {
         console.error("AI Generation error:", err);
-        // Check tier constraints for AI generation
-        if (err.message && (err.message.includes("402") || err.message.includes("subscription") || err.message.includes("constraint"))) {
-          if (confirm("Your current subscription constraints do not permit generating new AI notes. Would you like to upgrade?")) {
+        if (err.message && (err.message.includes("402") || err.message.includes("subscription"))) {
+          if (confirm("Your subscription constraints do not permit generating new AI notes. Would you like to upgrade?")) {
             window.location.href = "payments.html?plan=STANDARD";
           }
         } else if (container) {
-          container.innerHTML = `<div class="empty-state" style="color: var(--danger);">Failed to trigger AI generation. ${err.message || 'Check your connection or plan limits.'}</div>`;
+          container.innerHTML = `<div class="empty-state" style="color: var(--danger);">Failed to trigger AI generation. ${err.message || 'Check your connection.'}</div>`;
         }
       }
     });
@@ -346,43 +345,40 @@ async function load() {
 
     const metaEl = document.getElementById("videoMeta");
     if (metaEl) metaEl.textContent = `${video.channel || "Unknown Channel"} · ${statusLabel(video.status)}`;
-
-    // Fetch each resource independently so a 402 on one doesn't block the others
-    try {
-      const notes = await authedFetch(`/videos/${videoId}/notes`);
-      renderNotes(notes);
-    } catch (e) {
-      console.warn("Notes restricted or unavailable:", e.message);
-    }
-
-    try {
-      const aiNotesData = await authedFetch(`/videos/${videoId}/ai-notes`);
-      renderAiNotes(aiNotesData);
-    } catch (e) {
-      console.warn("AI notes restricted or unavailable:", e.message);
-    }
-
-    try {
-      const transcript = await authedFetch(`/videos/${videoId}/transcript`);
-      renderTranscript(transcript);
-    } catch (e) {
-      console.warn("Transcript restricted or unavailable:", e.message);
-    }
-
-    try {
-      const visuals = await authedFetch(`/videos/${videoId}/captures`);
-      renderVisuals(visuals);
-    } catch (e) {
-      console.warn("Captures restricted or unavailable:", e.message);
-    }
-
-    clearTimeout(pollTimer);
-    if (["initializing", "capturing", "processing"].includes(video.status)) {
-      pollTimer = setTimeout(load, 4000);
-    }
   } catch (err) {
-    console.error("Error loading video session:", err);
+    console.warn("Video metadata fetch notice:", err.message);
   }
+
+  // Independently fetch and render each resource so a 402/error on one never blocks the others
+  try {
+    const notes = await authedFetch(`/videos/${videoId}/notes`);
+    renderNotes(notes);
+  } catch (e) {
+    console.warn("Notes restricted:", e.message);
+  }
+
+  try {
+    const aiNotesData = await authedFetch(`/videos/${videoId}/ai-notes`);
+    renderAiNotes(aiNotesData);
+  } catch (e) {
+    console.warn("AI Notes restricted:", e.message);
+  }
+
+  try {
+    const transcript = await authedFetch(`/videos/${videoId}/transcript`);
+    renderTranscript(transcript);
+  } catch (e) {
+    console.warn("Transcript restricted:", e.message);
+  }
+
+  try {
+    const visuals = await authedFetch(`/videos/${videoId}/captures`);
+    renderVisuals(visuals);
+  } catch (e) {
+    console.warn("Captures restricted:", e.message);
+  }
+
+  clearTimeout(pollTimer);
 }
 
 async function secureDownload(endpoint, filename, mimeType) {
@@ -392,7 +388,6 @@ async function secureDownload(endpoint, filename, mimeType) {
       credentials: 'include',
     });
 
-    // Check if 50/100 plans require the 20 KES weekly download pass (status 402)
     if (response.status === 402) {
       if (confirm("Downloads on your current plan require a 20 KES weekly download pass. Proceed to payment?")) {
         window.location.href = "payments.html?plan=DOWNLOAD_PASS";
