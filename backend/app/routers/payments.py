@@ -26,7 +26,7 @@ PRICING_CATALOG = {
 
 
 def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, desc=""):
-    if txn.status != "PENDING":   # idempotent: callback and query can both fire
+    if txn.status != "PENDING":
         return
         
     if int(result_code) == 0:
@@ -49,19 +49,16 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
             sub.tier = txn.target_tier
             sub.status = "active"
             
-            # If 100 KES Startup Plan, set expiration to 7 days instead of 30
             if txn.target_tier == "STARTUP":
                 sub.expires_at = now_utc + timedelta(days=7)
             else:
                 sub.expires_at = now_utc + timedelta(days=30)
             
-            # Sync directly to User model for fast querying
             user = db.query(models.User).filter(models.User.id == txn.user_id).first()
             if user:
                 user.plan = txn.target_tier
 
         elif txn.purchase_type == "DOWNLOAD_PASS":
-            # Grant 1 week of unlimited downloads by updating user's pass expiration
             user = db.query(models.User).filter(models.User.id == txn.user_id).first()
             if user:
                 current_expiry = getattr(user, "unlimited_downloads_until", None)
@@ -77,7 +74,6 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
             db.add(credit)
 
         else:
-            # Grant one-off usage credit token
             credit = models.OneOffCredit(
                 id=str(uuid.uuid4()),
                 user_id=txn.user_id,
@@ -195,14 +191,23 @@ def check_payment_status(
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found.")
 
-    # Ask Safaricom directly (throttled to avoid Daraja rate limits)
-    if tx.status == "PENDING" and time.time() - _last_query.get(tx.id, 0) >= 3:
+    # Ask Safaricom directly, throttled to 3s
+    if tx.status == "PENDING" and tx.checkout_request_id and time.time() - _last_query.get(tx.id, 0) >= 3:
         _last_query[tx.id] = time.time()
         try:
             q = mpesa_service.query_stk_status(tx.checkout_request_id)
             if "ResultCode" in q:
-                _apply_result(db, tx, q["ResultCode"], q.get("ResultDesc", ""))
-                db.refresh(tx)
+                result_code = str(q["ResultCode"])
+                
+                # FULIZA FIX: Only apply the result immediately if it's a SUCCESS (0) or EXPLICIT CANCEL (1032)
+                # If Daraja returns Insufficient Funds (1) or Timeout (1037), we ignore it and keep spinning
+                # This gives the user time to navigate the Fuliza overdraft prompts on their phone!
+                if result_code in ["0", "1032"]:
+                    _apply_result(db, tx, q["ResultCode"], q.get("ResultDesc", ""))
+                    db.refresh(tx)
+                else:
+                    logger.info(f"Ignoring intermediate Safaricom failure {result_code} for {tx.id} to allow Fuliza processing.")
+                    
         except Exception as e:
             logger.warning(f"STK query failed for {tx.id}: {e}")
 
