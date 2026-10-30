@@ -116,19 +116,27 @@ def send_resend_email(to_email: str, link: str, email_type: str):
 # =========================================================================
 
 def _upsert_profile(db: DbSession, user_id: str, email: str, display_name: str) -> models.User:
-    user = db.query(models.User).filter(
-        (models.User.id == user_id) | (models.User.email == email)
-    ).first()
+    # 1. Look up strictly by the Supabase Auth user_id
+    user = db.query(models.User).filter(models.User.id == user_id).first()
     
+    if not user:
+        # 2. If not found by ID, look up by email to catch split-brain / OAuth mismatches
+        user = db.query(models.User).filter(models.User.email == email).first()
+        
+        if user:
+            # Cleanly handle ID drift by deleting the stale row so the new UUID binds cleanly
+            db.delete(user)
+            db.commit()
+            user = None
+
     if user:
-        if user.id != user_id:
-            user.id = user_id
         if display_name and not user.display_name:
             user.display_name = display_name
         db.commit()
         db.refresh(user)
         return user
         
+    # 3. Create brand new user profile row
     user = models.User(id=user_id, email=email, display_name=display_name)
     db.add(user)
     db.commit()
