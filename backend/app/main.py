@@ -7,18 +7,18 @@ from fastapi.responses import JSONResponse
 from .config import settings
 from .database import Base, engine
 
-# Active Routers
-from .routers import auth as auth_router
-from .routers import videos as videos_router
-from .routers import notes as notes_router
-from .routers import ws as ws_router
-from .routers import payments as payments_router
-from .routers import diagrams as diagrams_router
-from .routers import documents as documents_router
-from .routers import flashcards as flashcards_router
-from .routers import graph as graph_router
-from .routers import socratic as socratic_router
-from .routers import admin as admin_router # <--- NEW ADMIN ROUTER
+# Bypass __init__.py and import directly from the router modules
+from .routers.auth import router as auth_router
+from .routers.videos import router as videos_router
+from .routers.notes import router as notes_router
+from .routers.ws import router as ws_router
+from .routers.payments import router as payments_router
+from .routers.diagrams import router as diagrams_router
+from .routers.documents import router as documents_router
+from .routers.flashcards import router as flashcards_router
+from .routers.graph import router as graph_router
+from .routers.socratic import router as socratic_router
+from .routers.admin import router as admin_router # DIRECT IMPORT
 
 logging.basicConfig(level=logging.INFO)
 
@@ -50,17 +50,17 @@ app.add_middleware(
 app.mount("/media", StaticFiles(directory=str(settings.storage_path)), name="media")
 
 # Active Routers Registration
-app.include_router(auth_router.router)
-app.include_router(videos_router.router)
-app.include_router(notes_router.router)
-app.include_router(ws_router.router)
-app.include_router(payments_router.router)
-app.include_router(diagrams_router.router)
-app.include_router(documents_router.router)
-app.include_router(flashcards_router.router)
-app.include_router(graph_router.router)
-app.include_router(socratic_router.router)
-app.include_router(admin_router.router) # <--- MOUNTED ADMIN ROUTER
+app.include_router(auth_router)
+app.include_router(videos_router)
+app.include_router(notes_router)
+app.include_router(ws_router)
+app.include_router(payments_router)
+app.include_router(diagrams_router)
+app.include_router(documents_router)
+app.include_router(flashcards_router)
+app.include_router(graph_router)
+app.include_router(socratic_router)
+app.include_router(admin_router)
 
 @app.get("/health")
 def health():
