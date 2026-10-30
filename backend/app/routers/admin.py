@@ -56,8 +56,9 @@ def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
         
         return generic_error
 
-    # 2. Check Database for Admin Privileges
-    user = db.query(models.User).filter(models.User.id == res.user.id).first()
+    
+    # 2. Check Database for Admin Privileges (Lookup by verified Supabase email)
+    user = db.query(models.User).filter(models.User.email == res.user.email).first()
     if not user or not user.is_admin:
         auth.log_admin_attempt(db, req.email, ip, successful=False)
         return generic_error
