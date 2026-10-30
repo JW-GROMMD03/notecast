@@ -46,19 +46,33 @@ def get_current_user(request: Request, db: DbSession = Depends(get_db)) -> model
         raise HTTPException(status_code=401, detail="Internal verify error")
 
     user_id = claims.get("sub")
+    token_email = claims.get("email", "")
+    
     if not user_id:
         print("❌ REJECTED: Token is valid but has no 'sub' (user_id) claim!")
         print("="*50 + "\n")
         raise HTTPException(status_code=401, detail="Invalid token structure")
 
     print(f"-> Looking up user in database: {user_id}")
+    
+    # 1. Lookup by strict ID
     user = db.query(models.User).filter(models.User.id == user_id).first()
     
+    # 2. If not found by ID, catch OAuth split-brain by looking up via email
+    if not user and token_email:
+        user = db.query(models.User).filter(models.User.email == token_email).first()
+        if user:
+            print("-> ⚠️ ID mismatch detected for existing email. Deleting stale row to allow clean UUID binding...")
+            db.delete(user)
+            db.commit()
+            user = None  # Reset user to trigger creation below
+    
+    # 3. Create cleanly if totally missing
     if not user:
         print("-> User not in local DB yet. Creating profile row...")
         user = models.User(
             id=user_id, 
-            email=claims.get("email", ""), 
+            email=token_email, 
             display_name=claims.get("user_metadata", {}).get("display_name", ""),
             university="Unknown",
             is_admin=False
