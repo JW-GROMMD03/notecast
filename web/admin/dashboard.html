@@ -70,9 +70,11 @@
         .filter-input { padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); flex: 1; min-width: 160px; outline: none; font-size: 14px;}
         .filter-input:focus { border-color: var(--primary); }
         
+        /* Badges based on business tiers */
         .badge { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;}
-        .badge-premium { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
-        .badge-economy { background: rgba(99, 102, 241, 0.1); color: #6366f1; }
+        .badge-admin { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444; } /* Red for Admins */
+        .badge-pro { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; } /* Purple for Monthly Pro / Scholar */
+        .badge-standard { background: rgba(99, 102, 241, 0.1); color: #6366f1; } /* Blue for Master / Lecture / Quick */
         .badge-free { background: rgba(100, 116, 139, 0.1); color: #64748b; }
         
         /* Color-Coded Ledger Badges */
@@ -237,7 +239,7 @@
                             <tr>
                                 <th>User Email</th>
                                 <th>Assigned Tier</th>
-                                <th>Managed / Awarded By</th>
+                                <th>Managed By</th>
                                 <th>Expiration Date</th>
                                 <th>Status</th>
                             </tr>
@@ -328,7 +330,7 @@
                     <option value="MASTER">Extended Master (250 KES)</option>
                     <option value="WEEKLY">Weekly Scholar (800 KES)</option>
                     <option value="MONTHLY">Monthly Pro (2,500 KES)</option>
-                    <option value="PDF_PASS">PDF Download Pass (20 KES)</option>
+                    <option value="PDF_PASS">PDF Download Pass (20 KES / week)</option>
                 </select>
             </div>
             <div class="form-group">
@@ -484,7 +486,7 @@
 
                 document.getElementById('logsTableBody').innerHTML = (data.logs || []).map(lg => `
                     <tr>
-                        <td><span class="badge badge-economy">${lg.action}</span></td>
+                        <td><span class="badge badge-standard">${lg.action}</span></td>
                         <td>${lg.amount ? 'KES ' + lg.amount.toLocaleString() : 'N/A'}</td>
                         <td>${lg.description || 'System operation executed.'}</td>
                         <td>${new Date(lg.date).toLocaleString()}</td>
@@ -503,7 +505,7 @@
                 }).join('');
 
                 if (data.users) {
-                    globalUsersData = data.users.filter(u => !u.is_admin);
+                    globalUsersData = data.users; // Now includes admins but tagged
                     populateCRMDropdowns();
                     applyCRMFilters();
                 }
@@ -522,7 +524,8 @@
         }
 
         function populateSubscriptionDropdowns() {
-            const standardTiers = ['FREE', 'QUICK', 'LECTURE', 'MASTER', 'WEEKLY', 'MONTHLY', 'PDF_PASS'];
+            // NoteCast Official Tiers
+            const standardTiers = ['FREE', 'SUPER ADMIN', 'QUICK', 'LECTURE', 'MASTER', 'WEEKLY', 'MONTHLY', 'PDF_PASS'];
             const activeTiers = [...new Set([...standardTiers, ...globalSubscriptionsData.map(s => s.tier.toUpperCase())])];
             
             const subTierSelect = document.getElementById('filterSubTier');
@@ -581,9 +584,13 @@
                 const ageDays = Math.floor((new Date() - dateObj) / (1000 * 60 * 60 * 24));
                 const ageText = ageDays === 0 ? 'Joined Today' : `${ageDays} days old`;
                 
+                // Color-code the tier appropriately
                 let badgeClass = 'badge-free';
-                if (u.plan.toUpperCase() === 'MONTHLY' || u.plan.toUpperCase() === 'PREMIUM') badgeClass = 'badge-premium';
-                if (u.plan.toUpperCase() === 'ECONOMY' || u.plan.toUpperCase() === 'WEEKLY' || u.plan.toUpperCase() === 'QUICK') badgeClass = 'badge-economy';
+                const planUpper = u.plan.toUpperCase();
+                
+                if (planUpper === 'SUPER ADMIN') badgeClass = 'badge-admin';
+                else if (planUpper === 'MONTHLY' || planUpper === 'WEEKLY') badgeClass = 'badge-pro';
+                else if (planUpper === 'MASTER' || planUpper === 'LECTURE' || planUpper === 'QUICK' || planUpper === 'PDF_PASS') badgeClass = 'badge-standard';
 
                 const isOnline = (u.id.charCodeAt(0) % 2 === 0);
                 const statusMarkup = isOnline ? `<span style="color:var(--success); font-weight:600;"><span class="status-dot status-online"></span>Online</span>` : `<span style="color:var(--text-muted);"><span class="status-dot status-offline"></span>Offline</span>`;
@@ -603,8 +610,10 @@
                             <div style="margin-bottom: 6px;">${statusMarkup}</div>
                             <button class="action-btn btn-award" onclick="openAwardModal('${u.id}')">Award Sub</button>
                             <button class="action-btn btn-mail" onclick="openEmailModal('${u.email}')">Email</button>
+                            ${u.is_admin ? '' : `
                             <button class="action-btn btn-block" onclick="executeUserAction('${u.id}', '${u.status === 'Blocked' ? 'UNBLOCK' : 'BLOCK'}')">${u.status === 'Blocked' ? 'Unblock' : 'Block'}</button>
                             <button class="action-btn btn-delete" onclick="executeUserAction('${u.id}', 'DELETE')">Delete</button>
+                            `}
                         </td>
                     </tr>
                 `;
@@ -618,6 +627,13 @@
                 return;
             }
             tbody.innerHTML = subs.map(s => {
+                let badgeClass = 'badge-free';
+                const tierUpper = s.tier.toUpperCase();
+                
+                if (tierUpper === 'SUPER ADMIN') badgeClass = 'badge-admin';
+                else if (tierUpper === 'MONTHLY' || tierUpper === 'WEEKLY') badgeClass = 'badge-pro';
+                else if (tierUpper === 'MASTER' || tierUpper === 'LECTURE' || tierUpper === 'QUICK' || tierUpper === 'PDF_PASS') badgeClass = 'badge-standard';
+                
                 let managedByText = s.awarded_by;
                 if (!managedByText || managedByText === 'System' || managedByText === 'System / Self') {
                     managedByText = 'System Enabled';
@@ -625,7 +641,7 @@
                 return `
                     <tr>
                         <td>${s.user_email}</td>
-                        <td><span class="badge badge-premium">${s.tier}</span></td>
+                        <td><span class="badge ${badgeClass}">${s.tier}</span></td>
                         <td><strong style="color: var(--primary);">${managedByText}</strong></td>
                         <td>${s.expires_at}</td>
                         <td><span style="color:var(--success); font-weight:600;">${s.status}</span></td>
@@ -717,7 +733,10 @@
                 body: JSON.stringify({ user_id, action })
             });
             if (res.ok) fetchDashboardData();
-            else alert("Action failed.");
+            else {
+                const data = await res.json();
+                alert(data.detail || "Action failed.");
+            }
         }
 
         async function submitFinanceAction() {
