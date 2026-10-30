@@ -33,7 +33,7 @@ class UserActionReq(BaseModel):
 
 class AwardSubscriptionReq(BaseModel):
     user_id: str
-    tier: str  # "FREE", "ECONOMY", "PREMIUM"
+    tier: str  
     duration_days: int
 
 class SendEmailReq(BaseModel):
@@ -81,7 +81,6 @@ def get_summary_data(db: Session, admin: models.User):
     total_revenue = db.query(func.sum(models.PaymentTransaction.amount)).filter(models.PaymentTransaction.status == "COMPLETED").scalar() or 0.0
     total_subs = db.query(models.UserSubscription).count()
 
-    # Accurate user calculation: Exclude admins from standard regular user count if requested
     all_users = db.query(models.User).order_by(models.User.created_at.desc()).all()
     regular_users = [u for u in all_users if not u.is_admin]
 
@@ -97,18 +96,19 @@ def get_summary_data(db: Session, admin: models.User):
         func.count(models.UserSubscription.id)
     ).group_by(models.UserSubscription.tier).all()
 
-    plans = [{"name": p[0], "count": p[1], "revenue": p[1] * (2500 if p[0] == "PREMIUM" else 800 if p[0] == "STANDARD" else 250)} for p in plan_stats]
+    plans = [{"name": p[0], "count": p[1], "revenue": p[1] * (2500 if p[0] == "MONTHLY" else 800 if p[0] == "WEEKLY" else 250)} for p in plan_stats]
 
     pots = db.query(models.FinancialPot).all()
     financials = {pot.id: {"balance": pot.balance, "borrowed": pot.borrowed} for pot in pots}
 
-    # Fetch User Subscriptions detailed table
+    # Fetch User Subscriptions detailed table (Excluding Admins, showing "System" if paid/gateway-driven)
     subscriptions_records = db.query(models.UserSubscription).all()
-    sub_list = []
     sub_map = {sub.user_id: sub for sub in subscriptions_records}
 
     user_list = []
     for u in all_users:
+        if u.is_admin:
+            continue
         sub = sub_map.get(u.id)
         user_list.append({
             "id": u.id,
@@ -116,21 +116,24 @@ def get_summary_data(db: Session, admin: models.User):
             "email": u.email,
             "phone": getattr(u, 'phone', 'N/A'),
             "university": getattr(u, 'university', 'Unknown') or 'Unknown',
-            "plan": sub.tier if sub else ("FREE" if not u.is_admin else "ADMIN"),
+            "plan": sub.tier if sub else "FREE",
             "is_admin": u.is_admin,
             "status": "Active" if not getattr(u, 'is_blocked', False) else "Blocked",
             "created_at": u.created_at.isoformat() if getattr(u, 'created_at', None) else dt.datetime.utcnow().isoformat()
         })
 
-    # Subscriptions audit list
+    # Subscriptions hub audit list (Excluding admins, mapping gateway payments as "System")
     subs_audit = []
     for sub in subscriptions_records:
         usr = db.query(models.User).filter(models.User.id == sub.user_id).first()
+        if usr and usr.is_admin:
+            continue
+        manager_label = getattr(sub, 'awarded_by', None) or 'System'
         subs_audit.append({
             "id": sub.id,
             "user_email": usr.email if usr else "Unknown",
             "tier": sub.tier,
-            "awarded_by": getattr(sub, 'awarded_by', 'System / Self'),
+            "awarded_by": manager_label,
             "expires_at": sub.expires_at.isoformat() if getattr(sub, 'expires_at', None) else "Never",
             "status": "Active"
         })
@@ -140,7 +143,7 @@ def get_summary_data(db: Session, admin: models.User):
     ledgers = [{
         "id": tx.id,
         "amount": tx.amount,
-        "status": tx.status,
+        "status": tx.status.upper() if tx.status else "PENDING",
         "provider": getattr(tx, 'provider', 'M-Pesa'),
         "date": tx.created_at.isoformat() if tx.created_at else dt.datetime.utcnow().isoformat()
     } for tx in transactions]
