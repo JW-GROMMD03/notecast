@@ -1,4 +1,5 @@
 import asyncio
+import datetime as dt
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -93,12 +94,27 @@ def get_summary_data(db: Session, admin: models.User):
     pots = db.query(models.FinancialPot).all()
     financials = {pot.id: {"balance": pot.balance, "borrowed": pot.borrowed} for pot in pots}
 
+    # Fetch comprehensive user list for the CRM table
+    all_users = db.query(models.User).order_by(models.User.created_at.desc()).all()
+    user_list = []
+    for u in all_users:
+        user_list.append({
+            "id": u.id,
+            "name": getattr(u, 'display_name', '') or 'N/A',
+            "email": u.email,
+            "phone": getattr(u, 'phone', 'N/A'),
+            "university": getattr(u, 'university', 'Unknown') or 'Unknown',
+            "plan": getattr(u, 'plan', 'FREE'),
+            "created_at": u.created_at.isoformat() if getattr(u, 'created_at', None) else dt.datetime.utcnow().isoformat()
+        })
+
     return {
         "total_revenue": total_revenue,
         "total_subs": total_subs,
         "universities": universities,
         "plans": plans,
-        "financials": financials
+        "financials": financials,
+        "users": user_list
     }
 
 
