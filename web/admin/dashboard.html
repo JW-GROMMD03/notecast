@@ -229,13 +229,6 @@
                             <input type="text" id="filterSubSearch" class="filter-input" placeholder="Search User Email...">
                             <select id="filterSubTier" class="filter-input">
                                 <option value="ALL">All Tiers</option>
-                                <option value="FREE">FREE</option>
-                                <option value="QUICK">QUICK PASS (50 KES)</option>
-                                <option value="LECTURE">LECTURE PASS (100 KES)</option>
-                                <option value="MASTER">MASTER PASS (250 KES)</option>
-                                <option value="WEEKLY">WEEKLY SCHOLAR (800 KES)</option>
-                                <option value="MONTHLY">MONTHLY PRO (2500 KES)</option>
-                                <option value="PDF_PASS">PDF PASS (20 KES)</option>
                             </select>
                         </div>
                     </div>
@@ -426,7 +419,6 @@
                 window.location.href = 'login.html';
             });
             
-            // Filters
             document.getElementById('filterSearch').addEventListener('input', applyCRMFilters);
             document.getElementById('filterUni').addEventListener('change', applyCRMFilters);
             document.getElementById('filterPlan').addEventListener('change', applyCRMFilters);
@@ -459,7 +451,6 @@
             ws.onmessage = (e) => {
                 const data = JSON.parse(e.data);
                 document.getElementById('kpi-online').textContent = data.live_users_count;
-                // Auto-refresh dashboard on WebSocket tick if needed
                 fetchDashboardData(true);
             };
             ws.onclose = () => setTimeout(connectLiveMetrics, 5000); 
@@ -484,15 +475,13 @@
                 document.getElementById('uniTableBody').innerHTML = data.universities.map(u => `<tr><td>${u.name}</td><td>${u.count}</td><td>${u.percent}%</td></tr>`).join('') || '<tr><td colspan="3">No data</td></tr>';
                 document.getElementById('planTableBody').innerHTML = data.plans.map(p => `<tr><td><strong>${p.name}</strong></td><td>${p.count}</td><td>KES ${p.revenue.toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="3">No data</td></tr>';
                 
-                // Subscriptions Hub Data
                 globalSubscriptionsData = data.subscriptions || [];
+                populateSubscriptionDropdowns();
                 applySubscriptionFilters();
 
-                // Financial Ledgers Data
                 globalLedgersData = data.ledgers || [];
                 applyLedgerFilters();
 
-                // Activity Logs
                 document.getElementById('logsTableBody').innerHTML = (data.logs || []).map(lg => `
                     <tr>
                         <td><span class="badge badge-economy">${lg.action}</span></td>
@@ -524,13 +513,20 @@
             }
         }
 
-        // --- Filtering Functions ---
         function populateCRMDropdowns() {
             const unis = [...new Set(globalUsersData.map(u => u.university))].filter(Boolean);
             const plans = [...new Set(globalUsersData.map(u => u.plan))].filter(Boolean);
             
             document.getElementById('filterUni').innerHTML = '<option value="ALL">All Universities</option>' + unis.map(u => `<option value="${u}">${u}</option>`).join('');
             document.getElementById('filterPlan').innerHTML = '<option value="ALL">All Subscriptions</option>' + plans.map(p => `<option value="${p}">${p}</option>`).join('');
+        }
+
+        function populateSubscriptionDropdowns() {
+            const standardTiers = ['FREE', 'QUICK', 'LECTURE', 'MASTER', 'WEEKLY', 'MONTHLY', 'PDF_PASS'];
+            const activeTiers = [...new Set([...standardTiers, ...globalSubscriptionsData.map(s => s.tier.toUpperCase())])];
+            
+            const subTierSelect = document.getElementById('filterSubTier');
+            subTierSelect.innerHTML = '<option value="ALL">All Tiers</option>' + activeTiers.map(t => `<option value="${t}">${t}</option>`).join('');
         }
 
         function applyCRMFilters() {
@@ -621,15 +617,21 @@
                 tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: var(--text-muted);">No subscriptions match your filters.</td></tr>';
                 return;
             }
-            tbody.innerHTML = subs.map(s => `
-                <tr>
-                    <td>${s.user_email}</td>
-                    <td><span class="badge badge-premium">${s.tier}</span></td>
-                    <td><strong style="color: var(--primary);">${s.awarded_by}</strong></td>
-                    <td>${s.expires_at}</td>
-                    <td><span style="color:var(--success); font-weight:600;">${s.status}</span></td>
-                </tr>
-            `).join('');
+            tbody.innerHTML = subs.map(s => {
+                let managedByText = s.awarded_by;
+                if (!managedByText || managedByText === 'System' || managedByText === 'System / Self') {
+                    managedByText = 'System Enabled';
+                }
+                return `
+                    <tr>
+                        <td>${s.user_email}</td>
+                        <td><span class="badge badge-premium">${s.tier}</span></td>
+                        <td><strong style="color: var(--primary);">${managedByText}</strong></td>
+                        <td>${s.expires_at}</td>
+                        <td><span style="color:var(--success); font-weight:600;">${s.status}</span></td>
+                    </tr>
+                `;
+            }).join('');
         }
 
         function renderLedgersTable(ledgers) {
@@ -656,7 +658,6 @@
             }).join('');
         }
 
-        // --- Modals & Actions ---
         function openModal(modalId, actionType = '', potId = '') {
             if(modalId === 'financeModal') {
                 document.getElementById('actionType').value = actionType; 

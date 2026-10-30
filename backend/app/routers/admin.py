@@ -28,7 +28,7 @@ class FinanceActionReq(BaseModel):
     description: str = ""
 
 class UserActionReq(BaseModel):
-    action: str  # "BLOCK", "DELETE", "REVOKE_SUB"
+    action: str  
     user_id: str
 
 class AwardSubscriptionReq(BaseModel):
@@ -101,14 +101,11 @@ def get_summary_data(db: Session, admin: models.User):
     pots = db.query(models.FinancialPot).all()
     financials = {pot.id: {"balance": pot.balance, "borrowed": pot.borrowed} for pot in pots}
 
-    # Fetch User Subscriptions detailed table (Excluding Admins, showing "System" if paid/gateway-driven)
     subscriptions_records = db.query(models.UserSubscription).all()
     sub_map = {sub.user_id: sub for sub in subscriptions_records}
 
     user_list = []
     for u in all_users:
-        if u.is_admin:
-            continue
         sub = sub_map.get(u.id)
         user_list.append({
             "id": u.id,
@@ -116,29 +113,34 @@ def get_summary_data(db: Session, admin: models.User):
             "email": u.email,
             "phone": getattr(u, 'phone', 'N/A'),
             "university": getattr(u, 'university', 'Unknown') or 'Unknown',
-            "plan": sub.tier if sub else "FREE",
+            "plan": sub.tier if sub else ("ADMIN" if u.is_admin else "FREE"),
             "is_admin": u.is_admin,
             "status": "Active" if not getattr(u, 'is_blocked', False) else "Blocked",
             "created_at": u.created_at.isoformat() if getattr(u, 'created_at', None) else dt.datetime.utcnow().isoformat()
         })
 
-    # Subscriptions hub audit list (Excluding admins, mapping gateway payments as "System")
+    # Subscriptions hub audit list: Ensure EVERY regular user is included (showing FREE if no explicit paid sub row exists)
     subs_audit = []
-    for sub in subscriptions_records:
-        usr = db.query(models.User).filter(models.User.id == sub.user_id).first()
-        if usr and usr.is_admin:
-            continue
-        manager_label = getattr(sub, 'awarded_by', None) or 'System'
+    for u in regular_users:
+        sub = sub_map.get(u.id)
+        if sub:
+            manager_label = getattr(sub, 'awarded_by', None) or 'System Enabled'
+            tier_val = sub.tier
+            expires_val = sub.expires_at.isoformat() if getattr(sub, 'expires_at', None) else "Never"
+        else:
+            manager_label = 'System Enabled'
+            tier_val = 'FREE'
+            expires_val = 'Lifetime / Free'
+
         subs_audit.append({
-            "id": sub.id,
-            "user_email": usr.email if usr else "Unknown",
-            "tier": sub.tier,
+            "id": sub.id if sub else f"free-{u.id}",
+            "user_email": u.email,
+            "tier": tier_val,
             "awarded_by": manager_label,
-            "expires_at": sub.expires_at.isoformat() if getattr(sub, 'expires_at', None) else "Never",
+            "expires_at": expires_val,
             "status": "Active"
         })
 
-    # Financial ledgers transactions
     transactions = db.query(models.PaymentTransaction).order_by(models.PaymentTransaction.created_at.desc()).limit(50).all()
     ledgers = [{
         "id": tx.id,
@@ -148,7 +150,6 @@ def get_summary_data(db: Session, admin: models.User):
         "date": tx.created_at.isoformat() if tx.created_at else dt.datetime.utcnow().isoformat()
     } for tx in transactions]
 
-    # Activity logs
     logs_query = db.query(models.AdminActionLog).order_by(models.AdminActionLog.created_at.desc()).limit(30).all()
     audit_logs = [{
         "id": log.id,
