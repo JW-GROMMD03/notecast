@@ -43,15 +43,13 @@
             <button type="submit" class="btn" id="loginBtn">Authenticate</button>
         </form>
     </div>
-    <script>
-        // Automatically determine API base based on environment
-        const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-            ? 'http://localhost:8000' 
-            : 'https://notecast-53sj.onrender.com';
+    
+    <script type="module">
+        import { apiFetch } from "../api.js";
 
         document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const email = document.getElementById('email').value;
+            const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
             const errorMsg = document.getElementById('errorMsg');
             const btn = document.getElementById('loginBtn');
@@ -61,27 +59,23 @@
             btn.disabled = true;
 
             try {
-                const res = await fetch(`${API_BASE}/api/admin/auth/login`, {
+                // apiFetch automatically handles correct backend base URL routing
+                const data = await apiFetch('/admin/auth/login', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ email, password })
                 });
 
-                const data = await res.json();
-
-                if (res.ok) {
+                if (data && data.access_token) {
                     localStorage.setItem('nc_admin_token', data.access_token);
                     window.location.href = 'dashboard.html';
-                } else if (res.status === 429) {
-                    errorMsg.style.display = 'block';
-                    errorMsg.innerHTML = `Account locked due to multiple failed attempts. Try again in <span class="lockout-timer">${data.minutes_left} minutes</span>.`;
-                } else {
-                    errorMsg.style.display = 'block';
-                    errorMsg.textContent = `Error: ${data.detail || 'Authentication failed'} (${data.attempts_left !== undefined ? data.attempts_left + ' attempts remaining' : ''}).`;
                 }
             } catch (err) {
                 errorMsg.style.display = 'block';
-                errorMsg.textContent = "Network error. Server unreachable.";
+                if (err.status === 429) {
+                    errorMsg.innerHTML = `Account locked due to multiple failed attempts. Try again later.`;
+                } else {
+                    errorMsg.textContent = `Error: ${err.message || 'Authentication failed'}`;
+                }
             } finally {
                 btn.textContent = "Authenticate";
                 btn.disabled = false;
