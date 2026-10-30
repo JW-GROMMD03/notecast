@@ -33,6 +33,7 @@ def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
     ip = request.client.host
     attempts_left = auth.check_admin_rate_limit(db, req.email, ip)
 
+    # Standardized generic error for ALL failures to prevent enumeration
     generic_error = JSONResponse(
         status_code=401, 
         content={
@@ -41,15 +42,16 @@ def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
         }
     )
 
-    # 1. Attempt Auth
+    # 1. Attempt Auth using your custom supabase_auth service module
     try:
-        res = supabase_auth.supabase.auth.sign_in_with_password({
-            "email": req.email, "password": req.password
-        })
-    except Exception as e:
-        # 🛑 PRINT THE REAL REASON TO RENDER LOGS
-        print(f"🔥 SUPABASE AUTH ERROR FOR {req.email}: {str(e)}")
+        auth_data = supabase_auth.sign_in_with_password(req.email, req.password)
         
+        # Extract user email safely from the returned dictionary structure
+        user_info = auth_data.get("user", {})
+        user_email = user_info.get("email") or req.email
+        
+    except Exception as e:
+        print(f"🔥 SUPABASE AUTH ERROR FOR {req.email}: {str(e)}")
         auth.log_admin_attempt(db, req.email, ip, successful=False)
         try:
             auth.check_admin_rate_limit(db, req.email, ip)
@@ -58,17 +60,15 @@ def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
         
         return generic_error
 
-    # 2. Check Database for Admin Privileges
-    user = db.query(models.User).filter(models.User.email == res.user.email).first()
+    # 2. Check Database for Admin Privileges (Lookup by verified Supabase email)
+    user = db.query(models.User).filter(models.User.email == user_email).first()
     if not user or not user.is_admin:
-        # 🛑 PRINT THE REAL REASON TO RENDER LOGS
         print(f"🔥 DATABASE PRIVILEGE ERROR: User found={bool(user)}, is_admin={user.is_admin if user else 'N/A'}")
-        
         auth.log_admin_attempt(db, req.email, ip, successful=False)
         return generic_error
 
     auth.log_admin_attempt(db, req.email, ip, successful=True)
-    return {"access_token": res.session.access_token}
+    return {"access_token": auth_data.get("access_token")}
 
 
 def get_summary_data(db: Session, admin: models.User):
