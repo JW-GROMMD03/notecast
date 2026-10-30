@@ -18,7 +18,7 @@ from .routers.documents import router as documents_router
 from .routers.flashcards import router as flashcards_router
 from .routers.graph import router as graph_router
 from .routers.socratic import router as socratic_router
-from .routers.admin import router as admin_router # DIRECT IMPORT
+from .routers.admin import router as admin_router, direct_router as admin_direct_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -40,8 +40,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://notecast-web.onrender.com",
-    ] + settings.cors_origin_list, 
-    allow_credentials=True, 
+    ] + settings.cors_origin_list,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -60,7 +60,8 @@ app.include_router(documents_router)
 app.include_router(flashcards_router)
 app.include_router(graph_router)
 app.include_router(socratic_router)
-app.include_router(admin_router)
+app.include_router(admin_router)          # /admin/...      (Render rewrite strips /api)
+app.include_router(admin_direct_router)   # /api/admin/...  (direct backend access)
 
 @app.get("/health")
 def health():
