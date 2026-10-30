@@ -1,5 +1,6 @@
 import asyncio
 import datetime as dt
+from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -76,11 +77,13 @@ def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
 
 
 def get_summary_data(db: Session, admin: models.User):
-    total_revenue = db.query(func.sum(models.PaymentTransaction.amount)).filter(models.PaymentTransaction.status == "COMPLETED").scalar() or 0.0
+    # 1. Base Metrics
+    transactions_completed = db.query(models.PaymentTransaction).filter(models.PaymentTransaction.status == "COMPLETED").all()
+    total_revenue = sum([float(tx.amount) for tx in transactions_completed])
     total_subs = db.query(models.UserSubscription).count()
 
     all_users = db.query(models.User).order_by(models.User.created_at.desc()).all()
-    regular_users = [u for u in all_users if not u.is_admin]
+    regular_users = all_users
 
     uni_stats = db.query(
         models.User.university,
@@ -98,39 +101,72 @@ def get_summary_data(db: Session, admin: models.User):
 
     pots = db.query(models.FinancialPot).all()
     financials = {pot.id: {"balance": pot.balance, "borrowed": pot.borrowed} for pot in pots}
+    
+    # 2. Business Net Worth Calculation (Total retained in pots)
+    net_worth = sum([pot.balance for pot in pots])
 
+    # 3. Time-Series Analytics (Weekly, Monthly, Yearly)
+    weekly_rev, monthly_rev, yearly_rev = defaultdict(float), defaultdict(float), defaultdict(float)
+    
+    for tx in transactions_completed:
+        if not tx.created_at: continue
+        yw = tx.created_at.strftime("%Y-W%W") # e.g., 2026-W43
+        ym = tx.created_at.strftime("%Y-%m")  # e.g., 2026-10
+        y = tx.created_at.strftime("%Y")      # e.g., 2026
+        
+        amt = float(tx.amount)
+        weekly_rev[yw] += amt
+        monthly_rev[ym] += amt
+        yearly_rev[y] += amt
+
+    weekly_trend = [{"period": k, "revenue": v} for k, v in sorted(weekly_rev.items())]
+    monthly_trend = [{"period": k, "revenue": v} for k, v in sorted(monthly_rev.items())]
+    yearly_trend = [{"period": k, "revenue": v} for k, v in sorted(yearly_rev.items())]
+
+    # Detect if revenue is climbing or dropping based on the last two recorded months
+    trend_status = "Neutral"
+    trend_percentage = 0.0
+    if len(monthly_trend) >= 2:
+        last_month = monthly_trend[-1]["revenue"]
+        prev_month = monthly_trend[-2]["revenue"]
+        if prev_month > 0:
+            trend_percentage = ((last_month - prev_month) / prev_month) * 100
+            trend_status = "Climbing 📈" if trend_percentage > 0 else "Reducing 📉"
+
+    # 4. User and Subscription Maps
     subscriptions_records = db.query(models.UserSubscription).all()
     sub_map = {sub.user_id: sub for sub in subscriptions_records}
 
-    # STRICTLY EXCLUDE ADMINS FROM USER CRM LIST
     user_list = []
     for u in all_users:
-        if u.is_admin:
-            continue
         sub = sub_map.get(u.id)
+        is_super_admin = u.email in ['destinymichael941@gmail.com', 'eugkipkomen75@gmail.com'] or u.is_admin
+        display_plan = "SUPER ADMIN" if is_super_admin else (sub.tier if sub else "FREE")
+        
         user_list.append({
             "id": u.id,
             "name": getattr(u, 'display_name', '') or 'N/A',
             "email": u.email,
             "phone": getattr(u, 'phone', 'N/A'),
             "university": getattr(u, 'university', 'Unknown') or 'Unknown',
-            "plan": sub.tier if sub else "FREE",
-            "is_admin": u.is_admin,
+            "plan": display_plan,
+            "is_admin": is_super_admin,
             "status": "Active" if not getattr(u, 'is_blocked', False) else "Blocked",
             "created_at": u.created_at.isoformat() if getattr(u, 'created_at', None) else dt.datetime.utcnow().isoformat()
         })
 
-    # STRICTLY EXCLUDE ADMINS FROM SUBSCRIPTION HUB AUDIT LIST
     subs_audit = []
-    for u in regular_users:
+    for u in all_users:
         sub = sub_map.get(u.id)
+        is_super_admin = u.email in ['destinymichael941@gmail.com', 'eugkipkomen75@gmail.com'] or u.is_admin
+        
         if sub:
-            manager_label = getattr(sub, 'awarded_by', None) or 'System Enabled'
-            tier_val = sub.tier
+            manager_label = 'System / Admin' 
+            tier_val = "SUPER ADMIN" if is_super_admin else sub.tier
             expires_val = sub.expires_at.isoformat() if getattr(sub, 'expires_at', None) else "Never"
         else:
             manager_label = 'System Enabled'
-            tier_val = 'FREE'
+            tier_val = "SUPER ADMIN" if is_super_admin else 'FREE'
             expires_val = 'Lifetime / Free'
 
         subs_audit.append({
@@ -163,11 +199,19 @@ def get_summary_data(db: Session, admin: models.User):
     return {
         "total_revenue": total_revenue,
         "total_subs": total_subs,
-        "total_regular_users": len(regular_users),
+        "total_regular_users": len(regular_users), 
         "total_users": len(all_users),
         "universities": universities,
         "plans": plans,
         "financials": financials,
+        "net_worth": net_worth,
+        "trend_status": trend_status,
+        "trend_percentage": round(trend_percentage, 1),
+        "revenue_trends": {
+            "weekly": weekly_trend[-10:], # last 10 weeks
+            "monthly": monthly_trend[-12:], # last 12 months
+            "yearly": yearly_trend
+        },
         "users": user_list,
         "subscriptions": subs_audit,
         "ledgers": ledgers,
@@ -235,6 +279,10 @@ def manage_user_account(req: UserActionReq, db: Session = Depends(get_db), admin
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
     
+    is_super_admin = user.email in ['destinymichael941@gmail.com', 'eugkipkomen75@gmail.com'] or user.is_admin
+    if is_super_admin and req.action in ("BLOCK", "DELETE"):
+         raise HTTPException(status_code=403, detail="Cannot block or delete an administrative account.")
+    
     if req.action == "BLOCK":
         user.is_blocked = True
     elif req.action == "UNBLOCK":
@@ -259,13 +307,11 @@ def award_subscription(req: AwardSubscriptionReq, db: Session = Depends(get_db),
     if sub:
         sub.tier = req.tier
         sub.expires_at = expires
-        sub.awarded_by = admin.email
     else:
         sub = models.UserSubscription(
             user_id=req.user_id,
             tier=req.tier,
-            expires_at=expires,
-            awarded_by=admin.email
+            expires_at=expires
         )
         db.add(sub)
     
