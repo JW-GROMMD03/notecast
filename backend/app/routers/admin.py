@@ -15,7 +15,6 @@ direct_router = APIRouter(prefix="/api/admin", include_in_schema=False)
 
 active_ws_connections = []
 
-# --- SCHEMAS ---
 class AdminLoginReq(BaseModel):
     email: str
     password: str
@@ -41,7 +40,6 @@ class SendEmailReq(BaseModel):
     subject: str
     message: str
 
-# --- CONTROLLERS ---
 
 def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
     ip = request.client.host
@@ -104,8 +102,11 @@ def get_summary_data(db: Session, admin: models.User):
     subscriptions_records = db.query(models.UserSubscription).all()
     sub_map = {sub.user_id: sub for sub in subscriptions_records}
 
+    # STRICTLY EXCLUDE ADMINS FROM USER CRM LIST
     user_list = []
     for u in all_users:
+        if u.is_admin:
+            continue
         sub = sub_map.get(u.id)
         user_list.append({
             "id": u.id,
@@ -113,13 +114,13 @@ def get_summary_data(db: Session, admin: models.User):
             "email": u.email,
             "phone": getattr(u, 'phone', 'N/A'),
             "university": getattr(u, 'university', 'Unknown') or 'Unknown',
-            "plan": sub.tier if sub else ("ADMIN" if u.is_admin else "FREE"),
+            "plan": sub.tier if sub else "FREE",
             "is_admin": u.is_admin,
             "status": "Active" if not getattr(u, 'is_blocked', False) else "Blocked",
             "created_at": u.created_at.isoformat() if getattr(u, 'created_at', None) else dt.datetime.utcnow().isoformat()
         })
 
-    # Subscriptions hub audit list: Ensure EVERY regular user is included (showing FREE if no explicit paid sub row exists)
+    # STRICTLY EXCLUDE ADMINS FROM SUBSCRIPTION HUB AUDIT LIST
     subs_audit = []
     for u in regular_users:
         sub = sub_map.get(u.id)
@@ -208,8 +209,6 @@ def process_finance_action(req: FinanceActionReq, db: Session, admin: models.Use
     db.commit()
     return {"message": "Action executed successfully."}
 
-
-# --- ROUTES ---
 
 @router.post("/auth/login")
 @direct_router.post("/auth/login")
