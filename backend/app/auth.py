@@ -1,5 +1,6 @@
 """
 Authentication dependencies and cookie/CSRF plumbing with TRACE LOGGING.
+Includes rigorous Admin RBAC and 3-attempt/30-minute lockout protection.
 """
 import secrets
 import datetime as dt
@@ -58,7 +59,9 @@ def get_current_user(request: Request, db: DbSession = Depends(get_db)) -> model
         user = models.User(
             id=user_id, 
             email=claims.get("email", ""), 
-            display_name=claims.get("user_metadata", {}).get("display_name", "")
+            display_name=claims.get("user_metadata", {}).get("display_name", ""),
+            university="Unknown",
+            is_admin=False
         )
         try:
             db.add(user)
@@ -75,6 +78,47 @@ def get_current_user(request: Request, db: DbSession = Depends(get_db)) -> model
     print("="*50 + "\n")
     return user
 
+
+# ==============================================================
+# SECURE ADMIN ACCESS CONTROLS (RBAC & LOCKOUT)
+# ==============================================================
+
+def get_current_admin(user: models.User = Depends(get_current_user)) -> models.User:
+    """Ensures the authenticated user has verified Admin privileges."""
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied. Administrator privileges required.")
+    return user
+
+def check_admin_rate_limit(db: DbSession, email: str, ip_address: str):
+    """Enforces 3 attempts / 30 minutes lockout window for admin access."""
+    cutoff = dt.datetime.utcnow() - dt.timedelta(minutes=30)
+    recent_failures = db.query(models.LoginAttempt).filter(
+        models.LoginAttempt.email == email,
+        models.LoginAttempt.ip_address == ip_address,
+        models.LoginAttempt.successful == False,
+        models.LoginAttempt.attempt_time >= cutoff
+    ).count()
+    
+    if recent_failures >= 3:
+        raise HTTPException(
+            status_code=429, 
+            detail="Account locked due to multiple failed attempts.",
+            headers={"Retry-After": "1800"}
+        )
+    return 3 - recent_failures
+
+def log_admin_attempt(db: DbSession, email: str, ip_address: str, successful: bool):
+    """Logs the admin login attempt for security tracking."""
+    attempt = models.LoginAttempt(
+        email=email,
+        ip_address=ip_address,
+        successful=successful
+    )
+    db.add(attempt)
+    db.commit()
+
+
+# ==============================================================
 
 def get_current_user_ws(token: str, db: DbSession) -> models.User | None:
     try:
@@ -98,11 +142,10 @@ def verify_csrf(request: Request) -> None:
 
 
 def set_session_cookies(response: Response, access_token: str, refresh_token: str, expires_in: int) -> None:
-    # Hardcoded for strict cross-domain functionality on Render
     common = dict(
         httponly=True,
-        secure=True,          # MUST be True for cross-domain
-        samesite="none",      # MUST be "none" for cross-domain
+        secure=True,          
+        samesite="none",      
         path="/",
     )
     
@@ -120,7 +163,6 @@ def set_session_cookies(response: Response, access_token: str, refresh_token: st
 
 
 def clear_session_cookies(response: Response) -> None:
-    # Must match the setting attributes exactly to clear properly
     common = dict(
         path="/",
         samesite="none",

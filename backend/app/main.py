@@ -18,6 +18,7 @@ from .routers import documents as documents_router
 from .routers import flashcards as flashcards_router
 from .routers import graph as graph_router
 from .routers import socratic as socratic_router
+from .routers import admin as admin_router # <--- NEW ADMIN ROUTER
 
 logging.basicConfig(level=logging.INFO)
 
@@ -38,7 +39,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "[https://notecast-web.onrender.com](https://notecast-web.onrender.com)",
+        "https://notecast-web.onrender.com",
     ] + settings.cors_origin_list, 
     allow_credentials=True, 
     allow_methods=["*"],
@@ -59,6 +60,7 @@ app.include_router(documents_router.router)
 app.include_router(flashcards_router.router)
 app.include_router(graph_router.router)
 app.include_router(socratic_router.router)
+app.include_router(admin_router.router) # <--- MOUNTED ADMIN ROUTER
 
 @app.get("/health")
 def health():

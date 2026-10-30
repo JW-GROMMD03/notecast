@@ -39,6 +39,11 @@ class User(Base):
     plan = Column(String, default=PlanTier.ECONOMY.value)  
     llm_credits = Column(Integer, default=0)
     unlimited_downloads_until = Column(DateTime(timezone=True), nullable=True) # Supports Weekly Download Passes
+    
+    # NEW: Admin & Demographic Tracking
+    is_admin = Column(Boolean, default=False)
+    university = Column(String, default="Unknown")
+    
     created_at = Column(DateTime, default=now)
 
     videos = relationship("Video", back_populates="user", cascade="all, delete-orphan")
@@ -67,6 +72,41 @@ class Transaction(Base):
     created_at = Column(DateTime, default=now)
 
     user = relationship("User", back_populates="transactions")
+
+
+# ==========================================
+# ADMIN COMMAND CENTER & FINANCIAL LEDGERS
+# ==========================================
+
+class LoginAttempt(Base):
+    __tablename__ = "login_attempts"
+    id = Column(String, primary_key=True, default=uid)
+    email = Column(String, index=True, nullable=False)
+    ip_address = Column(String, nullable=False)
+    attempt_time = Column(DateTime, default=now)
+    successful = Column(Boolean, default=False)
+
+
+class FinancialPot(Base):
+    __tablename__ = "financial_pots"
+    id = Column(String, primary_key=True) # 'maintenance', 'savings', 'scalability', 'emergency', 'shareholders'
+    name = Column(String, nullable=False)
+    balance = Column(Float, default=0.0)
+    borrowed = Column(Float, default=0.0)
+    split_percentage = Column(Float, default=0.0)
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+
+class AdminActionLog(Base):
+    __tablename__ = "admin_action_logs"
+    id = Column(String, primary_key=True, default=uid)
+    admin_id = Column(String, ForeignKey("users.id"), nullable=False)
+    action_type = Column(String, nullable=False) # 'BORROW', 'REPAY', 'EXPENSE', 'MONTHLY_ALLOCATION'
+    amount = Column(Float, nullable=False)
+    source_pot_id = Column(String, ForeignKey("financial_pots.id"), nullable=True)
+    target_pot_id = Column(String, ForeignKey("financial_pots.id"), nullable=True)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=now)
 
 
 # ==========================================
