@@ -33,7 +33,6 @@ def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
     ip = request.client.host
     attempts_left = auth.check_admin_rate_limit(db, req.email, ip)
 
-    # Standardized generic error for ALL failures to prevent enumeration
     generic_error = JSONResponse(
         status_code=401, 
         content={
@@ -47,7 +46,10 @@ def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
         res = supabase_auth.supabase.auth.sign_in_with_password({
             "email": req.email, "password": req.password
         })
-    except Exception:
+    except Exception as e:
+        # 🛑 PRINT THE REAL REASON TO RENDER LOGS
+        print(f"🔥 SUPABASE AUTH ERROR FOR {req.email}: {str(e)}")
+        
         auth.log_admin_attempt(db, req.email, ip, successful=False)
         try:
             auth.check_admin_rate_limit(db, req.email, ip)
@@ -56,10 +58,12 @@ def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
         
         return generic_error
 
-    
-    # 2. Check Database for Admin Privileges (Lookup by verified Supabase email)
+    # 2. Check Database for Admin Privileges
     user = db.query(models.User).filter(models.User.email == res.user.email).first()
     if not user or not user.is_admin:
+        # 🛑 PRINT THE REAL REASON TO RENDER LOGS
+        print(f"🔥 DATABASE PRIVILEGE ERROR: User found={bool(user)}, is_admin={user.is_admin if user else 'N/A'}")
+        
         auth.log_admin_attempt(db, req.email, ip, successful=False)
         return generic_error
 
