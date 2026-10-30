@@ -33,6 +33,7 @@ def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
     ip = request.client.host
     attempts_left = auth.check_admin_rate_limit(db, req.email, ip)
 
+    # 1. Check Password with Supabase
     try:
         res = supabase_auth.supabase.auth.sign_in_with_password({
             "email": req.email, "password": req.password
@@ -43,13 +44,23 @@ def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
             auth.check_admin_rate_limit(db, req.email, ip)
         except HTTPException:
             return JSONResponse(status_code=429, content={"minutes_left": 30})
+            
         left = (attempts_left - 1) if isinstance(attempts_left, int) else None
-        return JSONResponse(status_code=401, content={"detail": "Invalid credentials", "attempts_left": left})
+        # Explicit error so you know it failed at the password stage
+        return JSONResponse(
+            status_code=401, 
+            content={"detail": "Invalid password, or account is not registered with a password in Supabase.", "attempts_left": left}
+        )
 
+    # 2. Check Database for Admin Privileges
     user = db.query(models.User).filter(models.User.id == res.user.id).first()
     if not user or not user.is_admin:
         auth.log_admin_attempt(db, req.email, ip, successful=False)
-        raise HTTPException(status_code=403, detail="Account does not have administrator privileges.")
+        # Explicit error so you know the password worked, but the SQL update failed
+        return JSONResponse(
+            status_code=403, 
+            content={"detail": "Account exists and password is correct, but lacks SQL administrator privileges."}
+        )
 
     auth.log_admin_attempt(db, req.email, ip, successful=True)
     return {"access_token": res.session.access_token}
