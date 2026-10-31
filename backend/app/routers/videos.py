@@ -106,11 +106,11 @@ class SubscriptionManager:
         if max_minutes >= 9999: # Unlimited
             return
             
-        today = datetime.datetime.utcnow().date()
+        today_str = datetime.datetime.utcnow().strftime('%Y-%m-%d')
         try:
             total_sec = db.execute(
-                text("SELECT COALESCE(SUM(CAST(resource_id AS INTEGER)), 0) FROM daily_usage WHERE user_id = :uid AND action = 'capture_video' AND DATE(created_at) = :today"),
-                {"uid": user.id, "today": today}
+                text("SELECT COALESCE(SUM(CAST(NULLIF(resource_id, '') AS INTEGER)), 0) FROM daily_usage WHERE user_id = :uid AND action = 'capture_video' AND created_at >= CAST(:today_start AS TIMESTAMP)"),
+                {"uid": user.id, "today_start": f"{today_str} 00:00:00"}
             ).scalar() or 0
         except Exception:
             db.rollback()
@@ -139,11 +139,11 @@ class SubscriptionManager:
         if max_limit == 0:
             raise HTTPException(status_code=403, detail=f"Your current plan does not include {feature_name.title()} access.")
             
-        today = datetime.datetime.utcnow().date()
+        today_str = datetime.datetime.utcnow().strftime('%Y-%m-%d')
         try:
             daily_usage = db.execute(
-                text("SELECT COUNT(*) FROM daily_usage WHERE user_id = :uid AND action = :act AND DATE(created_at) = :today"),
-                {"uid": user.id, "act": feature_name, "today": today}
+                text("SELECT COUNT(*) FROM daily_usage WHERE user_id = :uid AND action = :act AND created_at >= CAST(:today_start AS TIMESTAMP)"),
+                {"uid": user.id, "act": feature_name, "today_start": f"{today_str} 00:00:00"}
             ).scalar() or 0
         except Exception:
             db.rollback()
@@ -163,11 +163,11 @@ class SubscriptionManager:
             raise HTTPException(status_code=500, detail="Subscription package configuration missing.")
 
         action_type = "simulation_llm" if is_llm else "simulation_static"
-        today = datetime.datetime.utcnow().date()
+        today_str = datetime.datetime.utcnow().strftime('%Y-%m-%d')
         try:
             daily_sims = db.execute(
-                text("SELECT COUNT(*) FROM daily_usage WHERE user_id = :uid AND action = :act AND DATE(created_at) = :today"),
-                {"uid": user.id, "act": action_type, "today": today}
+                text("SELECT COUNT(*) FROM daily_usage WHERE user_id = :uid AND action = :act AND created_at >= CAST(:today_start AS TIMESTAMP)"),
+                {"uid": user.id, "act": action_type, "today_start": f"{today_str} 00:00:00"}
             ).scalar() or 0
         except Exception:
             db.rollback()
@@ -252,7 +252,7 @@ def get_pptx_safe_image_path(real_path):
 # =========================================================================
 
 @router.get("/verify-entitlement")
-def verify_entitlement(action: str, resource_id: str = None, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
+def verify_entitlement(action: str = None, resource_id: str = None, user: models.User = Depends(auth.get_current_user), db: DbSession = Depends(get_db)):
     """Frontend-facing endpoint to check limits before rendering UI modals."""
     if action == "DOC_SUMMARIZATION":
         SubscriptionManager.check_feature_daily_limit(user, db, "docuvision")
@@ -530,5 +530,5 @@ def download_ppt(video_id: str, user: models.User = Depends(auth.get_current_use
         bio.seek(0)
         safe_title = "".join(c for c in (video.title or "guide") if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")
         return StreamingResponse(bio, media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation", headers={"Content-Disposition": f"attachment; filename={safe_title}_Captures.pptx"})
-    except Exception as e:
+    catch Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate PPT: {str(e)}")
