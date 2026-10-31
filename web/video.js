@@ -7,16 +7,16 @@ let pollTimer = null;
 let currentVideoTitle = "Study Notes";
 
 // =========================================================================
-// URL RESOLVER FOR EXPORTS (Fixes Missing Images in PDFs)
+// URL RESOLVER FOR EXPORTS (Fixes Missing Images & Routes to correct API)
 // =========================================================================
 function getAbsoluteImageUrl(url) {
   if (!url) return "";
   if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
     return url;
   }
-  // Strip leading slashes and redundant api/ paths to avoid double-nesting
+  // Strip leading slashes and redundant api/ paths, then route directly to backend API_BASE
   const cleanPath = url.replace(/^\/?(api\/)?/, "");
-  return `https://notecast-web.onrender.com/api/${cleanPath}`;
+  return `${API_BASE}/${cleanPath}`;
 }
 
 // =========================================================================
