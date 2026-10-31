@@ -298,7 +298,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       try {
         const token = await ensureFreshToken();
-        // FIXED: Point to the correct backend route: /payments/entitlement-status
         const res = await fetch(`${API_BASE}/payments/entitlement-status?action=${message.action}`, {
           method: "GET",
           headers: { "Authorization": `Bearer ${token}` }
@@ -319,18 +318,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; 
   }
 
+  if (message.type === "AUTO_START_CAPTURE") {
+    startCapturePipeline(message.payload);
+    sendResponse({ ok: true });
+    return true;
+  }
+
   if (!message || message.scope !== "notecast") {
     return false;
   }
 
-  if (message.type === "START_CAPTURE_PIPELINE") {
+  if (message.type === "START_CAPTURE_PIPELINE" || message.type === "START_CAPTURE_WITH_STREAM") {
      startCapturePipeline(message.payload, sendResponse);
      return true; 
-  }
-
-  if (message.type === "AUTO_START_CAPTURE") {
-    startCapturePipeline(message.payload);
-    return false;
   }
 
   (async () => {
