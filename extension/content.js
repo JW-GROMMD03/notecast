@@ -6,7 +6,6 @@ if (typeof window.noteCastInjected === 'undefined') {
 
   let frameTimer = null;
   let autoStarted = false;
-  let ncContainer = null;
   let isCurrentlyAd = false;
   let adObserver = null;
 
@@ -26,7 +25,7 @@ if (typeof window.noteCastInjected === 'undefined') {
     if (adShowing !== isCurrentlyAd) {
       isCurrentlyAd = adShowing;
       
-      // Notify extension side panel to pause audio recording
+      // Notify extension side panel / background to pause audio recording
       try {
         if (chrome?.runtime?.id) {
           chrome.runtime.sendMessage({
@@ -36,17 +35,6 @@ if (typeof window.noteCastInjected === 'undefined') {
           }).catch(() => {});
         }
       } catch(e) {}
-
-      const statusEl = document.getElementById('nc-status');
-      if (statusEl && autoStarted) {
-        if (isCurrentlyAd) {
-          statusEl.textContent = '⏸️ Ad detected — Pausing capture...';
-          statusEl.style.color = '#f59e0b';
-        } else {
-          statusEl.textContent = '✅ Resuming capture...';
-          statusEl.style.color = '#10b981';
-        }
-      }
     }
     return isCurrentlyAd;
   }
@@ -148,107 +136,16 @@ if (typeof window.noteCastInjected === 'undefined') {
     });
   }
 
-  // --- FLOATING UI INJECTION ---
-  function injectNoteCastUI() {
-    if (document.getElementById('notecast-floating-ui')) return;
-    if (!window.location.href.includes('watch?v=')) return;
-  
-    ncContainer = document.createElement('div');
-    ncContainer.id = 'notecast-floating-ui';
-    
-    ncContainer.innerHTML = `
-      <div class="nc-header">
-        <span class="nc-title">NoteCast Studio</span>
-        <button id="nc-close-btn" class="nc-close">&times;</button>
-      </div>
-      <div class="nc-body">
-        <p>Automate notes for this video?</p>
-        <button id="nc-start-btn" class="nc-btn">Start NoteCast</button>
-        <div id="nc-status" class="nc-status hidden"></div>
-      </div>
-    `;
-    
-    // Kept hidden per previous requirements
-    ncContainer.style.display = 'none';
-
-    document.body.appendChild(ncContainer);
-    setupAdObserver(); // Initialize ad watcher when UI loads
-  
-    document.getElementById('nc-close-btn').addEventListener('click', () => {
-      ncContainer.style.display = 'none';
-    });
-  
-    document.getElementById('nc-start-btn').addEventListener('click', () => {
-      const statusEl = document.getElementById('nc-status');
-      const btn = document.getElementById('nc-start-btn');
-      
-      statusEl.textContent = 'Verifying active plan...';
-      statusEl.className = 'nc-status';
-      btn.disabled = true;
-      
-      // FIX: Robust connection checking to prevent UI crash
-      if (!chrome?.runtime?.id) {
-          statusEl.textContent = '❌ Extension connection lost. Please refresh the page.';
-          statusEl.style.color = '#ef4444';
-          btn.disabled = false;
-          return;
-      }
-
-      try {
-        chrome.runtime.sendMessage({ type: "CHECK_ENTITLEMENT", action: "YOUTUBE_CAPTURE" }, (response) => {
-            if (chrome.runtime.lastError) {
-                statusEl.textContent = '❌ Extension disconnected. Please refresh the page.';
-                statusEl.style.color = '#ef4444';
-                btn.disabled = false;
-                return;
-            }
-
-            if (response && response.success) {
-                statusEl.textContent = '✅ Capturing! Notes will sync to your dashboard.';
-                statusEl.style.color = '#10b981';
-                btn.style.display = 'none';
-                
-                autoStarted = true;
-                const meta = extractMeta();
-                chrome.runtime.sendMessage({
-                    scope: "notecast",
-                    type: "AUTO_START_CAPTURE",
-                    payload: { videoMeta: meta }
-                }).catch(() => {});
-
-            } else {
-                statusEl.textContent = '❌ ' + (response?.error || 'Plan limit reached. Please upgrade.');
-                statusEl.style.color = '#ef4444';
-                btn.disabled = false;
-            }
-        });
-      } catch(e) {
-          statusEl.textContent = '❌ Unexpected error. Please refresh the page.';
-          statusEl.style.color = '#ef4444';
-          btn.disabled = false;
-      }
-    });
-  }
-
+  // Initialize ad observer on navigation or load
   document.addEventListener('yt-navigate-finish', () => {
-    if (ncContainer) {
-      ncContainer.style.display = 'none'; // Keep hidden on navigation
-      const statusEl = document.getElementById('nc-status');
-      if (statusEl) {
-          statusEl.className = 'nc-status hidden';
-          document.getElementById('nc-start-btn').style.display = 'block';
-          document.getElementById('nc-start-btn').disabled = false;
-      }
-      if(frameTimer) { clearInterval(frameTimer); frameTimer = null; }
-      autoStarted = false;
-      setupAdObserver();
-    } else {
-      injectNoteCastUI();
-    }
+    if(frameTimer) { clearInterval(frameTimer); frameTimer = null; }
+    autoStarted = false;
+    setupAdObserver();
   });
   
-  setTimeout(injectNoteCastUI, 1500);
+  setTimeout(setupAdObserver, 1500);
 
+  // Listen for commands from background script / side panel
   if (chrome?.runtime?.onMessage) {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.scope === "notecast-content") {
