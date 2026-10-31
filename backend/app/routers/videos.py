@@ -530,5 +530,5 @@ def download_ppt(video_id: str, user: models.User = Depends(auth.get_current_use
         bio.seek(0)
         safe_title = "".join(c for c in (video.title or "guide") if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")
         return StreamingResponse(bio, media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation", headers={"Content-Disposition": f"attachment; filename={safe_title}_Captures.pptx"})
-    catch Exception as e:
+    except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate PPT: {str(e)}")
