@@ -39,6 +39,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://notecast-53sj.onrender.com",
         "https://notecast-web.onrender.com",
     ] + settings.cors_origin_list,
     allow_credentials=True,
