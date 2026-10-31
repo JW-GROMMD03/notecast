@@ -27,6 +27,9 @@ document.getElementById("launchBtn").addEventListener("click", async () => {
         statusEl.textContent = "Requesting tab capture access…";
 
         try {
+            // --> FIX: Programmatically open the Side Panel for the current window
+            await chrome.sidePanel.open({ windowId: tab.windowId });
+
             const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
             const title = tab.title.replace(/\s*-\s*YouTube$/, "").trim();
 
@@ -44,8 +47,9 @@ document.getElementById("launchBtn").addEventListener("click", async () => {
               throw new Error(result.error || "Failed to initialize backend session.");
             }
 
-            statusEl.textContent = "Capture active! You can now open your side panel or dashboard.";
-            setTimeout(() => window.close(), 1500);
+            statusEl.textContent = "Capture active! Side panel opened.";
+            // Close the popup so the user can focus on the side panel
+            setTimeout(() => window.close(), 1000);
         } catch (e) {
             console.error(e);
             errorEl.textContent = e.message;
@@ -57,7 +61,7 @@ document.getElementById("launchBtn").addEventListener("click", async () => {
   } catch (err) {
     console.error(err);
     errorEl.textContent = err.message;
-    statusEl.textContent = "Capture failed.";
+    statusEl.textContent = "Error.";
     btn.disabled = false;
   }
 });
