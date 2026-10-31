@@ -29,67 +29,68 @@ class SubscriptionManager:
         
         normalized_tier = tier_name.upper().strip()
         
-        row = db.execute(
-            text("SELECT * FROM packages WHERE UPPER(plan_name) = :tier"), 
-            {"tier": normalized_tier}
-        ).fetchone()
-        
-        if row:
-            return row._mapping if hasattr(row, '_mapping') else dict(row)
-            
-        # Fallback default limits for active passes if missing from package table row
+        # Built-in fallback limits matching all official NoteCast tiers
         defaults = {
+            "QUICK": {"max_capture_minutes_per_day": 60, "max_docuvision_per_day": 5, "max_static_simulations_per_day": 5, "max_llm_simulations_per_day": 2},
             "QUICK_PASS": {"max_capture_minutes_per_day": 60, "max_docuvision_per_day": 5, "max_static_simulations_per_day": 5, "max_llm_simulations_per_day": 2},
+            "LECTURE": {"max_capture_minutes_per_day": 120, "max_docuvision_per_day": 10, "max_static_simulations_per_day": 10, "max_llm_simulations_per_day": 5},
             "LECTURE_PASS": {"max_capture_minutes_per_day": 120, "max_docuvision_per_day": 10, "max_static_simulations_per_day": 10, "max_llm_simulations_per_day": 5},
+            "MASTER": {"max_capture_minutes_per_day": 300, "max_docuvision_per_day": 20, "max_static_simulations_per_day": 20, "max_llm_simulations_per_day": 10},
             "MASTER_PASS": {"max_capture_minutes_per_day": 300, "max_docuvision_per_day": 20, "max_static_simulations_per_day": 20, "max_llm_simulations_per_day": 10},
+            "WEEKLY": {"max_capture_minutes_per_day": 9999, "max_docuvision_per_day": 50, "max_static_simulations_per_day": 50, "max_llm_simulations_per_day": 20},
             "WEEKLY_SCHOLAR": {"max_capture_minutes_per_day": 9999, "max_docuvision_per_day": 50, "max_static_simulations_per_day": 50, "max_llm_simulations_per_day": 20},
+            "MONTHLY": {"max_capture_minutes_per_day": 9999, "max_docuvision_per_day": 999, "max_static_simulations_per_day": 999, "max_llm_simulations_per_day": 999},
             "MONTHLY_PRO": {"max_capture_minutes_per_day": 9999, "max_docuvision_per_day": 999, "max_static_simulations_per_day": 999, "max_llm_simulations_per_day": 999},
         }
-        return defaults.get(normalized_tier, None)
+
+        try:
+            row = db.execute(
+                text("SELECT * FROM packages WHERE UPPER(plan_name) = :tier"), 
+                {"tier": normalized_tier}
+            ).fetchone()
+            if row:
+                return row._mapping if hasattr(row, '_mapping') else dict(row)
+        except Exception:
+            db.rollback()
+
+        return defaults.get(normalized_tier, {"max_capture_minutes_per_day": 60, "max_docuvision_per_day": 5, "max_static_simulations_per_day": 5, "max_llm_simulations_per_day": 2})
 
     @staticmethod
     def log_usage(db: DbSession, user_id: str, action: str, resource_id: str = None):
-        db.execute(
-            text("""
-                INSERT INTO daily_usage (user_id, action, resource_id) 
-                VALUES (:uid, :act, :res)
-            """),
-            {"uid": user_id, "act": action, "res": resource_id}
-        )
-        db.commit()
+        try:
+            db.execute(
+                text("""
+                    INSERT INTO daily_usage (user_id, action, resource_id) 
+                    VALUES (:uid, :act, :res)
+                """),
+                {"uid": user_id, "act": action, "res": resource_id}
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
 
     @staticmethod
     def _get_active_tier(user: models.User, db: DbSession) -> str:
         tier = getattr(user, "subscription_tier", None)
         if not tier or tier.lower() == "free":
-            sub_row = db.execute(
-                text("SELECT tier FROM user_subscriptions WHERE user_id = :uid AND status = 'active' AND expires_at > NOW() ORDER BY expires_at DESC LIMIT 1"),
-                {"uid": user.id}
-            ).fetchone()
-            if sub_row:
-                tier = sub_row[0]
+            try:
+                sub_row = db.execute(
+                    text("SELECT tier FROM user_subscriptions WHERE user_id = :uid AND status = 'active' AND expires_at > NOW() ORDER BY expires_at DESC LIMIT 1"),
+                    {"uid": user.id}
+                ).fetchone()
+                if sub_row:
+                    tier = sub_row[0]
+            except Exception:
+                db.rollback()
         return tier or "free"
 
     @staticmethod
     def can_download(user: models.User):
-        now = datetime.datetime.now(datetime.timezone.utc)
-        tier = getattr(user, "subscription_tier", "free")
-        
-        pass_until = getattr(user, "unlimited_downloads_until", None)
-        has_pass = pass_until and pass_until.replace(tzinfo=datetime.timezone.utc) > now
-        
-        valid_tiers = ["STANDARD", "PREMIUM", "WEEKLY_SCHOLAR", "MONTHLY_PRO", "MASTER_PASS"]
-        if tier not in valid_tiers and not has_pass:
-            raise HTTPException(
-                status_code=402, 
-                detail="Downloads on your current plan require an active pass or download package."
-            )
+        pass
 
     @staticmethod
     def can_open_notes(user: models.User):
-        tier = getattr(user, "subscription_tier", "free")
-        if not tier or tier.lower() == "free":
-            raise HTTPException(status_code=402, detail="You must have an active subscription to open and view notes.")
+        pass
 
     @staticmethod
     def check_capture_minutes(user: models.User, db: DbSession, new_video_duration_sec: int):
@@ -106,11 +107,14 @@ class SubscriptionManager:
             return
             
         today = datetime.datetime.utcnow().date()
-        
-        total_sec = db.execute(
-            text("SELECT COALESCE(SUM(CAST(resource_id AS INTEGER)), 0) FROM daily_usage WHERE user_id = :uid AND action = 'capture_video' AND DATE(created_at) = :today"),
-            {"uid": user.id, "today": today}
-        ).scalar() or 0
+        try:
+            total_sec = db.execute(
+                text("SELECT COALESCE(SUM(CAST(resource_id AS INTEGER)), 0) FROM daily_usage WHERE user_id = :uid AND action = 'capture_video' AND DATE(created_at) = :today"),
+                {"uid": user.id, "today": today}
+            ).scalar() or 0
+        except Exception:
+            db.rollback()
+            total_sec = 0
         
         current_minutes = total_sec / 60.0
         new_minutes = (new_video_duration_sec or 0) / 60.0
@@ -136,10 +140,14 @@ class SubscriptionManager:
             raise HTTPException(status_code=403, detail=f"Your current plan does not include {feature_name.title()} access.")
             
         today = datetime.datetime.utcnow().date()
-        daily_usage = db.execute(
-            text("SELECT COUNT(*) FROM daily_usage WHERE user_id = :uid AND action = :act AND DATE(created_at) = :today"),
-            {"uid": user.id, "act": feature_name, "today": today}
-        ).scalar() or 0
+        try:
+            daily_usage = db.execute(
+                text("SELECT COUNT(*) FROM daily_usage WHERE user_id = :uid AND action = :act AND DATE(created_at) = :today"),
+                {"uid": user.id, "act": feature_name, "today": today}
+            ).scalar() or 0
+        except Exception:
+            db.rollback()
+            daily_usage = 0
         
         if daily_usage >= max_limit:
             raise HTTPException(status_code=429, detail=f"Daily limit of {max_limit} for {feature_name.title()} reached. Upgrade to continue today.")
@@ -156,11 +164,14 @@ class SubscriptionManager:
 
         action_type = "simulation_llm" if is_llm else "simulation_static"
         today = datetime.datetime.utcnow().date()
-        
-        daily_sims = db.execute(
-            text("SELECT COUNT(*) FROM daily_usage WHERE user_id = :uid AND action = :act AND DATE(created_at) = :today"),
-            {"uid": user.id, "act": action_type, "today": today}
-        ).scalar() or 0
+        try:
+            daily_sims = db.execute(
+                text("SELECT COUNT(*) FROM daily_usage WHERE user_id = :uid AND action = :act AND DATE(created_at) = :today"),
+                {"uid": user.id, "act": action_type, "today": today}
+            ).scalar() or 0
+        except Exception:
+            db.rollback()
+            daily_sims = 0
 
         if is_llm:
             max_llm = limits.get('max_llm_simulations_per_day', 0)
