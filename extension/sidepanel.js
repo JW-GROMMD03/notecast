@@ -8,15 +8,13 @@ const visuals = [];
 let activeTabId = null;
 let activeTabObj = null;
 let capturing = false;
-let isAdActive = false; // Prevents sending audio during ads
+let isAdActive = false;
 
-// Media Capture Variables
 let currentStream = null;
 let rawCaptureStream = null;
 let isRecording = false;
 const CHUNK_DURATION_MS = 5000; 
 
-// Voice Defense Variables
 let isRecordingVoice = false;
 let recognition = null;
 
@@ -437,7 +435,6 @@ function stopVoiceDefense() {
   if (recognition) recognition.stop();
 }
 
-// UI RENDERING & INCOMING MESSAGES
 chrome.runtime.onMessage.addListener((message) => {
   if (message.scope !== "notecast") return;
   switch (message.type) {
