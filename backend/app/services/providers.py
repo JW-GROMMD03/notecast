@@ -215,7 +215,8 @@ class OpenRouterProvider:
             timeout=85.0,
             max_retries=1
         ) if self.configured else None
-        self.model = getattr(settings, "OPENROUTER_TEXT_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+        # FIX: Updated to the currently supported free tier model slug
+        self.model = getattr(settings, "OPENROUTER_TEXT_MODEL", "meta-llama/llama-3.3-70b-instruct")
 
     def chat_json(self, system: str, user: str, max_tokens: int = 2500) -> dict:
         if not self.configured:

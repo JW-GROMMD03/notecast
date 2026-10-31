@@ -28,11 +28,13 @@ if (typeof window.noteCastInjected === 'undefined') {
       
       // Notify extension side panel to pause audio recording
       try {
-        chrome.runtime.sendMessage({
-          scope: "notecast",
-          type: "AD_STATUS_CHANGE",
-          isAd: isCurrentlyAd
-        }).catch(() => {});
+        if (chrome?.runtime?.id) {
+          chrome.runtime.sendMessage({
+            scope: "notecast",
+            type: "AD_STATUS_CHANGE",
+            isAd: isCurrentlyAd
+          }).catch(() => {});
+        }
       } catch(e) {}
 
       const statusEl = document.getElementById('nc-status');
@@ -122,12 +124,14 @@ if (typeof window.noteCastInjected === 'undefined') {
         const b64 = await blobToBase64(blob);
         
         try {
-          chrome.runtime.sendMessage({
-            scope: "notecast",
-            type: "FRAME",
-            timestamp_ms: Math.round(video.currentTime * 1000),
-            data_b64: b64,
-          }).catch(() => {});
+          if (chrome?.runtime?.id) {
+            chrome.runtime.sendMessage({
+              scope: "notecast",
+              type: "FRAME",
+              timestamp_ms: Math.round(video.currentTime * 1000),
+              data_b64: b64,
+            }).catch(() => {});
+          }
         } catch (e) {}
       },
       "image/webp",
@@ -164,8 +168,7 @@ if (typeof window.noteCastInjected === 'undefined') {
       </div>
     `;
     
-    // FIX: Permanently hide the floating UI pop-up to keep the screen clean,
-    // while keeping all the ad-observer logic running perfectly in the background.
+    // Kept hidden per previous requirements
     ncContainer.style.display = 'none';
 
     document.body.appendChild(ncContainer);
@@ -183,11 +186,18 @@ if (typeof window.noteCastInjected === 'undefined') {
       statusEl.className = 'nc-status';
       btn.disabled = true;
       
+      // FIX: Robust connection checking to prevent UI crash
+      if (!chrome?.runtime?.id) {
+          statusEl.textContent = '❌ Extension connection lost. Please refresh the page.';
+          statusEl.style.color = '#ef4444';
+          btn.disabled = false;
+          return;
+      }
+
       try {
         chrome.runtime.sendMessage({ type: "CHECK_ENTITLEMENT", action: "YOUTUBE_CAPTURE" }, (response) => {
-            // FIX: Gracefully handle disconnects/unregistered listeners without crashing
             if (chrome.runtime.lastError) {
-                statusEl.textContent = '❌ Extension disconnected. Please reload the page.';
+                statusEl.textContent = '❌ Extension disconnected. Please refresh the page.';
                 statusEl.style.color = '#ef4444';
                 btn.disabled = false;
                 return;
@@ -213,7 +223,7 @@ if (typeof window.noteCastInjected === 'undefined') {
             }
         });
       } catch(e) {
-          statusEl.textContent = '❌ Extension error. Please reload.';
+          statusEl.textContent = '❌ Unexpected error. Please refresh the page.';
           statusEl.style.color = '#ef4444';
           btn.disabled = false;
       }
