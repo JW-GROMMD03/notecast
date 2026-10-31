@@ -5,8 +5,34 @@ from ..config import settings
 
 logger = logging.getLogger("notecast.ai_generator")
 
+def _call_deepseek(system_prompt: str, user_prompt: str, response_json: bool = False, timeout: float = 60.0) -> str | dict:
+    """Invokes DeepSeek API with standard OpenAI-compatible payload."""
+    url = "https://api.deepseek.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {getattr(settings, 'DEEPSEEK_API_KEY', '')}", 
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 0.3
+    }
+    if response_json:
+        payload["response_format"] = {"type": "json_object"}
+
+    with httpx.Client(timeout=timeout) as client:
+        resp = client.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        return json.loads(content) if response_json else content
+
+
 def generate_deep_research_notes(title: str, channel: str, full_transcript: str, visual_contexts: list[str]) -> str:
-    """Generates structured, publication-grade study notes with LaTeX math, diagrams, and timestamps."""
+    """Generates structured, publication-grade study notes using DeepSeek with OpenAI fallback."""
     system_prompt = """
     You are NoteCast AI, an elite academic researcher and pedagogical engineer.
     Your task is to transform session transcripts and visual OCR context into an exhaustive Master Study Guide.
@@ -39,6 +65,15 @@ def generate_deep_research_notes(title: str, channel: str, full_transcript: str,
     {full_transcript}
     """
 
+    # Try DeepSeek first for deep reasoning & cost-efficiency, fallback to OpenAI if keys/quota fail
+    try:
+        if getattr(settings, "DEEPSEEK_API_KEY", None):
+            logger.info("Attempting DeepSeek chat completion for deep research notes...")
+            return _call_deepseek(system_prompt, user_prompt, response_json=False, timeout=120.0)
+    except Exception as e:
+        logger.warning(f"DeepSeek generation failed, failing over to OpenAI: {e}")
+
+    # OpenAI Fallback
     try:
         url = "[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)"
         headers = {"Authorization": f"Bearer {settings.OPENAI_API_KEY}", "Content-Type": "application/json"}
@@ -57,11 +92,12 @@ def generate_deep_research_notes(title: str, channel: str, full_transcript: str,
             data = resp.json()
             return data["choices"][0]["message"]["content"]
     except Exception as e:
-        logger.error(f"Deep AI note generation failed: {e}")
+        logger.error(f"Deep AI note generation failed across all providers: {e}")
         return f"# Study Notes: {title}\n\n*Generation fallback triggered due to service timeout.* \n\n## Raw Context Overview\n{full_transcript[:3000]}"
 
+
 def evaluate_socratic_defense(concept: str, user_explanation: str, context_notes: str) -> dict:
-    """Evaluates a student's vocal explanation using the Socratic method and Feynman technique."""
+    """Evaluates a student's verbal explanation using DeepSeek/OpenAI Socratic evaluation."""
     system_prompt = """
     You are a Socratic tutor evaluating a student's verbal explanation of a topic using the Feynman Technique.
     Analyze the student's response against the core concept and reference study materials.
@@ -85,6 +121,12 @@ def evaluate_socratic_defense(concept: str, user_explanation: str, context_notes
     Reference Context: {context_notes}
     Student Verbal Explanation: "{user_explanation}"
     """
+
+    try:
+        if getattr(settings, "DEEPSEEK_API_KEY", None):
+            return _call_deepseek(system_prompt, user_prompt, response_json=True, timeout=30.0)
+    except Exception as e:
+        logger.warning(f"DeepSeek socratic evaluation failed, falling back to OpenAI: {e}")
 
     try:
         url = "[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)"

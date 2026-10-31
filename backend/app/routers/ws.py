@@ -57,6 +57,7 @@ async def session_ws(websocket: WebSocket, session_id: str, token: str = Query(.
         db.close()
         return
 
+    # CRITICAL: Accept WebSocket connection instantly
     await websocket.accept()
     buf = SessionBuffer()
     vocab_hint = ", ".join((sess.topic_model or {}).get("key_terms", []))
@@ -65,7 +66,7 @@ async def session_ws(websocket: WebSocket, session_id: str, token: str = Query(.
         while True:
             raw = await websocket.receive_text()
             
-            # FIX 1: JSON payload immunity. Do not crash socket on network fragmentation.
+            # JSON payload immunity. Do not crash socket on network fragmentation.
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError as err:
@@ -92,7 +93,7 @@ async def session_ws(websocket: WebSocket, session_id: str, token: str = Query(.
                 try:
                     data = base64.b64decode(msg["data_b64"])
                     ts_ms = msg.get("timestamp_ms", 0)
-                    # FIX 2: Do not await blocking frame handler on main thread, run concurrently
+                    # Do not await blocking frame handler on main thread, run concurrently
                     asyncio.create_task(_handle_frame(websocket, sess.id, buf, data, ts_ms))
                 except Exception as e:
                     log.error(f"Frame decoding failed: {e}")
@@ -193,7 +194,6 @@ async def _run_note_draft(websocket: WebSocket, session_id: str):
 
 
 async def _handle_frame(websocket: WebSocket, session_id: str, buf: SessionBuffer, data: bytes, ts_ms: int):
-    # This entire function is now running asynchronously to prevent blocking the WS stream
     db = SessionLocal()
     try:
         capture = await asyncio.to_thread(vision.should_capture, session_id, data)

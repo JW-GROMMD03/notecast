@@ -13,15 +13,17 @@ from . import providers
 
 log = logging.getLogger("notecast.llm")
 
+# Standardized 4-tier resilient fallback order for high-concurrency free-tier usage
+DEFAULT_FALLBACK_ORDER = "gemini,groq,openrouter,deepseek"
+
 
 def _chat_json(system: str, user: str, max_tokens: int = 4000) -> dict:
     """
     Core AI JSON router.
-    Explicitly forces the 4-tier fallback loop to ensure OpenRouter is utilized 
-    before DeepSeek, regardless of local .env configurations.
+    Explicitly forces the 4-tier fallback loop to ensure seamless failover
+    across Gemini, Groq, OpenRouter, and DeepSeek.
     """
-    fallback_order = "gemini,groq,openrouter,deepseek"
-    return providers.call_with_fallback(fallback_order, "chat_json", system, user, max_tokens=max_tokens)
+    return providers.call_with_fallback(DEFAULT_FALLBACK_ORDER, "chat_json", system, user, max_tokens=max_tokens)
 
 
 def build_topic_model(title: str, channel: str, seed_transcript: str) -> dict:
@@ -90,7 +92,6 @@ def enrich_notes(sections_text: str) -> dict:
 def embed_texts(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
-    # Embeddings strictly route to Gemini via providers settings
     result = providers.call_with_fallback(settings.EMBED_PROVIDER_ORDER, "embed", texts)
     return result["embeddings"]
 
@@ -128,8 +129,7 @@ def repair_claim(claim: str, source_text: str) -> str:
 
 def generate_deep_research_notes(title: str, channel: str, full_transcript: str, visual_contexts: list[str]) -> str:
     """Deep, multi-section master study guide. Diagrams are requested in the
-    structured `diagram` JSON format (see services/diagram.DIAGRAM_INSTRUCTIONS)
-    so they render as real shapes/arrows everywhere, not ASCII art."""
+    structured `diagram` JSON format so they render as real shapes/arrows everywhere."""
     from . import diagram as _diagram
     
     system = (
@@ -158,11 +158,7 @@ def generate_deep_research_notes(title: str, channel: str, full_transcript: str,
     )
     
     try:
-        # Explicit 4-tier fallback string guarantees OpenRouter is used
-        fallback_order = "gemini,groq,openrouter,deepseek"
-        
-        # max_tokens set to 8192 to completely eliminate truncation issues
-        response = providers.call_with_fallback(fallback_order, "chat_text", system, user, max_tokens=8192)
+        response = providers.call_with_fallback(DEFAULT_FALLBACK_ORDER, "chat_text", system, user, max_tokens=8192)
         text_result = response.get("text")
         if text_result and len(text_result.strip()) > 50:
             return text_result
