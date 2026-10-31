@@ -103,26 +103,27 @@ class SubscriptionManager:
             raise HTTPException(status_code=500, detail="Subscription package configuration missing.")
             
         max_minutes = limits.get('max_capture_minutes_per_day', 60)
-        if max_minutes >= 9999: # Unlimited
+        if max_minutes >= 9999: # Unlimited for higher tiers
             return
             
-        today_str = datetime.datetime.utcnow().strftime('%Y-%m-%d')
+        # Rolling 24-hour window starting from exactly 24 hours ago
+        window_start = datetime.datetime.utcnow() - datetime.timedelta(hours=24)
         try:
             total_sec = db.execute(
-                text("SELECT COALESCE(SUM(CAST(NULLIF(resource_id, '') AS INTEGER)), 0) FROM daily_usage WHERE user_id = :uid AND action = 'capture_video' AND created_at >= CAST(:today_start AS TIMESTAMP)"),
-                {"uid": user.id, "today_start": f"{today_str} 00:00:00"}
+                text("SELECT COALESCE(SUM(CAST(NULLIF(resource_id, '') AS INTEGER)), 0) FROM daily_usage WHERE user_id = :uid AND action = 'capture_video' AND created_at >= :window_start"),
+                {"uid": user.id, "window_start": window_start}
             ).scalar() or 0
         except Exception:
             db.rollback()
             total_sec = 0
         
         current_minutes = total_sec / 60.0
-        new_minutes = (new_video_duration_sec or 0) / 60.0
         
-        if current_minutes + new_minutes > max_minutes:
+        # Block if the usage within the past 24 hours has reached or exceeded the limit
+        if current_minutes >= max_minutes:
             raise HTTPException(
                 status_code=429, 
-                detail=f"Daily capture limit reached. Your plan allows {max_minutes} mins/day. You have used {int(current_minutes)} mins today."
+                detail=f"Daily capture limit reached. Your plan allows {max_minutes} mins/24h. You have used {int(current_minutes)} mins in the last 24 hours."
             )
 
     @staticmethod
@@ -139,18 +140,18 @@ class SubscriptionManager:
         if max_limit == 0:
             raise HTTPException(status_code=403, detail=f"Your current plan does not include {feature_name.title()} access.")
             
-        today_str = datetime.datetime.utcnow().strftime('%Y-%m-%d')
+        window_start = datetime.datetime.utcnow() - datetime.timedelta(hours=24)
         try:
             daily_usage = db.execute(
-                text("SELECT COUNT(*) FROM daily_usage WHERE user_id = :uid AND action = :act AND created_at >= CAST(:today_start AS TIMESTAMP)"),
-                {"uid": user.id, "act": feature_name, "today_start": f"{today_str} 00:00:00"}
+                text("SELECT COUNT(*) FROM daily_usage WHERE user_id = :uid AND action = :act AND created_at >= :window_start"),
+                {"uid": user.id, "act": feature_name, "window_start": window_start}
             ).scalar() or 0
         except Exception:
             db.rollback()
             daily_usage = 0
         
         if daily_usage >= max_limit:
-            raise HTTPException(status_code=429, detail=f"Daily limit of {max_limit} for {feature_name.title()} reached. Upgrade to continue today.")
+            raise HTTPException(status_code=429, detail=f"24-hour limit of {max_limit} for {feature_name.title()} reached. Please wait for previous usage to roll off.")
 
     @staticmethod
     def check_simulation_limits(user: models.User, db: DbSession, is_llm: bool = False):
@@ -163,11 +164,11 @@ class SubscriptionManager:
             raise HTTPException(status_code=500, detail="Subscription package configuration missing.")
 
         action_type = "simulation_llm" if is_llm else "simulation_static"
-        today_str = datetime.datetime.utcnow().strftime('%Y-%m-%d')
+        window_start = datetime.datetime.utcnow() - datetime.timedelta(hours=24)
         try:
             daily_sims = db.execute(
-                text("SELECT COUNT(*) FROM daily_usage WHERE user_id = :uid AND action = :act AND created_at >= CAST(:today_start AS TIMESTAMP)"),
-                {"uid": user.id, "act": action_type, "today_start": f"{today_str} 00:00:00"}
+                text("SELECT COUNT(*) FROM daily_usage WHERE user_id = :uid AND action = :act AND created_at >= :window_start"),
+                {"uid": user.id, "act": action_type, "window_start": window_start}
             ).scalar() or 0
         except Exception:
             db.rollback()
@@ -178,13 +179,13 @@ class SubscriptionManager:
             if max_llm == 0:
                 raise HTTPException(status_code=403, detail="LLM Simulations require a higher premium subscription.")
             if daily_sims >= max_llm:
-                raise HTTPException(status_code=429, detail=f"Limit reached: Max {max_llm} LLM simulations per day.")
+                raise HTTPException(status_code=429, detail=f"Limit reached: Max {max_llm} LLM simulations per 24 hours.")
         else:
             max_static = limits.get('max_static_simulations_per_day', 0)
             if max_static == 0:
                 raise HTTPException(status_code=403, detail="Your package does not support static simulations.")
             if daily_sims >= max_static:
-                raise HTTPException(status_code=429, detail=f"Limit reached: Max {max_static} static simulations per day.")
+                raise HTTPException(status_code=429, detail=f"Limit reached: Max {max_static} static simulations per 24 hours.")
 
 # =========================================================================
 # ASYNC IMAGE DOWNLOADER
