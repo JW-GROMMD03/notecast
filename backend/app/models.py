@@ -108,6 +108,16 @@ class AdminActionLog(Base):
     description = Column(String, nullable=True)
     created_at = Column(DateTime, default=now)
 
+class RecurringExpense(Base):
+    __tablename__ = "recurring_expenses"
+    id = Column(String, primary_key=True, default=uid)
+    name = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    interval_days = Column(Integer, nullable=False)
+    next_due = Column(DateTime, nullable=False)
+    status = Column(String, default="PENDING")
+    created_at = Column(DateTime, default=now)
+
 
 # ==========================================
 # MONETIZATION & USAGE TRACKING
