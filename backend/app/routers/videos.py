@@ -24,16 +24,28 @@ router = APIRouter(prefix="/videos", tags=["videos"])
 class SubscriptionManager:
     @staticmethod
     def _get_package_limits(db: DbSession, tier_name: str):
-        if tier_name == "free":
+        if not tier_name or tier_name.lower() == "free":
             return None
-        # Safely query the new packages table
+        
+        normalized_tier = tier_name.upper().strip()
+        
         row = db.execute(
-            text("SELECT * FROM packages WHERE plan_name = :tier"), 
-            {"tier": tier_name}
+            text("SELECT * FROM packages WHERE UPPER(plan_name) = :tier"), 
+            {"tier": normalized_tier}
         ).fetchone()
+        
         if row:
             return row._mapping if hasattr(row, '_mapping') else dict(row)
-        return None
+            
+        # Fallback default limits for active passes if missing from package table row
+        defaults = {
+            "QUICK_PASS": {"max_capture_minutes_per_day": 60, "max_docuvision_per_day": 5, "max_static_simulations_per_day": 5, "max_llm_simulations_per_day": 2},
+            "LECTURE_PASS": {"max_capture_minutes_per_day": 120, "max_docuvision_per_day": 10, "max_static_simulations_per_day": 10, "max_llm_simulations_per_day": 5},
+            "MASTER_PASS": {"max_capture_minutes_per_day": 300, "max_docuvision_per_day": 20, "max_static_simulations_per_day": 20, "max_llm_simulations_per_day": 10},
+            "WEEKLY_SCHOLAR": {"max_capture_minutes_per_day": 9999, "max_docuvision_per_day": 50, "max_static_simulations_per_day": 50, "max_llm_simulations_per_day": 20},
+            "MONTHLY_PRO": {"max_capture_minutes_per_day": 9999, "max_docuvision_per_day": 999, "max_static_simulations_per_day": 999, "max_llm_simulations_per_day": 999},
+        }
+        return defaults.get(normalized_tier, None)
 
     @staticmethod
     def log_usage(db: DbSession, user_id: str, action: str, resource_id: str = None):
@@ -47,44 +59,54 @@ class SubscriptionManager:
         db.commit()
 
     @staticmethod
+    def _get_active_tier(user: models.User, db: DbSession) -> str:
+        tier = getattr(user, "subscription_tier", None)
+        if not tier or tier.lower() == "free":
+            sub_row = db.execute(
+                text("SELECT tier FROM user_subscriptions WHERE user_id = :uid AND status = 'active' AND expires_at > NOW() ORDER BY expires_at DESC LIMIT 1"),
+                {"uid": user.id}
+            ).fetchone()
+            if sub_row:
+                tier = sub_row[0]
+        return tier or "free"
+
+    @staticmethod
     def can_download(user: models.User):
         now = datetime.datetime.now(datetime.timezone.utc)
         tier = getattr(user, "subscription_tier", "free")
         
-        # Check active weekly download pass validity
         pass_until = getattr(user, "unlimited_downloads_until", None)
         has_pass = pass_until and pass_until.replace(tzinfo=datetime.timezone.utc) > now
         
-        # Allow if tier is STANDARD/PREMIUM or if user holds a valid 20 KES download pass
-        if tier not in ["STANDARD", "PREMIUM"] and not has_pass:
+        valid_tiers = ["STANDARD", "PREMIUM", "WEEKLY_SCHOLAR", "MONTHLY_PRO", "MASTER_PASS"]
+        if tier not in valid_tiers and not has_pass:
             raise HTTPException(
                 status_code=402, 
-                detail="Downloads on your current plan require a 20 KES weekly download pass."
+                detail="Downloads on your current plan require an active pass or download package."
             )
 
     @staticmethod
     def can_open_notes(user: models.User):
         tier = getattr(user, "subscription_tier", "free")
-        if tier == "free":
+        if not tier or tier.lower() == "free":
             raise HTTPException(status_code=402, detail="You must have an active subscription to open and view notes.")
 
     @staticmethod
     def check_capture_minutes(user: models.User, db: DbSession, new_video_duration_sec: int):
-        tier = getattr(user, "subscription_tier", "free")
-        if tier == "free":
-            raise HTTPException(status_code=402, detail="Subscribe to capture video notes.")
+        tier = SubscriptionManager._get_active_tier(user, db)
+        if not tier or tier.lower() == "free":
+            raise HTTPException(status_code=402, detail="Subscribe or activate a study pass to capture video notes.")
             
         limits = SubscriptionManager._get_package_limits(db, tier)
         if not limits:
             raise HTTPException(status_code=500, detail="Subscription package configuration missing.")
             
-        max_minutes = limits.get('max_capture_minutes_per_day', 0)
-        if max_minutes >= 9999: # Unlimited for higher tiers
+        max_minutes = limits.get('max_capture_minutes_per_day', 60)
+        if max_minutes >= 9999: # Unlimited
             return
             
         today = datetime.datetime.utcnow().date()
         
-        # Calculate total duration of videos captured today
         total_sec = db.execute(
             text("SELECT COALESCE(SUM(CAST(resource_id AS INTEGER)), 0) FROM daily_usage WHERE user_id = :uid AND action = 'capture_video' AND DATE(created_at) = :today"),
             {"uid": user.id, "today": today}
@@ -101,8 +123,8 @@ class SubscriptionManager:
 
     @staticmethod
     def check_feature_daily_limit(user: models.User, db: DbSession, feature_name: str):
-        tier = getattr(user, "subscription_tier", "free")
-        if tier == "free":
+        tier = SubscriptionManager._get_active_tier(user, db)
+        if not tier or tier.lower() == "free":
             raise HTTPException(status_code=402, detail=f"Subscribe to access {feature_name.title()}.")
             
         limits = SubscriptionManager._get_package_limits(db, tier)
@@ -124,8 +146,8 @@ class SubscriptionManager:
 
     @staticmethod
     def check_simulation_limits(user: models.User, db: DbSession, is_llm: bool = False):
-        tier = getattr(user, "subscription_tier", "free")
-        if tier == "free":
+        tier = SubscriptionManager._get_active_tier(user, db)
+        if not tier or tier.lower() == "free":
             raise HTTPException(status_code=402, detail="Subscribe to access Simulations.")
             
         limits = SubscriptionManager._get_package_limits(db, tier)
@@ -223,7 +245,6 @@ def verify_entitlement(action: str, resource_id: str = None, user: models.User =
     """Frontend-facing endpoint to check limits before rendering UI modals."""
     if action == "DOC_SUMMARIZATION":
         SubscriptionManager.check_feature_daily_limit(user, db, "docuvision")
-        # Log it immediately to reserve the slot for this session
         SubscriptionManager.log_usage(db, user.id, "docuvision", resource_id)
     elif action == "LAUNCH_STATIC_SIM":
         SubscriptionManager.check_simulation_limits(user, db, is_llm=False)
