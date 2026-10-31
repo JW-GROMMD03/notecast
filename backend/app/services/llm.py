@@ -92,8 +92,13 @@ def enrich_notes(sections_text: str) -> dict:
 def embed_texts(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
-    result = providers.call_with_fallback(settings.EMBED_PROVIDER_ORDER, "embed", texts)
-    return result["embeddings"]
+    try:
+        result = providers.call_with_fallback(settings.EMBED_PROVIDER_ORDER, "embed", texts)
+        return result.get("embeddings", [])
+    except Exception as e:
+        log.warning(f"Embedding generation failed safely, returning dummy vectors to prevent pipeline crash: {e}")
+        # Return zero-vectors as a safe fallback so finalize_video continues without breaking
+        return [[0.0] * 768 for _ in texts]
 
 
 def cosine_sim(a: list[float], b: list[float]) -> float:
