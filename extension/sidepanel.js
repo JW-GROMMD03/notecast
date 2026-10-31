@@ -14,7 +14,6 @@ let isAdActive = false; // Prevents sending audio during ads
 let currentStream = null;
 let rawCaptureStream = null;
 let isRecording = false;
-// Increased to 5000ms to bypass backend b"".join() corruption
 const CHUNK_DURATION_MS = 5000; 
 
 // Voice Defense Variables
@@ -246,6 +245,28 @@ if (el("stopBtn")) {
   });
 }
 
+// START ANOTHER NOTE FROM ACTIVE CONTROLS
+if (el("startAnotherActiveBtn")) {
+  el("startAnotherActiveBtn").addEventListener("click", async () => {
+    stopAudioCapture(); 
+    await chrome.runtime.sendMessage({ scope: "notecast", type: "STOP_CAPTURE" });
+    
+    capturing = false;
+    notes.length = 0;
+    transcript.length = 0;
+    visuals.length = 0;
+    
+    renderNotes();
+    renderTranscript();
+    renderVisuals();
+    
+    if (el("activeControls")) el("activeControls").classList.add("hidden");
+    if (el("finalizingNotice")) el("finalizingNotice").classList.add("hidden");
+    
+    detectVideo();
+  });
+}
+
 // RESET EXTENSION STATE FOR NEW VIDEO
 if (el("resetBtn")) {
   el("resetBtn").addEventListener("click", () => {
@@ -324,12 +345,10 @@ function recordStandaloneChunk() {
     }
     
     if (isRecording) {
-      // Start immediately without delay
       recordStandaloneChunk(); 
     }
   };
 
-  // Do NOT pass CHUNK_DURATION_MS here
   recorder.start();
   
   setTimeout(() => {
