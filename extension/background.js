@@ -298,7 +298,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       try {
         const token = await ensureFreshToken();
-        const res = await fetch(`${API_BASE}/verify-entitlement?action=${message.action}`, {
+        // FIXED: Point to the correct backend route: /payments/entitlement-status
+        const res = await fetch(`${API_BASE}/payments/entitlement-status?action=${message.action}`, {
           method: "GET",
           headers: { "Authorization": `Bearer ${token}` }
         });
