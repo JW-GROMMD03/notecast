@@ -13,11 +13,35 @@ logger = logging.getLogger("notecast_payments")
 
 _last_query: dict = {}
 
+# Comprehensive Pricing Catalog with automatic short-name to canonical mapping & pass durations
 PRICING_CATALOG = {
-    "STARTUP": {"amount": 100, "type": "PLAN_SUBSCRIPTION"},
-    "BASIC": {"amount": 250, "type": "PLAN_SUBSCRIPTION"},
-    "STANDARD": {"amount": 800, "type": "PLAN_SUBSCRIPTION"},
-    "PREMIUM": {"amount": 2500, "type": "PLAN_SUBSCRIPTION"},
+    # Quick Pass / Quick Crash Pass
+    "QUICK": {"amount": 50, "type": "PLAN_SUBSCRIPTION", "canonical": "QUICK_PASS", "duration_days": 1},
+    "QUICK_PASS": {"amount": 50, "type": "PLAN_SUBSCRIPTION", "canonical": "QUICK_PASS", "duration_days": 1},
+    
+    # Lecture / Standard Lecture Pass
+    "LECTURE": {"amount": 100, "type": "PLAN_SUBSCRIPTION", "canonical": "LECTURE_PASS", "duration_days": 7},
+    "LECTURE_PASS": {"amount": 100, "type": "PLAN_SUBSCRIPTION", "canonical": "LECTURE_PASS", "duration_days": 7},
+    
+    # Master / Extended Master Pass
+    "MASTER": {"amount": 250, "type": "PLAN_SUBSCRIPTION", "canonical": "MASTER_PASS", "duration_days": 30},
+    "MASTER_PASS": {"amount": 250, "type": "PLAN_SUBSCRIPTION", "canonical": "MASTER_PASS", "duration_days": 30},
+    
+    # Weekly / Weekly Scholar Pass
+    "WEEKLY": {"amount": 800, "type": "PLAN_SUBSCRIPTION", "canonical": "WEEKLY_SCHOLAR", "duration_days": 30},
+    "WEEKLY_SCHOLAR": {"amount": 800, "type": "PLAN_SUBSCRIPTION", "canonical": "WEEKLY_SCHOLAR", "duration_days": 30},
+    
+    # Monthly / Monthly Pro Pass
+    "MONTHLY": {"amount": 2500, "type": "PLAN_SUBSCRIPTION", "canonical": "MONTHLY_PRO", "duration_days": 30},
+    "MONTHLY_PRO": {"amount": 2500, "type": "PLAN_SUBSCRIPTION", "canonical": "MONTHLY_PRO", "duration_days": 30},
+    
+    # Legacy compatibility aliases
+    "STARTUP": {"amount": 100, "type": "PLAN_SUBSCRIPTION", "canonical": "LECTURE_PASS", "duration_days": 7},
+    "BASIC": {"amount": 250, "type": "PLAN_SUBSCRIPTION", "canonical": "MASTER_PASS", "duration_days": 30},
+    "STANDARD": {"amount": 800, "type": "PLAN_SUBSCRIPTION", "canonical": "WEEKLY_SCHOLAR", "duration_days": 30},
+    "PREMIUM": {"amount": 2500, "type": "PLAN_SUBSCRIPTION", "canonical": "MONTHLY_PRO", "duration_days": 30},
+
+    # One-off credits & downloads
     "ECONOMY_NOTE": {"amount": 50, "type": "ECONOMY_NOTE"},
     "SINGLE_DOWNLOAD": {"amount": 20, "type": "SINGLE_DOWNLOAD"},
     "DOWNLOAD_PASS": {"amount": 20, "type": "DOWNLOAD_PASS"},
@@ -34,6 +58,10 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
         now_utc = datetime.now(timezone.utc)
         
         if txn.purchase_type == "PLAN_SUBSCRIPTION":
+            catalog_entry = PRICING_CATALOG.get(txn.target_tier, {})
+            canonical_tier = catalog_entry.get("canonical", txn.target_tier)
+            duration_days = catalog_entry.get("duration_days", 30)
+
             sub = db.query(models.UserSubscription).filter(
                 models.UserSubscription.user_id == txn.user_id
             ).first()
@@ -46,17 +74,13 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
                 )
                 db.add(sub)
                 
-            sub.tier = txn.target_tier
+            sub.tier = canonical_tier
             sub.status = "active"
-            
-            if txn.target_tier == "STARTUP":
-                sub.expires_at = now_utc + timedelta(days=7)
-            else:
-                sub.expires_at = now_utc + timedelta(days=30)
+            sub.expires_at = now_utc + timedelta(days=duration_days)
             
             user = db.query(models.User).filter(models.User.id == txn.user_id).first()
             if user:
-                user.plan = txn.target_tier
+                user.plan = canonical_tier
 
         elif txn.purchase_type == "DOWNLOAD_PASS":
             user = db.query(models.User).filter(models.User.id == txn.user_id).first()
@@ -96,15 +120,17 @@ def initiate_payment(
     user: models.User = Depends(auth.get_current_user)
 ):
     """Triggers M-Pesa STK Push via Daraja API and records a pending transaction."""
-    if body.plan_name not in PRICING_CATALOG:
+    plan_key = body.plan_name.strip().upper()
+    if plan_key not in PRICING_CATALOG:
         raise HTTPException(status_code=400, detail="Invalid plan or token code.")
     
-    catalog_item = PRICING_CATALOG[body.plan_name]
+    catalog_item = PRICING_CATALOG[plan_key]
     amount = catalog_item["amount"]
     purchase_type = catalog_item["type"]
+    canonical_tier = catalog_item.get("canonical", plan_key) if purchase_type == "PLAN_SUBSCRIPTION" else None
 
     try:
-        res, formatted_phone = mpesa_service.initiate_stk_push(body.phone_number, amount, body.plan_name)
+        res, formatted_phone = mpesa_service.initiate_stk_push(body.phone_number, amount, plan_key)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -122,13 +148,13 @@ def initiate_payment(
             phone_number=formatted_phone,
             amount=amount,
             purchase_type=purchase_type,
-            target_tier=body.plan_name if purchase_type == "PLAN_SUBSCRIPTION" else None,
+            target_tier=canonical_tier if purchase_type == "PLAN_SUBSCRIPTION" else None,
             status="PENDING"
         )
         db.add(new_tx)
         db.commit()
 
-        logger.info(f"STK Push initiated for {formatted_phone}, Amount: KES {amount}")
+        logger.info(f"STK Push initiated for {formatted_phone}, Amount: KES {amount}, Tier: {canonical_tier}")
         return {
             "message": "STK Push sent. Please check your phone to enter your PIN.",
             "transaction_id": internal_tx_id,
@@ -145,10 +171,11 @@ def generate_qr(
     user: models.User = Depends(auth.get_current_user)
 ):
     """Generates a Safaricom Dynamic QR Code for desktop users to scan."""
-    if body.plan_name not in PRICING_CATALOG:
+    plan_key = body.plan_name.strip().upper()
+    if plan_key not in PRICING_CATALOG:
         raise HTTPException(status_code=400, detail="Invalid plan name.")
     
-    amount = PRICING_CATALOG[body.plan_name]["amount"]
+    amount = PRICING_CATALOG[plan_key]["amount"]
     
     try:
         qr_code_base64 = mpesa_service.generate_qr_code(amount, merchant_name="Vectis unknown")
@@ -199,9 +226,6 @@ def check_payment_status(
             if "ResultCode" in q:
                 result_code = str(q["ResultCode"])
                 
-                # FULIZA FIX: Only apply the result immediately if it's a SUCCESS (0) or EXPLICIT CANCEL (1032)
-                # If Daraja returns Insufficient Funds (1) or Timeout (1037), we ignore it and keep spinning
-                # This gives the user time to navigate the Fuliza overdraft prompts on their phone!
                 if result_code in ["0", "1032"]:
                     _apply_result(db, tx, q["ResultCode"], q.get("ResultDesc", ""))
                     db.refresh(tx)
