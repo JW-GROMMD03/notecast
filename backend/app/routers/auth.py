@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.exc import IntegrityError
+from supabase import create_client, Client
 
 from .. import models, schemas, auth
 from ..database import get_db
@@ -18,6 +19,15 @@ from ..services import supabase_auth, ratelimit
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# =========================================================================
+# LOCAL SUPABASE ADMIN CLIENT
+# Initialized here to securely handle metadata and OTPs without AttributeErrors
+# =========================================================================
+supa_url = settings.SUPABASE_URL
+supa_key = getattr(settings, "SUPABASE_SERVICE_ROLE_KEY", getattr(settings, "SUPABASE_KEY", ""))
+supabase_admin: Client = create_client(supa_url, supa_key)
+
 
 class OAuthCallbackIn(BaseModel):
     access_token: str
@@ -29,9 +39,118 @@ class VerifyOtpIn(BaseModel):
     token: str
     new_password: str = None
 
+
 # =========================================================================
-# PRODUCTION THIRD-PARTY MAILER (Brevo API with OTP Support)
+# PRODUCTION THIRD-PARTY MAILER (Brevo API)
 # =========================================================================
+
+def send_brevo_email(to_email: str, link_or_message: str, email_type: str, subject_override: str = None):
+    """Original email function (Preserved for backward compatibility and other system alerts)."""
+    api_key = getattr(settings, "BREVO_API_KEY", None)
+    if not api_key:
+        raise HTTPException(
+            status_code=500, 
+            detail="BREVO_API_KEY is missing in backend environment variables."
+        )
+
+    frontend_url = getattr(settings, "FRONTEND_URL", "https://notecast-web.onrender.com").rstrip("/")
+    link = link_or_message
+
+    if email_type == "signup" or email_type == "recovery":
+        if "localhost" in link or "127.0.0.1" in link:
+            if email_type == "signup":
+                link = re.sub(r'https?://(localhost|127\.0\.0\.1)(:\d+)?', frontend_url, link)
+            elif email_type == "recovery":
+                if "#access_token=" in link:
+                    token_part = link.split("#access_token=")[1]
+                    link = f"{frontend_url}/reset-password.html#type=recovery&access_token={token_part}"
+                else:
+                    link = re.sub(r'https?://(localhost|127\.0\.0\.1)(:\d+)?', frontend_url, link)
+
+    if email_type == "signup":
+        subject = "Welcome to NoteCast — Verify your email"
+        title = "Verify your email address"
+        body_text = "Welcome to NoteCast! Please click the button below to verify your account and get started."
+        btn_text = "Verify Account"
+        content_html = f'<a href="{link}" style="display: inline-block; background-color: #6366f1; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 36px; border-radius: 8px;">{btn_text}</a>'
+    elif email_type == "recovery":
+        subject = "NoteCast — Reset your password"
+        title = "Reset your password"
+        body_text = "We received a request to reset your password. Click the button below to set a new one. If you didn't request this, ignore this email."
+        btn_text = "Reset Password"
+        content_html = f'<a href="{link}" style="display: inline-block; background-color: #6366f1; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 36px; border-radius: 8px;">{btn_text}</a>'
+    else:
+        subject = subject_override or "NoteCast Command Center Notification"
+        title = subject
+        body_text = link_or_message
+        content_html = f'''
+        <div style="font-size: 15px; line-height: 1.6; color: #475569; white-space: pre-wrap; background: #f1f5f9; padding: 16px; border-radius: 8px; border-left: 4px solid #6366f1;">
+            {body_text}
+        </div>
+        <div style="margin-top: 24px; text-align: center;">
+            <a href="{frontend_url}/dashboard.html" style="display: inline-block; background-color: #6366f1; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; padding: 10px 24px; border-radius: 6px;">Open NoteCast Dashboard</a>
+        </div>
+        '''
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>{title}</title>
+    </head>
+    <body style="background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 40px 0; color: #0f172a;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f8fafc;">
+        <tr>
+          <td align="center">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); max-width: 500px; margin: 0 auto; border: 1px solid #e2e8f0;">
+              <tr>
+                <td align="center" style="padding: 40px 40px 20px 40px;">
+                  <h1 style="font-size: 24px; font-weight: 800; color: #1e293b; margin: 0;">🔥 NoteCast</h1>
+                </td>
+              </tr>
+              <tr>
+                <td align="left" style="padding: 0 40px 30px 40px;">
+                  <h2 style="font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 12px;">{title}</h2>
+                  {content_html}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    """
+
+    sender_email = getattr(settings, "BREVO_SENDER_EMAIL", "destinymichael941@gmail.com")
+    payload = {
+        "sender": {"name": "NoteCast", "email": sender_email}, 
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "htmlContent": html_content
+    }
+
+    try:
+        response = httpx.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": api_key, 
+                "Content-Type": "application/json",
+                "accept": "application/json"
+            },
+            json=payload,
+            timeout=10.0
+        )
+        if response.status_code >= 400:
+            logger.error(f"Brevo API Error: {response.text}")
+            raise HTTPException(status_code=500, detail="Email dispatch failed due to upstream mailer error.")
+    except httpx.RequestError as e:
+        logger.error(f"Brevo Network Error: {e}")
+        raise HTTPException(status_code=500, detail="Could not reach email delivery service.")
+
+
 def send_brevo_otp_email(to_email: str, otp_code: str, email_type: str):
     """Sends a professional HTML email containing a 6-digit OTP code via Brevo's HTTP API."""
     api_key = getattr(settings, "BREVO_API_KEY", None)
@@ -210,9 +329,9 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
             
         _upsert_profile(db, user_id, body.email, display_name, body.phone, body.university, getattr(body, "course", None))
         
-        # Generate 6-digit OTP, attach to user metadata, and email it (ignoring the magic link)
+        # Generate 6-digit OTP, attach to user metadata using local admin client, and email it
         otp_code = f"{random.randint(100000, 999999)}"
-        supabase_auth.supabase.auth.admin.update_user_by_id(user_id, {"user_metadata": {"signup_otp": otp_code}})
+        supabase_admin.auth.admin.update_user_by_id(user_id, {"user_metadata": {"signup_otp": otp_code}})
         send_brevo_otp_email(body.email, otp_code, "signup")
 
     except supabase_auth.SupabaseAuthError as e:
@@ -234,14 +353,14 @@ def verify_signup_otp(body: VerifyOtpIn, db: DbSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found.")
     
     try:
-        supa_user = supabase_auth.supabase.auth.admin.get_user_by_id(user.id)
+        supa_user = supabase_admin.auth.admin.get_user_by_id(user.id)
         metadata = supa_user.user.user_metadata if supa_user and supa_user.user else {}
         stored_otp = metadata.get("signup_otp")
 
         if not stored_otp or stored_otp != body.token:
             raise HTTPException(status_code=400, detail="Invalid or expired verification code.")
         
-        supabase_auth.supabase.auth.admin.update_user_by_id(user.id, {
+        supabase_admin.auth.admin.update_user_by_id(user.id, {
             "email_confirm": True,
             "user_metadata": {**metadata, "signup_otp": None}
         })
@@ -329,11 +448,11 @@ def forgot_password(body: schemas.ForgotPasswordIn, request: Request):
     )
     try:
         otp_code = f"{random.randint(100000, 999999)}"
-        user_list = supabase_auth.supabase.auth.admin.list_users()
+        user_list = supabase_admin.auth.admin.list_users()
         target_user = next((u for u in user_list if u.email.lower() == body.email.lower()), None)
         
         if target_user:
-            supabase_auth.supabase.auth.admin.update_user_by_id(target_user.id, {"user_metadata": {**target_user.user_metadata, "recovery_otp": otp_code}})
+            supabase_admin.auth.admin.update_user_by_id(target_user.id, {"user_metadata": {**target_user.user_metadata, "recovery_otp": otp_code}})
             send_brevo_otp_email(body.email, otp_code, "recovery")
     except Exception as e:
         logger.error(f"Password reset OTP generation error: {e}")
@@ -349,7 +468,7 @@ def reset_password(body: VerifyOtpIn, request: Request):
         settings.RESET_RATE_LIMIT, settings.RESET_RATE_WINDOW_SEC,
     )
     try:
-        user_list = supabase_auth.supabase.auth.admin.list_users()
+        user_list = supabase_admin.auth.admin.list_users()
         target_user = next((u for u in user_list if u.email.lower() == body.email.lower()), None)
         
         if not target_user:
@@ -361,7 +480,7 @@ def reset_password(body: VerifyOtpIn, request: Request):
         if not stored_otp or stored_otp != body.token:
             raise HTTPException(status_code=400, detail="Invalid or expired reset code.")
 
-        supabase_auth.supabase.auth.admin.update_user_by_id(target_user.id, {
+        supabase_admin.auth.admin.update_user_by_id(target_user.id, {
             "password": body.new_password,
             "user_metadata": {**metadata, "recovery_otp": None}
         })
