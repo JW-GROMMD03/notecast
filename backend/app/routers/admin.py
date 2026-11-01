@@ -53,6 +53,7 @@ class BulkEmailReq(BaseModel):
     university: str
     student_status: str
     course: str
+    specific_email: str = ""
     subject: str
     message: str
 
@@ -95,7 +96,6 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
     today = dt.datetime.utcnow()
     start_date = None
     
-    # Global Date Filtering Logic
     if period == "today":
         start_date = today.replace(hour=0, minute=0, second=0, microsecond=0)
     elif period == "this_week":
@@ -104,7 +104,6 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
     elif period == "this_month":
         start_date = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    # Base Queries with optional Date filtering
     tx_query = db.query(models.PaymentTransaction).filter(models.PaymentTransaction.status == "COMPLETED")
     users_query = db.query(models.User)
     
@@ -126,7 +125,6 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
 
     universities = [{"name": u.university, "count": u.count, "percent": round((u.count / max(len(all_users), 1)) * 100, 1)} for u in uni_stats]
 
-    # FIX: Map revenue EXACTLY from settled payment ledger transactions, preventing manual awards from faking revenue
     subscriptions_records = db.query(models.UserSubscription).all()
     sub_map = {sub.user_id: sub for sub in subscriptions_records}
     
@@ -147,16 +145,13 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
     financials = {pot.id: {"balance": pot.balance, "borrowed": pot.borrowed} for pot in pots}
     net_worth = sum([pot.balance for pot in pots])
 
-    # End of Month Alert calculation (Triggered within 5 days of month end)
     last_day = calendar.monthrange(today.year, today.month)[1]
     days_to_month_end = last_day - today.day
     eom_alert = days_to_month_end <= 5
 
-    # Fetch and evaluate Recurring Expenses
     expenses = db.query(models.RecurringExpense).order_by(models.RecurringExpense.next_due.asc()).all()
     due_expenses_count = sum(1 for exp in expenses if (exp.next_due - today).days <= 5)
 
-    # Time-Series Analytics (Weekly, Monthly, Yearly)
     weekly_rev, monthly_rev, yearly_rev = defaultdict(float), defaultdict(float), defaultdict(float)
     all_completed_txs = db.query(models.PaymentTransaction).filter(models.PaymentTransaction.status == "COMPLETED").all()
     
@@ -195,7 +190,7 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
             "email": u.email,
             "phone": getattr(u, 'phone', 'N/A'),
             "university": getattr(u, 'university', 'Unknown') or 'Unknown',
-            "course": getattr(u, 'course', 'N/A') or 'N/A',  # <-- Added student course mapping here
+            "course": getattr(u, 'course', 'N/A') or 'N/A',
             "plan": display_plan,
             "is_admin": is_super_admin,
             "status": "Active" if not getattr(u, 'is_blocked', False) else "Blocked",
@@ -372,9 +367,9 @@ def award_subscription(req: AwardSubscriptionReq, db: Session = Depends(get_db),
 @router.post("/notifications/send")
 @direct_router.post("/notifications/send")
 def send_notification(req: SendEmailReq, db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
-    from .auth import send_resend_email
+    from .auth import send_brevo_email
     try:
-        send_resend_email(req.user_email, "https://notecast-web.onrender.com/dashboard.html", "signup")
+        send_brevo_email(req.user_email, req.message, "custom", req.subject)
         return {"message": f"Notification successfully dispatched to {req.user_email}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -411,24 +406,36 @@ def pay_expense(expense_id: str, db: Session = Depends(get_db), admin: models.Us
 @router.post("/notifications/bulk")
 @direct_router.post("/notifications/bulk")
 def send_bulk_notifications(req: BulkEmailReq, db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
-    from .auth import send_resend_email
+    from .auth import send_brevo_email
     query = db.query(models.User)
-    if req.university != "ALL":
+    
+    if req.specific_email and req.specific_email.strip() != "":
+        query = query.filter(models.User.email.ilike(f"%{req.specific_email.strip()}%"))
+
+    if req.university and req.university != "ALL":
         query = query.filter(models.User.university == req.university)
+    
+    if req.student_status == "STUDENT":
+        query = query.filter(models.User.university != None, models.User.university != "Unknown")
+
+    if req.course and req.course.strip() != "":
+        query = query.filter(models.User.course.ilike(f"%{req.course.strip()}%"))
     
     users = query.all()
     sent_count = 0
     sub_records = {sub.user_id: sub.tier for sub in db.query(models.UserSubscription).all()}
 
     for u in users:
-        if req.tier != "ALL":
-            user_tier = sub_records.get(u.id, "FREE")
+        if req.tier and req.tier != "ALL":
+            is_super = u.email in ['destinymichael941@gmail.com'] or u.is_admin
+            user_tier = "SUPER ADMIN" if is_super else sub_records.get(u.id, "FREE")
             if user_tier.upper() != req.tier.upper():
                 continue
         try:
-            send_resend_email(u.email, "https://notecast-web.onrender.com/dashboard.html", "signup")
+            send_brevo_email(u.email, req.message, "custom", req.subject)
             sent_count += 1
-        except Exception:
+        except Exception as e:
+            print(f"Failed to send to {u.email}: {str(e)}")
             pass
             
     return {"message": f"Broadcast successfully dispatched to {sent_count} matching users."}

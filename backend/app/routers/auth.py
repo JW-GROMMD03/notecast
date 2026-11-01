@@ -26,8 +26,8 @@ class OAuthCallbackIn(BaseModel):
 # =========================================================================
 # PRODUCTION THIRD-PARTY MAILER (Brevo API)
 # =========================================================================
-def send_brevo_email(to_email: str, link: str, email_type: str):
-    """Sends a professional HTML email via Brevo's HTTP API, dynamically routing to Render static site."""
+def send_brevo_email(to_email: str, link_or_message: str, email_type: str, subject_override: str = None):
+    """Sends a professional HTML email via Brevo's HTTP API, supporting both system links and custom messages."""
     api_key = getattr(settings, "BREVO_API_KEY", None)
     if not api_key:
         raise HTTPException(
@@ -36,28 +36,43 @@ def send_brevo_email(to_email: str, link: str, email_type: str):
         )
 
     frontend_url = getattr(settings, "FRONTEND_URL", "https://notecast-web.onrender.com").rstrip("/")
+    link = link_or_message
 
-    # Automatically swap any local development URL/port for your Render production frontend
-    if "localhost" in link or "127.0.0.1" in link:
-        if email_type == "signup":
-            link = re.sub(r'https?://(localhost|127\.0\.0\.1)(:\d+)?', frontend_url, link)
-        elif email_type == "recovery":
-            if "#access_token=" in link:
-                token_part = link.split("#access_token=")[1]
-                link = f"{frontend_url}/reset-password.html#type=recovery&access_token={token_part}"
-            else:
+    if email_type == "signup" or email_type == "recovery":
+        if "localhost" in link or "127.0.0.1" in link:
+            if email_type == "signup":
                 link = re.sub(r'https?://(localhost|127\.0\.0\.1)(:\d+)?', frontend_url, link)
+            elif email_type == "recovery":
+                if "#access_token=" in link:
+                    token_part = link.split("#access_token=")[1]
+                    link = f"{frontend_url}/reset-password.html#type=recovery&access_token={token_part}"
+                else:
+                    link = re.sub(r'https?://(localhost|127\.0\.0\.1)(:\d+)?', frontend_url, link)
 
     if email_type == "signup":
         subject = "Welcome to NoteCast — Verify your email"
         title = "Verify your email address"
         body_text = "Welcome to NoteCast! Please click the button below to verify your account and get started."
         btn_text = "Verify Account"
-    else:
+        content_html = f'<a href="{link}" style="display: inline-block; background-color: #6366f1; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 36px; border-radius: 8px;">{btn_text}</a>'
+    elif email_type == "recovery":
         subject = "NoteCast — Reset your password"
         title = "Reset your password"
         body_text = "We received a request to reset your password. Click the button below to set a new one. If you didn't request this, ignore this email."
         btn_text = "Reset Password"
+        content_html = f'<a href="{link}" style="display: inline-block; background-color: #6366f1; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 36px; border-radius: 8px;">{btn_text}</a>'
+    else:
+        subject = subject_override or "NoteCast Command Center Notification"
+        title = subject
+        body_text = link_or_message
+        content_html = f'''
+        <div style="font-size: 15px; line-height: 1.6; color: #475569; white-space: pre-wrap; background: #f1f5f9; padding: 16px; border-radius: 8px; border-left: 4px solid #6366f1;">
+            {body_text}
+        </div>
+        <div style="margin-top: 24px; text-align: center;">
+            <a href="{frontend_url}/dashboard.html" style="display: inline-block; background-color: #6366f1; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; padding: 10px 24px; border-radius: 6px;">Open NoteCast Dashboard</a>
+        </div>
+        '''
 
     html_content = f"""
     <!DOCTYPE html>
@@ -72,22 +87,15 @@ def send_brevo_email(to_email: str, link: str, email_type: str):
         <tr>
           <td align="center">
             <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); max-width: 500px; margin: 0 auto; border: 1px solid #e2e8f0;">
-              
-              <!-- Header -->
               <tr>
                 <td align="center" style="padding: 40px 40px 20px 40px;">
                   <h1 style="font-size: 24px; font-weight: 800; color: #1e293b; margin: 0;">🔥 NoteCast</h1>
                 </td>
               </tr>
-              
-              <!-- Content -->
               <tr>
-                <td align="center" style="padding: 0 40px 30px 40px;">
-                  <h2 style="font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 12px;">{title}</h2>
-                  <p style="font-size: 16px; line-height: 1.6; color: #475569; margin-bottom: 32px;">
-                    {body_text}
-                  </p>
-                  <a href="{link}" style="display: inline-block; background-color: #6366f1; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 36px; border-radius: 8px;">{btn_text}</a>
+                <td align="left" style="padding: 0 40px 30px 40px;">
+                  <h2 style="font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 12px;">{title}</h2>
+                  {content_html}
                 </td>
               </tr>
             </table>
@@ -208,7 +216,6 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
     )
     try:
         display_name = body.display_name or body.email.split("@")[0]
-        
         result = supabase_auth.generate_signup_link(body.email, body.password, display_name)
         
         user_id = result.get("id") or (result.get("user") or {}).get("id")
@@ -247,7 +254,6 @@ def login(body: schemas.LoginIn, request: Request, response: Response, db: DbSes
         raise HTTPException(status_code=401, detail="Incorrect email or password, or the account isn't verified yet.")
 
     res_dict = result.model_dump() if hasattr(result, "model_dump") else result
-    
     access_token = res_dict.get("access_token")
     refresh_token = res_dict.get("refresh_token")
     expires_in = res_dict.get("expires_in", 3600)
@@ -277,7 +283,6 @@ def refresh(body: schemas.RefreshIn, request: Request, response: Response, db: D
         raise HTTPException(status_code=401, detail="Session expired — please sign in again")
 
     res_dict = result.model_dump() if hasattr(result, "model_dump") else result
-    
     access_token = res_dict.get("access_token")
     new_refresh_token = res_dict.get("refresh_token")
     expires_in = res_dict.get("expires_in", 3600)
