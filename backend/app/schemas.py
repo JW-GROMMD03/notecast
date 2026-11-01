@@ -9,6 +9,7 @@ class SignupIn(BaseModel):
     display_name: Optional[str] = ""
     phone: Optional[str] = None
     university: Optional[str] = None
+    course: Optional[str] = None
 
 class LoginIn(BaseModel):
     email: EmailStr

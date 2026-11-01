@@ -70,7 +70,8 @@ el("signupForm").addEventListener("submit", async (e) => {
       password, 
       display_name: el("displayName").value.trim(),
       phone: el("phone").value.trim(),
-      university: el("university").value
+      university: el("university").value,
+      course: el("course").value.trim()
     };
     
     await apiFetch("/auth/signup", { method: "POST", body: JSON.stringify(body) });

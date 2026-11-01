@@ -93,7 +93,7 @@ def send_brevo_email(to_email: str, link: str, email_type: str):
     """
 
     payload = {
-        "sender": {"name": "NoteCast", "email": "onboarding@notecast.com"}, # Change to your Brevo verified sender email
+        "sender": {"name": "NoteCast", "email": "dux.technicae941@gmail.com"}, 
         "to": [{"email": to_email}],
         "subject": subject,
         "htmlContent": html_content
@@ -119,7 +119,7 @@ def send_brevo_email(to_email: str, link: str, email_type: str):
 
 # =========================================================================
 
-def _upsert_profile(db: DbSession, user_id: str, email: str, display_name: str, phone: str = None, university: str = None) -> models.User:
+def _upsert_profile(db: DbSession, user_id: str, email: str, display_name: str, phone: str = None, university: str = None, course: str = None) -> models.User:
     # 1. Look up strictly by the Supabase Auth user_id
     user = db.query(models.User).filter(models.User.id == user_id).first()
     
@@ -144,6 +144,9 @@ def _upsert_profile(db: DbSession, user_id: str, email: str, display_name: str, 
         if university and user.university in ["Unknown", None, ""]:
             user.university = university
             modified = True
+        if course and getattr(user, "course", None) != course:
+            user.course = course
+            modified = True
             
         if modified:
             db.commit()
@@ -156,7 +159,8 @@ def _upsert_profile(db: DbSession, user_id: str, email: str, display_name: str, 
         email=email, 
         display_name=display_name,
         phone=phone,
-        university=university or "Unknown"
+        university=university or "Unknown",
+        course=course
     )
     db.add(user)
     db.commit()
@@ -205,7 +209,8 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
         user_metadata = {
             "display_name": display_name,
             "phone": body.phone,
-            "university": body.university
+            "university": body.university,
+            "course": getattr(body, "course", None)
         }
         
         # Adjusting the generate_signup_link call assuming it supports passing metadata. 
@@ -222,7 +227,7 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
             raise HTTPException(status_code=500, detail="Failed to generate verification link.")
             
         # Store demographic data safely in the Postgres Database
-        _upsert_profile(db, user_id, body.email, display_name, body.phone, body.university)
+        _upsert_profile(db, user_id, body.email, display_name, body.phone, body.university, getattr(body, "course", None))
         
         # Send via Brevo instead of Resend
         send_brevo_email(body.email, action_link, "signup")
