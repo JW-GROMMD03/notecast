@@ -41,6 +41,9 @@ class UserOut(BaseModel):
     id: str
     email: str
     display_name: str
+    phone: Optional[str] = None
+    university: Optional[str] = None
+    course: Optional[str] = None
     plan: str
     class Config: from_attributes = True
 
@@ -153,7 +156,7 @@ class DocumentPageOut(BaseModel):
 class InteractiveDiagramCreateIn(BaseModel):
     title: str
     sim_type: str = "custom"
-    prompt: Optional[str] = None # If user wants AI to generate the initial canvas
+    prompt: Optional[str] = None
 
 class InteractiveDiagramUpdateIn(BaseModel):
     canvas_state: Dict[str, Any]
@@ -176,7 +179,7 @@ class FlashcardOut(BaseModel):
     class Config: from_attributes = True
 
 class FlashcardReviewIn(BaseModel):
-    quality: int = Field(ge=0, le=5) # 0=Blackout, 5=Perfect recall (SM-2 standard)
+    quality: int = Field(ge=0, le=5)
 
 # --- KNOWLEDGE GRAPH ---
 class KnowledgeNodeOut(BaseModel):

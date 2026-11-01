@@ -195,6 +195,7 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
             "email": u.email,
             "phone": getattr(u, 'phone', 'N/A'),
             "university": getattr(u, 'university', 'Unknown') or 'Unknown',
+            "course": getattr(u, 'course', 'N/A') or 'N/A',  # <-- Added student course mapping here
             "plan": display_plan,
             "is_admin": is_super_admin,
             "status": "Active" if not getattr(u, 'is_blocked', False) else "Blocked",
@@ -395,7 +396,6 @@ def pay_expense(expense_id: str, db: Session = Depends(get_db), admin: models.Us
     expense = db.query(models.RecurringExpense).filter(models.RecurringExpense.id == expense_id).first()
     if not expense: raise HTTPException(status_code=404, detail="Expense not found")
     
-    # Deduct from Maintenance pot if available
     pot = db.query(models.FinancialPot).filter(models.FinancialPot.id == "maintenance").first()
     if pot:
         pot.balance = max(0.0, pot.balance - expense.amount)
@@ -403,7 +403,6 @@ def pay_expense(expense_id: str, db: Session = Depends(get_db), admin: models.Us
     log = models.AdminActionLog(admin_id=admin.id, action_type="EXPENSE_PAID", amount=expense.amount, description=f"Paid recurring expense: {expense.name}")
     db.add(log)
 
-    # Automatically shift next due date forward by the interval days
     expense.next_due = expense.next_due + dt.timedelta(days=expense.interval_days)
     db.commit()
     return {"message": f"{expense.name} marked as paid and logged to maintenance expenses."}
