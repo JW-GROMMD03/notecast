@@ -42,7 +42,8 @@ class User(Base):
     
     # NEW: Admin & Demographic Tracking
     is_admin = Column(Boolean, default=False)
-    university = Column(String, default="Unknown")
+    university = Column(String, default="Unknown", nullable=True)
+    phone = Column(String, nullable=True)
     
     created_at = Column(DateTime, default=now)
 
@@ -313,7 +314,7 @@ class DocumentPage(Base):
 
 
 # ==========================================
-# PILLAR 3: SPATIAL DIAGRAMS & SIMULATORS
+# PILLAR 3: SPATIAL DIAGRAM & SIMULATORS
 # ==========================================
 
 class InteractiveDiagram(Base):

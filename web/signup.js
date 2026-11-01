@@ -65,7 +65,13 @@ el("signupForm").addEventListener("submit", async (e) => {
 
   try {
     const email = el("email").value.trim();
-    const body = { email, password, display_name: el("displayName").value.trim() };
+    const body = { 
+      email, 
+      password, 
+      display_name: el("displayName").value.trim(),
+      phone: el("phone").value.trim(),
+      university: el("university").value
+    };
     
     await apiFetch("/auth/signup", { method: "POST", body: JSON.stringify(body) });
 

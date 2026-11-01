@@ -7,6 +7,8 @@ class SignupIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     display_name: Optional[str] = ""
+    phone: Optional[str] = None
+    university: Optional[str] = None
 
 class LoginIn(BaseModel):
     email: EmailStr

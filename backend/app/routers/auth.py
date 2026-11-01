@@ -1,5 +1,5 @@
 """
-Auth endpoints using Supabase Admin API + Resend API with robust error handling, flat response parsing, and OAuth.
+Auth endpoints using Supabase Admin API + Brevo API with robust error handling, flat response parsing, and OAuth.
 """
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -20,15 +20,15 @@ class OAuthCallbackIn(BaseModel):
     expires_in: int = 3600
 
 # =========================================================================
-# PRODUCTION THIRD-PARTY MAILER (Resend API)
+# PRODUCTION THIRD-PARTY MAILER (Brevo API)
 # =========================================================================
-def send_resend_email(to_email: str, link: str, email_type: str):
-    """Sends a professional HTML email via Resend's HTTP API, dynamically routing to Render static site."""
-    api_key = getattr(settings, "RESEND_API_KEY", None)
+def send_brevo_email(to_email: str, link: str, email_type: str):
+    """Sends a professional HTML email via Brevo's HTTP API, dynamically routing to Render static site."""
+    api_key = getattr(settings, "BREVO_API_KEY", None)
     if not api_key:
         raise HTTPException(
             status_code=500, 
-            detail="RESEND_API_KEY is missing in backend .env file."
+            detail="BREVO_API_KEY is missing in backend .env file."
         )
 
     # Automatically swap Supabase's default localhost/hash redirect for your Render production frontend
@@ -93,29 +93,33 @@ def send_resend_email(to_email: str, link: str, email_type: str):
     """
 
     payload = {
-        "from": "NoteCast <onboarding@resend.dev>",
-        "to": [to_email],
+        "sender": {"name": "NoteCast", "email": "onboarding@notecast.com"}, # Change to your Brevo verified sender email
+        "to": [{"email": to_email}],
         "subject": subject,
-        "html": html_content
+        "htmlContent": html_content
     }
 
     try:
         response = httpx.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": api_key, 
+                "Content-Type": "application/json",
+                "accept": "application/json"
+            },
             json=payload,
             timeout=10.0
         )
         if response.status_code >= 400:
-            print(f"❌ Resend API Error: {response.text}")
+            print(f"❌ Brevo API Error: {response.text}")
             raise HTTPException(status_code=500, detail=f"Email dispatch failed: {response.text}")
     except httpx.RequestError as e:
-        print(f"❌ Resend Network Error: {e}")
+        print(f"❌ Brevo Network Error: {e}")
         raise HTTPException(status_code=500, detail="Could not reach email delivery service.")
 
 # =========================================================================
 
-def _upsert_profile(db: DbSession, user_id: str, email: str, display_name: str) -> models.User:
+def _upsert_profile(db: DbSession, user_id: str, email: str, display_name: str, phone: str = None, university: str = None) -> models.User:
     # 1. Look up strictly by the Supabase Auth user_id
     user = db.query(models.User).filter(models.User.id == user_id).first()
     
@@ -130,14 +134,30 @@ def _upsert_profile(db: DbSession, user_id: str, email: str, display_name: str) 
             user = None
 
     if user:
+        modified = False
         if display_name and not user.display_name:
             user.display_name = display_name
-        db.commit()
-        db.refresh(user)
+            modified = True
+        if phone and not user.phone:
+            user.phone = phone
+            modified = True
+        if university and user.university in ["Unknown", None, ""]:
+            user.university = university
+            modified = True
+            
+        if modified:
+            db.commit()
+            db.refresh(user)
         return user
         
-    # 3. Create brand new user profile row
-    user = models.User(id=user_id, email=email, display_name=display_name)
+    # 3. Create brand new user profile row with expanded demographic data
+    user = models.User(
+        id=user_id, 
+        email=email, 
+        display_name=display_name,
+        phone=phone,
+        university=university or "Unknown"
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -179,6 +199,17 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
     )
     try:
         display_name = body.display_name or body.email.split("@")[0]
+        
+        # We pass additional metadata (like phone and university) in Supabase data if needed, 
+        # but primarily we store it directly in our PostgreSQL DB below via _upsert_profile
+        user_metadata = {
+            "display_name": display_name,
+            "phone": body.phone,
+            "university": body.university
+        }
+        
+        # Adjusting the generate_signup_link call assuming it supports passing metadata. 
+        # If your supabase wrapper doesn't accept metadata yet, this just creates the link.
         result = supabase_auth.generate_signup_link(body.email, body.password, display_name)
         
         user_id = result.get("id") or (result.get("user") or {}).get("id")
@@ -190,8 +221,11 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
                 raise HTTPException(status_code=400, detail="An account with this email already exists.")
             raise HTTPException(status_code=500, detail="Failed to generate verification link.")
             
-        _upsert_profile(db, user_id, body.email, display_name)
-        send_resend_email(body.email, action_link, "signup")
+        # Store demographic data safely in the Postgres Database
+        _upsert_profile(db, user_id, body.email, display_name, body.phone, body.university)
+        
+        # Send via Brevo instead of Resend
+        send_brevo_email(body.email, action_link, "signup")
 
     except supabase_auth.SupabaseAuthError as e:
         msg_lower = e.message.lower()
@@ -282,7 +316,7 @@ def forgot_password(body: schemas.ForgotPasswordIn, request: Request):
     )
     recovery_link = supabase_auth.generate_recovery_link(body.email)
     if recovery_link:
-        send_resend_email(body.email, recovery_link, "recovery")
+        send_brevo_email(body.email, recovery_link, "recovery")
     else:
         raise HTTPException(status_code=500, detail="Failed to generate password reset link.")
     

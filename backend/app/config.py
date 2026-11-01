@@ -23,9 +23,9 @@ class Settings(BaseSettings):
     R2_BUCKET_NAME: str = "notecast-frames"
 
     # ---------------------------------------------------------------
-    # Production Email Provider (Resend API)
+    # Production Email Provider (Brevo API)
     # ---------------------------------------------------------------
-    RESEND_API_KEY: str = ""
+    BREVO_API_KEY: str = ""
 
     # ---------------------------------------------------------------
     # Sessions / cookies and CORS
