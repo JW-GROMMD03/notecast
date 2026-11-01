@@ -197,14 +197,20 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
     try:
         display_name = body.display_name or body.email.split("@")[0]
         
-        result = supabase_auth.sign_up_user(body.email, body.password, {"display_name": display_name})
+        # Use existing wrapper function to register the user
+        result = supabase_auth.generate_signup_link(body.email, body.password, display_name)
+        
         user_id = result.get("id") or (result.get("user") or {}).get("id")
         
         if not user_id:
-            raise HTTPException(status_code=400, detail="An account with this email already exists.")
+            error_msg = result.get("msg") or result.get("error_description") or result.get("error") or ""
+            if "already registered" in error_msg.lower() or "already exists" in error_msg.lower():
+                raise HTTPException(status_code=400, detail="An account with this email already exists.")
+            raise HTTPException(status_code=500, detail="Failed to create account in Supabase.")
             
         _upsert_profile(db, user_id, body.email, display_name, body.phone, body.university, getattr(body, "course", None))
         
+        # Generate 6-digit OTP, attach to user metadata, and email it (ignoring the magic link)
         otp_code = f"{random.randint(100000, 999999)}"
         supabase_auth.supabase.auth.admin.update_user_by_id(user_id, {"user_metadata": {"signup_otp": otp_code}})
         send_brevo_otp_email(body.email, otp_code, "signup")
