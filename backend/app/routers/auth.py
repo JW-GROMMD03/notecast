@@ -1,6 +1,8 @@
 """
 Auth endpoints using Supabase Admin API + Brevo API with robust error handling, flat response parsing, and OAuth.
 """
+import re
+import logging
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -11,6 +13,8 @@ from .. import models, schemas, auth
 from ..database import get_db
 from ..config import settings
 from ..services import supabase_auth, ratelimit
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -28,19 +32,21 @@ def send_brevo_email(to_email: str, link: str, email_type: str):
     if not api_key:
         raise HTTPException(
             status_code=500, 
-            detail="BREVO_API_KEY is missing in backend .env file."
+            detail="BREVO_API_KEY is missing in backend environment variables."
         )
 
-    # Automatically swap Supabase's default localhost/hash redirect for your Render production frontend
+    frontend_url = getattr(settings, "FRONTEND_URL", "https://notecast-web.onrender.com").rstrip("/")
+
+    # Automatically swap any local development URL/port for your Render production frontend
     if "localhost" in link or "127.0.0.1" in link:
         if email_type == "signup":
-            link = link.replace("http://localhost:5500", "https://notecast-web.onrender.com")
-            link = link.replace("http://127.0.0.1:5500", "https://notecast-web.onrender.com")
+            link = re.sub(r'https?://(localhost|127\.0\.0\.1)(:\d+)?', frontend_url, link)
         elif email_type == "recovery":
-            # Convert hash token format to route cleanly to your reset-password page on Render
             if "#access_token=" in link:
                 token_part = link.split("#access_token=")[1]
-                link = f"https://notecast-web.onrender.com/reset-password.html#type=recovery&access_token={token_part}"
+                link = f"{frontend_url}/reset-password.html#type=recovery&access_token={token_part}"
+            else:
+                link = re.sub(r'https?://(localhost|127\.0\.0\.1)(:\d+)?', frontend_url, link)
 
     if email_type == "signup":
         subject = "Welcome to NoteCast — Verify your email"
@@ -92,8 +98,9 @@ def send_brevo_email(to_email: str, link: str, email_type: str):
     </html>
     """
 
+    sender_email = getattr(settings, "BREVO_SENDER_EMAIL", "destinymichael941@gmail.com")
     payload = {
-        "sender": {"name": "NoteCast", "email": "destinymichael941@gmail.com"}, 
+        "sender": {"name": "NoteCast", "email": sender_email}, 
         "to": [{"email": to_email}],
         "subject": subject,
         "htmlContent": html_content
@@ -111,73 +118,71 @@ def send_brevo_email(to_email: str, link: str, email_type: str):
             timeout=10.0
         )
         if response.status_code >= 400:
-            print(f"❌ Brevo API Error: {response.text}")
-            raise HTTPException(status_code=500, detail=f"Email dispatch failed: {response.text}")
+            logger.error(f"Brevo API Error: {response.text}")
+            raise HTTPException(status_code=500, detail="Email dispatch failed due to upstream mailer error.")
     except httpx.RequestError as e:
-        print(f"❌ Brevo Network Error: {e}")
+        logger.error(f"Brevo Network Error: {e}")
         raise HTTPException(status_code=500, detail="Could not reach email delivery service.")
 
 # =========================================================================
 
 def _upsert_profile(db: DbSession, user_id: str, email: str, display_name: str, phone: str = None, university: str = None, course: str = None) -> models.User:
-    # 1. Look up strictly by the Supabase Auth user_id
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    
-    if not user:
-        # 2. If not found by ID, look up by email to catch split-brain / OAuth mismatches
-        user = db.query(models.User).filter(models.User.email == email).first()
+    try:
+        user = db.query(models.User).filter(models.User.id == user_id).first()
         
-        if user:
-            # Cleanly handle ID drift by deleting the stale row so the new UUID binds cleanly
-            db.delete(user)
-            db.commit()
-            user = None
+        if not user:
+            user = db.query(models.User).filter(models.User.email == email).first()
+            if user:
+                db.delete(user)
+                db.commit()
+                user = None
 
-    if user:
-        modified = False
-        if display_name and not user.display_name:
-            user.display_name = display_name
-            modified = True
-        if phone and not user.phone:
-            user.phone = phone
-            modified = True
-        if university and user.university in ["Unknown", None, ""]:
-            user.university = university
-            modified = True
-        if course and getattr(user, "course", None) != course:
-            user.course = course
-            modified = True
+        if user:
+            modified = False
+            if display_name and not user.display_name:
+                user.display_name = display_name
+                modified = True
+            if phone and not user.phone:
+                user.phone = phone
+                modified = True
+            if university and user.university in ["Unknown", None, ""]:
+                user.university = university
+                modified = True
+            if course and getattr(user, "course", None) != course:
+                user.course = course
+                modified = True
+                
+            if modified:
+                db.commit()
+                db.refresh(user)
+            return user
             
-        if modified:
-            db.commit()
-            db.refresh(user)
+        user = models.User(
+            id=user_id, 
+            email=email, 
+            display_name=display_name,
+            phone=phone,
+            university=university or "Unknown",
+            course=course
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
         return user
-        
-    # 3. Create brand new user profile row with expanded demographic data
-    user = models.User(
-        id=user_id, 
-        email=email, 
-        display_name=display_name,
-        phone=phone,
-        university=university or "Unknown",
-        course=course
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Database error during user upsert: {e}")
+        raise HTTPException(status_code=500, detail="Internal database error while saving user profile.")
 
 
 @router.get("/google-url")
 def get_google_url(redirect_to: str):
-    """Returns the correct Supabase authorization URL to begin the Google OAuth flow."""
     base = settings.SUPABASE_URL.rstrip("/")
     return {"url": f"{base}/auth/v1/authorize?provider=google&redirect_to={redirect_to}"}
 
 
 @router.post("/oauth-callback", response_model=schemas.SessionTokensOut)
 def oauth_callback(body: OAuthCallbackIn, response: Response, db: DbSession = Depends(get_db)):
-    """Receives the access token from the frontend, verifies it with Supabase, and logs the user in locally."""
     try:
         supa_user = supabase_auth.get_user(body.access_token)
     except supabase_auth.SupabaseAuthError:
@@ -204,17 +209,6 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
     try:
         display_name = body.display_name or body.email.split("@")[0]
         
-        # We pass additional metadata (like phone and university) in Supabase data if needed, 
-        # but primarily we store it directly in our PostgreSQL DB below via _upsert_profile
-        user_metadata = {
-            "display_name": display_name,
-            "phone": body.phone,
-            "university": body.university,
-            "course": getattr(body, "course", None)
-        }
-        
-        # Adjusting the generate_signup_link call assuming it supports passing metadata. 
-        # If your supabase wrapper doesn't accept metadata yet, this just creates the link.
         result = supabase_auth.generate_signup_link(body.email, body.password, display_name)
         
         user_id = result.get("id") or (result.get("user") or {}).get("id")
@@ -226,10 +220,7 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
                 raise HTTPException(status_code=400, detail="An account with this email already exists.")
             raise HTTPException(status_code=500, detail="Failed to generate verification link.")
             
-        # Store demographic data safely in the Postgres Database
         _upsert_profile(db, user_id, body.email, display_name, body.phone, body.university, getattr(body, "course", None))
-        
-        # Send via Brevo instead of Resend
         send_brevo_email(body.email, action_link, "signup")
 
     except supabase_auth.SupabaseAuthError as e:
