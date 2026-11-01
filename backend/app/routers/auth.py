@@ -93,7 +93,7 @@ def send_brevo_email(to_email: str, link: str, email_type: str):
     """
 
     payload = {
-        "sender": {"name": "NoteCast", "email": "dux.technicae941@gmail.com"}, 
+        "sender": {"name": "NoteCast", "email": "destinymichael941@gmail.com"}, 
         "to": [{"email": to_email}],
         "subject": subject,
         "htmlContent": html_content
