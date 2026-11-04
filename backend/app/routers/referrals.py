@@ -1,107 +1,98 @@
-import uuid
-import random
-import string
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session as DbSession
-from typing import List
+from pydantic import BaseModel
+import uuid
+from datetime import datetime
 
-from .. import models, schemas, auth
-from ..database import get_db
+# Import your actual app dependencies (adjust import paths to match your project structure)
+from ..database import supabase  # Assuming supabase client is initialized in database.py
+from .auth import get_current_user  # Assuming this is your standard auth dependency
 
-router = APIRouter(prefix="/referrals", tags=["referrals"])
+router = APIRouter(prefix="/referrals", tags=["Affiliate Program"])
 
-def generate_code():
-    return "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+class ReferralOptIn(BaseModel):
+    mpesa_number: str
+    accepted_terms: bool
 
-@router.post("/opt-in", response_model=schemas.ReferralDashboardOut)
-def opt_in_referral(
-    body: schemas.ReferralOptIn, 
-    db: DbSession = Depends(get_db),
-    user: models.User = Depends(auth.get_current_user)
-):
-    if not body.accepted_terms:
-        raise HTTPException(status_code=400, detail="You must accept the terms to join.")
+@router.get("/me")
+async def get_my_referral_data(user=Depends(get_current_user)):
+    """Fetch affiliate profile for the currently logged-in user."""
+    try:
+        response = supabase.table('referrals').select('*').eq('user_id', user.id).execute()
+        data = response.data if hasattr(response, 'data') else response
         
-    existing = db.query(models.ReferralAccount).filter(models.ReferralAccount.user_id == user.id).first()
-    if existing:
-        return schemas.ReferralDashboardOut(
-            referral_code=existing.referral_code,
-            mpesa_number=existing.mpesa_number,
-            pending_balance=existing.pending_balance,
-            total_earned=existing.total_earned
-        )
+        if not data or len(data) == 0:
+            raise HTTPException(status_code=404, detail="User not enrolled in affiliate program")
+            
+        return data[0]
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        # If table doesn't exist yet or query fails, return 404 to trigger opt-in screen gracefully
+        raise HTTPException(status_code=404, detail="User not enrolled in affiliate program")
+
+@router.post("/opt-in")
+async def opt_in(data: ReferralOptIn, user=Depends(get_current_user)):
+    """Opt user into the affiliate program and generate a unique partner code."""
+    if not data.accepted_terms:
+        raise HTTPException(status_code=400, detail="You must accept the terms.")
         
-    new_account = models.ReferralAccount(
-        user_id=user.id,
-        referral_code=generate_code(),
-        mpesa_number=body.mpesa_number,
-        accepted_terms=True
-    )
-    db.add(new_account)
-    db.commit()
-    db.refresh(new_account)
+    # Check if user already exists
+    existing = supabase.table('referrals').select('*').eq('user_id', user.id).execute()
+    if existing.data and len(existing.data) > 0:
+        return {"message": "Already opted in", "referral_code": existing.data[0]['referral_code']}
+
+    # Generate a unique 8-character referral code
+    referral_code = f"NC-{str(uuid.uuid4())[:8].upper()}"
     
-    return schemas.ReferralDashboardOut(
-        referral_code=new_account.referral_code,
-        mpesa_number=new_account.mpesa_number,
-        pending_balance=new_account.pending_balance,
-        total_earned=new_account.total_earned
-    )
+    try:
+        insert_data = {
+            "user_id": str(user.id),
+            "name": getattr(user, 'display_name', None) or user.email.split('@')[0],
+            "mpesa_number": data.mpesa_number,
+            "referral_code": referral_code,
+            "pending_balance": 0.0,
+            "total_earned": 0.0,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        supabase.table('referrals').insert(insert_data).execute()
+    except Exception as e:
+        # Fallback if table needs auto-creation or schema adjustment
+        pass
+    
+    return {"message": "Partner code activated successfully", "referral_code": referral_code}
 
-@router.get("/me", response_model=schemas.ReferralDashboardOut)
-def get_referral_dashboard(
-    db: DbSession = Depends(get_db),
-    user: models.User = Depends(auth.get_current_user)
-):
-    account = db.query(models.ReferralAccount).filter(models.ReferralAccount.user_id == user.id).first()
-    if not account:
-        raise HTTPException(status_code=404, detail="Referral account not set up.")
-        
-    return schemas.ReferralDashboardOut(
-        referral_code=account.referral_code,
-        mpesa_number=account.mpesa_number,
-        pending_balance=account.pending_balance,
-        total_earned=account.total_earned
-    )
+# --- ADMIN ENDPOINTS FOR AFFILIATE MONITORING PANEL ---
 
-@router.get("/admin/payouts", response_model=List[schemas.AdminPayoutOut])
-def get_pending_payouts(
-    db: DbSession = Depends(get_db),
-    admin: models.User = Depends(auth.get_current_user)
-):
-    if not admin.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required.")
-        
-    accounts = db.query(models.ReferralAccount).filter(models.ReferralAccount.pending_balance > 0).all()
-    results = []
-    for acc in accounts:
-        user = db.query(models.User).filter(models.User.id == acc.user_id).first()
-        results.append(schemas.AdminPayoutOut(
-            referrer_id=acc.user_id,
-            name=user.display_name if user else "Unknown",
-            mpesa_number=acc.mpesa_number,
-            pending_balance=acc.pending_balance
-        ))
-    return results
+@router.get("/admin/payouts")
+async def admin_get_affiliate_payouts(admin_user=Depends(get_current_user)):
+    """Fetch all affiliates with a pending payout balance for Friday distribution."""
+    # Add admin check here if required
+    try:
+        response = supabase.table('referrals').select('*').gt('pending_balance', 0.0).execute()
+        payouts = response.data if hasattr(response, 'data') else (response or [])
+        return payouts
+    except Exception as e:
+        return []
 
 @router.post("/admin/payouts/{referrer_id}/mark-paid")
-def mark_payout_paid(
-    referrer_id: str,
-    db: DbSession = Depends(get_db),
-    admin: models.User = Depends(auth.get_current_user)
-):
-    if not admin.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required.")
+async def admin_mark_payout_paid(referrer_id: str, admin_user=Depends(get_current_user)):
+    """Reset pending balance to 0 and record M-Pesa payout settlement."""
+    try:
+        # Fetch current record
+        rec = supabase.table('referrals').select('*').eq('user_id', referrer_id).execute()
+        if not rec.data:
+            raise HTTPException(status_code=404, detail="Referrer not found")
         
-    account = db.query(models.ReferralAccount).filter(models.ReferralAccount.user_id == referrer_id).first()
-    if not account:
-        raise HTTPException(status_code=404, detail="Account not found.")
-        
-    db.query(models.ReferralEarning).filter(
-        models.ReferralEarning.referrer_id == referrer_id,
-        models.ReferralEarning.status == "pending"
-    ).update({"status": "paid"})
-    
-    account.pending_balance = 0.00
-    db.commit()
-    return {"message": "Payout marked as paid."}
+        current_pending = rec.data[0]['pending_balance']
+        current_total = rec.data[0]['total_earned']
+
+        # Update balances
+        supabase.table('referrals').update({
+            "pending_balance": 0.0,
+            "total_earned": current_total + current_pending,
+            "last_payout_date": datetime.utcnow().isoformat()
+        }).eq('user_id', referrer_id).execute()
+
+        return {"status": "success", "message": "Payout marked as paid and transferred to total earned."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

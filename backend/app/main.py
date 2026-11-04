@@ -19,6 +19,7 @@ from .routers.flashcards import router as flashcards_router
 from .routers.graph import router as graph_router
 from .routers.socratic import router as socratic_router
 from .routers.admin import router as admin_router, direct_router as admin_direct_router
+from .routers.referrals import router as referrals_router  # <-- NEW REFERRALS ROUTER IMPORT
 
 logging.basicConfig(level=logging.INFO)
 
@@ -63,6 +64,7 @@ app.include_router(graph_router)
 app.include_router(socratic_router)
 app.include_router(admin_router)          # /admin/...      (Render rewrite strips /api)
 app.include_router(admin_direct_router)   # /api/admin/...  (direct backend access)
+app.include_router(referrals_router)      # <-- REGISTERED REFERRALS ROUTER (/referrals/me, /referrals/opt-in)
 
 @app.get("/health")
 def health():
