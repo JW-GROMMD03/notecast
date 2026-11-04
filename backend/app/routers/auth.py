@@ -20,10 +20,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# =========================================================================
-# LOCAL SUPABASE ADMIN CLIENT
-# Initialized here to securely handle metadata and OTPs without AttributeErrors
-# =========================================================================
 supa_url = settings.SUPABASE_URL
 supa_key = getattr(settings, "SUPABASE_SERVICE_ROLE_KEY", getattr(settings, "SUPABASE_KEY", ""))
 supabase_admin: Client = create_client(supa_url, supa_key)
@@ -39,10 +35,6 @@ class VerifyOtpIn(BaseModel):
     token: str
     new_password: str = None
 
-
-# =========================================================================
-# PRODUCTION THIRD-PARTY MAILER (Brevo API)
-# =========================================================================
 
 def send_brevo_email(to_email: str, link_or_message: str, email_type: str, subject_override: str = None):
     """Original email function (Preserved for backward compatibility and other system alerts)."""
@@ -231,7 +223,6 @@ def send_brevo_otp_email(to_email: str, otp_code: str, email_type: str):
         logger.error(f"Brevo Network Error: {e}")
         raise HTTPException(status_code=500, detail="Could not reach email delivery service.")
 
-# =========================================================================
 
 def _upsert_profile(db: DbSession, user_id: str, email: str, display_name: str, phone: str = None, university: str = None, course: str = None) -> models.User:
     try:
@@ -316,7 +307,6 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
     try:
         display_name = body.display_name or body.email.split("@")[0]
         
-        # Use existing wrapper function to register the user
         result = supabase_auth.generate_signup_link(body.email, body.password, display_name)
         
         user_id = result.get("id") or (result.get("user") or {}).get("id")
@@ -329,7 +319,18 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
             
         _upsert_profile(db, user_id, body.email, display_name, body.phone, body.university, getattr(body, "course", None))
         
-        # Generate 6-digit OTP, attach to user metadata using local admin client, and email it
+        # --- NEW REFERRAL LOGIC ---
+        ref_code = getattr(body, "referral_code", None)
+        if ref_code:
+            referrer = db.query(models.ReferralAccount).filter(models.ReferralAccount.referral_code == ref_code).first()
+            if referrer:
+                existing = db.query(models.Referral).filter(models.Referral.referred_user_id == user_id).first()
+                if not existing:
+                    new_ref = models.Referral(referrer_id=referrer.user_id, referred_user_id=user_id)
+                    db.add(new_ref)
+                    db.commit()
+        # --------------------------
+
         otp_code = f"{random.randint(100000, 999999)}"
         supabase_admin.auth.admin.update_user_by_id(user_id, {"user_metadata": {"signup_otp": otp_code}})
         send_brevo_otp_email(body.email, otp_code, "signup")

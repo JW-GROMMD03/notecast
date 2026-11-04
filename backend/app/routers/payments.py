@@ -105,6 +105,28 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
                 is_redeemed=False
             )
             db.add(credit)
+            
+        # --- NEW REFERRAL EARNINGS LOGIC ---
+        if txn.amount >= 100:
+            referral = db.query(models.Referral).filter(models.Referral.referred_user_id == txn.user_id).first()
+            if referral:
+                commission_rate = 0.20 if txn.amount >= 800 else 0.10
+                commission_amount = txn.amount * commission_rate
+                
+                earning = models.ReferralEarning(
+                    referrer_id=referral.referrer_id,
+                    referred_user_id=txn.user_id,
+                    transaction_amount=txn.amount,
+                    commission_amount=commission_amount,
+                    status="pending"
+                )
+                db.add(earning)
+                
+                referrer_acc = db.query(models.ReferralAccount).filter(models.ReferralAccount.user_id == referral.referrer_id).first()
+                if referrer_acc:
+                    referrer_acc.pending_balance += commission_amount
+                    referrer_acc.total_earned += commission_amount
+        # -----------------------------------
         
         db.commit()
     else:
@@ -218,7 +240,6 @@ def check_payment_status(
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found.")
 
-    # Ask Safaricom directly, throttled to 3s
     if tx.status == "PENDING" and tx.checkout_request_id and time.time() - _last_query.get(tx.id, 0) >= 3:
         _last_query[tx.id] = time.time()
         try:

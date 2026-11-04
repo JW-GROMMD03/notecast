@@ -422,3 +422,36 @@ class Export(Base):
     video = relationship("Video", back_populates="exports")
     document = relationship("Document", back_populates="exports")
     user = relationship("User", back_populates="exports")
+
+# ==========================================
+# REFERRAL TRACKING TABLES
+# ==========================================
+
+class ReferralAccount(Base):
+    __tablename__ = "referral_accounts"
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    referral_code = Column(String(15), unique=True, nullable=False, index=True)
+    mpesa_number = Column(String(15), nullable=False)
+    accepted_terms = Column(Boolean, default=True, nullable=False)
+    total_earned = Column(Float, default=0.00)
+    pending_balance = Column(Float, default=0.00)
+    created_at = Column(DateTime, default=now)
+    
+    user = relationship("User")
+
+class Referral(Base):
+    __tablename__ = "referrals"
+    id = Column(String, primary_key=True, default=uid)
+    referrer_id = Column(String, ForeignKey("referral_accounts.user_id", ondelete="CASCADE"))
+    referred_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    created_at = Column(DateTime, default=now)
+
+class ReferralEarning(Base):
+    __tablename__ = "referral_earnings"
+    id = Column(String, primary_key=True, default=uid)
+    referrer_id = Column(String, ForeignKey("referral_accounts.user_id", ondelete="CASCADE"))
+    referred_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
+    transaction_amount = Column(Float, nullable=False)
+    commission_amount = Column(Float, nullable=False)
+    status = Column(String, default="pending") 
+    created_at = Column(DateTime, default=now)

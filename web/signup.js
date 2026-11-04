@@ -70,7 +70,8 @@ el("signupForm").addEventListener("submit", async (e) => {
       display_name: el("displayName").value.trim(),
       phone: el("phone").value.trim(),
       university: el("university").value,
-      course: el("course").value.trim()
+      course: el("course").value.trim(),
+      referral_code: el("referralCode").value.trim().toUpperCase() // Added
     };
     
     await apiFetch("/auth/signup", { method: "POST", body: JSON.stringify(body) });

@@ -10,6 +10,7 @@ class SignupIn(BaseModel):
     phone: Optional[str] = None
     university: Optional[str] = None
     course: Optional[str] = None
+    referral_code: Optional[str] = None  # NEW: For referral tracking
 
 class LoginIn(BaseModel):
     email: EmailStr
@@ -197,7 +198,6 @@ class KnowledgeEdgeOut(BaseModel):
     weight: float
     class Config: from_attributes = True
 
-
 class KnowledgeNodeCreateIn(BaseModel):
     concept_name: str
     description_md: str = ""
@@ -208,3 +208,24 @@ class KnowledgeEdgeCreateIn(BaseModel):
     target_node_id: str
     relationship_type: str = "related_to"
     weight: float = 1.0
+
+
+# ==========================================
+# REFERRAL SYSTEM SCHEMAS
+# ==========================================
+
+class ReferralOptIn(BaseModel):
+    mpesa_number: str
+    accepted_terms: bool
+
+class ReferralDashboardOut(BaseModel):
+    referral_code: str
+    mpesa_number: str
+    pending_balance: float
+    total_earned: float
+
+class AdminPayoutOut(BaseModel):
+    referrer_id: str
+    name: str
+    mpesa_number: str
+    pending_balance: float
