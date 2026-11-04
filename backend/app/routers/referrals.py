@@ -3,18 +3,34 @@ from pydantic import BaseModel
 import uuid
 from datetime import datetime
 import os
+import logging
 
-# Try importing project settings
+logger = logging.getLogger("notecast")
+
+# Safely load Supabase credentials from settings or environment variables
+SUPABASE_URL = None
+SUPABASE_KEY = None
+
 try:
     from ..config import settings
-    SUPABASE_URL = getattr(settings, "SUPABASE_URL", os.getenv("SUPABASE_URL"))
-    SUPABASE_KEY = getattr(settings, "SUPABASE_KEY", os.getenv("SUPABASE_KEY"))
-except ImportError:
+    SUPABASE_URL = getattr(settings, "SUPABASE_URL", None) or os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = getattr(settings, "SUPABASE_KEY", None) or os.getenv("SUPABASE_KEY")
+except Exception as e:
+    logger.warning("Could not load settings config directly: %s", e)
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-from supabase import create_client, Client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+# Initialize Supabase client if credentials exist
+supabase = None
+try:
+    if SUPABASE_URL and SUPABASE_KEY:
+        from supabase import create_client
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        logger.info("✅ Supabase client initialized successfully in referrals router.")
+    else:
+        logger.error("❌ SUPABASE_URL or SUPABASE_KEY environment variables are missing!")
+except Exception as e:
+    logger.exception("Failed to initialize Supabase client: %s", e)
 
 # Safe import for current user dependency with fallback
 try:
@@ -27,7 +43,6 @@ except ImportError:
             from ..dependencies import get_current_user
         except ImportError:
             async def get_current_user(request: Request = None):
-                # Fallback dependency if auth function is named differently
                 return None
 
 router = APIRouter(prefix="/referrals", tags=["Affiliate Program"])
@@ -42,7 +57,7 @@ async def get_my_referral_data(user=Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
     if not supabase:
-        raise HTTPException(status_code=500, detail="Database client not initialized")
+        raise HTTPException(status_code=500, detail="Database client not initialized. Check Render environment variables.")
     
     user_id = getattr(user, 'id', None) or str(user)
     try:
@@ -56,6 +71,7 @@ async def get_my_referral_data(user=Depends(get_current_user)):
     except HTTPException as he:
         raise he
     except Exception as e:
+        logger.error("Error fetching referral data: %s", e)
         raise HTTPException(status_code=404, detail="User not enrolled in affiliate program")
 
 @router.post("/opt-in")
@@ -67,14 +83,17 @@ async def opt_in(data: ReferralOptIn, user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="You must accept the terms.")
         
     if not supabase:
-        raise HTTPException(status_code=500, detail="Database client not initialized")
+        raise HTTPException(status_code=500, detail="Database client not initialized. Check Render environment variables.")
 
     user_id = getattr(user, 'id', None) or str(user)
     user_email = getattr(user, 'email', 'user@notecast.com')
 
-    existing = supabase.table('referrals').select('*').eq('user_id', user_id).execute()
-    if existing.data and len(existing.data) > 0:
-        return {"message": "Already opted in", "referral_code": existing.data[0]['referral_code']}
+    try:
+        existing = supabase.table('referrals').select('*').eq('user_id', user_id).execute()
+        if existing.data and len(existing.data) > 0:
+            return {"message": "Already opted in", "referral_code": existing.data[0]['referral_code']}
+    except Exception as e:
+        logger.warning("Referrals table might not exist yet: %s", e)
 
     referral_code = f"NC-{str(uuid.uuid4())[:8].upper()}"
     
@@ -90,7 +109,8 @@ async def opt_in(data: ReferralOptIn, user=Depends(get_current_user)):
         }
         supabase.table('referrals').insert(insert_data).execute()
     except Exception as e:
-        pass
+        logger.error("Failed to insert referral record: %s", e)
+        raise HTTPException(status_code=500, detail=f"Database insert failed: {str(e)}")
     
     return {"message": "Partner code activated successfully", "referral_code": referral_code}
 
@@ -103,6 +123,7 @@ async def admin_get_affiliate_payouts(admin_user=Depends(get_current_user)):
         response = supabase.table('referrals').select('*').gt('pending_balance', 0.0).execute()
         return response.data if hasattr(response, 'data') else (response or [])
     except Exception as e:
+        logger.error("Error fetching admin payouts: %s", e)
         return []
 
 @router.post("/admin/payouts/{referrer_id}/mark-paid")
@@ -126,4 +147,5 @@ async def admin_mark_payout_paid(referrer_id: str, admin_user=Depends(get_curren
 
         return {"status": "success", "message": "Payout marked as paid and transferred to total earned."}
     except Exception as e:
+        logger.error("Error marking payout paid: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
