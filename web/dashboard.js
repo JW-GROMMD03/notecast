@@ -610,7 +610,7 @@ window.openPaymentModal = function(itemCode, priceText) {
       </div>
     `;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
-  
+    
     document.getElementById("confirmPayBtn").addEventListener("click", async () => {
       const phoneInput = document.getElementById("mpesaPhone").value.trim();
       const phone = cleanPhoneNumber(phoneInput);
@@ -783,7 +783,58 @@ async function init() {
       if (tabName === "documents") loadDocuments();
       if (tabName === "flashcards") loadFlashcards();
       if (tabName === "graph") loadGraph();
+      if (tabName === "referrals") loadReferralPanel(); // NEW REFERRALS TRIGGER
     });
+  });
+
+  // --- NEW REFERRALS LOGIC ---
+  async function loadReferralPanel() {
+    try {
+      const res = await authedFetch("/referrals/me");
+      let data = res;
+      if (res.json) data = await res.json();
+  
+      document.getElementById("referralOptInState").style.display = "none";
+      document.getElementById("referralDashboardState").style.display = "block";
+      
+      document.getElementById("refCodeDisplay").textContent = data.referral_code;
+      document.getElementById("refPendingAmount").textContent = `KES ${data.pending_balance.toFixed(2)}`;
+      document.getElementById("refTotalAmount").textContent = `KES ${data.total_earned.toFixed(2)}`;
+      
+      document.getElementById("copyRefBtn").onclick = () => {
+        navigator.clipboard.writeText(data.referral_code);
+        document.getElementById("copyRefBtn").textContent = "Copied!";
+        setTimeout(() => document.getElementById("copyRefBtn").textContent = "Copy Code", 2000);
+      };
+    } catch (err) {
+      document.getElementById("referralOptInState").style.display = "block";
+      document.getElementById("referralDashboardState").style.display = "none";
+    }
+  }
+
+  document.getElementById("referralOptInForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const mpesaNumber = document.getElementById("referralMpesa").value.trim();
+    const acceptedTerms = document.getElementById("referralTerms").checked;
+    const btn = e.target.querySelector("button[type='submit']");
+    
+    btn.disabled = true;
+    btn.textContent = "Activating...";
+
+    try {
+      await authedFetch("/referrals/opt-in", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mpesa_number: mpesaNumber, accepted_terms: acceptedTerms })
+      });
+      alert("Partner Code Activated!");
+      loadReferralPanel(); 
+    } catch (err) {
+      alert(extractErrorMessage(err) || "Failed to activate referral account.");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Activate My Partner Code";
+    }
   });
 
   const facultySelect = document.getElementById("facultySelect");
