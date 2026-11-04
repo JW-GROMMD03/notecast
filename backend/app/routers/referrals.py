@@ -7,30 +7,27 @@ import logging
 
 logger = logging.getLogger("notecast")
 
-# Safely load Supabase credentials from settings or environment variables
-SUPABASE_URL = None
-SUPABASE_KEY = None
-
+# Import your core database client directly from your app's database module
+# (Change 'supabase' below to match whatever client/engine your app.database exposes)
 try:
-    from ..config import settings
-    SUPABASE_URL = getattr(settings, "SUPABASE_URL", None) or os.getenv("SUPABASE_URL")
-    SUPABASE_KEY = getattr(settings, "SUPABASE_KEY", None) or os.getenv("SUPABASE_KEY")
-except Exception as e:
-    logger.warning("Could not load settings config directly: %s", e)
-    SUPABASE_URL = os.getenv("SUPABASE_URL")
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+    from ..database import supabase
+except ImportError:
+    try:
+        from database import supabase
+    except ImportError:
+        supabase = None
 
-# Initialize Supabase client if credentials exist
-supabase = None
-try:
-    if SUPABASE_URL and SUPABASE_KEY:
+# If your project uses an ORM session or engine instead of a global supabase client, 
+# you can also initialize it via standard environment variables as a safe fallback:
+if not supabase:
+    try:
         from supabase import create_client
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-        logger.info("✅ Supabase client initialized successfully in referrals router.")
-    else:
-        logger.error("❌ SUPABASE_URL or SUPABASE_KEY environment variables are missing!")
-except Exception as e:
-    logger.exception("Failed to initialize Supabase client: %s", e)
+        SUPABASE_URL = os.getenv("SUPABASE_URL")
+        SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+        if SUPABASE_URL and SUPABASE_KEY:
+            supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception as e:
+        logger.error("Fallback Supabase init failed: %s", e)
 
 # Safe import for current user dependency with fallback
 try:
@@ -57,7 +54,7 @@ async def get_my_referral_data(user=Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
     if not supabase:
-        raise HTTPException(status_code=500, detail="Database client not initialized. Check Render environment variables.")
+        raise HTTPException(status_code=500, detail="Database client not initialized. Ensure SUPABASE_URL and SUPABASE_KEY are added in Render Environment variables.")
     
     user_id = getattr(user, 'id', None) or str(user)
     try:
@@ -83,7 +80,7 @@ async def opt_in(data: ReferralOptIn, user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="You must accept the terms.")
         
     if not supabase:
-        raise HTTPException(status_code=500, detail="Database client not initialized. Check Render environment variables.")
+        raise HTTPException(status_code=500, detail="Database client not initialized. Ensure SUPABASE_URL and SUPABASE_KEY are added in Render Environment variables.")
 
     user_id = getattr(user, 'id', None) or str(user)
     user_email = getattr(user, 'email', 'user@notecast.com')
@@ -93,7 +90,7 @@ async def opt_in(data: ReferralOptIn, user=Depends(get_current_user)):
         if existing.data and len(existing.data) > 0:
             return {"message": "Already opted in", "referral_code": existing.data[0]['referral_code']}
     except Exception as e:
-        logger.warning("Referrals table might not exist yet: %s", e)
+        logger.warning("Referrals table check skipped: %s", e)
 
     referral_code = f"NC-{str(uuid.uuid4())[:8].upper()}"
     
