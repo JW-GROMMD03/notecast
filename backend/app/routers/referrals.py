@@ -8,7 +8,7 @@ from supabase import create_client, Client
 
 logger = logging.getLogger("notecast")
 
-# Map directly to your actual .env keys
+# Initialize Supabase client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
 
@@ -16,11 +16,9 @@ supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-        logger.info("✅ Supabase client successfully initialized in referrals router using service/anon key.")
+        logger.info("✅ Supabase client successfully initialized in referrals router.")
     except Exception as e:
         logger.error("❌ Failed to initialize Supabase client: %s", e)
-else:
-    logger.error("❌ Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment!")
 
 # Safe import for current user dependency with fallback
 try:
@@ -36,6 +34,7 @@ except ImportError:
                 return None
 
 router = APIRouter(prefix="/referrals", tags=["Affiliate Program"])
+admin_fallback_router = APIRouter(prefix="/admin", tags=["Affiliate Admin Fallback"])
 
 class ReferralOptIn(BaseModel):
     mpesa_number: str
@@ -47,7 +46,7 @@ async def get_my_referral_data(user=Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
     if not supabase:
-        raise HTTPException(status_code=500, detail="Database client not initialized. Check SUPABASE_SERVICE_ROLE_KEY in env.")
+        raise HTTPException(status_code=500, detail="Database client not initialized.")
     
     user_id = getattr(user, 'id', None) or str(user)
     try:
@@ -73,10 +72,9 @@ async def opt_in(data: ReferralOptIn, user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="You must accept the terms.")
         
     if not supabase:
-        raise HTTPException(status_code=500, detail="Database client not initialized. Check SUPABASE_SERVICE_ROLE_KEY in env.")
+        raise HTTPException(status_code=500, detail="Database client not initialized.")
 
     user_id = getattr(user, 'id', None) or str(user)
-    user_email = getattr(user, 'email', 'user@notecast.com')
 
     try:
         existing = supabase.table('referrals').select('*').eq('user_id', user_id).execute()
@@ -88,9 +86,9 @@ async def opt_in(data: ReferralOptIn, user=Depends(get_current_user)):
     referral_code = f"NC-{str(uuid.uuid4())[:8].upper()}"
     
     try:
+        # Exclude 'name' to prevent PGRST204 schema cache errors if column is missing
         insert_data = {
             "user_id": str(user_id),
-            "name": getattr(user, 'display_name', None) or user_email.split('@')[0],
             "mpesa_number": data.mpesa_number,
             "referral_code": referral_code,
             "pending_balance": 0.0,
@@ -104,9 +102,17 @@ async def opt_in(data: ReferralOptIn, user=Depends(get_current_user)):
     
     return {"message": "Partner code activated successfully", "referral_code": referral_code}
 
+# --- ADMIN PAYOUT ENDPOINTS (Mapped across multiple prefixes to prevent 404s) ---
+
 @router.get("/admin/payouts")
-async def admin_get_affiliate_payouts(admin_user=Depends(get_current_user)):
-    """Fetch all affiliates with a pending payout balance for Friday distribution."""
+async def admin_get_affiliate_payouts_router(admin_user=Depends(get_current_user)):
+    return await _fetch_payouts_logic()
+
+@admin_fallback_router.get("/payouts")
+async def admin_get_affiliate_payouts_admin(admin_user=Depends(get_current_user)):
+    return await _fetch_payouts_logic()
+
+async def _fetch_payouts_logic():
     if not supabase:
         return []
     try:
@@ -118,7 +124,6 @@ async def admin_get_affiliate_payouts(admin_user=Depends(get_current_user)):
 
 @router.post("/admin/payouts/{referrer_id}/mark-paid")
 async def admin_mark_payout_paid(referrer_id: str, admin_user=Depends(get_current_user)):
-    """Reset pending balance to 0 and record M-Pesa payout settlement."""
     if not supabase:
         raise HTTPException(status_code=500, detail="Database client not initialized")
     try:
@@ -137,5 +142,6 @@ async def admin_mark_payout_paid(referrer_id: str, admin_user=Depends(get_curren
 
         return {"status": "success", "message": "Payout marked as paid and transferred to total earned."}
     except Exception as e:
+    
         logger.error("Error marking payout paid: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
