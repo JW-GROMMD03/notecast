@@ -8,30 +8,19 @@ from supabase import create_client, Client
 
 logger = logging.getLogger("notecast")
 
-def get_supabase() -> Client:
-    """Dynamically resolve or initialize the Supabase client at runtime."""
-    # 1. Try importing from project database module
-    try:
-        from ..database import supabase as db_client
-        if db_client:
-            return db_client
-    except ImportError:
-        pass
+# Map directly to your actual .env keys
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
 
+supabase: Client = None
+if SUPABASE_URL and SUPABASE_KEY:
     try:
-        from app.database import supabase as db_client
-        if db_client:
-            return db_client
-    except ImportError:
-        pass
-
-    # 2. Fallback: Initialize directly from environment variables at runtime
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_KEY")
-    if url and key:
-        return create_client(url, key)
-        
-    return None
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        logger.info("✅ Supabase client successfully initialized in referrals router using service/anon key.")
+    except Exception as e:
+        logger.error("❌ Failed to initialize Supabase client: %s", e)
+else:
+    logger.error("❌ Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment!")
 
 # Safe import for current user dependency with fallback
 try:
@@ -57,10 +46,8 @@ async def get_my_referral_data(user=Depends(get_current_user)):
     """Fetch affiliate profile for the currently logged-in user."""
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    
-    supabase = get_supabase()
     if not supabase:
-        raise HTTPException(status_code=500, detail="Database client not initialized. Check SUPABASE_URL and SUPABASE_KEY environment variables.")
+        raise HTTPException(status_code=500, detail="Database client not initialized. Check SUPABASE_SERVICE_ROLE_KEY in env.")
     
     user_id = getattr(user, 'id', None) or str(user)
     try:
@@ -85,9 +72,8 @@ async def opt_in(data: ReferralOptIn, user=Depends(get_current_user)):
     if not data.accepted_terms:
         raise HTTPException(status_code=400, detail="You must accept the terms.")
         
-    supabase = get_supabase()
     if not supabase:
-        raise HTTPException(status_code=500, detail="Database client not initialized. Check SUPABASE_URL and SUPABASE_KEY environment variables.")
+        raise HTTPException(status_code=500, detail="Database client not initialized. Check SUPABASE_SERVICE_ROLE_KEY in env.")
 
     user_id = getattr(user, 'id', None) or str(user)
     user_email = getattr(user, 'email', 'user@notecast.com')
@@ -97,7 +83,7 @@ async def opt_in(data: ReferralOptIn, user=Depends(get_current_user)):
         if existing.data and len(existing.data) > 0:
             return {"message": "Already opted in", "referral_code": existing.data[0]['referral_code']}
     except Exception as e:
-        logger.warning("Referrals table check skipped or table does not exist yet: %s", e)
+        logger.warning("Referrals table check note: %s", e)
 
     referral_code = f"NC-{str(uuid.uuid4())[:8].upper()}"
     
@@ -121,7 +107,6 @@ async def opt_in(data: ReferralOptIn, user=Depends(get_current_user)):
 @router.get("/admin/payouts")
 async def admin_get_affiliate_payouts(admin_user=Depends(get_current_user)):
     """Fetch all affiliates with a pending payout balance for Friday distribution."""
-    supabase = get_supabase()
     if not supabase:
         return []
     try:
@@ -134,7 +119,6 @@ async def admin_get_affiliate_payouts(admin_user=Depends(get_current_user)):
 @router.post("/admin/payouts/{referrer_id}/mark-paid")
 async def admin_mark_payout_paid(referrer_id: str, admin_user=Depends(get_current_user)):
     """Reset pending balance to 0 and record M-Pesa payout settlement."""
-    supabase = get_supabase()
     if not supabase:
         raise HTTPException(status_code=500, detail="Database client not initialized")
     try:
