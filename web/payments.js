@@ -2,10 +2,10 @@ import { authedFetch, requireAuth } from "./api.js";
 
 const el = (id) => document.getElementById(id);
 
-// Config catalog
+// Config catalog updated with Daily (50 KES) and Weekly (100 KES)
 const PLANS = {
-  "ECONOMY_NOTE": { amount: 50, name: "Economy Note Token (Pay-As-You-Go)" },
-  "STARTUP": { amount: 100, name: "Startup Plan (Weekly)" },
+  "DAILY": { amount: 50, name: "Daily Pass (1 Day Access)" },
+  "WEEKLY": { amount: 100, name: "Weekly Pass (7 Days Access)" },
   "BASIC": { amount: 250, name: "Basic Plan (Monthly)" },
   "STANDARD": { amount: 800, name: "Standard Plan (Monthly)" },
   "PREMIUM": { amount: 2500, name: "Premium Plan (Monthly)" },
@@ -13,12 +13,14 @@ const PLANS = {
 };
 
 const PLAN_ALIASES = {
-  "quick": "ECONOMY_NOTE",
-  "lecture": "STARTUP",
+  "quick": "DAILY",
+  "lecture": "WEEKLY",
   "master": "BASIC",
   "weekly": "STANDARD",
   "monthly": "PREMIUM",
-  "download_pass": "DOWNLOAD_PASS"
+  "download_pass": "DOWNLOAD_PASS",
+  "ECONOMY_NOTE": "DAILY",
+  "STARTUP": "WEEKLY"
 };
 
 let currentPlanId = "STANDARD";
@@ -108,7 +110,7 @@ if (paymentForm) {
 
 function startFastPolling() {
   const startedAt = Date.now();
-  const MAX_MS = 120000; // Allow exactly 120 seconds maximum timeout
+  const MAX_MS = 120000; // Allow 120 seconds maximum timeout
 
   const tick = async () => {
     if (Date.now() - startedAt > MAX_MS) {
@@ -131,18 +133,17 @@ function startFastPolling() {
             window.location.href = "dashboard.html";
           }
         }, 1500);
-        return; // Break the recursive loop
+        return;
       } 
       
       if (data.status === "FAILED") {
         showCompletionUI("FAILED", "Transaction was cancelled or failed on your phone.");
-        return; // Break the recursive loop
+        return;
       }
     } catch (e) {
       console.error("Polling error:", e);
     }
     
-    // Check again in 2 seconds (non-overlapping chain so Daraja has time to breathe)
     pollInterval = setTimeout(tick, 2000);
   };
   
