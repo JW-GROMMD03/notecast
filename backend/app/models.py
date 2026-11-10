@@ -81,6 +81,9 @@ class User(Base):
   flashcards = relationship(
       "Flashcard", back_populates="user", cascade="all, delete-orphan"
   )
+  books = relationship(
+      "Book", back_populates="user", cascade="all, delete-orphan"
+  )
 
   # Monetization Relationships
   subscription = relationship(
@@ -94,9 +97,6 @@ class User(Base):
   )
   one_off_credits = relationship(
       "OneOffCredit", back_populates="user", cascade="all, delete-orphan"
-  )
-  books = relationship(
-      "Book", back_populates="user", cascade="all, delete-orphan"
   )
 
 
@@ -462,7 +462,9 @@ class Book(Base):
       String, ForeignKey("users.id"), nullable=True
   )  # Admin/Uploader reference
   title = Column(String, index=True, nullable=False)
-  course_name = Column(String, index=True, nullable=False)
+  course = Column(
+      String, index=True, nullable=False
+  )  # Changed from course_name to course to match endpoint
   unit_module = Column(String, nullable=False)
   price = Column(Float, nullable=False, default=0.0)
   book_file_url = Column(String, nullable=True)  # URL or storage key for file

@@ -323,7 +323,7 @@ def get_admin_library_audit(db: Session = Depends(get_db), admin: models.User = 
     try:
         completed_txs = db.query(models.PaymentTransaction).filter(
             models.PaymentTransaction.status == "COMPLETED",
-            models.PaymentTransaction.amount == 150
+            models.PaymentTransaction.amount >= 150
         ).all()
         
         course_map = defaultdict(lambda: {"sold": 0, "revenue": 0.0})
