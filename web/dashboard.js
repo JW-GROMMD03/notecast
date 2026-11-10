@@ -2,14 +2,6 @@
 import { authedFetch, requireAuth, logout, checkExtensionInstalled, CHROME_STORE_URL } from "./api.js";
 
 let user = null;
-let dueFlashcards = [];
-let currentFcIndex = 0;
-let networkGraph = null;
-let editHistory = []; 
-let currentSelectedDoc = null;
-let currentPageNumber = 1;
-const totalPages = 5; 
-const pageCache = {}; 
 
 // --- PLANS CATALOG (Updated to Weekly 100 KES) ---
 const PLANS_CATALOG = {
@@ -63,10 +55,6 @@ function applyTheme(theme) {
   } else {
     if (themeIcon) themeIcon.textContent = "☀️";
     if (themeText) themeText.textContent = "Light Mode";
-  }
-  
-  if (networkGraph && document.getElementById("pane-graph")?.classList.contains("active")) {
-    loadGraph();
   }
 }
 
@@ -564,7 +552,7 @@ function showExtensionInstallModal() {
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-// --- PAYMENTS.JS MATCHING STK PUSH & STATUS POLLING MODAL ---
+// --- PAYMENTS MODAL MATCHING STK PUSH & STATUS POLLING ---
 window.openPaymentModal = function(itemCode, priceText) {
     const planInfo = PLANS_CATALOG[itemCode] || { amount: 800, name: itemCode };
     
@@ -732,6 +720,86 @@ function verifyTabEligibility(tabName) {
   return true;
 }
 
+// --- CUSTOMER LIBRARY & PURCHASES LOADER ---
+async function loadCustomerLibraryAndPurchases() {
+  const tbody = document.getElementById("customerPurchasesTableBody");
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading purchase history...</td></tr>`;
+
+  try {
+    const res = await authedFetch("/payments/my-transactions");
+    let transactions = res;
+    if (res.json) transactions = await res.json();
+
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No purchase records found.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = transactions.map(tx => `
+      <tr>
+        <td style="font-family: monospace; font-size: 0.82rem;">${tx.id || tx.transaction_id}</td>
+        <td>${tx.plan_name || tx.item_name || 'Study Pass'}</td>
+        <td style="font-weight: 600;">KES ${tx.amount}</td>
+        <td><span class="status-chip ${tx.status ? tx.status.toLowerCase() : 'completed'}">${tx.status || 'COMPLETED'}</span></td>
+        <td>${new Date(tx.created_at || Date.now()).toLocaleDateString()}</td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load transactions.</td></tr>`;
+  }
+}
+
+// --- REFERRALS LOGIC ---
+async function loadReferralPanel() {
+  try {
+    const res = await authedFetch("/referrals/me");
+    let data = res;
+    if (res.json) data = await res.json();
+  
+    document.getElementById("referralOptInState").style.display = "none";
+    document.getElementById("referralDashboardState").style.display = "block";
+    
+    document.getElementById("refCodeDisplay").textContent = data.referral_code;
+    document.getElementById("refPendingAmount").textContent = `KES ${data.pending_balance.toFixed(2)}`;
+    document.getElementById("refTotalAmount").textContent = `KES ${data.total_earned.toFixed(2)}`;
+    
+    document.getElementById("copyRefBtn").onclick = () => {
+      navigator.clipboard.writeText(data.referral_code);
+      document.getElementById("copyRefBtn").textContent = "Copied!";
+      setTimeout(() => document.getElementById("copyRefBtn").textContent = "Copy Code", 2000);
+    };
+  } catch (err) {
+    document.getElementById("referralOptInState").style.display = "block";
+    document.getElementById("referralDashboardState").style.display = "none";
+  }
+}
+
+document.getElementById("referralOptInForm")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const mpesaNumber = document.getElementById("referralMpesa").value.trim();
+  const acceptedTerms = document.getElementById("referralTerms").checked;
+  const btn = e.target.querySelector("button[type='submit']");
+  
+  btn.disabled = true;
+  btn.textContent = "Activating...";
+
+  try {
+    await authedFetch("/referrals/opt-in", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mpesa_number: cleanPhoneNumber(mpesaNumber), accepted_terms: acceptedTerms })
+    });
+    alert("Partner Code Activated!");
+    loadReferralPanel(); 
+  } catch (err) {
+    alert(extractErrorMessage(err) || "Failed to activate referral account.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Activate My Partner Code";
+  }
+});
+
 // --- INIT ENGINE ---
 async function init() {
   user = await requireAuth();
@@ -776,93 +844,9 @@ async function init() {
       document.getElementById(`pane-${tabName}`)?.classList.add("active");
 
       if (tabName === "notes") loadVideos();
-      if (tabName === "documents") loadDocuments();
-      if (tabName === "flashcards") loadFlashcards();
-      if (tabName === "graph") loadGraph();
       if (tabName === "referrals") loadReferralPanel(); 
       if (tabName === "library") loadCustomerLibraryAndPurchases();
     });
-  });
-
-
-  // --- CUSTOMER LIBRARY & PURCHASES LOADER ---
-async function loadCustomerLibraryAndPurchases() {
-  const tbody = document.getElementById("customerPurchasesTableBody");
-  if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading purchase history...</td></tr>`;
-
-  try {
-    const res = await authedFetch("/payments/my-transactions");
-    let transactions = res;
-    if (res.json) transactions = await res.json();
-
-    if (!Array.isArray(transactions) || transactions.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No purchase records found.</td></tr>`;
-      return;
-    }
-
-    tbody.innerHTML = transactions.map(tx => `
-      <tr>
-        <td style="font-family: monospace; font-size: 0.82rem;">${tx.id || tx.transaction_id}</td>
-        <td>${tx.plan_name || tx.item_name || 'Study Pass'}</td>
-        <td style="font-weight: 600;">KES ${tx.amount}</td>
-        <td><span class="status-chip ${tx.status ? tx.status.toLowerCase() : 'completed'}">${tx.status || 'COMPLETED'}</span></td>
-        <td>${new Date(tx.created_at || Date.now()).toLocaleDateString()}</td>
-      </tr>
-    `).join("");
-  } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load transactions.</td></tr>`;
-  }
-}
-
-  // --- REFERRALS LOGIC ---
-  async function loadReferralPanel() {
-    try {
-      const res = await authedFetch("/referrals/me");
-      let data = res;
-      if (res.json) data = await res.json();
-  
-      document.getElementById("referralOptInState").style.display = "none";
-      document.getElementById("referralDashboardState").style.display = "block";
-      
-      document.getElementById("refCodeDisplay").textContent = data.referral_code;
-      document.getElementById("refPendingAmount").textContent = `KES ${data.pending_balance.toFixed(2)}`;
-      document.getElementById("refTotalAmount").textContent = `KES ${data.total_earned.toFixed(2)}`;
-      
-      document.getElementById("copyRefBtn").onclick = () => {
-        navigator.clipboard.writeText(data.referral_code);
-        document.getElementById("copyRefBtn").textContent = "Copied!";
-        setTimeout(() => document.getElementById("copyRefBtn").textContent = "Copy Code", 2000);
-      };
-    } catch (err) {
-      document.getElementById("referralOptInState").style.display = "block";
-      document.getElementById("referralDashboardState").style.display = "none";
-    }
-  }
-
-  document.getElementById("referralOptInForm")?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const mpesaNumber = document.getElementById("referralMpesa").value.trim();
-    const acceptedTerms = document.getElementById("referralTerms").checked;
-    const btn = e.target.querySelector("button[type='submit']");
-    
-    btn.disabled = true;
-    btn.textContent = "Activating...";
-
-    try {
-      await authedFetch("/referrals/opt-in", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mpesa_number: cleanPhoneNumber(mpesaNumber), accepted_terms: acceptedTerms })
-      });
-      alert("Partner Code Activated!");
-      loadReferralPanel(); 
-    } catch (err) {
-      alert(extractErrorMessage(err) || "Failed to activate referral account.");
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Activate My Partner Code";
-    }
   });
 
   const facultySelect = document.getElementById("facultySelect");
@@ -1007,184 +991,6 @@ async function loadCustomerLibraryAndPurchases() {
     });
   }
 
-  const readerWorkspace = document.getElementById("readerWorkspace");
-  const toggleSidebarBtn = document.getElementById("toggleSidebarBtn");
-  const closeSidebarBtn = document.getElementById("closeSidebarBtn");
-
-  if (toggleSidebarBtn && readerWorkspace) {
-    toggleSidebarBtn.addEventListener("click", () => {
-      readerWorkspace.classList.toggle("sidebar-open");
-    });
-  }
-  if (closeSidebarBtn && readerWorkspace) {
-    closeSidebarBtn.addEventListener("click", () => {
-      readerWorkspace.classList.remove("sidebar-open");
-    });
-  }
-
-  const summaryEditor = document.getElementById("docSummaryEditor");
-  if (summaryEditor) {
-    summaryEditor.addEventListener("input", () => {
-      editHistory.push(summaryEditor.value);
-      if (editHistory.length > 20) editHistory.shift();
-    });
-
-    const undoBtn = document.getElementById("undoBtn");
-    if (undoBtn) {
-      undoBtn.addEventListener("click", () => {
-        if (editHistory.length > 1) {
-          editHistory.pop();
-          summaryEditor.value = editHistory[editHistory.length - 1];
-        } else {
-          summaryEditor.value = "";
-        }
-      });
-    }
-
-    document.querySelectorAll(".shape-btn[data-insert]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const shapeTag = btn.getAttribute("data-insert");
-        const cursorPosition = summaryEditor.selectionStart;
-        const textBefore = summaryEditor.value.substring(0, cursorPosition);
-        const textAfter = summaryEditor.value.substring(cursorPosition);
-        
-        summaryEditor.value = `${textBefore}\n\n${shapeTag}\n\n${textAfter}`;
-        editHistory.push(summaryEditor.value);
-      });
-    });
-  }
-
-  const genNotesBtn = document.getElementById("generateShortNotesBtn");
-  if (genNotesBtn) {
-    genNotesBtn.addEventListener("click", async () => {
-      if (!currentSelectedDoc) return alert("Please select or upload a document first!");
-      
-      const cacheKey = `${currentSelectedDoc.id}_p${currentPageNumber}`;
-      if (pageCache[cacheKey]) {
-        summaryEditor.value = pageCache[cacheKey];
-        alert(`Loaded cached notes for Page ${currentPageNumber}`);
-        return;
-      }
-
-      try {
-          await authedFetch(`/videos/verify-entitlement?action=DOC_SUMMARIZATION&resource_id=${currentSelectedDoc.id}`);
-      } catch (err) {
-          return;
-      }
-
-      const progressSection = document.getElementById("aiProgressSection");
-      const progressText = document.getElementById("progressText");
-      const progressBarFill = document.getElementById("progressBarFill");
-      
-      progressSection.style.display = "block";
-      genNotesBtn.disabled = true;
-
-      let progress = 0;
-      const interval = setInterval(async () => {
-        progress += 25;
-        progressBarFill.style.width = `${progress}%`;
-        progressText.textContent = `Analyzing Page ${currentPageNumber}... ${progress}%`;
-
-        if (progress >= 100) {
-          clearInterval(interval);
-          genNotesBtn.disabled = false;
-          progressSection.style.display = "none";
-          
-          const generatedSummary = `# ${currentSelectedDoc.title || currentSelectedDoc.filename} — Page ${currentPageNumber}\n\n## Instant Page Snapshot Analysis\nCaptured page successfully.\nExtracted core formulas and definitions.\n\n[DIAGRAM: Flowchart Box]`;
-          pageCache[cacheKey] = generatedSummary;
-          
-          summaryEditor.value = generatedSummary;
-          editHistory = [summaryEditor.value];
-          alert(`Page ${currentPageNumber} analyzed!`);
-        }
-      }, 300);
-    });
-  }
-
-  const nextPageBtn = document.getElementById("nextPageBtn");
-  const prevPageBtn = document.getElementById("prevPageBtn");
-  
-  if (nextPageBtn) {
-    nextPageBtn.addEventListener("click", () => {
-      if (currentPageNumber < totalPages) {
-        switchToPage(currentPageNumber + 1);
-      }
-    });
-  }
-  
-  if (prevPageBtn) {
-    prevPageBtn.addEventListener("click", () => {
-      if (currentPageNumber > 1) {
-        switchToPage(currentPageNumber - 1);
-      }
-    });
-  }
-
-  const uploadPdfBtn = document.getElementById("uploadPdfBtn");
-  if (uploadPdfBtn) {
-    uploadPdfBtn.addEventListener("click", async () => {
-      const fileInput = document.getElementById("pdfUpload");
-      if (!fileInput.files[0]) return alert("Please select a PDF first.");
-
-      const btn = document.getElementById("uploadPdfBtn");
-      btn.disabled = true;
-      btn.textContent = "Uploading...";
-
-      const formData = new FormData();
-      formData.append("file", fileInput.files[0]);
-
-      try {
-        const res = await authedFetch("/documents/upload/", {
-          method: "POST",
-          body: formData
-        });
-        
-        let newDoc = res;
-        if(res.json) newDoc = await res.json();
-        
-        alert("Document uploaded successfully! Loading viewer...");
-        
-        await loadDocuments();
-        const dropdown = document.getElementById("docSelectDropdown");
-        dropdown.value = newDoc.id;
-        dropdown.dispatchEvent(new Event('change')); 
-        
-        fileInput.value = "";
-      } catch (err) {
-        console.error("Upload error", err);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "Upload & Process";
-      }
-    });
-  }
-
-  const fcShowBtn = document.getElementById("fcShowBtn");
-  if (fcShowBtn) {
-    fcShowBtn.addEventListener("click", () => {
-      fcShowBtn.style.display = "none";
-      document.getElementById("fcBack").style.display = "block";
-      document.getElementById("fcControls").style.display = "flex";
-    });
-  }
-
-  document.querySelectorAll(".btn-fc").forEach(btn => {
-    btn.addEventListener("click", async (e) => {
-      const quality = parseInt(e.target.getAttribute("data-q"));
-      const cardId = dueFlashcards[currentFcIndex].id;
-      try {
-        await authedFetch(`/flashcards/review/${cardId}/`, {
-          method: "POST",
-          body: JSON.stringify({ quality })
-        });
-      } catch (err) {
-        console.error("Failed to submit flashcard review", err);
-      }
-      currentFcIndex++;
-      renderCurrentFlashcard();
-    });
-  });
-
   const logoutBtn = document.getElementById("logoutBtn");
   if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
@@ -1194,31 +1000,6 @@ async function loadCustomerLibraryAndPurchases() {
   }
 
   loadVideos();
-  loadDocuments();
-}
-
-function switchToPage(pageNum) {
-  currentPageNumber = pageNum;
-  if(document.getElementById("pageIndicator")) document.getElementById("pageIndicator").textContent = `Page ${currentPageNumber} of ${totalPages}`;
-  
-  document.querySelectorAll(".thumb-card").forEach((t, idx) => {
-    if (idx + 1 === currentPageNumber) {
-      t.classList.add("active");
-    } else {
-      t.classList.remove("active");
-    }
-  });
-
-  const cacheKey = `${currentSelectedDoc?.id}_p${currentPageNumber}`;
-  const editor = document.getElementById("docSummaryEditor");
-  
-  if (editor) {
-      if (pageCache[cacheKey]) {
-        editor.value = pageCache[cacheKey];
-      } else {
-        editor.value = `Page ${currentPageNumber} active. Click 'Notes & Summary' on the top right to view or generate AI notes.`;
-      }
-  }
 }
 
 async function loadVideos() {
@@ -1249,171 +1030,6 @@ async function loadVideos() {
         </a>
       </li>`).join("");
   } catch (err) {}
-}
-
-let cachedDocuments = [];
-
-async function loadDocuments() {
-  try {
-    const res = await authedFetch("/documents/");
-    if (res.json) {
-       cachedDocuments = await res.json();
-    } else {
-       cachedDocuments = res;
-    }
-    
-    if(!Array.isArray(cachedDocuments)) cachedDocuments = [];
-  } catch (err) {
-    console.error("Failed to load documents list", err);
-    cachedDocuments = [];
-  }
-
-  const dropdown = document.getElementById("docSelectDropdown");
-  if (dropdown) {
-    dropdown.innerHTML = `<option value="">-- Select Document --</option>` + 
-      cachedDocuments.map(d => `<option value="${d.id}">${d.title || d.filename}</option>`).join("");
-
-    dropdown.onchange = async (e) => {
-      const docId = e.target.value;
-      currentSelectedDoc = cachedDocuments.find(d => d.id === docId);
-      
-      const viewer = document.getElementById("pdfViewerCanvas");
-      const fileNameEl = document.getElementById("currentFileName");
-
-      if (currentSelectedDoc) {
-        if(fileNameEl) fileNameEl.textContent = currentSelectedDoc.filename || currentSelectedDoc.title;
-        
-        if (viewer) {
-          const fileKey = currentSelectedDoc.storage_key || currentSelectedDoc.id;
-          const pdfMediaUrl = `/api/documents/media/${fileKey}/`;
-
-          try {
-            const checkRes = await fetch(pdfMediaUrl, { method: "HEAD" });
-            if (!checkRes.ok) {
-              throw new Error("Missing");
-            }
-            viewer.innerHTML = `<iframe src="${pdfMediaUrl}" style="width:100%; height:100%; border:none; background:#ffffff;"></iframe>`;
-          } catch (storageErr) {
-            viewer.innerHTML = `
-              <div style="text-align: center; color: #cbd5e1; padding: 2rem;">
-                <div style="font-size: 2.5rem; margin-bottom: 12px;">⚠️</div>
-                <h4 style="margin: 0 0 8px 0; color: #f8fafc;">Physical PDF File Missing</h4>
-                <p style="font-size: 0.85rem; color: #94a3b8; max-width: 360px; margin: 0 auto 16px auto;">
-                  The server cleared temporary local storage. Please click 'Upload & Process' to re-upload your PDF file and view it again.
-                </p>
-                <button onclick="document.getElementById('pdfUpload').click()" class="btn-action" style="font-size: 0.8rem; padding: 6px 14px;">Re-Upload PDF</button>
-              </div>
-            `;
-          }
-        }
-
-        const thumbsContainer = document.getElementById("readerThumbsContainer");
-        if(thumbsContainer) {
-            thumbsContainer.innerHTML = `<div style="font-size: 0.6rem; font-weight: 700; color: var(--text-muted);">Pg</div>`;
-            for (let i = 1; i <= totalPages; i++) {
-              const thumb = document.createElement("div");
-              thumb.className = i === 1 ? "thumb-card active" : "thumb-card";
-              thumb.innerHTML = `${i}`;
-              thumb.onclick = () => switchToPage(i);
-              thumbsContainer.appendChild(thumb);
-            }
-        }
-        switchToPage(1);
-      } else {
-        if(fileNameEl) fileNameEl.textContent = "No file selected";
-        if (viewer) {
-          viewer.innerHTML = `<span style="color: #64748b; font-size: 0.85rem;">Upload or select a PDF to begin immersive reading</span>`;
-        }
-      }
-    };
-  }
-}
-
-async function loadFlashcards() {
-    try {
-        const res = await authedFetch("/flashcards/due/");
-        if(res.json) {
-            dueFlashcards = await res.json();
-        } else {
-            dueFlashcards = res;
-        }
-        
-        if(!Array.isArray(dueFlashcards)) dueFlashcards = [];
-        currentFcIndex = 0;
-        renderCurrentFlashcard();
-    } catch (err) {}
-}
-
-function renderCurrentFlashcard() {
-  const emptyState = document.getElementById("fcEmptyState");
-  const activeState = document.getElementById("fcActiveState");
-
-  if (!dueFlashcards || currentFcIndex >= dueFlashcards.length) {
-    if (emptyState) emptyState.style.display = "block";
-    if (activeState) activeState.style.display = "none";
-    return;
-  }
-
-  if (emptyState) emptyState.style.display = "none";
-  if (activeState) activeState.style.display = "block";
-  
-  const card = dueFlashcards[currentFcIndex];
-  if(document.getElementById("fcFront")) document.getElementById("fcFront").textContent = card.front_text;
-  if(document.getElementById("fcBack")) document.getElementById("fcBack").textContent = card.back_text;
-  
-  if(document.getElementById("fcBack")) document.getElementById("fcBack").style.display = "none";
-  if(document.getElementById("fcControls")) document.getElementById("fcControls").style.display = "none";
-  if(document.getElementById("fcShowBtn")) document.getElementById("fcShowBtn").style.display = "block";
-}
-
-async function loadGraph() {
-    try {
-        const res = await authedFetch("/graph/");
-        let graphData = res;
-        if(res.json) graphData = await res.json();
-        
-        if(!graphData || !graphData.nodes) return;
-
-        const style = getComputedStyle(document.documentElement);
-        const nodeBg = style.getPropertyValue('--graph-node-bg').trim();
-        const nodeBorder = style.getPropertyValue('--graph-node-border').trim();
-        const edgeColor = style.getPropertyValue('--graph-edge').trim();
-        const textColor = style.getPropertyValue('--graph-text').trim();
-
-        const nodes = new vis.DataSet(graphData.nodes.map(n => ({
-            id: n.id,
-            label: n.concept_name,
-            title: n.description_md,
-            color: { background: nodeBg, border: nodeBorder },
-            font: { color: textColor }
-        })));
-
-        const edges = new vis.DataSet(graphData.edges.map(e => ({
-            from: e.source_node_id,
-            to: e.target_node_id,
-            label: e.relationship_type.replace("_", " "),
-            color: edgeColor,
-            font: { color: edgeColor, size: 10, align: 'middle' },
-            arrows: 'to'
-        })));
-
-        const container = document.getElementById("networkGraph");
-        if (container && window.vis) {
-            const data = { nodes, edges };
-            const options = {
-            physics: {
-                solver: 'forceAtlas2Based',
-                forceAtlas2Based: { gravitationalConstant: -50, centralGravity: 0.01, springLength: 100 }
-            },
-            nodes: { shape: 'dot', size: 16, borderWidth: 2 },
-            edges: { smooth: true },
-            interaction: { hover: true, zoomView: true }
-            };
-
-            if (networkGraph) networkGraph.destroy();
-            networkGraph = new vis.Network(container, data, options);
-        }
-    } catch (err) {}
 }
 
 init();
