@@ -313,26 +313,67 @@
 
             <!-- PANEL: Admin Library & Purchases Audit -->
             <div id="admin-library-panel" class="dashboard-panel" style="display: none;">
-                <h2 style="margin-top: 0;">Global Library Content & User Purchases</h2>
-                <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">Monitor all user transaction records, module access clearances, and catalog purchases across the platform.</p>
+                <h2 style="margin-top: 0;">Global Book Library & Course Sales Audit</h2>
+                <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">Monitor total books sold by course, individual book sales, and access clearances across the platform.</p>
                 
+                <!-- Aggregate Course Sales Breakdown -->
+                <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                    <div style="padding: 16px 24px; border-bottom: 1px solid var(--border); background: rgba(99, 102, 241, 0.05);">
+                        <h3 style="margin: 0; font-size: 15px; color: var(--primary);">📚 Total Books Sold by Course</h3>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Course Name</th>
+                                <th>Total Books Sold</th>
+                                <th>Gross Revenue (KES)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="courseBooksTableBody">
+                            <tr><td colspan="3" style="text-align: center; padding: 20px; color: var(--text-muted);">Loading course sales metrics...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Book Sales Performance -->
+                <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                    <div style="padding: 16px 24px; border-bottom: 1px solid var(--border);">
+                        <h3 style="margin: 0; font-size: 15px;">📖 Individual Book Sales Performance</h3>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Book Title</th>
+                                <th>Course</th>
+                                <th>Unit</th>
+                                <th>Copies Sold</th>
+                                <th>Revenue (KES)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bookSalesTableBody">
+                            <tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-muted);">Loading book performance...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Live Purchase Transactions -->
                 <div class="card" style="padding: 0; overflow: hidden;">
-                    <div style="padding: 20px 24px; border-bottom: 1px solid var(--border);">
-                        <h3 style="margin: 0; font-size: 15px;">All Platform Purchase Records</h3>
+                    <div style="padding: 16px 24px; border-bottom: 1px solid var(--border);">
+                        <h3 style="margin: 0; font-size: 15px;">🛒 Recent Book Access Transactions</h3>
                     </div>
                     <table>
                         <thead>
                             <tr>
                                 <th>Transaction ID</th>
                                 <th>User Email</th>
-                                <th>Pass / Item</th>
+                                <th>Book / Item Title</th>
                                 <th>Amount (KES)</th>
                                 <th>Status</th>
                                 <th>Timestamp</th>
                             </tr>
                         </thead>
                         <tbody id="adminAllPurchasesTableBody">
-                            <tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-muted);">Loading system purchases...</td></tr>
+                            <tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-muted);">Loading book purchase records...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -729,34 +770,72 @@
         }
 
         async function loadAdminLibraryAndPurchases() {
-            const tbody = document.getElementById('adminAllPurchasesTableBody');
-            if(!tbody) return;
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px;">Loading global transactions...</td></tr>';
+            const courseBody = document.getElementById('courseBooksTableBody');
+            const bookBody = document.getElementById('bookSalesTableBody');
+            const txBody = document.getElementById('adminAllPurchasesTableBody');
             
+            if (courseBody) courseBody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px;">Loading course aggregates...</td></tr>';
+            if (bookBody) bookBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">Loading book sales...</td></tr>';
+            if (txBody) txBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">Loading transactions...</td></tr>';
+
             try {
-                const res = await fetch(`${API_BASE}/api/admin/payments/transactions`, {
+                const res = await fetch(`${API_BASE}/api/admin/library/audit`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if(!res.ok) throw new Error("Failed to fetch purchases");
-                const txs = await res.json();
+                if (!res.ok) throw new Error("Failed to fetch library audit");
+                const audit = await res.json();
 
-                if(!Array.isArray(txs) || txs.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-muted);">No platform transactions found.</td></tr>';
-                    return;
+                // 1. Render Course Aggregates Table
+                if (courseBody) {
+                    if (!audit.course_summary || audit.course_summary.length === 0) {
+                        courseBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 20px;">No course sales recorded.</td></tr>';
+                    } else {
+                        courseBody.innerHTML = audit.course_summary.map(c => `
+                            <tr>
+                                <td style="font-weight: 700; color: var(--primary);">${c.course}</td>
+                                <td><strong style="font-size: 1.05rem;">${c.total_sold}</strong> copies</td>
+                                <td style="color: var(--success); font-weight: 700;">KES ${c.total_revenue.toLocaleString()}</td>
+                            </tr>
+                        `).join('');
+                    }
                 }
 
-                tbody.innerHTML = txs.map(tx => `
-                    <tr>
-                        <td style="font-family: monospace; font-size: 12px;">${tx.id || tx.transaction_id}</td>
-                        <td>${tx.user_email || 'N/A'}</td>
-                        <td><strong style="color: var(--primary);">${tx.plan_name || tx.item_name || 'Pass'}</strong></td>
-                        <td style="font-weight: 600;">KES ${tx.amount}</td>
-                        <td><span class="badge badge-paid">${tx.status || 'COMPLETED'}</span></td>
-                        <td>${new Date(tx.created_at || Date.now()).toLocaleString()}</td>
-                    </tr>
-                `).join('');
+                // 2. Render Individual Book Sales Table
+                if (bookBody) {
+                    if (!audit.book_summary || audit.book_summary.length === 0) {
+                        bookBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No book sales mapped.</td></tr>';
+                    } else {
+                        bookBody.innerHTML = audit.book_summary.map(b => `
+                            <tr>
+                                <td style="font-weight: 600;">${b.title}</td>
+                                <td>${b.course?.replace(/_/g, ' ')}</td>
+                                <td>${b.unit?.replace(/_/g, ' ')}</td>
+                                <td><span class="badge badge-standard">${b.sold_count} Sold</span></td>
+                                <td style="font-weight: 700; color: var(--success);">KES ${b.total_revenue.toLocaleString()}</td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+
+                // 3. Render Book Purchase Transactions
+                if (txBody) {
+                    if (!audit.transactions || audit.transactions.length === 0) {
+                        txBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 20px;">No book transaction records found.</td></tr>';
+                    } else {
+                        txBody.innerHTML = audit.transactions.map(tx => `
+                            <tr>
+                                <td style="font-family: monospace; font-size: 12px;">${tx.id}</td>
+                                <td>${tx.user_email}</td>
+                                <td><strong style="color: var(--text);">${tx.item_name}</strong></td>
+                                <td style="font-weight: 600;">KES ${tx.amount}</td>
+                                <td><span class="badge ${tx.status === 'COMPLETED' ? 'badge-paid' : (tx.status === 'FAILED' ? 'badge-failed' : 'badge-pending')}">${tx.status}</span></td>
+                                <td>${new Date(tx.created_at).toLocaleString()}</td>
+                            </tr>
+                        `).join('');
+                    }
+                }
             } catch (e) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--danger);">Failed to load admin purchase records.</td></tr>';
+                if (txBody) txBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--danger);">Failed to load library audit records.</td></tr>';
             }
         }
         
