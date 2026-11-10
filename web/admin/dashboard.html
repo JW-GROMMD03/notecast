@@ -313,8 +313,13 @@
 
             <!-- PANEL: Admin Library & Purchases Audit -->
             <div id="admin-library-panel" class="dashboard-panel" style="display: none;">
-                <h2 style="margin-top: 0;">Global Book Library & Course Sales Audit</h2>
-                <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">Monitor total books sold by course, individual book sales, and access clearances across the platform.</p>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div>
+                        <h2 style="margin: 0;">Global Book Library & Course Sales Audit</h2>
+                        <p style="color: var(--text-muted); font-size: 14px; margin-top: 4px; margin-bottom: 0;">Monitor total books sold by course, individual book sales, and access clearances across the platform.</p>
+                    </div>
+                    <button class="pot-btn btn-repay" style="flex:0; padding:10px 20px;" onclick="openModal('addBookModal')">+ Add New Book</button>
+                </div>
                 
                 <!-- Aggregate Course Sales Breakdown -->
                 <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
@@ -500,6 +505,20 @@
     </main>
 
     <!-- Modals -->
+    <div class="modal-overlay" id="addBookModal">
+        <div class="modal">
+            <h3 style="margin-top: 0;">Add New Textbook / Book</h3>
+            <div class="form-group"><label>Book Title</label><input type="text" id="bookTitle" placeholder="e.g. Distributed Systems Architecture"></div>
+            <div class="form-group"><label>Course Name</label><input type="text" id="bookCourse" placeholder="e.g. Software Engineering"></div>
+            <div class="form-group"><label>Unit / Module</label><input type="text" id="bookUnit" placeholder="e.g. Distributed Systems"></div>
+            <div class="form-group"><label>Price (KES)</label><input type="number" id="bookPrice" min="1" value="150" required></div>
+            <div class="modal-actions">
+                <button class="pot-btn btn-borrow" onclick="closeModal('addBookModal')">Cancel</button>
+                <button class="pot-btn btn-repay" onclick="submitAddBook()">Save Book</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="addExpenseModal">
         <div class="modal">
             <h3 style="margin-top: 0;">Add Recurring Expense</h3>
@@ -785,27 +804,22 @@
                 if (!res.ok) throw new Error("Failed to fetch library audit");
                 const audit = await res.json();
 
-                // 1. Render Course Aggregates Table
                 if (courseBody) {
-                    if (!audit.course_summary || audit.course_summary.length === 0) {
-                        courseBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 20px;">No course sales recorded.</td></tr>';
-                    } else {
-                        courseBody.innerHTML = audit.course_summary.map(c => `
+                    courseBody.innerHTML = (!audit.course_summary || audit.course_summary.length === 0) 
+                        ? '<tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 20px;">No course sales recorded.</td></tr>'
+                        : audit.course_summary.map(c => `
                             <tr>
                                 <td style="font-weight: 700; color: var(--primary);">${c.course}</td>
                                 <td><strong style="font-size: 1.05rem;">${c.total_sold}</strong> copies</td>
                                 <td style="color: var(--success); font-weight: 700;">KES ${c.total_revenue.toLocaleString()}</td>
                             </tr>
                         `).join('');
-                    }
                 }
 
-                // 2. Render Individual Book Sales Table
                 if (bookBody) {
-                    if (!audit.book_summary || audit.book_summary.length === 0) {
-                        bookBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No book sales mapped.</td></tr>';
-                    } else {
-                        bookBody.innerHTML = audit.book_summary.map(b => `
+                    bookBody.innerHTML = (!audit.book_summary || audit.book_summary.length === 0)
+                        ? '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No book sales mapped.</td></tr>'
+                        : audit.book_summary.map(b => `
                             <tr>
                                 <td style="font-weight: 600;">${b.title}</td>
                                 <td>${b.course?.replace(/_/g, ' ')}</td>
@@ -814,15 +828,12 @@
                                 <td style="font-weight: 700; color: var(--success);">KES ${b.total_revenue.toLocaleString()}</td>
                             </tr>
                         `).join('');
-                    }
                 }
 
-                // 3. Render Book Purchase Transactions
                 if (txBody) {
-                    if (!audit.transactions || audit.transactions.length === 0) {
-                        txBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 20px;">No book transaction records found.</td></tr>';
-                    } else {
-                        txBody.innerHTML = audit.transactions.map(tx => `
+                    txBody.innerHTML = (!audit.transactions || audit.transactions.length === 0)
+                        ? '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 20px;">No book transaction records found.</td></tr>'
+                        : audit.transactions.map(tx => `
                             <tr>
                                 <td style="font-family: monospace; font-size: 12px;">${tx.id}</td>
                                 <td>${tx.user_email}</td>
@@ -832,10 +843,32 @@
                                 <td>${new Date(tx.created_at).toLocaleString()}</td>
                             </tr>
                         `).join('');
-                    }
                 }
             } catch (e) {
                 if (txBody) txBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--danger);">Failed to load library audit records.</td></tr>';
+            }
+        }
+
+        async function submitAddBook() {
+            const payload = {
+                title: document.getElementById('bookTitle').value,
+                course: document.getElementById('bookCourse').value,
+                unit: document.getElementById('bookUnit').value || 'General',
+                price: parseFloat(document.getElementById('bookPrice').value)
+            };
+            if(!payload.title || !payload.course || !payload.price) return alert("Please fill in all required book fields.");
+
+            const res = await fetch(`${API_BASE}/api/admin/books`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(payload)
+            });
+            if(res.ok) {
+                closeModal('addBookModal');
+                loadAdminLibraryAndPurchases();
+                alert("Book added successfully to library!");
+            } else {
+                alert("Failed to add book.");
             }
         }
         
