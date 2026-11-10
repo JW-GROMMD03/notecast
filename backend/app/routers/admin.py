@@ -1,8 +1,9 @@
 import asyncio
 import datetime as dt
 import calendar
+import os
 from collections import defaultdict
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, File, UploadFile, Form
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -56,12 +57,6 @@ class BulkEmailReq(BaseModel):
     specific_email: str = ""
     subject: str
     message: str
-
-class BookCreateReq(BaseModel):
-    title: str
-    course: str
-    unit: str = "General"
-    price: float
 
 
 def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
@@ -398,19 +393,48 @@ def get_admin_library_audit(db: Session = Depends(get_db), admin: models.User = 
 
 @router.post("/books")
 @direct_router.post("/books")
-def create_admin_book(req: BookCreateReq, db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
-    """Allows administrators to add new books directly into the platform library."""
+async def create_admin_book(
+    title: str = Form(...),
+    course: str = Form(...),
+    unit: str = Form("General"),
+    price: float = Form(...),
+    book_file: UploadFile = File(...),
+    cover_photo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(auth.get_current_admin)
+):
+    """Allows administrators to upload new textbooks with file attachments and cover photos (Min 150 KES)."""
+    if price < 150:
+        raise HTTPException(status_code=400, detail="Minimum book price is 150 KES.")
+
     try:
+        os.makedirs("uploads/books", exist_ok=True)
+        os.makedirs("uploads/covers", exist_ok=True)
+
+        book_filename = f"{int(dt.datetime.utcnow().timestamp())}_{book_file.filename}"
+        cover_filename = f"{int(dt.datetime.utcnow().timestamp())}_{cover_photo.filename}"
+
+        book_path = os.path.join("uploads/books", book_filename)
+        cover_path = os.path.join("uploads/covers", cover_filename)
+
+        with open(book_path, "wb") as buffer:
+            buffer.write(await book_file.read())
+
+        with open(cover_path, "wb") as buffer:
+            buffer.write(await cover_photo.read())
+
         new_book = models.Book(
-            title=req.title,
-            course=req.course,
-            unit=req.unit,
-            price=req.price
+            title=title,
+            course=course,
+            unit=unit,
+            price=price,
+            file_url=f"/{book_path}",
+            cover_url=f"/{cover_path}"
         )
         db.add(new_book)
         db.commit()
         db.refresh(new_book)
-        return {"message": "Book added successfully.", "book_id": new_book.id}
+        return {"message": "Book and cover uploaded successfully.", "book_id": new_book.id}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
