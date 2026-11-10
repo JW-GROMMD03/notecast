@@ -1,3 +1,4 @@
+// web/dashboard.js
 import { authedFetch, requireAuth, logout, checkExtensionInstalled, CHROME_STORE_URL } from "./api.js";
 
 let user = null;
@@ -502,7 +503,6 @@ window.authedFetch = async function(...args) {
         });
         throw new Error(detailMsg);
     }
-    // Also catch 429 globally for limits
     if (response && !response.ok && response.status === 429) {
       let detailMsg = "Limit Reached";
       try {
@@ -540,8 +540,8 @@ function showExtensionInstallModal() {
   if (existingModal) existingModal.remove();
 
   const modalHtml = `
-    <div id="extensionModal" class="entitlement-modal-overlay">
-      <div class="entitlement-modal-card" style="max-width:540px;text-align:left;">
+    <div id="extensionModal" class="entitlement-modal-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(3,7,18,0.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:99999;">
+      <div class="entitlement-modal-card" style="background:var(--bg-card, #0f172a);border:1px solid #3b82f6;border-radius:16px;padding:28px;max-width:540px;width:90%;color:#fff;text-align:left;">
         <h3 style="margin-top:0;color:#38bdf8;font-size:1.3rem;">🧩 Install NoteCast Chrome Extension</h3>
         <p style="color:#cbd5e1;font-size:0.88rem;line-height:1.5;">Get NoteCast directly from the Chrome Web Store or download the ZIP manually:</p>
         <div style="margin-bottom:20px;text-align:center;">
@@ -580,11 +580,8 @@ window.openPaymentModal = function(itemCode, priceText) {
             
             <label style="display:block;margin:1rem 0 0.5rem;font-size:0.85rem;">Safaricom Phone Number:</label>
             <input type="text" id="mpesaPhone" value="0703250550" placeholder="0712345678 or 254712345678" style="width:100%;padding:0.75rem;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:0.75rem;box-sizing:border-box;"/>
-            <!-- Error Box (Red) -->
-<div id="paymentError" style="background:rgba(239, 68, 68, 0.1);border:1px solid #ef4444;color:#fca5a5;padding:10px;border-radius:6px;font-size:0.82rem;margin-bottom:1rem;display:none;"></div>
-
-<!-- Status / Info Box (Blue/Neutral) -->
-<div id="paymentStatusText" style="background:rgba(59, 130, 246, 0.1);border:1px solid #3b82f6;color:#93c5fd;padding:10px;border-radius:6px;font-size:0.82rem;margin-bottom:1rem;display:none;"></div><div id="paymentError" style="background:rgba(239, 68, 68, 0.1);border:1px solid #ef4444;color:#fca5a5;padding:10px;border-radius:6px;font-size:0.82rem;margin-bottom:1rem;display:none;"></div>
+            <div id="paymentError" style="background:rgba(239, 68, 68, 0.1);border:1px solid #ef4444;color:#fca5a5;padding:10px;border-radius:6px;font-size:0.82rem;margin-bottom:1rem;display:none;"></div>
+            <div id="paymentStatusText" style="background:rgba(59, 130, 246, 0.1);border:1px solid #3b82f6;color:#93c5fd;padding:10px;border-radius:6px;font-size:0.82rem;margin-bottom:1rem;display:none;"></div>
 
             <div style="display:flex;gap:1rem;justify-content:flex-end;">
               <button onclick="document.getElementById('paymentModal').remove()" style="padding:0.5rem 1rem;background:#64748b;border:none;border-radius:6px;color:#fff;cursor:pointer;">Cancel</button>
@@ -592,7 +589,6 @@ window.openPaymentModal = function(itemCode, priceText) {
             </div>
           </div>
 
-          <!-- Polling UI Container -->
           <div id="pollingUI" style="text-align:center;padding:1rem 0;display:none;">
             <div style="font-size: 2.5rem; margin-bottom: 10px;">📱</div>
             <h4 style="margin:0 0 8px 0;color:#f8fafc;">Check your phone</h4>
@@ -783,11 +779,11 @@ async function init() {
       if (tabName === "documents") loadDocuments();
       if (tabName === "flashcards") loadFlashcards();
       if (tabName === "graph") loadGraph();
-      if (tabName === "referrals") loadReferralPanel(); // NEW REFERRALS TRIGGER
+      if (tabName === "referrals") loadReferralPanel(); 
     });
   });
 
-  // --- NEW REFERRALS LOGIC ---
+  // --- REFERRALS LOGIC ---
   async function loadReferralPanel() {
     try {
       const res = await authedFetch("/referrals/me");
@@ -825,7 +821,7 @@ async function init() {
       await authedFetch("/referrals/opt-in", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mpesa_number: mpesaNumber, accepted_terms: acceptedTerms })
+        body: JSON.stringify({ mpesa_number: cleanPhoneNumber(mpesaNumber), accepted_terms: acceptedTerms })
       });
       alert("Partner Code Activated!");
       loadReferralPanel(); 
@@ -1038,7 +1034,6 @@ async function init() {
         return;
       }
 
-      // Hit Backend Auth Interceptor to verify & consume Daily Quota
       try {
           await authedFetch(`/videos/verify-entitlement?action=DOC_SUMMARIZATION&resource_id=${currentSelectedDoc.id}`);
       } catch (err) {

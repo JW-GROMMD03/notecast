@@ -1,3 +1,4 @@
+// web/payments.js
 import { authedFetch, requireAuth } from "./api.js";
 
 const el = (id) => document.getElementById(id);

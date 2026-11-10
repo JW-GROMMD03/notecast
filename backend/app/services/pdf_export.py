@@ -1,3 +1,4 @@
+# backend/app/services/pdf_export.py
 import io
 import os
 import tempfile
@@ -9,7 +10,7 @@ from ..services import storage
 def resolve_weasyprint_uri(storage_key: str) -> str:
     """Downloads an R2 image to a temporary file and returns a WeasyPrint-compatible file:// URI."""
     if not storage_key: return ""
-    s = str(storage_key).strip().replace("https://notecast-web.onrender.com/", "").replace("http://localhost:8000/", "")
+    s = str(storage_key).strip().replace("[https://notecast-web.onrender.com/](https://notecast-web.onrender.com/)", "").replace("http://localhost:8000/", "")
     if s.startswith("api/"): s = s[4:]
     if s.startswith("/api/"): s = s[5:]
 
