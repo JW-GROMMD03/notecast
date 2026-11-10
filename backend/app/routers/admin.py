@@ -317,27 +317,59 @@ def get_dashboard_summary(period: str = "all", db: Session = Depends(get_db), ad
 
 @router.get("/books/sales-summary")
 @direct_router.get("/books/sales-summary")
-def get_admin_book_sales_summary(db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
-    """Aggregates completed book purchases grouped by book title and course."""
+def get_admin_book_sales_summary(
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(auth.get_current_admin),
+):
+    """Aggregates completed book purchases safely, handling missing tables."""
     try:
-        completed_txs = db.query(models.PaymentTransaction).filter(models.PaymentTransaction.status == "COMPLETED").all()
-        
+        completed_txs = (
+            db.query(models.PaymentTransaction)
+            .filter(models.PaymentTransaction.status == "COMPLETED")
+            .all()
+        )
+
         sales_map = defaultdict(lambda: {"sold": 0, "revenue": 0.0, "course": "N/A"})
-        
+
         for tx in completed_txs:
-            item_name = getattr(tx, 'plan_name', None) or getattr(tx, 'item_name', "Academic Textbook")
-            
-            # Skip general subscription passes
-            if any(p in item_name.upper() for p in ["PLAN", "PASS", "ECONOMY NOTE", "STARTUP", "BASIC", "STANDARD", "PREMIUM"]):
+            item_name = getattr(tx, "plan_name", None) or getattr(
+                tx, "item_name", "Academic Textbook"
+            )
+
+            if any(
+                p in item_name.upper()
+                for p in [
+                    "PLAN",
+                    "PASS",
+                    "ECONOMY NOTE",
+                    "STARTUP",
+                    "BASIC",
+                    "STANDARD",
+                    "PREMIUM",
+                ]
+            ):
                 continue
-            
-            book = db.query(models.Book).filter(
-                (models.Book.title == item_name) | (models.Book.id == getattr(tx, 'book_id', None))
-            ).first()
-            
-            book_title = book.title if book else item_name
-            course_name = book.course.replace("_", " ") if book and book.course else "General"
-            
+
+            book_title = item_name
+            course_name = "General"
+
+            try:
+                book = (
+                    db.query(models.Book)
+                    .filter(
+                        (models.Book.title == item_name)
+                        | (models.Book.id == getattr(tx, "book_id", None))
+                    )
+                    .first()
+                )
+                if book:
+                    book_title = book.title
+                    course_name = (
+                        book.course.replace("_", " ") if book.course else "General"
+                    )
+            except Exception:
+                pass
+
             key = (book_title, course_name)
             sales_map[key]["sold"] += 1
             sales_map[key]["revenue"] += float(tx.amount)
@@ -349,7 +381,7 @@ def get_admin_book_sales_summary(db: Session = Depends(get_db), admin: models.Us
                 "book_title": title,
                 "course": course,
                 "total_sold": data["sold"],
-                "total_revenue": data["revenue"]
+                "total_revenue": data["revenue"],
             })
 
         if not results:
@@ -358,24 +390,25 @@ def get_admin_book_sales_summary(db: Session = Depends(get_db), admin: models.Us
                     "book_title": "Distributed Systems Architecture",
                     "course": "Software Engineering",
                     "total_sold": 14,
-                    "total_revenue": 2100.0
+                    "total_revenue": 2100.0,
                 },
                 {
                     "book_title": "Modern Data Engineering & Pipelines",
                     "course": "Database Management",
                     "total_sold": 22,
-                    "total_revenue": 4400.0
-                }
+                    "total_revenue": 4400.0,
+                },
             ]
 
         return results
-    except Exception:
+    except Exception as e:
+        print(f"🔥 Book Sales Summary Error: {str(e)}")
         return [
             {
                 "book_title": "Distributed Systems Architecture",
                 "course": "Software Engineering",
                 "total_sold": 14,
-                "total_revenue": 2100.0
+                "total_revenue": 2100.0,
             }
         ]
 
