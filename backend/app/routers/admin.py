@@ -317,11 +317,14 @@ def get_dashboard_summary(period: str = "all", db: Session = Depends(get_db), ad
 
 
 @router.get("/library/audit")
-@direct_router.get("/library/audit")
+@direct_router.get("/api/admin/library/audit")
 def get_admin_library_audit(db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
-    """Aggregates book sales by course and individual book performance for the admin library panel."""
+    """Aggregates book sales, strictly excluding PDF downloads, passes, and any amount under 150 KES."""
     try:
-        completed_txs = db.query(models.PaymentTransaction).filter(models.PaymentTransaction.status == "COMPLETED").all()
+        completed_txs = db.query(models.PaymentTransaction).filter(
+            models.PaymentTransaction.status == "COMPLETED",
+            models.PaymentTransaction.amount == 150
+        ).all()
         
         course_map = defaultdict(lambda: {"sold": 0, "revenue": 0.0})
         book_map = defaultdict(lambda: {"sold": 0, "revenue": 0.0, "course": "General", "unit": "General"})
@@ -329,9 +332,12 @@ def get_admin_library_audit(db: Session = Depends(get_db), admin: models.User = 
 
         for tx in completed_txs:
             item_name = getattr(tx, "plan_name", None) or getattr(tx, "item_name", "Academic Textbook")
+            upper_name = item_name.upper()
             
-            # Skip subscription plans/passes
-            if any(p in item_name.upper() for p in ["PLAN", "PASS", "ECONOMY NOTE", "STARTUP", "BASIC", "STANDARD", "PREMIUM", "MONTHLY", "WEEKLY"]):
+            # Exclude PDF download passes, general subscriptions, or items under 150 KES
+            if any(kw in upper_name for kw in ["PDF", "PASS", "DOWNLOAD", "PLAN", "SUBSCRIPTION", "WEEKLY", "MONTHLY", "QUICK", "LECTURE", "MASTER"]):
+                continue
+            if float(tx.amount) < 150:
                 continue
 
             book_title = item_name
@@ -369,22 +375,10 @@ def get_admin_library_audit(db: Session = Depends(get_db), admin: models.User = 
         course_summary = [{"course": k, "total_sold": v["sold"], "total_revenue": v["revenue"]} for k, v in course_map.items()]
         book_summary = [{"title": k[0], "course": v["course"], "unit": v["unit"], "sold_count": v["sold"], "total_revenue": v["revenue"]} for k, v in book_map.items()]
 
-        if not course_summary:
-            course_summary = [{"course": "Software Engineering", "total_sold": 14, "total_revenue": 2100.0}]
-        if not book_summary:
-            book_summary = [{"title": "Distributed Systems Architecture", "course": "Software Engineering", "unit": "Distributed Systems", "sold_count": 14, "total_revenue": 2100.0}]
-
         return {
             "course_summary": course_summary,
             "book_summary": book_summary,
-            "transactions": transactions_list or [{
-                "id": "tx_sample_101",
-                "user_email": "student@kirinyaga.ac.ke",
-                "item_name": "Distributed Systems Architecture",
-                "amount": 150.0,
-                "status": "COMPLETED",
-                "created_at": dt.datetime.utcnow().isoformat()
-            }]
+            "transactions": transactions_list
         }
     except Exception as e:
         print(f"🔥 Library Audit Error: {str(e)}")
