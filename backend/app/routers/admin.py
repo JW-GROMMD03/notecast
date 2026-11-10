@@ -315,6 +315,57 @@ def get_dashboard_summary(period: str = "all", db: Session = Depends(get_db), ad
     return get_summary_data(db, admin, period)
 
 
+@router.get("/payments/transactions")
+@direct_router.get("/payments/transactions")
+def get_admin_payments_transactions(db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
+    txs = db.query(models.PaymentTransaction).order_by(models.PaymentTransaction.created_at.desc()).all()
+    results = []
+    for tx in txs:
+        user = db.query(models.User).filter(models.User.id == getattr(tx, 'user_id', None)).first()
+        results.append({
+            "id": tx.id,
+            "user_email": user.email if user else "N/A",
+            "plan_name": getattr(tx, 'plan_name', 'Study Pass'),
+            "amount": float(tx.amount),
+            "status": tx.status.upper() if tx.status else "COMPLETED",
+            "created_at": tx.created_at.isoformat() if tx.created_at else dt.datetime.utcnow().isoformat()
+        })
+    return results
+
+
+@router.get("/referrals/admin/payouts")
+@direct_router.get("/referrals/admin/payouts")
+def get_admin_affiliate_payouts(db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
+    try:
+        referrals = db.query(models.Referral).filter(models.Referral.pending_balance > 0).all()
+        payouts = []
+        for ref in referrals:
+            user = db.query(models.User).filter(models.User.id == ref.user_id).first()
+            payouts.append({
+                "user_id": ref.user_id,
+                "name": user.display_name if user and hasattr(user, 'display_name') else (user.email if user else "Partner"),
+                "mpesa_number": ref.mpesa_number or getattr(user, 'phone', 'N/A'),
+                "pending_balance": float(ref.pending_balance)
+            })
+        return payouts
+    except Exception:
+        return []
+
+
+@router.post("/referrals/admin/payouts/{referrer_id}/mark-paid")
+@direct_router.post("/referrals/admin/payouts/{referrer_id}/mark-paid")
+def mark_affiliate_payout_paid(referrer_id: str, db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
+    try:
+        ref = db.query(models.Referral).filter(models.Referral.user_id == referrer_id).first()
+        if ref:
+            ref.total_earned += ref.pending_balance
+            ref.pending_balance = 0.0
+            db.commit()
+        return {"message": "Payout marked as paid successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/finance/action")
 @direct_router.post("/finance/action")
 def execute_finance_action(req: FinanceActionReq, db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
