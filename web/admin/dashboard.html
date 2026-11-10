@@ -108,6 +108,7 @@
             <a class="nav-item nav-link" data-target="expenses-panel">Recurring Expenses</a>
             <a class="nav-item nav-link" data-target="broadcast-panel">Broadcast & Emails</a>
             <a class="nav-item nav-link" data-target="financials-panel">Financial Ledgers</a>
+            <a class="nav-item nav-link" data-target="admin-library-panel">Library & Purchases Audit</a>
             <!-- NEW: Affiliate Payouts -->
             <a class="nav-item nav-link" data-target="affiliates-panel">Affiliate Payouts</a>
             <a class="nav-item nav-link" data-target="settings-panel">System Settings</a>
@@ -306,6 +307,33 @@
                         </thead>
                         <tbody id="expensesTableBody">
                             <tr><td colspan="6" style="text-align: center; padding: 40px;">Loading Expenses...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PANEL: Admin Library & Purchases Audit -->
+            <div id="admin-library-panel" class="dashboard-panel" style="display: none;">
+                <h2 style="margin-top: 0;">Global Library Content & User Purchases</h2>
+                <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">Monitor all user transaction records, module access clearances, and catalog purchases across the platform.</p>
+                
+                <div class="card" style="padding: 0; overflow: hidden;">
+                    <div style="padding: 20px 24px; border-bottom: 1px solid var(--border);">
+                        <h3 style="margin: 0; font-size: 15px;">All Platform Purchase Records</h3>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Transaction ID</th>
+                                <th>User Email</th>
+                                <th>Pass / Item</th>
+                                <th>Amount (KES)</th>
+                                <th>Status</th>
+                                <th>Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminAllPurchasesTableBody">
+                            <tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-muted);">Loading system purchases...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -553,6 +581,9 @@
                     if (link.getAttribute('data-target') === 'affiliates-panel') {
                         loadAffiliatePayouts();
                     }
+                    if (target === 'admin-library-panel') { // <--- ADD THIS HOOK
+                        loadAdminLibraryAndPurchases();
+                    }
                 });
             });
 
@@ -695,6 +726,38 @@
             }
         }
 
+        async function loadAdminLibraryAndPurchases() {
+            const tbody = document.getElementById('adminAllPurchasesTableBody');
+            if(!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px;">Loading global transactions...</td></tr>';
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/payments/transactions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if(!res.ok) throw new Error("Failed to fetch purchases");
+                const txs = await res.json();
+
+                if(!Array.isArray(txs) || txs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-muted);">No platform transactions found.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = txs.map(tx => `
+                    <tr>
+                        <td style="font-family: monospace; font-size: 12px;">${tx.id || tx.transaction_id}</td>
+                        <td>${tx.user_email || 'N/A'}</td>
+                        <td><strong style="color: var(--primary);">${tx.plan_name || tx.item_name || 'Pass'}</strong></td>
+                        <td style="font-weight: 600;">KES ${tx.amount}</td>
+                        <td><span class="badge badge-paid">${tx.status || 'COMPLETED'}</span></td>
+                        <td>${new Date(tx.created_at || Date.now()).toLocaleString()}</td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--danger);">Failed to load admin purchase records.</td></tr>';
+            }
+        }
+        
         // NEW: Load Affiliate Payouts for Admin Dashboard
         async function loadAffiliatePayouts() {
             const tbody = document.getElementById('affiliatePayoutsTableBody');

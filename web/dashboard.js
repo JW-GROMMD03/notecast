@@ -780,8 +780,40 @@ async function init() {
       if (tabName === "flashcards") loadFlashcards();
       if (tabName === "graph") loadGraph();
       if (tabName === "referrals") loadReferralPanel(); 
+      if (tabName === "library") loadCustomerLibraryAndPurchases();
     });
   });
+
+
+  // --- CUSTOMER LIBRARY & PURCHASES LOADER ---
+async function loadCustomerLibraryAndPurchases() {
+  const tbody = document.getElementById("customerPurchasesTableBody");
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading purchase history...</td></tr>`;
+
+  try {
+    const res = await authedFetch("/payments/my-transactions");
+    let transactions = res;
+    if (res.json) transactions = await res.json();
+
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No purchase records found.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = transactions.map(tx => `
+      <tr>
+        <td style="font-family: monospace; font-size: 0.82rem;">${tx.id || tx.transaction_id}</td>
+        <td>${tx.plan_name || tx.item_name || 'Study Pass'}</td>
+        <td style="font-weight: 600;">KES ${tx.amount}</td>
+        <td><span class="status-chip ${tx.status ? tx.status.toLowerCase() : 'completed'}">${tx.status || 'COMPLETED'}</span></td>
+        <td>${new Date(tx.created_at || Date.now()).toLocaleDateString()}</td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load transactions.</td></tr>`;
+  }
+}
 
   // --- REFERRALS LOGIC ---
   async function loadReferralPanel() {
