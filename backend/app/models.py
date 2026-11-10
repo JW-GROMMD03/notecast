@@ -462,10 +462,10 @@ class Book(Base):
       String, ForeignKey("users.id"), nullable=True
   )  # Admin/Uploader reference
   title = Column(String, index=True, nullable=False)
-  course = Column(
-      String, index=True, nullable=False
-  )  # Changed from course_name to course to match endpoint
-  unit_module = Column(String, nullable=False)
+  course = Column(String, index=True, nullable=False)
+  course_name = Column(String, index=True, nullable=True)
+  unit = Column(String, nullable=False, default="")
+  unit_module = Column(String, nullable=True)
   price = Column(Float, nullable=False, default=0.0)
   book_file_url = Column(String, nullable=True)  # URL or storage key for file
   cover_photo_url = Column(
