@@ -752,6 +752,7 @@ async function loadCustomerLibraryAndPurchases() {
 
 
 // --- BOOK STORE CATALOG LOADER (Using authedFetch) ---
+
 async function loadBookStoreCatalog(course = '', unit = '') {
   const grid = document.getElementById("bookStoreGrid");
   if (!grid) return;
@@ -768,23 +769,28 @@ async function loadBookStoreCatalog(course = '', unit = '') {
     if (res.json) books = await res.json();
 
     if (!Array.isArray(books) || books.length === 0) {
-      grid.innerHTML = `<p style="color: var(--text-muted);">No books found in inventory. Upload textbooks from the admin panel.</p>`;
+      grid.innerHTML = `<p style="color: var(--text-muted);">No books found in inventory.</p>`;
       return;
     }
 
-    grid.innerHTML = books.map(b => `
-      <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
-        <div>
-          <img src="${b.cover_url || 'assets/icon.png'}" alt="Cover" style="width: 100%; height: 140px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; background: #1e293b;">
-          <h4 style="margin: 0 0 6px 0; font-size: 1rem; color: var(--text-main);">${b.title}</h4>
-          <p style="font-size: 0.8rem; color: var(--accent); margin: 0 0 4px 0;">${b.course} • ${b.unit}</p>
+    grid.innerHTML = books.map(b => {
+      // Fallback to default icon if cover_url is missing, local, or broken
+      const coverImg = (b.cover_url && b.cover_url.startsWith('http')) ? b.cover_url : 'assets/icon.png';
+      
+      return `
+        <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <img src="${coverImg}" alt="Cover" onerror="this.src='assets/icon.png'" style="width: 100%; height: 140px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; background: #1e293b;">
+            <h4 style="margin: 0 0 6px 0; font-size: 1rem; color: var(--text-main);">${b.title}</h4>
+            <p style="font-size: 0.8rem; color: var(--accent); margin: 0 0 4px 0;">${b.course} • ${b.unit}</p>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px;">
+            <span style="font-weight: 800; color: var(--text-main);">KES ${b.price}</span>
+            <a href="${b.file_url}" target="_blank" class="btn-action" style="padding: 6px 12px; font-size: 0.82rem; text-decoration: none;">Download / Read</a>
+          </div>
         </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px;">
-          <span style="font-weight: 800; color: var(--text-main);">KES ${b.price}</span>
-          <a href="${b.file_url}" target="_blank" class="btn-action" style="padding: 6px 12px; font-size: 0.82rem; text-decoration: none;">Download / Read</a>
-        </div>
-      </div>
-    `).join("");
+      `;
+    }).join("");
   } catch (err) {
     grid.innerHTML = `<p style="color: #ef4444;">Failed to load book store inventory.</p>`;
   }
