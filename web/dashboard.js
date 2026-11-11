@@ -750,7 +750,8 @@ async function loadCustomerLibraryAndPurchases() {
   }
 }
 
-// --- BOOK STORE CATALOG LOADER ---
+
+// --- BOOK STORE CATALOG LOADER (Using authedFetch) ---
 async function loadBookStoreCatalog(course = '', unit = '') {
   const grid = document.getElementById("bookStoreGrid");
   if (!grid) return;
@@ -762,12 +763,12 @@ async function loadBookStoreCatalog(course = '', unit = '') {
     if (course) params.append("course", course);
     if (unit) params.append("unit", unit);
     
-    const res = await fetch(url + params.toString());
+    const res = await authedFetch(url + params.toString());
     let books = res;
     if (res.json) books = await res.json();
 
     if (!Array.isArray(books) || books.length === 0) {
-      grid.innerHTML = `<p style="color: var(--text-muted);">No books found matching your criteria.</p>`;
+      grid.innerHTML = `<p style="color: var(--text-muted);">No books found in inventory. Upload textbooks from the admin panel.</p>`;
       return;
     }
 
@@ -788,6 +789,13 @@ async function loadBookStoreCatalog(course = '', unit = '') {
     grid.innerHTML = `<p style="color: #ef4444;">Failed to load book store inventory.</p>`;
   }
 }
+
+// Hook up filter button
+document.getElementById("filterBooksBtn")?.addEventListener("click", () => {
+  const course = document.getElementById("bookSearchCourse").value.trim();
+  const unit = document.getElementById("bookSearchUnit").value.trim();
+  loadBookStoreCatalog(course, unit);
+});
 
 // Hook up filter button
 document.getElementById("filterBooksBtn")?.addEventListener("click", () => {

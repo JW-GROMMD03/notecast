@@ -1,5 +1,6 @@
 import os
 import boto3
+import logging
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Query
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -8,6 +9,7 @@ from .. import models, auth
 from ..database import get_db
 
 router = APIRouter(prefix="", tags=["Book Library & R2 Storage"])
+logger = logging.getLogger("notecast_books")
 
 # --- CLOUDFLARE R2 S3 CLIENT CONFIGURATION ---
 R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID", "your_r2_access_key")
@@ -60,6 +62,7 @@ async def admin_upload_book(
             ExtraArgs={"ContentType": file.content_type},
         )
     except Exception as e:
+        logger.error(f"Document R2 Storage Upload Failed: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Document R2 Storage Upload Failed: {str(e)}"
         )
@@ -78,6 +81,7 @@ async def admin_upload_book(
             )
             cover_url = f"{R2_PUBLIC_DOMAIN}/{cover_key}"
         except Exception as e:
+            logger.error(f"Cover Image R2 Upload Failed: {str(e)}")
             raise HTTPException(
                 status_code=500, detail=f"Cover Image R2 Upload Failed: {str(e)}"
             )
@@ -111,21 +115,25 @@ def get_book_store(
     db: Session = Depends(get_db)
 ):
     """Fetches filtered books from the database for the frontend user library catalog."""
-    query = db.query(models.Book)
-    
-    if course:
-        query = query.filter(models.Book.course.ilike(f"%{course}%"))
-    if unit:
-        query = query.filter(models.Book.unit.ilike(f"%{unit}%"))
+    try:
+        query = db.query(models.Book)
         
-    books = query.order_by(models.Book.created_at.desc()).all()
-    
-    return [{
-        "id": b.id,
-        "title": b.title,
-        "course": getattr(b, "course", "General") or "General",
-        "unit": getattr(b, "unit", "General") or "General",
-        "price": b.price,
-        "file_url": getattr(b, "file_url", getattr(b, "book_file_url", None)),
-        "cover_url": getattr(b, "cover_url", getattr(b, "cover_photo_url", None))
-    } for b in books]
+        if course:
+            query = query.filter(models.Book.course.ilike(f"%{course}%"))
+        if unit:
+            query = query.filter(models.Book.unit.ilike(f"%{unit}%"))
+            
+        books = query.order_by(models.Book.created_at.desc()).all()
+        
+        return [{
+            "id": b.id,
+            "title": b.title,
+            "course": getattr(b, "course", "General") or "General",
+            "unit": getattr(b, "unit", "General") or "General",
+            "price": b.price,
+            "file_url": getattr(b, "file_url", getattr(b, "book_file_url", None)),
+            "cover_url": getattr(b, "cover_url", getattr(b, "cover_photo_url", None))
+        } for b in books]
+    except Exception as e:
+        logger.error(f"Failed to fetch book store inventory: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to load book store inventory.")
