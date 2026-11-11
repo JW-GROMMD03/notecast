@@ -20,8 +20,9 @@ from .routers.graph import router as graph_router
 from .routers.socratic import router as socratic_router
 from .routers.admin import router as admin_router, direct_router as admin_direct_router
 
-# ---> ADD REFERRALS IMPORTS HERE <---
+# ---> ADD REFERRALS & BOOKS IMPORTS HERE <---
 from .routers.referrals import router as referrals_router, admin_fallback_router as referrals_admin_fallback_router
+from .routers.books import router as books_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -67,9 +68,10 @@ app.include_router(socratic_router)
 app.include_router(admin_router)          # /admin/...      (Render rewrite strips /api)
 app.include_router(admin_direct_router)   # /api/admin/...  (direct backend access)
 
-# ---> REGISTER REFERRALS ROUTERS HERE <---
+# ---> REGISTER NEW ROUTERS HERE <---
 app.include_router(referrals_router)
 app.include_router(referrals_admin_fallback_router)
+app.include_router(books_router)
 
 @app.get("/health")
 def health():

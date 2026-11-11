@@ -637,3 +637,19 @@ async def admin_metrics_ws(websocket: WebSocket, token: str, db: Session = Depen
             await websocket.close()
         except Exception:
             pass
+
+
+@router.get("/books/list")
+@direct_router.get("/books/list")
+def list_all_books_admin(db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
+    """Provides the admin panel with a complete list of all uploaded books and their unique IDs."""
+    books = db.query(models.Book).order_by(models.Book.created_at.desc()).all()
+    return [{
+        "id": b.id,
+        "title": b.title,
+        "course": getattr(b, "course", "N/A") or "N/A",
+        "unit": getattr(b, "unit", "N/A") or "N/A",
+        "price": b.price,
+        "file_url": getattr(b, "file_url", getattr(b, "book_file_url", None)),
+        "created_at": b.created_at.isoformat() if b.created_at else None
+    } for b in books]
