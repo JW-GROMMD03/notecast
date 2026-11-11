@@ -62,7 +62,7 @@ async def admin_upload_book(
             status_code=500, detail=f"Document R2 Storage Upload Failed: {str(e)}"
         )
     
-    # Ensure absolute public URL is generated
+    # Generate explicit absolute URL
     document_url = f"{R2_PUBLIC_DOMAIN}/{doc_key}" if R2_PUBLIC_DOMAIN else f"https://{R2_BUCKET_NAME}.r2.dev/{doc_key}"
 
     # 2. Upload cover image to Cloudflare R2 (if provided)
@@ -137,6 +137,7 @@ def get_book_store(
                 "cover_url": c_url
             })
             
+        results.reverse()
         return results
     except Exception as e:
         logger.error(f"Failed to fetch book store inventory: {str(e)}")
