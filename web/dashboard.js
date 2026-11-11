@@ -773,19 +773,22 @@ async function loadBookStoreCatalog(course = '', unit = '') {
     }
 
     grid.innerHTML = books.map(b => {
-      const coverImg = (b.cover_url && b.cover_url.startsWith('http')) ? b.cover_url : 'assets/icon.png';
-      const fileLink = (b.file_url && b.file_url.startsWith('http')) ? b.file_url : '#';
+      // Uses the new public /cover endpoint from your updated router
+      const coverImg = b.cover_url ? b.cover_url : 'assets/icon.png';
+      
+      const actionText = b.owned ? "Read Now" : `Buy (KES ${b.price})`;
+      const actionColor = b.owned ? "background: #10b981;" : "background: #3b82f6;";
 
       return `
         <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
           <div>
             <img src="${coverImg}" alt="Cover" onerror="this.src='assets/icon.png'" style="width: 100%; height: 140px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; background: #1e293b;">
             <h4 style="margin: 0 0 6px 0; font-size: 1rem; color: var(--text-main);">${b.title}</h4>
-            <p style="font-size: 0.8rem; color: var(--accent); margin: 0 0 4px 0;">${b.course} • ${b.unit}</p>
+            <p style="font-size: 0.8rem; color: var(--accent); margin: 0 0 4px 0;">${b.course}<br>${b.unit}</p>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px;">
             <span style="font-weight: 800; color: var(--text-main);">KES ${b.price}</span>
-            <a href="${fileLink}" target="_blank" rel="noopener noreferrer" class="btn-action" style="padding: 6px 12px; font-size: 0.82rem; text-decoration: none;" ${fileLink === '#' ? 'onclick="alert(\'Document URL is invalid or missing.\'); return false;"' : ''}>Download / Read</a>
+            <button onclick="handleBookAction(event, '${b.id}', ${b.owned}, ${b.price}, '${b.title.replace(/'/g, "\\'")}')" class="btn-action" style="padding: 6px 12px; font-size: 0.82rem; border: none; border-radius: 4px; color: white; cursor: pointer; ${actionColor}">${actionText}</button>
           </div>
         </div>
       `;
@@ -794,6 +797,36 @@ async function loadBookStoreCatalog(course = '', unit = '') {
     grid.innerHTML = `<p style="color: #ef4444;">Failed to load book store inventory.</p>`;
   }
 }
+
+// --- SECURE DOWNLOAD & PURCHASE HANDLER ---
+window.handleBookAction = async function(event, bookId, isOwned, price, title) {
+  if (isOwned) {
+    const btn = event.currentTarget;
+    const originalText = btn.textContent;
+    btn.textContent = "Decrypting link...";
+    btn.disabled = true;
+
+    try {
+      // Fetch the time-limited presigned URL
+      const res = await authedFetch(`/books/${bookId}/read-url`);
+      const data = res.json ? await res.json() : res;
+      
+      if (data.url) {
+        window.open(data.url, '_blank');
+      } else {
+        alert("Secure link could not be generated.");
+      }
+    } catch (err) {
+      alert(extractErrorMessage(err) || "Failed to open book.");
+    } finally {
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+  } else {
+    // Triggers M-Pesa payment with specific book ID, explicit price, and title
+    window.openPaymentModal(bookId, `KES ${price}`, price, title); 
+  }
+};
 
 // Hook up filter button
 document.getElementById("filterBooksBtn")?.addEventListener("click", () => {
