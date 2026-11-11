@@ -565,3 +565,15 @@ def list_all_books_admin(db: Session = Depends(get_db), admin: models.User = Dep
         "file_url": getattr(b, "file_url", getattr(b, "book_file_url", None)),
         "created_at": b.created_at.isoformat() if getattr(b, 'created_at', None) else None
     } for b in books]
+
+
+@router.post("/books")
+@direct_router.post("/books")
+async def proxy_admin_book_upload(request: Request):
+    """Redirects legacy admin book POST requests to the new R2-backed books router."""
+    from fastapi.responses import RedirectResponse
+    # Forward the request or notify the frontend to use /api/books/admin/upload/
+    raise HTTPException(
+        status_code=400, 
+        detail="Please update your admin dashboard frontend to post to /api/books/admin/upload/"
+    )
