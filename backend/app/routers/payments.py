@@ -19,7 +19,7 @@ _last_query: dict = {}
 class STKPushRequest(BaseModel):
     phone_number: str
     plan_name: str
-    amount: float
+    amount: Optional[float] = None
     purchase_type: Optional[str] = None
     book_id: Optional[str] = None
 
@@ -121,7 +121,7 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
             )
             db.add(credit)
             
-        # --- NEW REFERRAL EARNINGS LOGIC ---
+        # --- REFERRAL EARNINGS LOGIC ---
         if txn.amount >= 100:
             referral = db.query(models.Referral).filter(models.Referral.referred_user_id == txn.user_id).first()
             if referral:
@@ -158,26 +158,40 @@ def initiate_payment(
 ):
     """Triggers M-Pesa STK Push via Daraja API and records a pending transaction."""
     book_id_override = body.book_id
-    if body.purchase_type == "BOOK" or body.plan_name.startswith("BOOK:"):
-        if body.plan_name.startswith("BOOK:") and not book_id_override:
-            book_id_override = body.plan_name.split("BOOK:")[1]
-            
-        if not book_id_override:
-            raise HTTPException(status_code=400, detail="book_id is required for book purchases.")
-            
+    raw_plan_name = (body.plan_name or "").strip()
+    
+    # Auto-detect if this request is for a book purchase (explicitly or via book ID)
+    possible_book_id = book_id_override
+    if body.purchase_type == "BOOK":
+        if not possible_book_id and raw_plan_name.startswith("BOOK:"):
+            possible_book_id = raw_plan_name.split("BOOK:")[1]
+        elif not possible_book_id:
+            possible_book_id = raw_plan_name
+    elif raw_plan_name.startswith("BOOK:"):
+        possible_book_id = raw_plan_name.split("BOOK:")[1]
+    elif not possible_book_id:
+        # Check if plan_name is a raw Book UUID in the DB when missing from PRICING_CATALOG
+        plan_key_upper = raw_plan_name.upper()
+        if plan_key_upper not in PRICING_CATALOG:
+            book_check = db.query(models.Book).filter(models.Book.id == raw_plan_name).first()
+            if book_check:
+                possible_book_id = book_check.id
+
+    if possible_book_id:
         from .books import has_access
-        book = db.query(models.Book).filter(models.Book.id == book_id_override).first()
+        book = db.query(models.Book).filter(models.Book.id == possible_book_id).first()
         if not book:
             raise HTTPException(status_code=404, detail="Book not found")
         if has_access(db, user, book.id):
             raise HTTPException(status_code=409, detail="You already own this book")
             
-        amount = book.price  # NEVER trust the browser's amount
+        amount = float(book.price)  # Force server-side database price
         purchase_type = "BOOK"
         canonical_tier = None
         plan_key = "BOOK"
+        book_id_override = book.id
     else:
-        plan_key = body.plan_name.strip().upper()
+        plan_key = raw_plan_name.upper()
         if plan_key not in PRICING_CATALOG:
             raise HTTPException(status_code=400, detail="Invalid plan or token code.")
         
