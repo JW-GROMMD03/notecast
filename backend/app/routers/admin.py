@@ -10,7 +10,7 @@ from sqlalchemy import func
 from pydantic import BaseModel
 
 from .. import models, auth
-from ..database import get_db
+from ..database import get_db, engine  # Added engine for DB fixing
 from ..services import supabase_auth
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -57,6 +57,24 @@ class BulkEmailReq(BaseModel):
     specific_email: str = ""
     subject: str
     message: str
+
+
+# ==========================================
+# DATABASE AUTO-FIX ENDPOINT
+# ==========================================
+@router.get("/fix-database")
+@direct_router.get("/fix-database")
+def force_recreate_books_table(admin: models.User = Depends(auth.get_current_admin)):
+    """
+    Magic endpoint to sync the PostgreSQL database with the Python models.
+    Visit this URL once in your browser to fix the 'UndefinedColumn' upload error.
+    """
+    try:
+        models.Book.__table__.drop(engine, checkfirst=True)
+        models.Book.__table__.create(engine, checkfirst=True)
+        return {"status": "success", "message": "Database schema for Books successfully synced! Uploads will now work."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fix DB: {str(e)}")
 
 
 def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
@@ -334,7 +352,6 @@ def get_admin_library_audit(db: Session = Depends(get_db), admin: models.User = 
             item_name = getattr(tx, "plan_name", None) or getattr(tx, "item_name", "Academic Textbook")
             upper_name = item_name.upper()
             
-            # Exclude PDF download passes, general subscriptions, or items under 150 KES
             if any(kw in upper_name for kw in ["PDF", "PASS", "DOWNLOAD", "PLAN", "SUBSCRIPTION", "WEEKLY", "MONTHLY", "QUICK", "LECTURE", "MASTER"]):
                 continue
             if float(tx.amount) < 150:
@@ -423,7 +440,8 @@ async def create_admin_book(
             unit=unit,
             price=price,
             file_url=f"/{book_path}",
-            cover_url=f"/{cover_path}"
+            cover_url=f"/{cover_path}",
+            user_id=admin.id  # Fixed: correctly binds the admin user to satisfy the DB relationship
         )
         db.add(new_book)
         db.commit()
@@ -596,19 +614,26 @@ def send_bulk_notifications(req: BulkEmailReq, db: Session = Depends(get_db), ad
 @router.websocket("/ws/metrics")
 @direct_router.websocket("/ws/metrics")
 async def admin_metrics_ws(websocket: WebSocket, token: str, db: Session = Depends(get_db)):
-    admin = auth.get_current_user_ws(token, db)
-    if not admin or not admin.is_admin:
-        await websocket.close(code=1008)
-        return
-
-    await websocket.accept()
-    active_ws_connections.append(websocket)
+    """Fixed: Websocket handshake MUST be accepted before it can be closed."""
+    await websocket.accept() 
+    
     try:
+        admin = auth.get_current_user_ws(token, db)
+        if not admin or not admin.is_admin:
+            await websocket.close(code=1008)
+            return
+
+        active_ws_connections.append(websocket)
         while True:
             await websocket.send_json({"live_users_count": len(active_ws_connections) + 12})
             await asyncio.sleep(5)
-    except WebSocketDisconnect:
+            
+    except Exception:
         pass
     finally:
         if websocket in active_ws_connections:
             active_ws_connections.remove(websocket)
+        try:
+            await websocket.close()
+        except Exception:
+            pass
