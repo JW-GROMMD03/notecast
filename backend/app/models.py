@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -40,6 +41,7 @@ class PurchaseType(str, enum.Enum):
     SINGLE_DOWNLOAD = "SINGLE_DOWNLOAD"  # 20 KES
     DOWNLOAD_PASS = "DOWNLOAD_PASS"  # 20 KES Weekly Pass
     SINGLE_AI_NOTE = "SINGLE_AI_NOTE"  # 80 KES
+    BOOK = "BOOK"
 
 
 class User(Base):
@@ -223,13 +225,14 @@ class OneOffCredit(Base):
 class PaymentTransaction(Base):
     __tablename__ = "payment_transactions"
     id = Column(String, primary_key=True, default=uid)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     merchant_request_id = Column(String, nullable=True)
     checkout_request_id = Column(String, nullable=True)
     phone_number = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     purchase_type = Column(String, nullable=False)
     target_tier = Column(String, nullable=True)
+    book_id = Column(String, nullable=True)
     status = Column(String, default="PENDING")
     created_at = Column(DateTime, default=now)
 
@@ -486,6 +489,16 @@ class Book(Base):
     created_at = Column(DateTime, default=now)
 
     user = relationship("User", back_populates="books")
+
+
+class BookPurchase(Base):
+    __tablename__ = "book_purchases"
+    __table_args__ = (UniqueConstraint("user_id", "book_id", name="uq_user_book"),)
+    
+    id = Column(String, primary_key=True, default=uid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    book_id = Column(String, ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime, default=now)
 
 
 # ==========================================

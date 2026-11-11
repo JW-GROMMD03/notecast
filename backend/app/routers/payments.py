@@ -1,8 +1,11 @@
+# routers/payments.py
 import uuid
 import logging
 import time
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 from sqlalchemy.orm import Session as DbSession
 from .. import models, schemas, auth
 from ..database import get_db
@@ -12,6 +15,14 @@ router = APIRouter(prefix="/payments", tags=["payments"])
 logger = logging.getLogger("notecast_payments")
 
 _last_query: dict = {}
+
+class STKPushRequest(BaseModel):
+    phone_number: str
+    plan_name: str
+    amount: float
+    purchase_type: Optional[str] = None
+    book_id: Optional[str] = None
+
 
 # Comprehensive Pricing Catalog with automatic short-name to canonical mapping & pass durations
 PRICING_CATALOG = {
@@ -57,7 +68,11 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
         txn.status = "COMPLETED"
         now_utc = datetime.now(timezone.utc)
         
-        if txn.purchase_type == "PLAN_SUBSCRIPTION":
+        if txn.purchase_type == "BOOK" and txn.book_id:
+            from .books import grant_book_access
+            grant_book_access(db, txn.user_id, txn.book_id)
+            
+        elif txn.purchase_type == "PLAN_SUBSCRIPTION":
             catalog_entry = PRICING_CATALOG.get(txn.target_tier, {})
             canonical_tier = catalog_entry.get("canonical", txn.target_tier)
             duration_days = catalog_entry.get("duration_days", 30)
@@ -137,19 +152,39 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
 
 @router.post("/stk-push")
 def initiate_payment(
-    body: schemas.PaymentRequest, 
+    body: STKPushRequest, 
     db: DbSession = Depends(get_db), 
     user: models.User = Depends(auth.get_current_user)
 ):
     """Triggers M-Pesa STK Push via Daraja API and records a pending transaction."""
-    plan_key = body.plan_name.strip().upper()
-    if plan_key not in PRICING_CATALOG:
-        raise HTTPException(status_code=400, detail="Invalid plan or token code.")
-    
-    catalog_item = PRICING_CATALOG[plan_key]
-    amount = catalog_item["amount"]
-    purchase_type = catalog_item["type"]
-    canonical_tier = catalog_item.get("canonical", plan_key) if purchase_type == "PLAN_SUBSCRIPTION" else None
+    book_id_override = body.book_id
+    if body.purchase_type == "BOOK" or body.plan_name.startswith("BOOK:"):
+        if body.plan_name.startswith("BOOK:") and not book_id_override:
+            book_id_override = body.plan_name.split("BOOK:")[1]
+            
+        if not book_id_override:
+            raise HTTPException(status_code=400, detail="book_id is required for book purchases.")
+            
+        from .books import has_access
+        book = db.query(models.Book).filter(models.Book.id == book_id_override).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="Book not found")
+        if has_access(db, user, book.id):
+            raise HTTPException(status_code=409, detail="You already own this book")
+            
+        amount = book.price  # NEVER trust the browser's amount
+        purchase_type = "BOOK"
+        canonical_tier = None
+        plan_key = "BOOK"
+    else:
+        plan_key = body.plan_name.strip().upper()
+        if plan_key not in PRICING_CATALOG:
+            raise HTTPException(status_code=400, detail="Invalid plan or token code.")
+        
+        catalog_item = PRICING_CATALOG[plan_key]
+        amount = catalog_item["amount"]
+        purchase_type = catalog_item["type"]
+        canonical_tier = catalog_item.get("canonical", plan_key) if purchase_type == "PLAN_SUBSCRIPTION" else None
 
     try:
         res, formatted_phone = mpesa_service.initiate_stk_push(body.phone_number, amount, plan_key)
@@ -170,13 +205,14 @@ def initiate_payment(
             phone_number=formatted_phone,
             amount=amount,
             purchase_type=purchase_type,
-            target_tier=canonical_tier if purchase_type == "PLAN_SUBSCRIPTION" else None,
+            target_tier=canonical_tier,
+            book_id=book_id_override,
             status="PENDING"
         )
         db.add(new_tx)
         db.commit()
 
-        logger.info(f"STK Push initiated for {formatted_phone}, Amount: KES {amount}, Tier: {canonical_tier}")
+        logger.info(f"STK Push initiated for {formatted_phone}, Amount: KES {amount}, Tier: {canonical_tier}, Book ID: {book_id_override}")
         return {
             "message": "STK Push sent. Please check your phone to enter your PIN.",
             "transaction_id": internal_tx_id,
@@ -189,7 +225,7 @@ def initiate_payment(
 
 @router.post("/qr-code")
 def generate_qr(
-    body: schemas.PaymentRequest, 
+    body: STKPushRequest, 
     user: models.User = Depends(auth.get_current_user)
 ):
     """Generates a Safaricom Dynamic QR Code for desktop users to scan."""
@@ -263,7 +299,6 @@ def check_payment_status(
 def get_user_transactions(db: DbSession = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     """Fetches strictly book purchase transactions for the authenticated user's library catalog."""
     try:
-        # Filter transactions that are specifically tied to book purchases (book_id is not null)
         transactions = db.query(models.PaymentTransaction).filter(
             models.PaymentTransaction.user_id == user.id,
             models.PaymentTransaction.book_id.isnot(None)

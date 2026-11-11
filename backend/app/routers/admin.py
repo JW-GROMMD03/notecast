@@ -1,16 +1,15 @@
 import asyncio
 import datetime as dt
 import calendar
-import os
 from collections import defaultdict
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
 
 from .. import models, auth
-from ..database import get_db, engine  # Added engine for DB fixing
+from ..database import get_db
 from ..services import supabase_auth
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -57,24 +56,6 @@ class BulkEmailReq(BaseModel):
     specific_email: str = ""
     subject: str
     message: str
-
-
-# ==========================================
-# DATABASE AUTO-FIX ENDPOINT
-# ==========================================
-@router.get("/fix-database")
-@direct_router.get("/fix-database")
-def force_recreate_books_table(admin: models.User = Depends(auth.get_current_admin)):
-    """
-    Magic endpoint to sync the PostgreSQL database with the Python models.
-    Visit this URL once in your browser to fix the 'UndefinedColumn' upload error.
-    """
-    try:
-        models.Book.__table__.drop(engine, checkfirst=True)
-        models.Book.__table__.create(engine, checkfirst=True)
-        return {"status": "success", "message": "Database schema for Books successfully synced! Uploads will now work."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fix DB: {str(e)}")
 
 
 def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
@@ -335,128 +316,46 @@ def get_dashboard_summary(period: str = "all", db: Session = Depends(get_db), ad
 
 
 @router.get("/library/audit")
-@direct_router.get("/api/admin/library/audit")
+@direct_router.get("/library/audit")
 def get_admin_library_audit(db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
-    """Aggregates book sales, strictly excluding PDF downloads, passes, and any amount under 150 KES."""
-    try:
-        completed_txs = db.query(models.PaymentTransaction).filter(
+    rows = (
+        db.query(models.PaymentTransaction, models.Book, models.User)
+        .join(models.Book, models.Book.id == models.PaymentTransaction.book_id)
+        .join(models.User, models.User.id == models.PaymentTransaction.user_id)
+        .filter(
             models.PaymentTransaction.status == "COMPLETED",
-            models.PaymentTransaction.amount >= 150
-        ).all()
-        
-        course_map = defaultdict(lambda: {"sold": 0, "revenue": 0.0})
-        book_map = defaultdict(lambda: {"sold": 0, "revenue": 0.0, "course": "General", "unit": "General"})
-        transactions_list = []
-
-        for tx in completed_txs:
-            item_name = getattr(tx, "plan_name", None) or getattr(tx, "item_name", "Academic Textbook")
-            upper_name = item_name.upper()
-            
-            if any(kw in upper_name for kw in ["PDF", "PASS", "DOWNLOAD", "PLAN", "SUBSCRIPTION", "WEEKLY", "MONTHLY", "QUICK", "LECTURE", "MASTER"]):
-                continue
-            if float(tx.amount) < 150:
-                continue
-
-            book_title = item_name
-            course_name = "General"
-            unit_name = "General"
-
-            try:
-                book = db.query(models.Book).filter((models.Book.title == item_name) | (models.Book.id == getattr(tx, 'book_id', None))).first()
-                if book:
-                    book_title = book.title
-                    course_name = book.course.replace("_", " ") if book.course else "General"
-                    unit_name = getattr(book, 'unit', 'General')
-            except Exception:
-                pass
-
-            course_map[course_name]["sold"] += 1
-            course_map[course_name]["revenue"] += float(tx.amount)
-
-            book_key = (book_title, course_name)
-            book_map[book_key]["sold"] += 1
-            book_map[book_key]["revenue"] += float(tx.amount)
-            book_map[book_key]["course"] = course_name
-            book_map[book_key]["unit"] = unit_name
-
-            user = db.query(models.User).filter(models.User.id == getattr(tx, 'user_id', None)).first()
-            transactions_list.append({
-                "id": tx.id,
-                "user_email": user.email if user else "student@kirinyaga.ac.ke",
-                "item_name": book_title,
-                "amount": float(tx.amount),
-                "status": tx.status.upper() if tx.status else "COMPLETED",
-                "created_at": tx.created_at.isoformat() if tx.created_at else dt.datetime.utcnow().isoformat()
-            })
-
-        course_summary = [{"course": k, "total_sold": v["sold"], "total_revenue": v["revenue"]} for k, v in course_map.items()]
-        book_summary = [{"title": k[0], "course": v["course"], "unit": v["unit"], "sold_count": v["sold"], "total_revenue": v["revenue"]} for k, v in book_map.items()]
-
-        return {
-            "course_summary": course_summary,
-            "book_summary": book_summary,
-            "transactions": transactions_list
-        }
-    except Exception as e:
-        print(f"🔥 Library Audit Error: {str(e)}")
-        return {"course_summary": [], "book_summary": [], "transactions": []}
-
-
-@router.post("/books")
-@direct_router.post("/books")
-async def create_admin_book(
-    title: str = Form(...),
-    course: str = Form(...),
-    unit: str = Form("General"),
-    price: float = Form(...),
-    book_file: UploadFile = File(...),
-    cover_photo: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    admin: models.User = Depends(auth.get_current_admin)
-):
-    """Allows administrators to upload new textbooks with file attachments and cover photos (Min 150 KES)."""
-    if price < 150:
-        raise HTTPException(status_code=400, detail="Minimum book price is 150 KES.")
-
-    try:
-        os.makedirs("uploads/books", exist_ok=True)
-        os.makedirs("uploads/covers", exist_ok=True)
-
-        book_filename = f"{int(dt.datetime.utcnow().timestamp())}_{book_file.filename}"
-        cover_filename = f"{int(dt.datetime.utcnow().timestamp())}_{cover_photo.filename}"
-
-        book_path = os.path.join("uploads/books", book_filename)
-        cover_path = os.path.join("uploads/covers", cover_filename)
-
-        with open(book_path, "wb") as buffer:
-            buffer.write(await book_file.read())
-
-        with open(cover_path, "wb") as buffer:
-            buffer.write(await cover_photo.read())
-
-        new_book = models.Book(
-            title=title,
-            course=course,
-            unit=unit,
-            price=price,
-            file_url=f"/{book_path}",
-            cover_url=f"/{cover_path}",
-            user_id=admin.id  # Fixed: correctly binds the admin user to satisfy the DB relationship
+            models.PaymentTransaction.purchase_type == "BOOK",
         )
-        db.add(new_book)
-        db.commit()
-        db.refresh(new_book)
-        return {"message": "Book and cover uploaded successfully.", "book_id": new_book.id}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        .order_by(models.PaymentTransaction.created_at.desc())
+        .all()
+    )
+    course_map = defaultdict(lambda: {"sold": 0, "revenue": 0.0})
+    book_map, txs = {}, []
+    
+    for tx, book, user in rows:
+        course = (book.course or "General").replace("_", " ")
+        amt = float(tx.amount)
+        course_map[course]["sold"] += 1
+        course_map[course]["revenue"] += amt
+        b = book_map.setdefault(book.id, {"title": book.title, "course": course, "unit": book.unit or "General",
+                                          "sold_count": 0, "total_revenue": 0.0})
+        b["sold_count"] += 1
+        b["total_revenue"] += amt
+        txs.append({"id": tx.id, "user_email": user.email, "item_name": book.title, "amount": amt,
+                    "status": tx.status, "created_at": tx.created_at.isoformat() if tx.created_at else ""})
+                    
+    return {
+        "course_summary": [{"course": k, "total_sold": v["sold"], "total_revenue": v["revenue"]} for k, v in course_map.items()],
+        "book_summary": list(book_map.values()),
+        "transactions": txs,
+    }
 
 
-@router.get("/referrals/admin/payouts")
-@direct_router.get("/referrals/admin/payouts")
+@router.get("/referrals/payouts")
+@direct_router.get("/referrals/payouts")
 def get_admin_affiliate_payouts(db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
     try:
-        referrals = db.query(models.Referral).filter(models.Referral.pending_balance > 0).all()
+        referrals = db.query(models.ReferralAccount).filter(models.ReferralAccount.pending_balance > 0).all()
         payouts = []
         for ref in referrals:
             user = db.query(models.User).filter(models.User.id == ref.user_id).first()
@@ -471,11 +370,11 @@ def get_admin_affiliate_payouts(db: Session = Depends(get_db), admin: models.Use
         return []
 
 
-@router.post("/referrals/admin/payouts/{referrer_id}/mark-paid")
-@direct_router.post("/referrals/admin/payouts/{referrer_id}/mark-paid")
+@router.post("/referrals/payouts/{referrer_id}/mark-paid")
+@direct_router.post("/referrals/payouts/{referrer_id}/mark-paid")
 def mark_affiliate_payout_paid(referrer_id: str, db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
     try:
-        ref = db.query(models.Referral).filter(models.Referral.user_id == referrer_id).first()
+        ref = db.query(models.ReferralAccount).filter(models.ReferralAccount.user_id == referrer_id).first()
         if ref:
             ref.total_earned += ref.pending_balance
             ref.pending_balance = 0.0

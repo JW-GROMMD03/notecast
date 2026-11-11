@@ -1,3 +1,4 @@
+# main.py
 import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -71,7 +72,10 @@ app.include_router(admin_direct_router)   # /api/admin/...  (direct backend acce
 # ---> REGISTER NEW ROUTERS HERE <---
 app.include_router(referrals_router)
 app.include_router(referrals_admin_fallback_router)
+
+# Books Router Mounted on root AND /api
 app.include_router(books_router)
+app.include_router(books_router, prefix="/api")
 
 @app.get("/health")
 def health():
