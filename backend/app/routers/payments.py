@@ -257,3 +257,23 @@ def check_payment_status(
             logger.warning(f"STK query failed for {tx.id}: {e}")
 
     return {"status": tx.status}
+
+
+@router.get("/my-transactions")
+def get_user_transactions(db: DbSession = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    """Fetches all payment transactions for the currently authenticated user."""
+    try:
+        transactions = db.query(models.PaymentTransaction).filter(
+            models.PaymentTransaction.user_id == user.id
+        ).order_by(models.PaymentTransaction.created_at.desc()).all()
+        
+        return [{
+            "id": tx.id,
+            "item_name": tx.target_tier or tx.purchase_type or "Study Pass",
+            "amount": tx.amount,
+            "status": tx.status.upper() if tx.status else "COMPLETED",
+            "created_at": tx.created_at.isoformat() if tx.created_at else datetime.now(timezone.utc).isoformat()
+        } for tx in transactions]
+    except Exception as e:
+        logger.error(f"Failed to fetch transactions for user {user.id}: {str(e)}")
+        return []

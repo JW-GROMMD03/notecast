@@ -126,5 +126,6 @@ def get_book_store(
         "course": getattr(b, "course", "General") or "General",
         "unit": getattr(b, "unit", "General") or "General",
         "price": b.price,
+        "file_url": getattr(b, "file_url", getattr(b, "book_file_url", None)),
         "cover_url": getattr(b, "cover_url", getattr(b, "cover_photo_url", None))
     } for b in books]
