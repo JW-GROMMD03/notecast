@@ -739,7 +739,7 @@ async function loadCustomerLibraryAndPurchases() {
     tbody.innerHTML = transactions.map(tx => `
       <tr>
         <td style="font-family: monospace; font-size: 0.82rem;">${tx.id || tx.transaction_id}</td>
-        <td>${tx.plan_name || tx.item_name || 'Study Pass'}</td>
+        <td><span style="font-weight: 500; color: var(--text-main);">${tx.item_name}</span></td>
         <td style="font-weight: 600;">KES ${tx.amount}</td>
         <td><span class="status-chip ${tx.status ? tx.status.toLowerCase() : 'completed'}">${tx.status || 'COMPLETED'}</span></td>
         <td>${new Date(tx.created_at || Date.now()).toLocaleDateString()}</td>
