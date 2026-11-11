@@ -724,7 +724,7 @@ function verifyTabEligibility(tabName) {
 async function loadCustomerLibraryAndPurchases() {
   const tbody = document.getElementById("customerPurchasesTableBody");
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading purchase history...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading book purchase history...</td></tr>`;
 
   try {
     const res = await authedFetch("/payments/my-transactions");
@@ -732,7 +732,7 @@ async function loadCustomerLibraryAndPurchases() {
     if (res.json) transactions = await res.json();
 
     if (!Array.isArray(transactions) || transactions.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No purchase records found.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No book purchases found. Visit the Book Store to unlock textbooks.</td></tr>`;
       return;
     }
 
@@ -746,7 +746,7 @@ async function loadCustomerLibraryAndPurchases() {
       </tr>
     `).join("");
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load transactions.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load book transactions.</td></tr>`;
   }
 }
 

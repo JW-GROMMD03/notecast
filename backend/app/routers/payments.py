@@ -261,17 +261,17 @@ def check_payment_status(
 
 @router.get("/my-transactions")
 def get_user_transactions(db: DbSession = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    """Fetches all payment transactions for the currently authenticated user with proper book title resolution."""
+    """Fetches strictly book purchase transactions for the authenticated user's library catalog."""
     try:
+        # Filter transactions that are specifically tied to book purchases (book_id is not null)
         transactions = db.query(models.PaymentTransaction).filter(
-            models.PaymentTransaction.user_id == user.id
+            models.PaymentTransaction.user_id == user.id,
+            models.PaymentTransaction.book_id.isnot(None)
         ).order_by(models.PaymentTransaction.created_at.desc()).all()
         
         result = []
         for tx in transactions:
-            item_name = tx.target_tier or tx.purchase_type or "Study Pass"
-            
-            # If the transaction is linked to a book, fetch the actual book title
+            item_name = "Academic Textbook"
             if getattr(tx, "book_id", None):
                 book = db.query(models.Book).filter(models.Book.id == tx.book_id).first()
                 if book:
@@ -286,5 +286,5 @@ def get_user_transactions(db: DbSession = Depends(get_db), user: models.User = D
             })
         return result
     except Exception as e:
-        logger.error(f"Failed to fetch transactions for user {user.id}: {str(e)}")
+        logger.error(f"Failed to fetch book purchase transactions for user {user.id}: {str(e)}")
         return []
