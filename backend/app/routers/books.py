@@ -8,20 +8,15 @@ from typing import Optional
 from .. import models, auth
 from ..database import get_db
 
-router = APIRouter(prefix="", tags=["Book Library & R2 Storage"])
+router = APIRouter(prefix="/books", tags=["Book Library & R2 Storage"])
 logger = logging.getLogger("notecast_books")
 
-# --- CLOUDFLARE R2 S3 CLIENT CONFIGURATION ---
-R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID", "your_r2_access_key")
-R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "your_r2_secret_key")
+# --- CLOUDFLARE R2 S3 CLIENT CONFIGURATION (Matching your .env) ---
+R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
 R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "notecast-books")
-R2_ENDPOINT_URL = os.getenv(
-    "R2_ENDPOINT_URL",
-    "https://<YOUR_ACCOUNT_ID>.r2.cloudflarestorage.com",
-)
-R2_PUBLIC_DOMAIN = os.getenv(
-    "R2_PUBLIC_DOMAIN", "https://pub-xxx.r2.dev"
-)
+R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL")
+R2_PUBLIC_DOMAIN = os.getenv("R2_PUBLIC_DOMAIN", "https://pub-xxx.r2.dev")
 
 s3_client = boto3.client(
     "s3",
@@ -32,7 +27,7 @@ s3_client = boto3.client(
 )
 
 
-@router.post("/admin/books/upload/")
+@router.post("/admin/upload/")
 async def admin_upload_book(
     title: str = Form(...),
     course: str = Form(...),
@@ -108,7 +103,7 @@ async def admin_upload_book(
     }
 
 
-@router.get("/books/store")
+@router.get("/store")
 def get_book_store(
     course: Optional[str] = Query(None, description="Filter by course name"),
     unit: Optional[str] = Query(None, description="Filter by unit/module"),
