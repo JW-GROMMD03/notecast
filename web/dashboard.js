@@ -553,8 +553,12 @@ function showExtensionInstallModal() {
 }
 
 // --- PAYMENTS MODAL MATCHING STK PUSH & STATUS POLLING ---
-window.openPaymentModal = function(itemCode, priceText) {
-    const planInfo = PLANS_CATALOG[itemCode] || { amount: 800, name: itemCode };
+window.openPaymentModal = function(itemCode, priceText, explicitAmount = null, explicitName = null) {
+    // Uses explicit dynamic values if passed; otherwise falls back to subscription catalog
+    const planInfo = PLANS_CATALOG[itemCode] || { 
+      amount: explicitAmount || 800, 
+      name: explicitName || itemCode 
+    };
     
     const existing = document.getElementById('paymentModal');
     if (existing) existing.remove();
@@ -564,7 +568,7 @@ window.openPaymentModal = function(itemCode, priceText) {
         <div style="background:var(--bg-card, #1e293b);padding:2rem;border-radius:12px;max-width:420px;width:100%;color:#fff;box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
           <div id="paymentFormContainer">
             <h3 style="margin-top:0;font-size:1.25rem;">Secure M-Pesa Checkout</h3>
-            <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:1rem;">Pass: <strong>${planInfo.name}</strong><br>Amount: <strong style="color:#38bdf8;">${planInfo.amount} KES</strong></p>
+            <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:1rem;">Item: <strong>${planInfo.name}</strong><br>Amount: <strong style="color:#38bdf8;">${planInfo.amount} KES</strong></p>
             
             <label style="display:block;margin:1rem 0 0.5rem;font-size:0.85rem;">Safaricom Phone Number:</label>
             <input type="text" id="mpesaPhone" value="0703250550" placeholder="0712345678 or 254712345678" style="width:100%;padding:0.75rem;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:0.75rem;box-sizing:border-box;"/>
@@ -751,11 +755,17 @@ async function loadCustomerLibraryAndPurchases() {
 }
 
 
+
 // --- BOOK STORE CATALOG LOADER ---
 async function loadBookStoreCatalog(course = '', unit = '') {
   const grid = document.getElementById("bookStoreGrid");
   if (!grid) return;
-  grid.innerHTML = `<p style="color: var(--text-muted);">Loading book catalog...</p>`;
+  
+  // FIX: Apply a responsive grid layout directly to the container so cards don't stretch full width
+  grid.style.display = "grid";
+  grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(240px, 1fr))";
+  grid.style.gap = "24px";
+  grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">Loading book catalog...</p>`;
 
   try {
     let url = "/books/store?";
@@ -768,33 +778,34 @@ async function loadBookStoreCatalog(course = '', unit = '') {
     if (res.json) books = await res.json();
 
     if (!Array.isArray(books) || books.length === 0) {
-      grid.innerHTML = `<p style="color: var(--text-muted);">No books found in inventory.</p>`;
+      grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">No books found in inventory.</p>`;
       return;
     }
 
     grid.innerHTML = books.map(b => {
-      // Uses the new public /cover endpoint from your updated router
       const coverImg = b.cover_url ? b.cover_url : 'assets/icon.png';
-      
       const actionText = b.owned ? "Read Now" : `Buy (KES ${b.price})`;
       const actionColor = b.owned ? "background: #10b981;" : "background: #3b82f6;";
 
+      // FIX: Taller image container (260px) and proper object-fit for book aspect ratio
       return `
-        <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
+        <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-card, #1e293b); border: 1px solid #334155; border-radius: 12px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
           <div>
-            <img src="${coverImg}" alt="Cover" onerror="this.src='assets/icon.png'" style="width: 100%; height: 140px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; background: #1e293b;">
-            <h4 style="margin: 0 0 6px 0; font-size: 1rem; color: var(--text-main);">${b.title}</h4>
-            <p style="font-size: 0.8rem; color: var(--accent); margin: 0 0 4px 0;">${b.course}<br>${b.unit}</p>
+            <div style="width: 100%; height: 260px; background: #0f172a; border-radius: 8px; margin-bottom: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                <img src="${coverImg}" alt="Cover" onerror="this.src='assets/icon.png'" style="width: 100%; height: 100%; object-fit: cover;">
+            </div>
+            <h4 style="margin: 0 0 8px 0; font-size: 1.05rem; color: var(--text-main); line-height: 1.3;">${b.title}</h4>
+            <p style="font-size: 0.8rem; color: #94a3b8; margin: 0 0 10px 0; line-height: 1.4;">${b.course}<br>${b.unit}</p>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px;">
-            <span style="font-weight: 800; color: var(--text-main);">KES ${b.price}</span>
-            <button onclick="handleBookAction(event, '${b.id}', ${b.owned}, ${b.price}, '${b.title.replace(/'/g, "\\'")}')" class="btn-action" style="padding: 6px 12px; font-size: 0.82rem; border: none; border-radius: 4px; color: white; cursor: pointer; ${actionColor}">${actionText}</button>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 14px; border-top: 1px solid #334155;">
+            <span style="font-weight: 800; color: #38bdf8; font-size: 1.1rem;">KES ${b.price}</span>
+            <button onclick="handleBookAction(event, '${b.id}', ${b.owned}, ${b.price}, ${JSON.stringify(b.title).replace(/"/g, '&quot;')})" class="btn-action" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; border: none; border-radius: 6px; color: white; cursor: pointer; transition: all 0.2s; ${actionColor}">${actionText}</button>
           </div>
         </div>
       `;
     }).join("");
   } catch (err) {
-    grid.innerHTML = `<p style="color: #ef4444;">Failed to load book store inventory.</p>`;
+    grid.innerHTML = `<p style="color: #ef4444; grid-column: 1 / -1;">Failed to load book store inventory.</p>`;
   }
 }
 
@@ -835,12 +846,6 @@ document.getElementById("filterBooksBtn")?.addEventListener("click", () => {
   loadBookStoreCatalog(course, unit);
 });
 
-// Hook up filter button
-document.getElementById("filterBooksBtn")?.addEventListener("click", () => {
-  const course = document.getElementById("bookSearchCourse").value.trim();
-  const unit = document.getElementById("bookSearchUnit").value.trim();
-  loadBookStoreCatalog(course, unit);
-});
 
 // --- REFERRALS LOGIC ---
 async function loadReferralPanel() {
