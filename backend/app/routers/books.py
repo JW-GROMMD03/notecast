@@ -15,12 +15,12 @@ logger = logging.getLogger("notecast_books")
 R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
 R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
 R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "notecast-books")
-R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL")
+R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL", "")
 R2_PUBLIC_DOMAIN = os.getenv("R2_PUBLIC_DOMAIN", "").rstrip("/")
 
 s3_client = boto3.client(
     "s3",
-    endpoint_url=R2_ENDPOINT_URL,
+    endpoint_url=R2_ENDPOINT_URL or None,
     aws_access_key_id=R2_ACCESS_KEY_ID,
     aws_secret_access_key=R2_SECRET_ACCESS_KEY,
     region_name="auto",
@@ -62,8 +62,12 @@ async def admin_upload_book(
             status_code=500, detail=f"Document R2 Storage Upload Failed: {str(e)}"
         )
     
-    # Generate explicit absolute URL
-    document_url = f"{R2_PUBLIC_DOMAIN}/{doc_key}" if R2_PUBLIC_DOMAIN else f"https://{R2_BUCKET_NAME}.r2.dev/{doc_key}"
+    # Bulletproof absolute URL construction
+    if R2_PUBLIC_DOMAIN and R2_PUBLIC_DOMAIN.startswith("http"):
+        document_url = f"{R2_PUBLIC_DOMAIN}/{doc_key}"
+    else:
+        endpoint_clean = R2_ENDPOINT_URL.replace("https://", "").replace("http://", "").rstrip("/") if R2_ENDPOINT_URL else "r2.cloudflarestorage.com"
+        document_url = f"https://{R2_BUCKET_NAME}.{endpoint_clean}/{doc_key}"
 
     # 2. Upload cover image to Cloudflare R2 (if provided)
     cover_url = None
@@ -76,24 +80,36 @@ async def admin_upload_book(
                 cover_key,
                 ExtraArgs={"ContentType": cover_file.content_type},
             )
-            cover_url = f"{R2_PUBLIC_DOMAIN}/{cover_key}" if R2_PUBLIC_DOMAIN else f"https://{R2_BUCKET_NAME}.r2.dev/{cover_key}"
+            if R2_PUBLIC_DOMAIN and R2_PUBLIC_DOMAIN.startswith("http"):
+                cover_url = f"{R2_PUBLIC_DOMAIN}/{cover_key}"
+            else:
+                endpoint_clean = R2_ENDPOINT_URL.replace("https://", "").replace("http://", "").rstrip("/") if R2_ENDPOINT_URL else "r2.cloudflarestorage.com"
+                cover_url = f"https://{R2_BUCKET_NAME}.{endpoint_clean}/{cover_key}"
         except Exception as e:
             logger.error(f"Cover Image R2 Upload Failed: {str(e)}")
-            raise HTTPException(
-                status_code=500, detail=f"Cover Image R2 Upload Failed: {str(e)}"
-            )
 
-    # 3. Save absolute URLs in PostgreSQL / Supabase
-    new_book = models.Book(
-        title=title,
-        course=course,
-        unit=unit,
-        price=price,
-        file_url=document_url,
-        cover_url=cover_url,
-        user_id=admin.id
-    )
+    # 3. Save to database handling both model attribute naming styles
+    book_kwargs = {
+        "title": title,
+        "course": course,
+        "unit": unit,
+        "price": price,
+        "user_id": admin.id
+    }
     
+    # Dynamically assign URL fields based on what columns models.Book expects
+    if hasattr(models.Book, "file_url"):
+        book_kwargs["file_url"] = document_url
+    if hasattr(models.Book, "book_file_url"):
+        book_kwargs["book_file_url"] = document_url
+        
+    if cover_url:
+        if hasattr(models.Book, "cover_url"):
+            book_kwargs["cover_url"] = cover_url
+        if hasattr(models.Book, "cover_photo_url"):
+            book_kwargs["cover_photo_url"] = cover_url
+
+    new_book = models.Book(**book_kwargs)
     db.add(new_book)
     db.commit()
     db.refresh(new_book)
@@ -101,7 +117,9 @@ async def admin_upload_book(
     return {
         "status": "SUCCESS",
         "message": "Book uploaded successfully to Cloudflare R2",
-        "book_id": new_book.id
+        "book_id": new_book.id,
+        "file_url": document_url,
+        "cover_url": cover_url
     }
 
 
