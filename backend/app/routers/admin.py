@@ -526,7 +526,6 @@ def send_bulk_notifications(req: BulkEmailReq, db: Session = Depends(get_db), ad
 @router.websocket("/ws/metrics")
 @direct_router.websocket("/ws/metrics")
 async def admin_metrics_ws(websocket: WebSocket, token: str, db: Session = Depends(get_db)):
-    """Fixed: Websocket handshake MUST be accepted before it can be closed."""
     await websocket.accept() 
     
     try:
@@ -541,14 +540,14 @@ async def admin_metrics_ws(websocket: WebSocket, token: str, db: Session = Depen
             await asyncio.sleep(5)
             
     except Exception:
-        pass
+        # Gracefully handle invalid tokens or unexpected drops without 500 server crashes
+        try:
+            await websocket.close(code=1008)
+        except Exception:
+            pass
     finally:
         if websocket in active_ws_connections:
             active_ws_connections.remove(websocket)
-        try:
-            await websocket.close()
-        except Exception:
-            pass
 
 
 @router.get("/books/list")

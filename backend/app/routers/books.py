@@ -72,26 +72,26 @@ def grant_book_access(db: Session, user_id: str, book_id: str) -> None:
 
 # ------------------------------------------------------------------ admin upload
 @router.post("/admin/upload/")
-def admin_upload_book(  # plain def: boto3 is blocking, FastAPI runs this in a threadpool
+def admin_upload_book(
     title: str = Form(...),
     course: str = Form(...),
     unit: str = Form("General"),
     price: float = Form(...),
     description: str = Form(""),
-    file: UploadFile = File(...),
-    cover_file: Optional[UploadFile] = File(None),
+    book_file: UploadFile = File(...),
+    cover_photo: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     admin: models.User = Depends(auth.get_current_admin),
 ):
     if price < MIN_PRICE:
         raise HTTPException(400, f"Minimum book price is {MIN_PRICE} KES.")
 
-    doc_ext = _ext(file.filename)
+    doc_ext = _ext(book_file.filename)
     if doc_ext not in DOC_TYPES:
         raise HTTPException(400, "Invalid document format. Allowed: PDF, DOC, DOCX.")
 
-    has_cover = bool(cover_file and cover_file.filename)
-    cover_ext = _ext(cover_file.filename) if has_cover else ""
+    has_cover = bool(cover_photo and cover_photo.filename)
+    cover_ext = _ext(cover_photo.filename) if has_cover else ""
     if has_cover and cover_ext not in IMG_TYPES:
         raise HTTPException(400, "Cover must be JPG, PNG or WEBP.")
 
@@ -99,9 +99,9 @@ def admin_upload_book(  # plain def: boto3 is blocking, FastAPI runs this in a t
     cover_key = f"books/covers/{uuid.uuid4().hex}{cover_ext}" if has_cover else None
 
     try:
-        s3.upload_fileobj(file.file, R2_BUCKET, doc_key, ExtraArgs={"ContentType": DOC_TYPES[doc_ext]})
+        s3.upload_fileobj(book_file.file, R2_BUCKET, doc_key, ExtraArgs={"ContentType": DOC_TYPES[doc_ext]})
         if cover_key:
-            s3.upload_fileobj(cover_file.file, R2_BUCKET, cover_key, ExtraArgs={"ContentType": IMG_TYPES[cover_ext]})
+            s3.upload_fileobj(cover_photo.file, R2_BUCKET, cover_key, ExtraArgs={"ContentType": IMG_TYPES[cover_ext]})
     except Exception as e:
         logger.exception("R2 upload failed")
         raise HTTPException(500, f"Storage upload failed: {e}")
