@@ -11,12 +11,12 @@ from ..database import get_db
 router = APIRouter(prefix="/books", tags=["Book Library & R2 Storage"])
 logger = logging.getLogger("notecast_books")
 
-# --- CLOUDFLARE R2 S3 CLIENT CONFIGURATION (Matching your .env) ---
+# --- CLOUDFLARE R2 S3 CLIENT CONFIGURATION ---
 R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
 R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
 R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "notecast-books")
 R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL")
-R2_PUBLIC_DOMAIN = os.getenv("R2_PUBLIC_DOMAIN", "https://pub-xxx.r2.dev")
+R2_PUBLIC_DOMAIN = os.getenv("R2_PUBLIC_DOMAIN", "").rstrip("/")
 
 s3_client = boto3.client(
     "s3",
@@ -39,7 +39,7 @@ async def admin_upload_book(
     db: Session = Depends(get_db),
     admin: models.User = Depends(auth.get_current_admin)
 ):
-    """Uploads a textbook document & optional cover image to Cloudflare R2 and records metadata in PostgreSQL."""
+    """Uploads textbook document & optional cover image to Cloudflare R2 and records absolute URLs."""
     allowed_doc_extensions = (".pdf", ".docx", ".doc")
     if not file.filename.lower().endswith(allowed_doc_extensions):
         raise HTTPException(
@@ -61,7 +61,9 @@ async def admin_upload_book(
         raise HTTPException(
             status_code=500, detail=f"Document R2 Storage Upload Failed: {str(e)}"
         )
-    document_url = f"{R2_PUBLIC_DOMAIN}/{doc_key}"
+    
+    # Ensure absolute public URL is generated
+    document_url = f"{R2_PUBLIC_DOMAIN}/{doc_key}" if R2_PUBLIC_DOMAIN else f"https://{R2_BUCKET_NAME}.r2.dev/{doc_key}"
 
     # 2. Upload cover image to Cloudflare R2 (if provided)
     cover_url = None
@@ -74,14 +76,14 @@ async def admin_upload_book(
                 cover_key,
                 ExtraArgs={"ContentType": cover_file.content_type},
             )
-            cover_url = f"{R2_PUBLIC_DOMAIN}/{cover_key}"
+            cover_url = f"{R2_PUBLIC_DOMAIN}/{cover_key}" if R2_PUBLIC_DOMAIN else f"https://{R2_BUCKET_NAME}.r2.dev/{cover_key}"
         except Exception as e:
             logger.error(f"Cover Image R2 Upload Failed: {str(e)}")
             raise HTTPException(
                 status_code=500, detail=f"Cover Image R2 Upload Failed: {str(e)}"
             )
 
-    # 3. Construct record for PostgreSQL / Supabase 'books' table
+    # 3. Save absolute URLs in PostgreSQL / Supabase
     new_book = models.Book(
         title=title,
         course=course,
@@ -98,7 +100,7 @@ async def admin_upload_book(
 
     return {
         "status": "SUCCESS",
-        "message": "Book and details uploaded successfully to Cloudflare R2",
+        "message": "Book uploaded successfully to Cloudflare R2",
         "book_id": new_book.id
     }
 
@@ -109,7 +111,7 @@ def get_book_store(
     unit: Optional[str] = Query(None, description="Filter by unit/module"),
     db: Session = Depends(get_db)
 ):
-    """Fetches filtered books from the database for the frontend user library catalog."""
+    """Fetches books with guaranteed absolute URLs for viewing and downloading."""
     try:
         query = db.query(models.Book)
         
@@ -120,15 +122,22 @@ def get_book_store(
             
         books = query.order_by(models.Book.created_at.desc()).all()
         
-        return [{
-            "id": b.id,
-            "title": b.title,
-            "course": getattr(b, "course", "General") or "General",
-            "unit": getattr(b, "unit", "General") or "General",
-            "price": b.price,
-            "file_url": getattr(b, "file_url", getattr(b, "book_file_url", None)),
-            "cover_url": getattr(b, "cover_url", getattr(b, "cover_photo_url", None))
-        } for b in books]
+        results = []
+        for b in books:
+            f_url = getattr(b, "file_url", getattr(b, "book_file_url", None))
+            c_url = getattr(b, "cover_url", getattr(b, "cover_photo_url", None))
+            
+            results.append({
+                "id": b.id,
+                "title": b.title,
+                "course": getattr(b, "course", "General") or "General",
+                "unit": getattr(b, "unit", "General") or "General",
+                "price": b.price,
+                "file_url": f_url,
+                "cover_url": c_url
+            })
+            
+        return results
     except Exception as e:
         logger.error(f"Failed to fetch book store inventory: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to load book store inventory.")
