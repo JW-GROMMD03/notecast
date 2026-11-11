@@ -1,4 +1,3 @@
-# main.py
 import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,10 +19,15 @@ from .routers.flashcards import router as flashcards_router
 from .routers.graph import router as graph_router
 from .routers.socratic import router as socratic_router
 from .routers.admin import router as admin_router, direct_router as admin_direct_router
-
-# ---> ADD REFERRALS & BOOKS IMPORTS HERE <---
-from .routers.referrals import router as referrals_router, admin_fallback_router as referrals_admin_fallback_router
 from .routers.books import router as books_router
+from .routers.referrals import router as referrals_router
+
+# Safely attempt to import the fallback router without crashing if it doesn't exist
+try:
+    from .routers.referrals import admin_fallback_router as referrals_admin_fallback_router
+    HAS_REF_ADMIN = True
+except ImportError:
+    HAS_REF_ADMIN = False
 
 logging.basicConfig(level=logging.INFO)
 
@@ -66,14 +70,14 @@ app.include_router(documents_router)
 app.include_router(flashcards_router)
 app.include_router(graph_router)
 app.include_router(socratic_router)
-app.include_router(admin_router)          # /admin/...      (Render rewrite strips /api)
-app.include_router(admin_direct_router)   # /api/admin/...  (direct backend access)
+app.include_router(admin_router)          # /admin/...      
+app.include_router(admin_direct_router)   # /api/admin/...  
 
-# ---> REGISTER NEW ROUTERS HERE <---
+# Referrals & Books 
 app.include_router(referrals_router)
-app.include_router(referrals_admin_fallback_router)
+if HAS_REF_ADMIN:
+    app.include_router(referrals_admin_fallback_router)
 
-# Books Router Mounted on root AND /api
 app.include_router(books_router)
 app.include_router(books_router, prefix="/api")
 

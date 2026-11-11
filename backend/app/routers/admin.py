@@ -123,7 +123,7 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
         func.count(models.User.id).label('count')
     ).group_by(models.User.university).order_by(func.count(models.User.id).desc()).limit(5).all()
 
-    universities = [{"name": u.university, "count": u.count, "percent": round((u.count / max(len(all_users), 1)) * 100, 1)} for u in uni_stats]
+    universities = [{"name": u.university or 'Unknown', "count": u.count, "percent": round((u.count / max(len(all_users), 1)) * 100, 1)} for u in uni_stats]
 
     subscriptions_records = db.query(models.UserSubscription).all()
     sub_map = {sub.user_id: sub for sub in subscriptions_records}
@@ -150,13 +150,36 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
     eom_alert = days_to_month_end <= 5
 
     expenses = db.query(models.RecurringExpense).order_by(models.RecurringExpense.next_due.asc()).all()
-    due_expenses_count = sum(1 for exp in expenses if (exp.next_due - today).days <= 5)
+    
+    # Bulletproof next_due mapping
+    due_expenses_count = 0
+    expense_list = []
+    for ex in expenses:
+        if getattr(ex, 'next_due', None):
+            days_left = (ex.next_due - today).days
+            if days_left <= 5:
+                due_expenses_count += 1
+            due_iso = ex.next_due.isoformat()
+        else:
+            days_left = 0
+            due_iso = today.isoformat()
+            
+        expense_list.append({
+            "id": ex.id,
+            "name": ex.name,
+            "amount": ex.amount,
+            "interval_days": ex.interval_days,
+            "next_due": due_iso,
+            "status": ex.status,
+            "days_left": days_left
+        })
 
     weekly_rev, monthly_rev, yearly_rev = defaultdict(float), defaultdict(float), defaultdict(float)
     all_completed_txs = db.query(models.PaymentTransaction).filter(models.PaymentTransaction.status == "COMPLETED").all()
     
     for tx in all_completed_txs:
-        if not tx.created_at: continue
+        if not getattr(tx, 'created_at', None): 
+            continue
         yw = tx.created_at.strftime("%Y-W%W")
         ym = tx.created_at.strftime("%Y-%m")
         y = tx.created_at.strftime("%Y")
@@ -181,14 +204,14 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
     user_list = []
     for u in all_users:
         sub = sub_map.get(u.id)
-        is_super_admin = u.email in ['destinymichael941@gmail.com'] or u.is_admin
+        is_super_admin = u.email in ['destinymichael941@gmail.com'] or getattr(u, 'is_admin', False)
         display_plan = "SUPER ADMIN" if is_super_admin else (sub.tier if sub else "FREE")
         
         user_list.append({
             "id": u.id,
             "name": getattr(u, 'display_name', '') or 'N/A',
             "email": u.email,
-            "phone": getattr(u, 'phone', 'N/A'),
+            "phone": getattr(u, 'phone', 'N/A') or 'N/A',
             "university": getattr(u, 'university', 'Unknown') or 'Unknown',
             "course": getattr(u, 'course', 'N/A') or 'N/A',
             "plan": display_plan,
@@ -200,7 +223,7 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
     subs_audit = []
     for u in all_users:
         sub = sub_map.get(u.id)
-        is_super_admin = u.email in ['destinymichael941@gmail.com'] or u.is_admin
+        is_super_admin = u.email in ['destinymichael941@gmail.com'] or getattr(u, 'is_admin', False)
         
         if sub:
             manager_label = 'System / Admin' 
@@ -222,27 +245,17 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
 
     transactions = db.query(models.PaymentTransaction).order_by(models.PaymentTransaction.created_at.desc()).all()
     if start_date:
-        transactions = [t for t in transactions if t.created_at and t.created_at >= start_date]
+        transactions = [t for t in transactions if getattr(t, 'created_at', None) and t.created_at >= start_date]
 
     ledgers = [{
         "id": tx.id,
         "amount": tx.amount,
-        "status": tx.status.upper() if tx.status else "PENDING",
+        "status": tx.status.upper() if getattr(tx, 'status', None) else "PENDING",
         "provider": getattr(tx, 'provider', 'M-Pesa'),
-        "date": tx.created_at.isoformat() if tx.created_at else today.isoformat()
+        "date": tx.created_at.isoformat() if getattr(tx, 'created_at', None) else today.isoformat()
     } for tx in transactions]
 
     logs_query = db.query(models.AdminActionLog).order_by(models.AdminActionLog.created_at.desc()).limit(30).all()
-    
-    expense_list = [{
-        "id": ex.id,
-        "name": ex.name,
-        "amount": ex.amount,
-        "interval_days": ex.interval_days,
-        "next_due": ex.next_due.isoformat(),
-        "status": ex.status,
-        "days_left": (ex.next_due - today).days
-    } for ex in expenses]
 
     return {
         "total_revenue": total_revenue,
@@ -267,7 +280,7 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
         "subscriptions": subs_audit,
         "ledgers": ledgers,
         "expenses": expense_list,
-        "logs": [{"action": l.action_type, "amount": l.amount, "description": l.description, "date": l.created_at.isoformat()} for l in logs_query]
+        "logs": [{"action": l.action_type, "amount": l.amount, "description": l.description, "date": l.created_at.isoformat() if getattr(l, 'created_at', None) else today.isoformat()} for l in logs_query]
     }
 
 
@@ -342,7 +355,7 @@ def get_admin_library_audit(db: Session = Depends(get_db), admin: models.User = 
         b["sold_count"] += 1
         b["total_revenue"] += amt
         txs.append({"id": tx.id, "user_email": user.email, "item_name": book.title, "amount": amt,
-                    "status": tx.status, "created_at": tx.created_at.isoformat() if tx.created_at else ""})
+                    "status": tx.status, "created_at": tx.created_at.isoformat() if getattr(tx, 'created_at', None) else dt.datetime.utcnow().isoformat()})
                     
     return {
         "course_summary": [{"course": k, "total_sold": v["sold"], "total_revenue": v["revenue"]} for k, v in course_map.items()],
@@ -361,7 +374,7 @@ def get_admin_affiliate_payouts(db: Session = Depends(get_db), admin: models.Use
             user = db.query(models.User).filter(models.User.id == ref.user_id).first()
             payouts.append({
                 "user_id": ref.user_id,
-                "name": user.display_name if user and hasattr(user, 'display_name') else (user.email if user else "Partner"),
+                "name": getattr(user, 'display_name', '') or (user.email if user else "Partner"),
                 "mpesa_number": ref.mpesa_number or getattr(user, 'phone', 'N/A'),
                 "pending_balance": float(ref.pending_balance)
             })
@@ -397,7 +410,7 @@ def manage_user_account(req: UserActionReq, db: Session = Depends(get_db), admin
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
     
-    is_super_admin = user.email in ['destinymichael941@gmail.com'] or user.is_admin
+    is_super_admin = user.email in ['destinymichael941@gmail.com'] or getattr(user, 'is_admin', False)
     if is_super_admin and req.action in ("BLOCK", "DELETE"):
          raise HTTPException(status_code=403, detail="Cannot block or delete an administrative account.")
     
@@ -496,7 +509,7 @@ def send_bulk_notifications(req: BulkEmailReq, db: Session = Depends(get_db), ad
 
     for u in users:
         if req.tier and req.tier != "ALL":
-            is_super = u.email in ['destinymichael941@gmail.com'] or u.is_admin
+            is_super = u.email in ['destinymichael941@gmail.com'] or getattr(u, 'is_admin', False)
             user_tier = "SUPER ADMIN" if is_super else sub_records.get(u.id, "FREE")
             if user_tier.upper() != req.tier.upper():
                 continue
@@ -550,5 +563,5 @@ def list_all_books_admin(db: Session = Depends(get_db), admin: models.User = Dep
         "unit": getattr(b, "unit", "N/A") or "N/A",
         "price": b.price,
         "file_url": getattr(b, "file_url", getattr(b, "book_file_url", None)),
-        "created_at": b.created_at.isoformat() if b.created_at else None
+        "created_at": b.created_at.isoformat() if getattr(b, 'created_at', None) else None
     } for b in books]
