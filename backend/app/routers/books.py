@@ -220,6 +220,7 @@ def book_read_url(
 
 # ------------------------------------------------------------------ admin inventory & status control
 @router.get("/admin/inventory")
+@router.get("/api/books/admin/inventory")
 def admin_book_inventory(
     db: Session = Depends(get_db),
     admin: models.User = Depends(auth.get_current_admin),
@@ -245,6 +246,7 @@ def admin_book_inventory(
 
 
 @router.patch("/admin/{book_id}/toggle-status")
+@router.patch("/api/books/admin/{book_id}/toggle-status")
 def admin_toggle_book_status(
     book_id: str,
     db: Session = Depends(get_db),
