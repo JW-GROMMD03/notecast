@@ -1,6 +1,6 @@
 """
 routers/books.py - Full Production Book Store, Admin Management & R2 Storage Router
-Note: R2 bucket remains PRIVATE. DB columns file_url / cover_url store R2 object keys.
+Note: R2 bucket remains PRIVATE for PDFs. DB columns file_url / cover_url store R2 object keys.
 """
 import logging
 import os
@@ -22,6 +22,7 @@ router = APIRouter(prefix="/books", tags=["Books"])
 logger = logging.getLogger("notecast_books")
 
 R2_BUCKET = os.getenv("R2_BUCKET_NAME", "notecast-books")
+R2_PUBLIC_DOMAIN = os.getenv("R2_PUBLIC_DOMAIN", "").rstrip("/")
 MIN_PRICE = 150  # Minimum book price in KES
 
 # Initialize Redis (Speed Optimization)
@@ -62,7 +63,6 @@ ALLOWED_IMG_TYPES = {
 }
 
 
-# --- Pydantic Schemas ---
 class BookUpdatePayload(BaseModel):
     title: Optional[str] = None
     field: Optional[str] = None
@@ -77,7 +77,6 @@ class BookPurchaseRequest(BaseModel):
     phone_number: str
 
 
-# --- Helper Functions ---
 def _get_file_extension(filename: Optional[str]) -> str:
     if not filename:
         return ""
@@ -89,9 +88,15 @@ def _is_storage_key(value: Optional[str]) -> bool:
 
 
 def _is_admin_user(user: models.User) -> bool:
-    """Strictly evaluates admin status to prevent string 'false' from bypassing purchases."""
+    """Strictly evaluates admin status to prevent string 'false' or DB quirks from bypassing purchases."""
+    if not user:
+        return False
     val = getattr(user, "is_admin", False)
-    return val is True or str(val).lower() == "true"
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, int):
+        return val == 1
+    return str(val).strip().lower() in ["true", "1", "t", "y", "yes"]
 
 
 def verify_book_access(db: Session, user: models.User, book_id: str) -> bool:
@@ -110,12 +115,12 @@ def verify_book_access(db: Session, user: models.User, book_id: str) -> bool:
             .first()
         )
         return purchase is not None
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error evaluating book access: {e}")
         return False
 
 
 def _invalidate_catalog_cache():
-    """Clears cached book catalog endpoints when inventory changes."""
     if REDIS_AVAILABLE:
         try:
             for key in redis_client.scan_iter("catalog:*"):
@@ -123,10 +128,6 @@ def _invalidate_catalog_cache():
         except Exception as e:
             logger.warning("Cache invalidation failed: %s", str(e))
 
-
-# =====================================================================
-# 1. ADMIN UPLOAD & MANAGEMENT ENDPOINTS
-# =====================================================================
 
 @router.post("/admin/upload/")
 @router.post("/api/books/admin/upload/")
@@ -303,10 +304,6 @@ def admin_toggle_book_status(
     return {"status": "SUCCESS", "book_id": book.id, "new_status": new_status}
 
 
-# =====================================================================
-# 2. STORE CATALOG & PUBLIC / STUDENT ENDPOINTS
-# =====================================================================
-
 @router.get("/store")
 @router.get("/")
 def get_book_store_catalog(
@@ -319,7 +316,6 @@ def get_book_store_catalog(
 ):
     from sqlalchemy import or_
     
-    # 1. Fetch public base catalog (leveraging Redis cache)
     cache_key = f"catalog:{field or 'ALL'}:{course or 'ALL'}:{unit or 'ALL'}:{search or ''}"
     public_catalog = None
     
@@ -367,8 +363,17 @@ def get_book_store_catalog(
 
             books = query.order_by(models.Book.created_at.desc()).all() if hasattr(models.Book, "created_at") else query.all()
             
-            public_catalog = [
-                {
+            public_catalog = []
+            for b in books:
+                cover_key = getattr(b, "cover_url", None) or getattr(b, "cover_photo_url", None) or getattr(b, "cover", None)
+                
+                # DIRECT LIGHTNING CDN ROUTING
+                if _is_storage_key(cover_key):
+                    cover_url = f"{R2_PUBLIC_DOMAIN}/{cover_key}" if R2_PUBLIC_DOMAIN else f"/api/books/{b.id}/cover"
+                else:
+                    cover_url = None
+
+                public_catalog.append({
                     "id": b.id,
                     "title": getattr(b, "title", "Untitled"),
                     "field": getattr(b, "field", None) or "Technology",
@@ -376,14 +381,11 @@ def get_book_store_catalog(
                     "unit": getattr(b, "unit", None) or getattr(b, "unit_module", None) or "General",
                     "price": getattr(b, "price", 0.0),
                     "description": getattr(b, "description", None) or "",
-                    "cover_url": f"/api/books/{b.id}/cover" if _is_storage_key(getattr(b, "cover_url", None) or getattr(b, "cover_photo_url", None) or getattr(b, "cover", None)) else None,
-                }
-                for b in books
-            ]
+                    "cover_url": cover_url,
+                })
             
             if REDIS_AVAILABLE:
                 try:
-                    # Cache public base catalog for 12 hours
                     redis_client.setex(cache_key, 43200, json.dumps(public_catalog))
                 except Exception as e:
                     logger.warning("Redis write error: %s", str(e))
@@ -392,19 +394,17 @@ def get_book_store_catalog(
             logger.exception("Error loading book store inventory from database: %s", str(e))
             raise HTTPException(status_code=500, detail="Failed to load book store inventory.")
 
-    # 2. Append per-user dynamic ownership securely
     owned_book_ids = set()
     try:
-        if hasattr(models, "BookPurchase"):
-            purchases = (
-                db.query(models.BookPurchase.book_id)
-                .filter(
-                    models.BookPurchase.user_id == user.id,
-                    models.BookPurchase.status == "COMPLETED"
-                )
-                .all()
+        purchases = (
+            db.query(models.BookPurchase.book_id)
+            .filter(
+                models.BookPurchase.user_id == user.id,
+                models.BookPurchase.status == "COMPLETED"
             )
-            owned_book_ids = {row.book_id for row in purchases}
+            .all()
+        )
+        owned_book_ids = {row.book_id for row in purchases}
     except Exception as purchase_err:
         logger.warning("Could not resolve book purchases for user: %s", str(purchase_err))
 
@@ -421,7 +421,7 @@ def get_book_store_catalog(
 
 @router.get("/{book_id}/cover")
 def get_book_cover_image(book_id: str, db: Session = Depends(get_db)):
-    """Streams book cover photo securely from R2 storage."""
+    """Fallback route for cover photos if public R2 CDN is not configured."""
     book = db.query(models.Book).filter(models.Book.id == book_id).first()
     cover_key = getattr(book, "cover_url", None) or getattr(book, "cover_photo_url", None) or getattr(book, "cover", None)
     
@@ -436,7 +436,7 @@ def get_book_cover_image(book_id: str, db: Session = Depends(get_db)):
     return Response(
         r2_object["Body"].read(),
         media_type=r2_object.get("ContentType") or "image/jpeg",
-        headers={"Cache-Control": "public, max-age=86400"} # Hard cache in browser for 24hr
+        headers={"Cache-Control": "public, max-age=86400"}
     )
 
 

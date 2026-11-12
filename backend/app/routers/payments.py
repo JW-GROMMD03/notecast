@@ -69,8 +69,18 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
         now_utc = datetime.now(timezone.utc)
         
         if txn.purchase_type == "BOOK" and txn.book_id:
-            from .books import grant_book_access
-            grant_book_access(db, txn.user_id, txn.book_id)
+            # FIX: Direct DB insertion to avoid circular imports and instantly unlock the book in the user's library
+            existing_purchase = db.query(models.BookPurchase).filter_by(
+                user_id=txn.user_id, book_id=txn.book_id, status="COMPLETED"
+            ).first()
+            if not existing_purchase:
+                new_purchase = models.BookPurchase(
+                    id=str(uuid.uuid4()),
+                    user_id=txn.user_id,
+                    book_id=txn.book_id,
+                    status="COMPLETED"
+                )
+                db.add(new_purchase)
             
         elif txn.purchase_type == "PLAN_SUBSCRIPTION":
             catalog_entry = PRICING_CATALOG.get(txn.target_tier, {})
@@ -178,11 +188,15 @@ def initiate_payment(
                 possible_book_id = book_check.id
 
     if possible_book_id:
-        from .books import has_access
         book = db.query(models.Book).filter(models.Book.id == possible_book_id).first()
         if not book:
             raise HTTPException(status_code=404, detail="Book not found")
-        if has_access(db, user, book.id):
+            
+        # FIX: Direct DB check to strictly enforce paywall and avoid circular imports
+        owned = db.query(models.BookPurchase).filter_by(
+            user_id=user.id, book_id=book.id, status="COMPLETED"
+        ).first()
+        if owned:
             raise HTTPException(status_code=409, detail="You already own this book")
             
         amount = float(book.price)  # Force server-side database price
