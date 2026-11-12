@@ -4,6 +4,7 @@ Includes rigorous Admin RBAC and 3-attempt/30-minute lockout protection.
 """
 import secrets
 import datetime as dt
+import logging
 from fastapi import Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session as DbSession
 
@@ -12,6 +13,7 @@ from .database import get_db
 from . import models
 from .services import supabase_auth
 
+logger = logging.getLogger(__name__)
 
 def _extract_token(request: Request) -> str | None:
     auth_header = request.headers.get("Authorization", "")
@@ -135,11 +137,19 @@ def log_admin_attempt(db: DbSession, email: str, ip_address: str, successful: bo
 # ==============================================================
 
 def get_current_user_ws(token: str, db: DbSession) -> models.User | None:
+    """Validates tokens for WebSocket connections silently without raising HTTPExceptions."""
     try:
+        if not token:
+            return None
         claims = supabase_auth.verify_access_token(token)
-    except supabase_auth.SupabaseAuthError:
+        user_id = claims.get("sub")
+        if not user_id:
+            return None
+        return db.query(models.User).filter(models.User.id == user_id).first()
+    except Exception as e:
+        # Catch all exceptions (SupabaseAuthError, JWT decoding, etc.) to prevent 500 crashes
+        logger.error(f"WebSocket auth failed: {e}")
         return None
-    return db.query(models.User).filter(models.User.id == claims.get("sub")).first()
 
 
 def issue_csrf_token() -> str:
