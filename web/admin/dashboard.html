@@ -676,6 +676,7 @@
                     }
                     if (target === 'admin-library-panel') {
                         loadAdminLibraryAndPurchases();
+                        loadAdminBookInventory();
                     }
                 });
             });
@@ -819,6 +820,57 @@
             }
         }
 
+        async function loadAdminInventory() {
+    const tbody = document.getElementById('adminInventoryTableBody');
+    if (!tbody) return;
+
+    try {
+        const token = localStorage.getItem('admin_token') || localStorage.getItem('access_token');
+        const response = await fetch('/api/books/admin/inventory', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const books = await response.json();
+        
+        // Update the counter badge if it exists
+        const badge = document.querySelector('.card h3 + table ~ *') || document.getElementById('totalBooksCount') || document.querySelector('.card span, .card button');
+        if (badge && badge.textContent.includes('Total Books:')) {
+            badge.textContent = `Total Books: ${books.length}`;
+        }
+
+        if (books.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: gray; padding: 20px;">No books in inventory. Upload your first book above!</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = books.map(b => `
+            <tr>
+                <td><strong>${b.title}</strong></td>
+                <td>${b.course} &bull; ${b.unit || 'General'}</td>
+                <td>KES ${b.price.toLocaleString()}</td>
+                <td>${b.admin_email}</td>
+                <td><span class="badge ${b.status === 'ACTIVE' ? 'bg-success' : 'bg-danger'}">${b.status}</span></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-warning" onclick="toggleBookStatus('${b.id}')">Toggle</button>
+                </td>
+            </tr>
+        `).join('');
+
+    } catch (err) {
+        console.error('Failed to load inventory:', err);
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: red; padding: 20px;">Failed to load inventory. Check console for details.</td></tr>`;
+    }
+}
+
+// Call it on page load
+document.addEventListener('DOMContentLoaded', loadAdminInventory);
+
         async function loadAdminLibraryAndPurchases() {
             const courseBody = document.getElementById('courseBooksTableBody');
             const bookBody = document.getElementById('bookSalesTableBody');
@@ -880,17 +932,13 @@
             }
         }
 
-        // --- LOAD INVENTORY & UPDATE TOTAL COUNTER ---
+// --- LOAD INVENTORY & UPDATE TOTAL COUNTER ---
 async function loadAdminBookInventory() {
     const tbody = document.getElementById("adminInventoryTableBody");
     const counter = document.getElementById("totalBooksCounter");
     if (!tbody) return;
 
     try {
-        const token = localStorage.getItem('saaslu_admin_token');
-        if (!token) return;
-
-        // Use standard fetch matching line 728 of your code
         const res = await fetch(`${API_BASE}/api/books/admin/inventory`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -914,23 +962,23 @@ async function loadAdminBookInventory() {
             return `
             <tr style="border-bottom: 1px solid #1e293b;">
                 <td style="padding: 12px 8px;">
-                    <strong style="color: #f8fafc; font-size: 0.9rem;">${b.title}</strong><br>
-                    <small style="color: #64748b; font-family: monospace;">ID: ${b.id.substring(0, 8)}...</small>
+                    <strong style="color: var(--text); font-size: 0.9rem;">${b.title}</strong><br>
+                    <small style="color: var(--text-muted); font-family: monospace;">ID: ${b.id ? b.id.substring(0, 8) : ''}...</small>
                 </td>
-                <td style="padding: 12px 8px; font-size: 0.85rem; color: #cbd5e1;">
-                    ${b.course}<br><span style="color: #94a3b8;">${b.unit}</span>
+                <td style="padding: 12px 8px; font-size: 0.85rem; color: var(--text);">
+                    ${b.course}<br><span style="color: var(--text-muted);">${b.unit || 'General'}</span>
                 </td>
-                <td style="padding: 12px 8px; font-weight: 600; color: #38bdf8;">KES ${b.price}</td>
-                <td style="padding: 12px 8px; font-size: 0.85rem; color: #cbd5e1;">${b.admin_email}</td>
+                <td style="padding: 12px 8px; font-weight: 600; color: var(--primary);">KES ${b.price}</td>
+                <td style="padding: 12px 8px; font-size: 0.85rem; color: var(--text);">${b.admin_email || 'Admin'}</td>
                 <td style="padding: 12px 8px;">
                     <span style="padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; ${statusColor}">
-                        ${b.status}
+                        ${b.status || 'ACTIVE'}
                     </span>
                 </td>
                 <td style="padding: 12px 8px; text-align: right;">
                     <button onclick="adminEditBook('${b.id}', '${b.title.replace(/'/g, "\\'")}')" style="background: #f59e0b; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; margin-right: 4px;">Edit</button>
                     <button onclick="adminSuspendBook('${b.id}')" style="background: #64748b; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; margin-right: 4px;">${b.status === 'ACTIVE' ? 'Suspend' : 'Activate'}</button>
-                    <button onclick="adminDeleteBook('${b.id}')" style="background: #ef4444; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 0.75rem; cursor: pointer;">Delete</button>
+                    <button onclick="adminDeleteBook('${b.id}')" style="background: var(--danger); color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 0.75rem; cursor: pointer;">Delete</button>
                 </td>
             </tr>
             `;
@@ -938,36 +986,47 @@ async function loadAdminBookInventory() {
 
     } catch (error) {
         console.error("Inventory error:", error);
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: #ef4444;">Failed to load inventory data.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--danger);">Failed to load inventory data.</td></tr>`;
     }
 }
 
 // --- ACTION LOGIC ---
 window.adminDeleteBook = async function(bookId) {
-    if (!confirm("Are you sure you want to permanently delete this book from the database and Cloudflare storage? This cannot be undone.")) return;
-    
+    if (!confirm("Are you sure you want to permanently delete this book from the database and storage?")) return;
     try {
-        await authedFetch(`/books/admin/${bookId}`, { method: "DELETE" });
-        loadAdminBookInventory(); // Refresh table and counter immediately
+        const res = await fetch(`${API_BASE}/api/books/admin/${bookId}`, {
+            method: "DELETE",
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            loadAdminBookInventory();
+        } else {
+            alert("Failed to delete book.");
+        }
     } catch (err) {
-        alert("Failed to delete book: " + (err.message || "Unknown error"));
+        alert("Error deleting book.");
     }
 };
 
 window.adminSuspendBook = async function(bookId) {
     if (!confirm("Toggle the visibility/status of this book?")) return;
-    
     try {
-        await authedFetch(`/books/admin/${bookId}/toggle-status`, { method: "PATCH" });
-        loadAdminBookInventory(); // Refresh table to show new status
+        const res = await fetch(`${API_BASE}/api/books/admin/${bookId}/toggle-status`, {
+            method: "PATCH",
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            loadAdminBookInventory();
+        } else {
+            alert("Failed to change status.");
+        }
     } catch (err) {
-        alert("Failed to change status: " + (err.message || "Unknown error"));
+        alert("Error updating status.");
     }
 };
 
 window.adminEditBook = function(bookId, title) {
-    // Placeholder for Edit Modal - you can expand this to populate an edit form
-    alert(`Edit panel for "${title}" (ID: ${bookId}) is opening...\n\n(Connect this to your edit modal form)`);
+    alert(`Edit panel for "${title}" (ID: ${bookId})`);
 };
 
 // Add this to your page initialization sequence (where you load other admin tables):
