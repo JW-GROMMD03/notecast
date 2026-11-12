@@ -273,7 +273,7 @@ def admin_book_inventory(
             "course": b.course or "General",
             "unit": b.unit or "General",
             "price": b.price,
-            "description": b.description,
+            "description": getattr(b, "description", ""),
             "status": getattr(b, "status", "ACTIVE"),
             "admin_email": email or "System Admin",
             "created_at": b.created_at.isoformat() if b.created_at else None,

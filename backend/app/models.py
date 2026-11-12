@@ -467,6 +467,7 @@ class Book(Base):
     title = Column(String, index=True, nullable=False)
     
     # NEW Field category
+    description = Column(Text, nullable=True, default="")
     field = Column(String, index=True, nullable=True)
     
     # Course variations
