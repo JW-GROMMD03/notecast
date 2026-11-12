@@ -156,7 +156,7 @@ class AdminActionLog(Base):
     target_pot_id = Column(
         String, ForeignKey("financial_pots.id"), nullable=True
     )
-    description = Column(String, nullable=True)
+    #description = Column(String, nullable=True)
     created_at = Column(DateTime, default=now)
 
 
