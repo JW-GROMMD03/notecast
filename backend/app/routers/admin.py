@@ -9,7 +9,7 @@ from sqlalchemy import func
 from pydantic import BaseModel
 
 from .. import models, auth
-from ..database import get_db
+from ..database import get_db, SessionLocal
 from ..services import supabase_auth
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -151,7 +151,6 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
 
     expenses = db.query(models.RecurringExpense).order_by(models.RecurringExpense.next_due.asc()).all()
     
-    # Bulletproof next_due mapping
     due_expenses_count = 0
     expense_list = []
     for ex in expenses:
@@ -525,12 +524,14 @@ def send_bulk_notifications(req: BulkEmailReq, db: Session = Depends(get_db), ad
 
 @router.websocket("/ws/metrics")
 @direct_router.websocket("/ws/metrics")
-async def admin_metrics_ws(websocket: WebSocket, token: str, db: Session = Depends(get_db)):
+async def admin_metrics_ws(websocket: WebSocket, token: str):
+    """Production WebSocket handler using an independent manual DB session to prevent crashes."""
     await websocket.accept() 
     
+    db = SessionLocal()
     try:
         admin = auth.get_current_user_ws(token, db)
-        if not admin or not admin.is_admin:
+        if not admin or not getattr(admin, "is_admin", False):
             await websocket.close(code=1008)
             return
 
@@ -540,7 +541,6 @@ async def admin_metrics_ws(websocket: WebSocket, token: str, db: Session = Depen
             await asyncio.sleep(5)
             
     except WebSocketDisconnect:
-        # Standard client disconnect, do nothing
         pass
     except Exception as e:
         import logging
@@ -550,6 +550,7 @@ async def admin_metrics_ws(websocket: WebSocket, token: str, db: Session = Depen
         except Exception:
             pass
     finally:
+        db.close()
         if websocket in active_ws_connections:
             active_ws_connections.remove(websocket)
 

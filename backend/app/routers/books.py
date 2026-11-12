@@ -1,7 +1,7 @@
-# routers/books.py  (complete replacement)
-# R2 bucket stays PRIVATE. DB columns file_url / cover_url now hold R2 object KEYS, not URLs.
-# Env: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME,
-#      R2_ENDPOINT_URL = https://<ACCOUNT_ID>.r2.cloudflarestorage.com   (no bucket name in it)
+"""
+routers/books.py - Complete R2-backed Book Management and Store Router
+R2 bucket stays PRIVATE. DB columns file_url / cover_url hold R2 object KEYS, not URLs.
+"""
 import logging
 import os
 import uuid
@@ -218,14 +218,13 @@ def book_read_url(
     return {"url": url}
 
 
-# In routers/books.py
-
+# ------------------------------------------------------------------ admin inventory & status control
 @router.get("/admin/inventory")
 def admin_book_inventory(
     db: Session = Depends(get_db),
     admin: models.User = Depends(auth.get_current_admin),
 ):
-    """Fetches all books in the store along with the admin who uploaded them."""
+    """Fetches all books in the store along with the admin email who uploaded them."""
     results = db.query(models.Book, models.User.email).outerjoin(
         models.User, models.Book.user_id == models.User.id
     ).order_by(models.Book.created_at.desc()).all()
@@ -244,18 +243,18 @@ def admin_book_inventory(
         for b, email in results
     ]
 
+
 @router.patch("/admin/{book_id}/toggle-status")
 def admin_toggle_book_status(
     book_id: str,
     db: Session = Depends(get_db),
     admin: models.User = Depends(auth.get_current_admin),
 ):
-    """Suspends or activates a book in the store."""
+    """Suspends or activates a book in the store inventory catalog."""
     book = db.query(models.Book).filter(models.Book.id == book_id).first()
     if not book:
         raise HTTPException(404, "Book not found")
     
-    # If you don't have a status column in models.Book yet, this safely uses a fallback
     current_status = getattr(book, "status", "ACTIVE")
     new_status = "SUSPENDED" if current_status == "ACTIVE" else "ACTIVE"
     
