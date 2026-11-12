@@ -11,6 +11,7 @@ import boto3
 from botocore.config import Config
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .. import models, auth
@@ -37,6 +38,13 @@ DOC_TYPES = {
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 IMG_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+
+
+class BookUpdate(BaseModel):
+    title: Optional[str] = None
+    course: Optional[str] = None
+    unit: Optional[str] = None
+    price: Optional[float] = None
 
 
 def _ext(name: Optional[str]) -> str:
@@ -70,8 +78,9 @@ def grant_book_access(db: Session, user_id: str, book_id: str) -> None:
         db.commit()
 
 
-# ------------------------------------------------------------------ admin upload
+# ------------------------------------------------------------------ admin upload & management
 @router.post("/admin/upload/")
+@router.post("/api/books/admin/upload/")
 def admin_upload_book(
     title: str = Form(...),
     course: str = Form(...),
@@ -127,7 +136,37 @@ def admin_upload_book(
     return {"status": "SUCCESS", "book_id": book.id}
 
 
+@router.put("/admin/{book_id}")
+@router.put("/api/books/admin/{book_id}")
+def admin_update_book(
+    book_id: str,
+    payload: BookUpdate,
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(auth.get_current_admin),
+):
+    """Updates book details from the admin inventory modal."""
+    book = db.query(models.Book).filter(models.Book.id == book_id).first()
+    if not book:
+        raise HTTPException(404, "Book not found")
+
+    if payload.title is not None:
+        book.title = payload.title.strip()
+    if payload.course is not None:
+        book.course = payload.course.strip()
+    if payload.unit is not None:
+        book.unit = payload.unit.strip()
+    if payload.price is not None:
+        if payload.price < MIN_PRICE:
+            raise HTTPException(400, f"Minimum book price is {MIN_PRICE} KES.")
+        book.price = payload.price
+
+    db.commit()
+    db.refresh(book)
+    return {"status": "SUCCESS", "book_id": book.id}
+
+
 @router.delete("/admin/{book_id}")
+@router.delete("/api/books/admin/{book_id}")
 def admin_delete_book(
     book_id: str,
     db: Session = Depends(get_db),
@@ -147,8 +186,9 @@ def admin_delete_book(
     return {"status": "DELETED"}
 
 
-# ------------------------------------------------------------------ catalog
+# ------------------------------------------------------------------ catalog & store
 @router.get("/store")
+@router.get("/")
 def book_store(
     course: Optional[str] = Query(None),
     unit: Optional[str] = Query(None),
@@ -156,6 +196,11 @@ def book_store(
     user: models.User = Depends(auth.get_current_user),
 ):
     q = db.query(models.Book).filter(models.Book.file_url.like("books/%"))  # hides legacy broken rows
+    
+    # Exclude suspended books from user store catalog
+    if hasattr(models.Book, "status"):
+        q = q.filter((models.Book.status == None) | (models.Book.status != "SUSPENDED"))
+
     if course:
         q = q.filter(models.Book.course.ilike(f"%{course}%"))
     if unit:
