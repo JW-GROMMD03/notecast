@@ -887,25 +887,16 @@ window.handleBookAction = async function(event, bookId, isOwned, price, title) {
   if (isOwned) {
     const btn = event.currentTarget;
     const originalText = btn.textContent;
-    btn.textContent = "Decrypting link...";
+    btn.textContent = "Opening Reader...";
     btn.disabled = true;
+    
+    // Redirect to the custom secure reader page with the book ID
+    setTimeout(() => {
+        window.open(`reader.html?bookId=${encodeURIComponent(bookId)}`, '_blank');
+        btn.textContent = originalText;
+        btn.disabled = false;
+    }, 500);
 
-    try {
-      // Fetch the time-limited presigned URL
-      const res = await authedFetch(`/books/${bookId}/read-url`);
-      const data = res.json ? await res.json() : res;
-      
-      if (data.url) {
-        window.open(data.url, '_blank');
-      } else {
-        alert("Secure link could not be generated.");
-      }
-    } catch (err) {
-      alert(extractErrorMessage(err) || "Failed to open book.");
-    } finally {
-      btn.textContent = originalText;
-      btn.disabled = false;
-    }
   } else {
     // Triggers M-Pesa payment with specific book ID, explicit price, and title
     window.openPaymentModal(bookId, `KES ${price}`, price, title); 

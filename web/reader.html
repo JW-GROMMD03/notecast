@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NoteCast Secure Book Reader</title>
+  <link rel="icon" type="image/png" href="assets/icon.png">
+  
+  <style>
+    body { 
+      margin: 0; 
+      background: #0f172a; /* matches NoteCast dark theme */
+      display: flex; 
+      flex-direction: column; 
+      align-items: center; 
+      overflow-y: auto; 
+      user-select: none; /* Prevents text highlighting */
+    }
+    
+    #pdf-render-container { 
+      width: 100%; 
+      max-width: 950px; 
+      display: flex; 
+      flex-direction: column; 
+      align-items: center;
+      padding: 30px 15px; 
+    }
+    
+    canvas { 
+      width: 100%; 
+      background-color: #fff;
+      border-radius: 8px; 
+      box-shadow: 0 10px 25px rgba(0,0,0,0.8); 
+    }
+    
+    .toolbar { 
+      position: sticky; 
+      top: 0; 
+      background: #1e293b; 
+      width: 100%; 
+      padding: 12px; 
+      display: flex; 
+      justify-content: center; 
+      gap: 20px; 
+      z-index: 100; 
+      color: #cbd5e1; 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+      box-shadow: 0 4px 15px rgba(0,0,0,0.6); 
+      border-bottom: 1px solid #334155;
+    }
+    
+    button { 
+      background: #3b82f6; 
+      color: white; 
+      border: none; 
+      padding: 8px 18px; 
+      border-radius: 6px; 
+      cursor: pointer; 
+      font-weight: 600; 
+      font-size: 0.9rem;
+      transition: background 0.2s;
+    }
+    
+    button:hover:not(:disabled) {
+      background: #2563eb;
+    }
+    
+    button:disabled { 
+      background: #475569; 
+      color: #94a3b8;
+      cursor: not-allowed; 
+    }
+    
+    .page-info {
+      align-self: center;
+      font-weight: 500;
+      font-size: 0.95rem;
+    }
+
+    /* Loader */
+    .loader {
+      border: 4px solid #1e293b;
+      border-top: 4px solid #3b82f6;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin-top: 20vh;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+
+  <!-- Mozilla PDF.js via CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+</head>
+
+<!-- Disable right-click globally -->
+<body oncontextmenu="return false;">
+
+  <div class="toolbar">
+    <button id="prev-page" disabled>← Previous</button>
+    <span class="page-info">Page: <span id="page-num" style="color: #38bdf8; font-weight: 700;">-</span> / <span id="page-count">-</span></span>
+    <button id="next-page" disabled>Next →</button>
+  </div>
+
+  <div id="pdf-render-container">
+    <div id="loading-spinner" class="loader"></div>
+    <canvas id="pdf-render" style="display: none;"></canvas>
+  </div>
+
+  <script type="module">
+    import { authedFetch } from "./api.js";
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const bookId = urlParams.get('bookId');
+
+    if (!bookId) {
+      alert("No book selected.");
+      window.close();
+    }
+
+    // Configure PDF.js Web Worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+    let pdfDoc = null,
+        pageNum = 1,
+        pageIsRendering = false,
+        pageNumIsPending = null;
+
+    const canvas = document.getElementById('pdf-render'),
+          ctx = canvas.getContext('2d'),
+          spinner = document.getElementById('loading-spinner');
+
+    const renderPage = num => {
+      pageIsRendering = true;
+      pdfDoc.getPage(num).then(page => {
+        // High-res rendering scale
+        const viewport = page.getViewport({ scale: 1.8 });
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        const renderCtx = { canvasContext: ctx, viewport: viewport };
+        
+        page.render(renderCtx).promise.then(() => {
+          pageIsRendering = false;
+          
+          if (pageNumIsPending !== null) {
+            renderPage(pageNumIsPending);
+            pageNumIsPending = null;
+          }
+        });
+        
+        document.getElementById('page-num').textContent = num;
+        
+        // Update Button States
+        document.getElementById('prev-page').disabled = (num <= 1);
+        document.getElementById('next-page').disabled = (num >= pdfDoc.numPages);
+      });
+    };
+
+    const queueRenderPage = num => {
+      if (pageIsRendering) pageNumIsPending = num;
+      else renderPage(num);
+    };
+
+    document.getElementById('prev-page').addEventListener('click', () => {
+      if (pageNum <= 1) return;
+      pageNum--;
+      queueRenderPage(pageNum);
+      window.scrollTo(0, 0); // Reset scroll to top
+    });
+
+    document.getElementById('next-page').addEventListener('click', () => {
+      if (pageNum >= pdfDoc.numPages) return;
+      pageNum++;
+      queueRenderPage(pageNum);
+      window.scrollTo(0, 0); // Reset scroll to top
+    });
+
+    // Disable keyboard shortcuts used for saving and printing
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && (e.key === 'p' || e.key === 's')) {
+        e.preventDefault();
+      }
+    });
+
+    // Initialize the Secure Viewer
+    async function initReader() {
+      try {
+        // Fetch the temporary Cloudflare R2 Presigned URL
+        const res = await authedFetch(`/books/${bookId}/read-url`);
+        const data = res.json ? await res.json() : res;
+
+        if (!data.url) throw new Error("Could not retrieve secure URL.");
+
+        // Hand URL over to Mozilla PDF.js
+        const loadingTask = pdfjsLib.getDocument(data.url);
+        pdfDoc = await loadingTask.promise;
+        
+        document.getElementById('page-count').textContent = pdfDoc.numPages;
+        spinner.style.display = "none";
+        canvas.style.display = "block";
+        
+        renderPage(pageNum);
+      } catch(err) {
+        spinner.style.display = "none";
+        alert("Failed to load book. Make sure you are authenticated and have purchased access.");
+        window.close();
+      }
+    }
+
+    initReader();
+  </script>
+</body>
+</html>

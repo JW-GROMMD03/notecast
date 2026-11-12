@@ -73,9 +73,15 @@ def _is_storage_key(value: Optional[str]) -> bool:
     return bool(value) and (value.startswith("books/") or "/" in value)
 
 
+def _is_admin_user(user: models.User) -> bool:
+    """Strictly evaluates admin status to prevent string 'false' from becoming True."""
+    val = getattr(user, "is_admin", False)
+    return val is True or str(val).lower() == "true"
+
+
 def verify_book_access(db: Session, user: models.User, book_id: str) -> bool:
     """Returns True if the user is an admin or has an active purchase record for the book."""
-    if getattr(user, "is_admin", False):
+    if _is_admin_user(user):
         return True
     
     try:
@@ -376,7 +382,7 @@ def get_book_store_catalog(
         except Exception as purchase_err:
             logger.warning("Could not resolve book purchases for user: %s", str(purchase_err))
 
-        is_admin = bool(getattr(user, "is_admin", False))
+        is_admin = _is_admin_user(user)
 
         return [
             {
