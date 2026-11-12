@@ -466,6 +466,9 @@ class Book(Base):
     )  # Admin/Uploader reference
     title = Column(String, index=True, nullable=False)
     
+    # NEW Field category
+    field = Column(String, index=True, nullable=True)
+    
     # Course variations
     course = Column(String, index=True, nullable=True)
     course_name = Column(String, index=True, nullable=True)

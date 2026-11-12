@@ -3,6 +3,80 @@ import { authedFetch, requireAuth, logout, checkExtensionInstalled, CHROME_STORE
 
 let user = null;
 
+// --- CASCADING STORE CONFIGURATION (NEW) ---
+const BOOK_CATEGORIES = {
+  "Technology & Computing": [
+      "Computer Science", "Software Engineering", "Data Engineering", "Cybersecurity", 
+      "Information Technology", "Artificial Intelligence", "Network Engineering", 
+      "Web Development", "Cloud Computing", "Machine Learning", "Information Systems"
+  ],
+  "Medicine & Health": [
+      "Nursing", "Medicine and Surgery", "Clinical Medicine", "Pharmacy", 
+      "Dentistry", "Public Health", "Biomedical Science", "Radiography", 
+      "Physiotherapy", "Medical Laboratory Science", "Nutrition and Dietetics"
+  ],
+  "Education & Teaching": [
+      "Mathematics Education", "English and Literature", "Kiswahili", "French", 
+      "Computer Studies", "General Science", "Physics Education", "Chemistry Education", 
+      "Biology Education", "Early Childhood Education", "Special Needs Education", "Physical Education"
+  ],
+  "Business & Commerce": [
+      "Accounting", "Finance", "Business Administration", "Marketing", 
+      "Human Resource Management", "E-commerce", "Economics", 
+      "Supply Chain Management", "Entrepreneurship", "Actuarial Science", "Banking"
+  ],
+  "Engineering": [
+      "Civil Engineering", "Mechanical Engineering", "Electrical Engineering", 
+      "Chemical Engineering", "Aerospace Engineering", "Mechatronics", 
+      "Biomedical Engineering", "Automotive Engineering", "Agricultural Engineering"
+  ],
+  "Law & Legal Studies": [
+      "Commercial Law", "Criminal Law", "International Law", 
+      "Constitutional Law", "Human Rights Law", "Intellectual Property Law", "Family Law"
+  ],
+  "Arts & Humanities": [
+      "History", "Geography", "Sociology", "Psychology", "Philosophy", 
+      "Political Science", "Theology", "Anthropology", "Communication Studies", "Journalism"
+  ],
+  "Architecture & Design": [
+      "Architecture", "Interior Design", "Urban Planning", 
+      "Landscape Architecture", "Graphic Design", "Industrial Design", "Fashion Design"
+  ],
+  "Agriculture & Environmental": [
+      "Agriculture", "Environmental Science", "Forestry", 
+      "Veterinary Medicine", "Agribusiness", "Horticulture", "Marine Biology"
+  ]
+};
+
+function initStoreFilters() {
+  const fieldSelect = document.getElementById('storeFieldFilter');
+  if (!fieldSelect) return;
+  const fields = Object.keys(BOOK_CATEGORIES).sort();
+  
+  let html = '<option value="">-- All Fields --</option>';
+  fields.forEach(f => {
+      html += `<option value="${f}">${f}</option>`;
+  });
+  fieldSelect.innerHTML = html;
+  
+  fieldSelect.addEventListener('change', updateStoreCourses);
+}
+
+function updateStoreCourses() {
+  const fieldId = document.getElementById('storeFieldFilter').value;
+  const courseSelect = document.getElementById('storeCourseFilter');
+  if (!courseSelect) return;
+  
+  courseSelect.innerHTML = '<option value="">-- All Courses --</option>';
+  
+  if (fieldId && BOOK_CATEGORIES[fieldId]) {
+      const courses = BOOK_CATEGORIES[fieldId].sort();
+      courses.forEach(c => {
+          courseSelect.innerHTML += `<option value="${c}">${c}</option>`;
+      });
+  }
+}
+
 // --- PLANS CATALOG (Updated to Weekly 100 KES) ---
 const PLANS_CATALOG = {
   "ECONOMY_NOTE": { amount: 50, name: "Economy Note Token (Pay-As-You-Go)" },
@@ -755,13 +829,12 @@ async function loadCustomerLibraryAndPurchases() {
 }
 
 
-
 // --- BOOK STORE CATALOG LOADER ---
-async function loadBookStoreCatalog(course = '', unit = '') {
+async function loadBookStoreCatalog(field = '', course = '', unit = '') {
   const grid = document.getElementById("bookStoreGrid");
   if (!grid) return;
   
-  // FIX: Apply a responsive grid layout directly to the container so cards don't stretch full width
+  // Apply a responsive grid layout directly to the container so cards don't stretch full width
   grid.style.display = "grid";
   grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(240px, 1fr))";
   grid.style.gap = "24px";
@@ -770,6 +843,7 @@ async function loadBookStoreCatalog(course = '', unit = '') {
   try {
     let url = "/books/store?";
     const params = new URLSearchParams();
+    if (field) params.append("field", field);
     if (course) params.append("course", course);
     if (unit) params.append("unit", unit);
     
@@ -787,7 +861,6 @@ async function loadBookStoreCatalog(course = '', unit = '') {
       const actionText = b.owned ? "Read Now" : `Buy (KES ${b.price})`;
       const actionColor = b.owned ? "background: #10b981;" : "background: #3b82f6;";
 
-      // FIX: Taller image container (260px) and proper object-fit for book aspect ratio
       return `
         <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-card, #1e293b); border: 1px solid #334155; border-radius: 12px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
           <div>
@@ -841,9 +914,10 @@ window.handleBookAction = async function(event, bookId, isOwned, price, title) {
 
 // Hook up filter button
 document.getElementById("filterBooksBtn")?.addEventListener("click", () => {
-  const course = document.getElementById("bookSearchCourse").value.trim();
-  const unit = document.getElementById("bookSearchUnit").value.trim();
-  loadBookStoreCatalog(course, unit);
+  const field = document.getElementById("storeFieldFilter").value;
+  const course = document.getElementById("storeCourseFilter").value;
+  const unit = document.getElementById("storeUnitFilter").value.trim();
+  loadBookStoreCatalog(field, course, unit);
 });
 
 
@@ -900,6 +974,10 @@ document.getElementById("referralOptInForm")?.addEventListener("submit", async (
 // --- INIT ENGINE ---
 async function init() {
   user = await requireAuth();
+  
+  // Initialize newly added cascading dropdowns for the Store tab
+  initStoreFilters();
+
   if(document.getElementById("userName")) document.getElementById("userName").textContent = user.display_name || user.email;
   if(document.getElementById("userPlanBadge")) document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan || 'Free'}`;
   
