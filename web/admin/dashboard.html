@@ -382,7 +382,35 @@
                         </tbody>
                     </table>
                 </div>
-            </div>
+                <!-- 📚 BOOK INVENTORY MANAGEMENT SECTION -->
+<div class="card" style="margin-bottom: 2rem;">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color, #334155); padding-bottom: 1rem; margin-bottom: 1rem;">
+        <h3 class="card-title" style="margin: 0; font-size: 1.1rem; color: #38bdf8;">📚 Store Inventory Management</h3>
+        <!-- Live Total Counter -->
+        <span id="totalBooksCounter" style="background: #3b82f6; color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: 700; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+            Total Books: 0
+        </span>
+    </div>
+    
+    <div class="table-responsive">
+        <table class="table" style="width: 100%; text-align: left; border-collapse: collapse;">
+            <thead>
+                <tr style="color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; border-bottom: 1px solid #334155;">
+                    <th style="padding: 12px 8px;">Book Title</th>
+                    <th style="padding: 12px 8px;">Course & Unit</th>
+                    <th style="padding: 12px 8px;">Price</th>
+                    <th style="padding: 12px 8px;">Added By</th>
+                    <th style="padding: 12px 8px;">Status</th>
+                    <th style="padding: 12px 8px; text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="adminInventoryTableBody">
+                <tr><td colspan="6" style="text-align: center; padding: 20px; color: #94a3b8;">Loading inventory...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+            
 
             <!-- PANEL 5: Broadcast & Emails -->
             <div id="broadcast-panel" class="dashboard-panel" style="display: none;">
@@ -851,6 +879,90 @@
                 if (txBody) txBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--danger);">Failed to load library audit records.</td></tr>';
             }
         }
+
+        // --- LOAD INVENTORY & UPDATE TOTAL COUNTER ---
+async function loadAdminBookInventory() {
+    const tbody = document.getElementById("adminInventoryTableBody");
+    const counter = document.getElementById("totalBooksCounter");
+    if (!tbody) return;
+
+    try {
+        const res = await authedFetch("/books/admin/inventory");
+        let books = res.json ? await res.json() : res;
+
+        // Update the live total counter without manual counting
+        if (counter) {
+            counter.textContent = `Total Books: ${books.length}`;
+        }
+
+        if (!Array.isArray(books) || books.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: #94a3b8;">No books currently in the store.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = books.map(b => {
+            const statusColor = b.status === 'SUSPENDED' ? 'background: rgba(239, 68, 68, 0.1); color: #f87171; border: 1px solid #ef4444;' : 'background: rgba(16, 185, 129, 0.1); color: #34d399; border: 1px solid #10b981;';
+            
+            return `
+            <tr style="border-bottom: 1px solid #1e293b;">
+                <td style="padding: 12px 8px;">
+                    <strong style="color: #f8fafc; font-size: 0.9rem;">${b.title}</strong><br>
+                    <small style="color: #64748b; font-family: monospace;">ID: ${b.id.substring(0, 8)}...</small>
+                </td>
+                <td style="padding: 12px 8px; font-size: 0.85rem; color: #cbd5e1;">
+                    ${b.course}<br><span style="color: #94a3b8;">${b.unit}</span>
+                </td>
+                <td style="padding: 12px 8px; font-weight: 600; color: #38bdf8;">KES ${b.price}</td>
+                <td style="padding: 12px 8px; font-size: 0.85rem; color: #cbd5e1;">${b.admin_email}</td>
+                <td style="padding: 12px 8px;">
+                    <span style="padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; ${statusColor}">
+                        ${b.status}
+                    </span>
+                </td>
+                <td style="padding: 12px 8px; text-align: right;">
+                    <button onclick="adminEditBook('${b.id}', '${b.title.replace(/'/g, "\\'")}')" style="background: #f59e0b; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; margin-right: 4px;">Edit</button>
+                    <button onclick="adminSuspendBook('${b.id}')" style="background: #64748b; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; margin-right: 4px;">${b.status === 'ACTIVE' ? 'Suspend' : 'Activate'}</button>
+                    <button onclick="adminDeleteBook('${b.id}')" style="background: #ef4444; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 0.75rem; cursor: pointer;">Delete</button>
+                </td>
+            </tr>
+            `;
+        }).join("");
+
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: #ef4444;">Failed to load inventory data.</td></tr>`;
+    }
+}
+
+// --- ACTION LOGIC ---
+window.adminDeleteBook = async function(bookId) {
+    if (!confirm("Are you sure you want to permanently delete this book from the database and Cloudflare storage? This cannot be undone.")) return;
+    
+    try {
+        await authedFetch(`/books/admin/${bookId}`, { method: "DELETE" });
+        loadAdminBookInventory(); // Refresh table and counter immediately
+    } catch (err) {
+        alert("Failed to delete book: " + (err.message || "Unknown error"));
+    }
+};
+
+window.adminSuspendBook = async function(bookId) {
+    if (!confirm("Toggle the visibility/status of this book?")) return;
+    
+    try {
+        await authedFetch(`/books/admin/${bookId}/toggle-status`, { method: "PATCH" });
+        loadAdminBookInventory(); // Refresh table to show new status
+    } catch (err) {
+        alert("Failed to change status: " + (err.message || "Unknown error"));
+    }
+};
+
+window.adminEditBook = function(bookId, title) {
+    // Placeholder for Edit Modal - you can expand this to populate an edit form
+    alert(`Edit panel for "${title}" (ID: ${bookId}) is opening...\n\n(Connect this to your edit modal form)`);
+};
+
+// Add this to your page initialization sequence (where you load other admin tables):
+loadAdminBookInventory();
 
 async function submitAddBook() {
     const title = document.getElementById('bookTitle').value;

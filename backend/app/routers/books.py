@@ -216,3 +216,52 @@ def book_read_url(
         ExpiresIn=300,  # 5 minutes
     )
     return {"url": url}
+
+
+# Add to the bottom of routers/books.py
+
+@router.get("/admin/inventory")
+def admin_book_inventory(
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(auth.get_current_admin),
+):
+    """Fetches all books in the store along with the admin who uploaded them."""
+    # Outer join to get the email of the admin who uploaded the book
+    results = db.query(models.Book, models.User.email).outerjoin(
+        models.User, models.Book.user_id == models.User.id
+    ).order_by(models.Book.created_at.desc()).all()
+    
+    return [
+        {
+            "id": b.id,
+            "title": b.title,
+            "course": b.course,
+            "unit": b.unit,
+            "price": b.price,
+            "status": getattr(b, "status", "ACTIVE"), 
+            "admin_email": email or "Unknown Admin",
+            "created_at": b.created_at.isoformat() if b.created_at else None
+        }
+        for b, email in results
+    ]
+
+@router.patch("/admin/{book_id}/toggle-status")
+def admin_toggle_book_status(
+    book_id: str,
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(auth.get_current_admin),
+):
+    """Suspends or activates a book in the store."""
+    book = db.query(models.Book).filter(models.Book.id == book_id).first()
+    if not book:
+        raise HTTPException(404, "Book not found")
+    
+    # If you don't have a status column in models.Book yet, this safely uses a fallback
+    current_status = getattr(book, "status", "ACTIVE")
+    new_status = "SUSPENDED" if current_status == "ACTIVE" else "ACTIVE"
+    
+    if hasattr(book, "status"):
+        book.status = new_status
+        db.commit()
+        
+    return {"status": "SUCCESS", "new_status": new_status}
