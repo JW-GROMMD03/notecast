@@ -476,6 +476,9 @@ class Book(Base):
     
     price = Column(Float, nullable=False, default=0.0)
     
+    # Inventory status tracking
+    status = Column(String, default="ACTIVE", nullable=False)
+
     # File URL variations
     book_file_url = Column(String, nullable=True)
     file_url = Column(String, nullable=True)
