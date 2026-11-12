@@ -78,16 +78,19 @@ def verify_book_access(db: Session, user: models.User, book_id: str) -> bool:
     if getattr(user, "is_admin", False):
         return True
     
-    purchase = (
-        db.query(models.BookPurchase)
-        .filter(
-            models.BookPurchase.user_id == user.id,
-            models.BookPurchase.book_id == book_id,
-            models.BookPurchase.status == "COMPLETED"
+    try:
+        purchase = (
+            db.query(models.BookPurchase)
+            .filter(
+                models.BookPurchase.user_id == user.id,
+                models.BookPurchase.book_id == book_id,
+                models.BookPurchase.status == "COMPLETED"
+            )
+            .first()
         )
-        .first()
-    )
-    return purchase is not None
+        return purchase is not None
+    except Exception:
+        return False
 
 
 # =====================================================================
@@ -134,7 +137,6 @@ def admin_upload_book(
     cover_storage_key = f"books/covers/{uuid.uuid4().hex}{cover_ext}" if has_cover else None
 
     try:
-        # Upload main document to R2
         s3.upload_fileobj(
             book_file.file,
             R2_BUCKET,
@@ -142,7 +144,6 @@ def admin_upload_book(
             ExtraArgs={"ContentType": ALLOWED_DOC_TYPES[doc_ext]}
         )
         
-        # Upload cover photo if provided
         if cover_storage_key and cover_photo:
             s3.upload_fileobj(
                 cover_photo.file,
@@ -238,8 +239,7 @@ def admin_delete_book(
     if not book:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found.")
 
-    # Remove files from R2 storage bucket
-    for key in (book.file_url, book.cover_url):
+    for key in (getattr(book, "file_url", None), getattr(book, "cover_url", None)):
         if _is_storage_key(key):
             try:
                 s3.delete_object(Bucket=R2_BUCKET, Key=key)
@@ -269,14 +269,14 @@ def admin_book_inventory(
         {
             "id": b.id,
             "title": b.title,
-            "field": b.field or "Technology",
-            "course": b.course or "General",
-            "unit": b.unit or "General",
+            "field": getattr(b, "field", "Technology"),
+            "course": getattr(b, "course", "General"),
+            "unit": getattr(b, "unit", "General"),
             "price": b.price,
             "description": getattr(b, "description", ""),
             "status": getattr(b, "status", "ACTIVE"),
             "admin_email": email or "System Admin",
-            "created_at": b.created_at.isoformat() if b.created_at else None,
+            "created_at": b.created_at.isoformat() if getattr(b, "created_at", None) else None,
         }
         for b, email in results
     ]
@@ -321,75 +321,96 @@ def get_book_store_catalog(
     """Returns active books with hierarchical field & course filtering and ownership status."""
     from sqlalchemy import or_
     
-    # Flexible query supporting multiple file_url schema variations
-    query = db.query(models.Book).filter(
-        or_(
-            models.Book.file_url.isnot(None),
-            models.Book.book_file_url.isnot(None),
-            models.Book.file.isnot(None)
+    try:
+        # Base query safely loading all books without strict file column filters
+        query = db.query(models.Book)
+
+        # Exclude suspended books if status column exists
+        if hasattr(models.Book, "status"):
+            query = query.filter((models.Book.status == None) | (models.Book.status == "ACTIVE"))
+
+        # Apply hierarchical filters safely
+        if field and field.upper() != "ALL":
+            if hasattr(models.Book, "field"):
+                query = query.filter(models.Book.field.ilike(f"%{field}%"))
+        if course and course.upper() != "ALL":
+            if hasattr(models.Book, "course"):
+                query = query.filter(
+                    or_(
+                        models.Book.course.ilike(f"%{course}%"),
+                        models.Book.course_name.ilike(f"%{course}%") if hasattr(models.Book, "course_name") else False
+                    )
+                )
+        if unit and unit.upper() != "ALL":
+            if hasattr(models.Book, "unit"):
+                query = query.filter(
+                    or_(
+                        models.Book.unit.ilike(f"%{unit}%"),
+                        models.Book.unit_module.ilike(f"%{unit}%") if hasattr(models.Book, "unit_module") else False
+                    )
+                )
+        if search:
+            search_pattern = f"%{search}%"
+            search_filters = [models.Book.title.ilike(search_pattern)]
+            if hasattr(models.Book, "description"):
+                search_filters.append(models.Book.description.ilike(search_pattern))
+            if hasattr(models.Book, "course"):
+                search_filters.append(models.Book.course.ilike(search_pattern))
+            query = query.filter(or_(*search_filters))
+
+        books = query.order_by(models.Book.created_at.desc()).all() if hasattr(models.Book, "created_at") else query.all()
+
+        # Determine user's owned books safely
+        owned_book_ids = set()
+        try:
+            if hasattr(models, "BookPurchase"):
+                purchases = (
+                    db.query(models.BookPurchase.book_id)
+                    .filter(
+                        models.BookPurchase.user_id == user.id,
+                        models.BookPurchase.status == "COMPLETED"
+                    )
+                    .all()
+                )
+                owned_book_ids = {row.book_id for row in purchases}
+        except Exception as purchase_err:
+            logger.warning("Could not resolve book purchases for user: %s", str(purchase_err))
+
+        is_admin = bool(getattr(user, "is_admin", False))
+
+        return [
+            {
+                "id": b.id,
+                "title": getattr(b, "title", "Untitled"),
+                "field": getattr(b, "field", None) or "Technology",
+                "course": getattr(b, "course", None) or getattr(b, "course_name", None) or "General",
+                "unit": getattr(b, "unit", None) or getattr(b, "unit_module", None) or "General",
+                "price": getattr(b, "price", 0.0),
+                "description": getattr(b, "description", None) or "",
+                "owned": is_admin or b.id in owned_book_ids,
+                "cover_url": f"/api/books/{b.id}/cover" if _is_storage_key(getattr(b, "cover_url", None) or getattr(b, "cover_photo_url", None) or getattr(b, "cover", None)) else None,
+            }
+            for b in books
+        ]
+    except Exception as e:
+        logger.exception("Error in get_book_store_catalog: %s", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load book store inventory: {str(e)}"
         )
-    )
-
-    # Exclude suspended books if status column exists
-    if hasattr(models.Book, "status"):
-        query = query.filter((models.Book.status == None) | (models.Book.status == "ACTIVE"))
-
-    # Apply hierarchical filters
-    if field and field.upper() != "ALL":
-        query = query.filter(models.Book.field.ilike(f"%{field}%"))
-    if course and course.upper() != "ALL":
-        query = query.filter(models.Book.course.ilike(f"%{course}%"))
-    if unit and unit.upper() != "ALL":
-        query = query.filter(models.Book.unit.ilike(f"%{unit}%"))
-    if search:
-        search_pattern = f"%{search}%"
-        query = query.filter(
-            or_(
-                models.Book.title.ilike(search_pattern),
-                models.Book.description.ilike(search_pattern),
-                models.Book.course.ilike(search_pattern)
-            )
-        )
-
-    books = query.order_by(models.Book.created_at.desc()).all()
-
-    # Determine user's owned books
-    owned_book_ids = {
-        row.book_id
-        for row in db.query(models.BookPurchase.book_id)
-        .filter(
-            models.BookPurchase.user_id == user.id,
-            models.BookPurchase.status == "COMPLETED"
-        )
-        .all()
-    }
-    is_admin = bool(getattr(user, "is_admin", False))
-
-    return [
-        {
-            "id": b.id,
-            "title": b.title,
-            "field": b.field or "Technology",
-            "course": b.course or "General",
-            "unit": b.unit or "General",
-            "price": b.price,
-            "description": b.description,
-            "owned": is_admin or b.id in owned_book_ids,
-            "cover_url": f"/api/books/{b.id}/cover" if _is_storage_key(b.cover_url or b.cover_photo_url) else None,
-        }
-        for b in books
-    ]
 
 
 @router.get("/{book_id}/cover")
 def get_book_cover_image(book_id: str, db: Session = Depends(get_db)):
     """Streams book cover photo securely from R2 storage."""
     book = db.query(models.Book).filter(models.Book.id == book_id).first()
-    if not book or not _is_storage_key(book.cover_url):
+    cover_key = getattr(book, "cover_url", None) or getattr(book, "cover_photo_url", None) or getattr(book, "cover", None)
+    
+    if not book or not _is_storage_key(cover_key):
         raise HTTPException(status_code=404, detail="Cover image not found.")
 
     try:
-        r2_object = s3.get_object(Bucket=R2_BUCKET, Key=book.cover_url)
+        r2_object = s3.get_object(Bucket=R2_BUCKET, Key=cover_key)
     except Exception:
         raise HTTPException(status_code=404, detail="Cover object missing in storage.")
 
@@ -408,7 +429,9 @@ def get_secure_book_read_url(
 ):
     """Generates a time-limited presigned URL for reading purchased books."""
     book = db.query(models.Book).filter(models.Book.id == book_id).first()
-    if not book or not _is_storage_key(book.file_url):
+    file_key = getattr(book, "file_url", None) or getattr(book, "book_file_url", None) or getattr(book, "file", None)
+
+    if not book or not _is_storage_key(file_key):
         raise HTTPException(status_code=404, detail="Book document not found.")
 
     if not verify_book_access(db, user, book_id):
@@ -422,7 +445,7 @@ def get_secure_book_read_url(
             "get_object",
             Params={
                 "Bucket": R2_BUCKET,
-                "Key": book.file_url,
+                "Key": file_key,
                 "ResponseContentDisposition": "inline"
             },
             ExpiresIn=300  # URL valid for 5 minutes
