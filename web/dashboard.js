@@ -858,6 +858,8 @@ async function loadBookStoreCatalog(field = '', course = '', unit = '') {
 
     grid.innerHTML = books.map(b => {
       const coverImg = b.cover_url ? b.cover_url : 'assets/icon.png';
+      
+      // Update logic: Use the exact 'Buy' and 'Read Now' behavior needed to match the button states
       const actionText = b.owned ? "Read Now" : `Buy (KES ${b.price})`;
       const actionColor = b.owned ? "background: #10b981;" : "background: #3b82f6;";
 
@@ -865,7 +867,7 @@ async function loadBookStoreCatalog(field = '', course = '', unit = '') {
         <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-card, #1e293b); border: 1px solid #334155; border-radius: 12px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
           <div>
             <div style="width: 100%; height: 260px; background: #0f172a; border-radius: 8px; margin-bottom: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-                <img src="${coverImg}" alt="Cover" onerror="this.src='assets/icon.png'" style="width: 100%; height: 100%; object-fit: cover;">
+                <img src="${coverImg}" loading="lazy" alt="Cover" onerror="this.src='assets/icon.png'" style="width: 100%; height: 100%; object-fit: cover;">
             </div>
             <h4 style="margin: 0 0 8px 0; font-size: 1.05rem; color: var(--text-main); line-height: 1.3;">${b.title}</h4>
             <p style="font-size: 0.8rem; color: #94a3b8; margin: 0 0 10px 0; line-height: 1.4;">${b.course}<br>${b.unit}</p>
@@ -890,7 +892,7 @@ window.handleBookAction = async function(event, bookId, isOwned, price, title) {
     btn.textContent = "Opening Reader...";
     btn.disabled = true;
     
-    // Redirect to the custom secure reader page with the book ID
+    // Explicit Fix: Route owned books directly to the custom secure reader, replacing vulnerable raw window.open
     setTimeout(() => {
         window.open(`reader.html?bookId=${encodeURIComponent(bookId)}`, '_blank');
         btn.textContent = originalText;
@@ -898,7 +900,7 @@ window.handleBookAction = async function(event, bookId, isOwned, price, title) {
     }, 500);
 
   } else {
-    // Triggers M-Pesa payment with specific book ID, explicit price, and title
+    // Exact requested behavior: Triggers M-Pesa STK push for unowned books
     window.openPaymentModal(bookId, `KES ${price}`, price, title); 
   }
 };

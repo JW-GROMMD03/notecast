@@ -5,6 +5,7 @@ Note: R2 bucket remains PRIVATE. DB columns file_url / cover_url store R2 object
 import logging
 import os
 import uuid
+import json
 from typing import Optional, List
 
 import boto3
@@ -22,6 +23,20 @@ logger = logging.getLogger("notecast_books")
 
 R2_BUCKET = os.getenv("R2_BUCKET_NAME", "notecast-books")
 MIN_PRICE = 150  # Minimum book price in KES
+
+# Initialize Redis (Speed Optimization)
+try:
+    import redis
+    REDIS_AVAILABLE = True
+    redis_client = redis.Redis(
+        host=os.getenv("REDIS_HOST", "localhost"),
+        port=int(os.getenv("REDIS_PORT", 6379)),
+        db=0,
+        decode_responses=True
+    )
+except ImportError:
+    REDIS_AVAILABLE = False
+    logger.warning("Redis not installed. Catalog caching disabled. Run: pip install redis")
 
 # Initialize Cloudflare R2 / S3 Client
 s3 = boto3.client(
@@ -74,7 +89,7 @@ def _is_storage_key(value: Optional[str]) -> bool:
 
 
 def _is_admin_user(user: models.User) -> bool:
-    """Strictly evaluates admin status to prevent string 'false' from becoming True."""
+    """Strictly evaluates admin status to prevent string 'false' from bypassing purchases."""
     val = getattr(user, "is_admin", False)
     return val is True or str(val).lower() == "true"
 
@@ -99,6 +114,16 @@ def verify_book_access(db: Session, user: models.User, book_id: str) -> bool:
         return False
 
 
+def _invalidate_catalog_cache():
+    """Clears cached book catalog endpoints when inventory changes."""
+    if REDIS_AVAILABLE:
+        try:
+            for key in redis_client.scan_iter("catalog:*"):
+                redis_client.delete(key)
+        except Exception as e:
+            logger.warning("Cache invalidation failed: %s", str(e))
+
+
 # =====================================================================
 # 1. ADMIN UPLOAD & MANAGEMENT ENDPOINTS
 # =====================================================================
@@ -117,27 +142,17 @@ def admin_upload_book(
     db: Session = Depends(get_db),
     admin: models.User = Depends(auth.get_current_admin),
 ):
-    """Admin endpoint to upload new study materials with Field & Course hierarchy."""
     if price < MIN_PRICE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Minimum book price is {MIN_PRICE} KES."
-        )
+        raise HTTPException(status_code=400, detail=f"Minimum book price is {MIN_PRICE} KES.")
 
     doc_ext = _get_file_extension(book_file.filename)
     if doc_ext not in ALLOWED_DOC_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid document format. Allowed types: PDF, DOC, DOCX."
-        )
+        raise HTTPException(status_code=400, detail="Invalid document format. Allowed types: PDF, DOC, DOCX.")
 
     has_cover = bool(cover_photo and cover_photo.filename)
     cover_ext = _get_file_extension(cover_photo.filename) if has_cover else ""
     if has_cover and cover_ext not in ALLOWED_IMG_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid cover image format. Allowed: JPG, PNG, WEBP."
-        )
+        raise HTTPException(status_code=400, detail="Invalid cover image format. Allowed: JPG, PNG, WEBP.")
 
     doc_storage_key = f"books/documents/{uuid.uuid4().hex}{doc_ext}"
     cover_storage_key = f"books/covers/{uuid.uuid4().hex}{cover_ext}" if has_cover else None
@@ -149,7 +164,6 @@ def admin_upload_book(
             doc_storage_key,
             ExtraArgs={"ContentType": ALLOWED_DOC_TYPES[doc_ext]}
         )
-        
         if cover_storage_key and cover_photo:
             s3.upload_fileobj(
                 cover_photo.file,
@@ -158,11 +172,8 @@ def admin_upload_book(
                 ExtraArgs={"ContentType": ALLOWED_IMG_TYPES[cover_ext]}
             )
     except Exception as e:
-        logger.exception("Cloudflare R2 upload transmission error: %s", str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Storage upload failed: {str(e)}"
-        )
+        logger.exception("Cloudflare R2 upload error: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Storage upload failed: {str(e)}")
 
     try:
         new_book = models.Book(
@@ -180,21 +191,12 @@ def admin_upload_book(
         db.add(new_book)
         db.commit()
         db.refresh(new_book)
+        _invalidate_catalog_cache()
     except Exception as db_err:
         db.rollback()
-        logger.exception("Database persistence error during book upload: %s", str(db_err))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not persist book record in database."
-        )
+        raise HTTPException(status_code=500, detail="Could not persist book record in database.")
 
-    return {
-        "status": "SUCCESS",
-        "message": "Book uploaded successfully",
-        "book_id": new_book.id,
-        "field": new_book.field,
-        "course": new_book.course
-    }
+    return {"status": "SUCCESS", "message": "Book uploaded successfully", "book_id": new_book.id}
 
 
 @router.put("/admin/{book_id}")
@@ -205,31 +207,23 @@ def admin_update_book(
     db: Session = Depends(get_db),
     admin: models.User = Depends(auth.get_current_admin),
 ):
-    """Updates book metadata, pricing, or academic hierarchy."""
     book = db.query(models.Book).filter(models.Book.id == book_id).first()
     if not book:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found.")
+        raise HTTPException(status_code=404, detail="Book not found.")
 
-    if payload.title is not None:
-        book.title = payload.title.strip()
-    if payload.field is not None:
-        book.field = payload.field.strip()
-    if payload.course is not None:
-        book.course = payload.course.strip()
-    if payload.unit is not None:
-        book.unit = payload.unit.strip()
-    if payload.description is not None:
-        book.description = payload.description.strip()
+    if payload.title is not None: book.title = payload.title.strip()
+    if payload.field is not None: book.field = payload.field.strip()
+    if payload.course is not None: book.course = payload.course.strip()
+    if payload.unit is not None: book.unit = payload.unit.strip()
+    if payload.description is not None: book.description = payload.description.strip()
     if payload.price is not None:
         if payload.price < MIN_PRICE:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Minimum price is {MIN_PRICE} KES."
-            )
+            raise HTTPException(status_code=400, detail=f"Minimum price is {MIN_PRICE} KES.")
         book.price = payload.price
 
     db.commit()
     db.refresh(book)
+    _invalidate_catalog_cache()
     return {"status": "SUCCESS", "message": "Book updated successfully", "book_id": book.id}
 
 
@@ -240,10 +234,9 @@ def admin_delete_book(
     db: Session = Depends(get_db),
     admin: models.User = Depends(auth.get_current_admin),
 ):
-    """Deletes a book record and cleans up associated R2 storage objects."""
     book = db.query(models.Book).filter(models.Book.id == book_id).first()
     if not book:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found.")
+        raise HTTPException(status_code=404, detail="Book not found.")
 
     for key in (getattr(book, "file_url", None), getattr(book, "cover_url", None)):
         if _is_storage_key(key):
@@ -254,6 +247,7 @@ def admin_delete_book(
 
     db.delete(book)
     db.commit()
+    _invalidate_catalog_cache()
     return {"status": "SUCCESS", "message": "Book and storage objects deleted."}
 
 
@@ -263,7 +257,6 @@ def admin_book_inventory(
     db: Session = Depends(get_db),
     admin: models.User = Depends(auth.get_current_admin),
 ):
-    """Retrieves full inventory including uploader info and status for admin tables."""
     results = (
         db.query(models.Book, models.User.email)
         .outerjoin(models.User, models.Book.user_id == models.User.id)
@@ -295,10 +288,9 @@ def admin_toggle_book_status(
     db: Session = Depends(get_db),
     admin: models.User = Depends(auth.get_current_admin),
 ):
-    """Toggles book visibility between ACTIVE and SUSPENDED."""
     book = db.query(models.Book).filter(models.Book.id == book_id).first()
     if not book:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found.")
+        raise HTTPException(status_code=404, detail="Book not found.")
 
     current_status = getattr(book, "status", "ACTIVE")
     new_status = "SUSPENDED" if current_status == "ACTIVE" else "ACTIVE"
@@ -306,6 +298,7 @@ def admin_toggle_book_status(
     if hasattr(book, "status"):
         book.status = new_status
         db.commit()
+        _invalidate_catalog_cache()
 
     return {"status": "SUCCESS", "book_id": book.id, "new_status": new_status}
 
@@ -324,86 +317,106 @@ def get_book_store_catalog(
     db: Session = Depends(get_db),
     user: models.User = Depends(auth.get_current_user),
 ):
-    """Returns active books with hierarchical field & course filtering and ownership status."""
     from sqlalchemy import or_
     
-    try:
-        # Base query safely loading all books without strict file column filters
-        query = db.query(models.Book)
-
-        # Exclude suspended books if status column exists
-        if hasattr(models.Book, "status"):
-            query = query.filter((models.Book.status == None) | (models.Book.status == "ACTIVE"))
-
-        # Apply hierarchical filters safely
-        if field and field.upper() != "ALL":
-            if hasattr(models.Book, "field"):
-                query = query.filter(models.Book.field.ilike(f"%{field}%"))
-        if course and course.upper() != "ALL":
-            if hasattr(models.Book, "course"):
-                query = query.filter(
-                    or_(
-                        models.Book.course.ilike(f"%{course}%"),
-                        models.Book.course_name.ilike(f"%{course}%") if hasattr(models.Book, "course_name") else False
-                    )
-                )
-        if unit and unit.upper() != "ALL":
-            if hasattr(models.Book, "unit"):
-                query = query.filter(
-                    or_(
-                        models.Book.unit.ilike(f"%{unit}%"),
-                        models.Book.unit_module.ilike(f"%{unit}%") if hasattr(models.Book, "unit_module") else False
-                    )
-                )
-        if search:
-            search_pattern = f"%{search}%"
-            search_filters = [models.Book.title.ilike(search_pattern)]
-            if hasattr(models.Book, "description"):
-                search_filters.append(models.Book.description.ilike(search_pattern))
-            if hasattr(models.Book, "course"):
-                search_filters.append(models.Book.course.ilike(search_pattern))
-            query = query.filter(or_(*search_filters))
-
-        books = query.order_by(models.Book.created_at.desc()).all() if hasattr(models.Book, "created_at") else query.all()
-
-        # Determine user's owned books safely
-        owned_book_ids = set()
+    # 1. Fetch public base catalog (leveraging Redis cache)
+    cache_key = f"catalog:{field or 'ALL'}:{course or 'ALL'}:{unit or 'ALL'}:{search or ''}"
+    public_catalog = None
+    
+    if REDIS_AVAILABLE:
         try:
-            if hasattr(models, "BookPurchase"):
-                purchases = (
-                    db.query(models.BookPurchase.book_id)
-                    .filter(
-                        models.BookPurchase.user_id == user.id,
-                        models.BookPurchase.status == "COMPLETED"
+            cached = redis_client.get(cache_key)
+            if cached:
+                public_catalog = json.loads(cached)
+        except Exception as e:
+            logger.warning("Redis read error: %s", str(e))
+            
+    if not public_catalog:
+        try:
+            query = db.query(models.Book)
+            if hasattr(models.Book, "status"):
+                query = query.filter((models.Book.status == None) | (models.Book.status == "ACTIVE"))
+
+            if field and field.upper() != "ALL":
+                if hasattr(models.Book, "field"):
+                    query = query.filter(models.Book.field.ilike(f"%{field}%"))
+            if course and course.upper() != "ALL":
+                if hasattr(models.Book, "course"):
+                    query = query.filter(
+                        or_(
+                            models.Book.course.ilike(f"%{course}%"),
+                            models.Book.course_name.ilike(f"%{course}%") if hasattr(models.Book, "course_name") else False
+                        )
                     )
-                    .all()
+            if unit and unit.upper() != "ALL":
+                if hasattr(models.Book, "unit"):
+                    query = query.filter(
+                        or_(
+                            models.Book.unit.ilike(f"%{unit}%"),
+                            models.Book.unit_module.ilike(f"%{unit}%") if hasattr(models.Book, "unit_module") else False
+                        )
+                    )
+            if search:
+                search_pattern = f"%{search}%"
+                search_filters = [models.Book.title.ilike(search_pattern)]
+                if hasattr(models.Book, "description"):
+                    search_filters.append(models.Book.description.ilike(search_pattern))
+                if hasattr(models.Book, "course"):
+                    search_filters.append(models.Book.course.ilike(search_pattern))
+                query = query.filter(or_(*search_filters))
+
+            books = query.order_by(models.Book.created_at.desc()).all() if hasattr(models.Book, "created_at") else query.all()
+            
+            public_catalog = [
+                {
+                    "id": b.id,
+                    "title": getattr(b, "title", "Untitled"),
+                    "field": getattr(b, "field", None) or "Technology",
+                    "course": getattr(b, "course", None) or getattr(b, "course_name", None) or "General",
+                    "unit": getattr(b, "unit", None) or getattr(b, "unit_module", None) or "General",
+                    "price": getattr(b, "price", 0.0),
+                    "description": getattr(b, "description", None) or "",
+                    "cover_url": f"/api/books/{b.id}/cover" if _is_storage_key(getattr(b, "cover_url", None) or getattr(b, "cover_photo_url", None) or getattr(b, "cover", None)) else None,
+                }
+                for b in books
+            ]
+            
+            if REDIS_AVAILABLE:
+                try:
+                    # Cache public base catalog for 12 hours
+                    redis_client.setex(cache_key, 43200, json.dumps(public_catalog))
+                except Exception as e:
+                    logger.warning("Redis write error: %s", str(e))
+                    
+        except Exception as e:
+            logger.exception("Error loading book store inventory from database: %s", str(e))
+            raise HTTPException(status_code=500, detail="Failed to load book store inventory.")
+
+    # 2. Append per-user dynamic ownership securely
+    owned_book_ids = set()
+    try:
+        if hasattr(models, "BookPurchase"):
+            purchases = (
+                db.query(models.BookPurchase.book_id)
+                .filter(
+                    models.BookPurchase.user_id == user.id,
+                    models.BookPurchase.status == "COMPLETED"
                 )
-                owned_book_ids = {row.book_id for row in purchases}
-        except Exception as purchase_err:
-            logger.warning("Could not resolve book purchases for user: %s", str(purchase_err))
+                .all()
+            )
+            owned_book_ids = {row.book_id for row in purchases}
+    except Exception as purchase_err:
+        logger.warning("Could not resolve book purchases for user: %s", str(purchase_err))
 
-        is_admin = _is_admin_user(user)
+    is_admin = _is_admin_user(user)
+    
+    final_catalog = []
+    for b in public_catalog:
+        b_copy = b.copy()
+        b_copy["owned"] = is_admin or b_copy["id"] in owned_book_ids
+        final_catalog.append(b_copy)
 
-        return [
-            {
-                "id": b.id,
-                "title": getattr(b, "title", "Untitled"),
-                "field": getattr(b, "field", None) or "Technology",
-                "course": getattr(b, "course", None) or getattr(b, "course_name", None) or "General",
-                "unit": getattr(b, "unit", None) or getattr(b, "unit_module", None) or "General",
-                "price": getattr(b, "price", 0.0),
-                "description": getattr(b, "description", None) or "",
-                "owned": is_admin or b.id in owned_book_ids,
-                "cover_url": f"/api/books/{b.id}/cover" if _is_storage_key(getattr(b, "cover_url", None) or getattr(b, "cover_photo_url", None) or getattr(b, "cover", None)) else None,
-            }
-            for b in books
-        ]
-    except Exception as e:
-        logger.exception("Error in get_book_store_catalog: %s", str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to load book store inventory: {str(e)}"
-        )
+    return final_catalog
 
 
 @router.get("/{book_id}/cover")
@@ -423,7 +436,7 @@ def get_book_cover_image(book_id: str, db: Session = Depends(get_db)):
     return Response(
         r2_object["Body"].read(),
         media_type=r2_object.get("ContentType") or "image/jpeg",
-        headers={"Cache-Control": "public, max-age=86400"}
+        headers={"Cache-Control": "public, max-age=86400"} # Hard cache in browser for 24hr
     )
 
 
