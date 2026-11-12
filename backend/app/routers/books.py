@@ -319,7 +319,16 @@ def get_book_store_catalog(
     user: models.User = Depends(auth.get_current_user),
 ):
     """Returns active books with hierarchical field & course filtering and ownership status."""
-    query = db.query(models.Book).filter(models.Book.file_url.like("books/%"))
+    from sqlalchemy import or_
+    
+    # Flexible query supporting multiple file_url schema variations
+    query = db.query(models.Book).filter(
+        or_(
+            models.Book.file_url.isnot(None),
+            models.Book.book_file_url.isnot(None),
+            models.Book.file.isnot(None)
+        )
+    )
 
     # Exclude suspended books if status column exists
     if hasattr(models.Book, "status"):
@@ -335,9 +344,11 @@ def get_book_store_catalog(
     if search:
         search_pattern = f"%{search}%"
         query = query.filter(
-            (models.Book.title.ilike(search_pattern)) | 
-            (models.Book.description.ilike(search_pattern)) |
-            (models.Book.course.ilike(search_pattern))
+            or_(
+                models.Book.title.ilike(search_pattern),
+                models.Book.description.ilike(search_pattern),
+                models.Book.course.ilike(search_pattern)
+            )
         )
 
     books = query.order_by(models.Book.created_at.desc()).all()
@@ -364,7 +375,7 @@ def get_book_store_catalog(
             "price": b.price,
             "description": b.description,
             "owned": is_admin or b.id in owned_book_ids,
-            "cover_url": f"/api/books/{b.id}/cover" if _is_storage_key(b.cover_url) else None,
+            "cover_url": f"/api/books/{b.id}/cover" if _is_storage_key(b.cover_url or b.cover_photo_url) else None,
         }
         for b in books
     ]
