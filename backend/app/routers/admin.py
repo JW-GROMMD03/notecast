@@ -539,10 +539,14 @@ async def admin_metrics_ws(websocket: WebSocket, token: str, db: Session = Depen
             await websocket.send_json({"live_users_count": len(active_ws_connections) + 12})
             await asyncio.sleep(5)
             
-    except Exception:
-        # Gracefully handle invalid tokens or unexpected drops without 500 server crashes
+    except WebSocketDisconnect:
+        # Standard client disconnect, do nothing
+        pass
+    except Exception as e:
+        import logging
+        logging.getLogger("uvicorn.error").error(f"Admin WS metrics exception: {e}")
         try:
-            await websocket.close(code=1008)
+            await websocket.close(code=1011)
         except Exception:
             pass
     finally:
@@ -571,7 +575,6 @@ def list_all_books_admin(db: Session = Depends(get_db), admin: models.User = Dep
 async def proxy_admin_book_upload(request: Request):
     """Redirects legacy admin book POST requests to the new R2-backed books router."""
     from fastapi.responses import RedirectResponse
-    # Forward the request or notify the frontend to use /api/books/admin/upload/
     raise HTTPException(
         status_code=400, 
         detail="Please update your admin dashboard frontend to post to /api/books/admin/upload/"

@@ -218,7 +218,7 @@ def book_read_url(
     return {"url": url}
 
 
-# Add to the bottom of routers/books.py
+# In routers/books.py
 
 @router.get("/admin/inventory")
 def admin_book_inventory(
@@ -226,7 +226,6 @@ def admin_book_inventory(
     admin: models.User = Depends(auth.get_current_admin),
 ):
     """Fetches all books in the store along with the admin who uploaded them."""
-    # Outer join to get the email of the admin who uploaded the book
     results = db.query(models.Book, models.User.email).outerjoin(
         models.User, models.Book.user_id == models.User.id
     ).order_by(models.Book.created_at.desc()).all()
