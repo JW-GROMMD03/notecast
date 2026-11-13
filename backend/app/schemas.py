@@ -26,6 +26,9 @@ class ResetPasswordIn(BaseModel):
     recovery_token: str
     new_password: str = Field(min_length=8, max_length=128)
 
+class ResendOtpIn(BaseModel):
+    email: EmailStr
+
 class MessageOut(BaseModel):
     message: str
 
@@ -231,7 +234,6 @@ class AdminPayoutOut(BaseModel):
     pending_balance: float
     
 class ReferralProfileResponse(BaseModel):
-    """Specific schema to exactly match frontend dashboard expectations"""
     referral_code: str
     pending_balance: float
     total_earned: float

@@ -319,7 +319,7 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
             
         _upsert_profile(db, user_id, body.email, display_name, body.phone, body.university, getattr(body, "course", None))
         
-        # --- NEW REFERRAL LOGIC ---
+        # --- REFERRAL LOGIC ---
         ref_code = getattr(body, "referral_code", None)
         if ref_code:
             logger.info(f"Processing referral linkage for user {body.email} with code: {ref_code}")
@@ -381,6 +381,44 @@ def verify_signup_otp(body: VerifyOtpIn, db: DbSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Verification failed.")
 
     return schemas.MessageOut(message="Email successfully verified! You can now sign in.")
+
+
+# --- DYNAMIC OTP RESEND ROUTE ---
+@router.post("/resend-otp", response_model=schemas.MessageOut)
+def resend_otp(body: schemas.ResendOtpIn, request: Request, db: DbSession = Depends(get_db)):
+    ratelimit.enforce(
+        ratelimit.client_key(request, "resend_otp", body.email.lower()),
+        settings.SIGNUP_RATE_LIMIT, settings.SIGNUP_RATE_WINDOW_SEC,
+    )
+    
+    user = db.query(models.User).filter(models.User.email == body.email).first()
+    if not user:
+        # Prevent email enumeration by returning a generic success response
+        return schemas.MessageOut(message="If an account exists, a new verification code has been sent.")
+        
+    try:
+        supa_user = supabase_admin.auth.admin.get_user_by_id(user.id)
+        
+        # Verify the user actually needs an OTP and isn't already confirmed
+        if supa_user and supa_user.user and supa_user.user.email_confirmed_at:
+            raise HTTPException(status_code=400, detail="Account is already verified. Please sign in.")
+            
+        otp_code = f"{random.randint(100000, 999999)}"
+        metadata = supa_user.user.user_metadata or {} if supa_user and supa_user.user else {}
+        
+        # Inject new OTP into Supabase
+        supabase_admin.auth.admin.update_user_by_id(user.id, {"user_metadata": {**metadata, "signup_otp": otp_code}})
+        
+        # Dispatch via Brevo
+        send_brevo_otp_email(body.email, otp_code, "signup")
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Failed to resend OTP: {e}")
+        raise HTTPException(status_code=500, detail="Failed to resend verification code.")
+        
+    return schemas.MessageOut(message="A new verification code has been sent to your email.")
 
 
 @router.post("/login", response_model=schemas.SessionTokensOut)
