@@ -1,7 +1,23 @@
+// web/signup.js
 import { apiFetch } from "./api.js";
 
 const el = (id) => document.getElementById(id);
 let registeredEmail = "";
+
+// --- AUTO-FILL REFERRAL FROM URL ---
+document.addEventListener("DOMContentLoaded", () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const refCode = urlParams.get('ref');
+  
+  if (refCode) {
+    const refInput = el("referralCode");
+    if (refInput) {
+      refInput.value = refCode.toUpperCase();
+      refInput.readOnly = true; 
+      refInput.style.backgroundColor = "#f8fafc"; // Visual lock
+    }
+  }
+});
 
 function setupVisibility(inputId, btnId) {
   const input = el(inputId);
@@ -71,7 +87,7 @@ el("signupForm").addEventListener("submit", async (e) => {
       phone: el("phone").value.trim(),
       university: el("university").value,
       course: el("course").value.trim(),
-      referral_code: el("referralCode").value.trim().toUpperCase() // Added
+      referral_code: el("referralCode").value.trim().toUpperCase() // captures either manual code or auto-filled link code
     };
     
     await apiFetch("/auth/signup", { method: "POST", body: JSON.stringify(body) });

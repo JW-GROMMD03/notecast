@@ -229,3 +229,9 @@ class AdminPayoutOut(BaseModel):
     name: str
     mpesa_number: str
     pending_balance: float
+    
+class ReferralProfileResponse(BaseModel):
+    """Specific schema to exactly match frontend dashboard expectations"""
+    referral_code: str
+    pending_balance: float
+    total_earned: float

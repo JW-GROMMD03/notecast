@@ -322,13 +322,21 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
         # --- NEW REFERRAL LOGIC ---
         ref_code = getattr(body, "referral_code", None)
         if ref_code:
-            referrer = db.query(models.ReferralAccount).filter(models.ReferralAccount.referral_code == ref_code).first()
-            if referrer:
-                existing = db.query(models.Referral).filter(models.Referral.referred_user_id == user_id).first()
-                if not existing:
-                    new_ref = models.Referral(referrer_id=referrer.user_id, referred_user_id=user_id)
-                    db.add(new_ref)
-                    db.commit()
+            logger.info(f"Processing referral linkage for user {body.email} with code: {ref_code}")
+            try:
+                referrer = db.query(models.ReferralAccount).filter(models.ReferralAccount.referral_code == ref_code).first()
+                if referrer:
+                    existing = db.query(models.Referral).filter(models.Referral.referred_user_id == user_id).first()
+                    if not existing:
+                        new_ref = models.Referral(referrer_id=referrer.user_id, referred_user_id=user_id)
+                        db.add(new_ref)
+                        db.commit()
+                        logger.info(f"Successfully linked new user {user_id} to referrer {referrer.user_id}")
+                else:
+                    logger.warning(f"Referral code {ref_code} was provided but not found in Database.")
+            except Exception as ref_err:
+                logger.error(f"Error processing referral logic during signup: {ref_err}")
+                db.rollback()
         # --------------------------
 
         otp_code = f"{random.randint(100000, 999999)}"
@@ -340,8 +348,9 @@ def signup(body: schemas.SignupIn, request: Request, db: DbSession = Depends(get
         if "already registered" in msg_lower or "already exists" in msg_lower or e.status_code == 422:
             raise HTTPException(status_code=400, detail="An account with this email already exists.")
         raise HTTPException(status_code=e.status_code if e.status_code < 500 else 400, detail=e.message)
-    except IntegrityError:
+    except IntegrityError as ie:
         db.rollback()
+        logger.error(f"Integrity Error during signup: {ie}")
         raise HTTPException(status_code=400, detail="An account with this email already exists.")
 
     return schemas.MessageOut(message="Account created — check your email for the 6-digit verification code.")

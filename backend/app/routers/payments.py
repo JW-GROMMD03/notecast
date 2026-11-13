@@ -50,6 +50,10 @@ PRICING_CATALOG = {
 
 
 def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, desc=""):
+    """
+    Applies the M-Pesa callback result code to a transaction, upgrading user entitlements 
+    and automatically distributing affiliate referral commissions if applicable.
+    """
     if txn.status != "PENDING":
         return
         
@@ -123,25 +127,33 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
             db.add(credit)
             
         # --- REFERRAL EARNINGS LOGIC ---
-        if txn.amount >= 100:
-            referral = db.query(models.Referral).filter(models.Referral.referred_user_id == txn.user_id).first()
-            if referral:
-                commission_rate = 0.20 if txn.amount >= 800 else 0.10
-                commission_amount = txn.amount * commission_rate
-                
-                earning = models.ReferralEarning(
-                    referrer_id=referral.referrer_id,
-                    referred_user_id=txn.user_id,
-                    transaction_amount=txn.amount,
-                    commission_amount=commission_amount,
-                    status="pending"
-                )
-                db.add(earning)
-                
-                referrer_acc = db.query(models.ReferralAccount).filter(models.ReferralAccount.user_id == referral.referrer_id).first()
-                if referrer_acc:
-                    referrer_acc.pending_balance += commission_amount
-                    referrer_acc.total_earned += commission_amount
+        try:
+            if txn.amount >= 100:
+                logger.info(f"Evaluating referral commission for transaction {txn.id} (Amount: {txn.amount})")
+                referral = db.query(models.Referral).filter(models.Referral.referred_user_id == txn.user_id).first()
+                if referral:
+                    # Apply 20% for Standard/Premium plans, 10% for basic transactions
+                    commission_rate = 0.20 if txn.amount >= 800 else 0.10
+                    commission_amount = txn.amount * commission_rate
+                    
+                    earning = models.ReferralEarning(
+                        referrer_id=referral.referrer_id,
+                        referred_user_id=txn.user_id,
+                        transaction_amount=txn.amount,
+                        commission_amount=commission_amount,
+                        status="pending"
+                    )
+                    db.add(earning)
+                    
+                    referrer_acc = db.query(models.ReferralAccount).filter(models.ReferralAccount.user_id == referral.referrer_id).first()
+                    if referrer_acc:
+                        referrer_acc.pending_balance += commission_amount
+                        referrer_acc.total_earned += commission_amount
+                        logger.info(f"Successfully awarded {commission_amount} commission to referrer {referral.referrer_id}")
+                    else:
+                        logger.warning(f"Referrer {referral.referrer_id} account missing, commission logged but not balanced.")
+        except Exception as ref_err:
+            logger.error(f"Failed to process referral commission for txn {txn.id}: {str(ref_err)}")
         # -----------------------------------
         
         try:

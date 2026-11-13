@@ -314,7 +314,6 @@ async function loadBookStoreCatalog(field = "", course = "", unit = "") {
 
     grid.innerHTML = books.map(b => {
       const cover = b.cover_url || "assets/icon.png";
-      // Paywall state comes ONLY from b.owned (purchased). Admins see an extra preview link.
       const mainBtn = b.owned
         ? `<button class="btn-action" data-act="read" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #10b981;">Read Now</button>`
         : `<button class="btn-action" data-act="pay" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #3b82f6;">Pay Now (KES ${b.price})</button>`;
@@ -802,7 +801,6 @@ function showExtensionInstallModal() {
 
 // --- PAYMENTS MODAL MATCHING STK PUSH & STATUS POLLING ---
 window.openPaymentModal = function(itemCode, priceText, explicitAmount = null, explicitName = null) {
-    // Uses explicit dynamic values if passed; otherwise falls back to subscription catalog
     const planInfo = PLANS_CATALOG[itemCode] || { 
       amount: explicitAmount || 800, 
       name: explicitName || itemCode 
@@ -871,7 +869,6 @@ window.openPaymentModal = function(itemCode, priceText, explicitAmount = null, e
         const res = await authedFetch("/payments/stk-push", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // no amount: the server prices books from the database
           body: JSON.stringify(isBook
             ? { phone_number: phone, plan_name: "BOOK", purchase_type: "BOOK", book_id: itemCode }
             : { phone_number: phone, plan_name: itemCode })
@@ -973,8 +970,7 @@ function verifyTabEligibility(tabName) {
   return true;
 }
 
-
-// --- REFERRALS LOGIC ---
+// --- REFERRALS LOGIC (MODIFIED FOR BOTH LINK AND CODE) ---
 async function loadReferralPanel() {
   try {
     const res = await authedFetch("/referrals/me");
@@ -988,11 +984,35 @@ async function loadReferralPanel() {
     document.getElementById("refPendingAmount").textContent = `KES ${data.pending_balance.toFixed(2)}`;
     document.getElementById("refTotalAmount").textContent = `KES ${data.total_earned.toFixed(2)}`;
     
-    document.getElementById("copyRefBtn").onclick = () => {
+    // Copy Code Button
+    const copyCodeBtn = document.getElementById("copyRefBtn");
+    copyCodeBtn.textContent = "Copy Code";
+    copyCodeBtn.onclick = () => {
       navigator.clipboard.writeText(data.referral_code);
-      document.getElementById("copyRefBtn").textContent = "Copied!";
-      setTimeout(() => document.getElementById("copyRefBtn").textContent = "Copy Code", 2000);
+      copyCodeBtn.textContent = "Code Copied!";
+      setTimeout(() => copyCodeBtn.textContent = "Copy Code", 2000);
     };
+
+    // Dynamically inject a "Copy Link" button right next to the code button so you don't have to edit HTML
+    if (!document.getElementById("copyLinkBtn")) {
+      const copyLinkBtn = document.createElement("button");
+      copyLinkBtn.id = "copyLinkBtn";
+      copyLinkBtn.className = copyCodeBtn.className || "btn-action";
+      copyLinkBtn.style.cssText = copyCodeBtn.style.cssText;
+      copyLinkBtn.style.marginLeft = "10px";
+      copyLinkBtn.style.background = "#10b981"; // Gives it a green color to stand out
+      copyLinkBtn.textContent = "Copy Link";
+      copyCodeBtn.parentNode.insertBefore(copyLinkBtn, copyCodeBtn.nextSibling);
+
+      copyLinkBtn.onclick = () => {
+        // Construct the signup link using the current website domain
+        const referralLink = `${window.location.origin}/signup.html?ref=${data.referral_code}`;
+        navigator.clipboard.writeText(referralLink);
+        copyLinkBtn.textContent = "Link Copied!";
+        setTimeout(() => copyLinkBtn.textContent = "Copy Link", 2000);
+      };
+    }
+
   } catch (err) {
     document.getElementById("referralOptInState").style.display = "block";
     document.getElementById("referralDashboardState").style.display = "none";
@@ -1028,7 +1048,6 @@ document.getElementById("referralOptInForm")?.addEventListener("submit", async (
 async function init() {
   user = await requireAuth();
   
-  // Initialize newly added cascading dropdowns for the Store tab
   initStoreFilters();
 
   if(document.getElementById("userName")) document.getElementById("userName").textContent = user.display_name || user.email;
