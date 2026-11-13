@@ -67,7 +67,7 @@ export async function authedFetch(path, options = {}) {
       await apiFetch("/auth/refresh", { method: "POST", body: JSON.stringify({}) });
     } catch {
       clearCachedUser();
-      window.location.href = "login.html";
+      window.location.href = "/login";
       throw err;
     }
     return apiFetch(path, options);
@@ -81,7 +81,7 @@ export async function requireAuth() {
     return user;
   } catch {
     clearCachedUser();
-    window.location.href = "login.html";
+    window.location.href = "/login";
     throw new Error("Not authenticated");
   }
 }

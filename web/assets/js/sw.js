@@ -1,13 +1,13 @@
-const CACHE_NAME = 'notecast-shell-v1';
+// web/sw.js
+const CACHE_NAME = 'notecast-shell-v2';
 const ASSETS_TO_CACHE = [
   '/',
-  '/index.html',
-  '/dashboard.html',
-  '/login.html',
-  '/signup.html',
-  '/dashboard.js',
-  '/payments.js',
-  '/api.js',
+  '/dashboard',
+  '/login',
+  '/signup',
+  '/assets/js/dashboard.js',
+  '/assets/js/payments.js',
+  '/assets/js/api.js',
   '/assets/icon.png'
 ];
 

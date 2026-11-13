@@ -1,3 +1,4 @@
+// web/assets/js/login.js
 import { apiFetch, cacheUser } from "./api.js";
 import { wireVisibilityToggle } from "./password-utils.js";
 
@@ -9,7 +10,7 @@ wireVisibilityToggle(el("password"), el("toggleBtn"));
 function getRedirectUrl() {
   const urlParams = new URLSearchParams(window.location.search);
   const redirect = urlParams.get("redirect");
-  return redirect ? redirect : "dashboard.html";
+  return redirect ? redirect : "/dashboard";
 }
 
 // Helper function to process tokens and send to backend
@@ -99,7 +100,7 @@ el("googleBtn").addEventListener("click", async () => {
   try {
     // Pass the current redirect hint along to Google so it survives the OAuth trip
     const currentParams = window.location.search;
-    const redirectUrl = encodeURIComponent(window.location.origin + "/login.html" + currentParams);
+    const redirectUrl = encodeURIComponent(window.location.origin + "/login" + currentParams);
     
     const data = await apiFetch(`/auth/google-url?redirect_to=${redirectUrl}`);
     window.location.href = data.url;

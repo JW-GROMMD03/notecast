@@ -1,7 +1,8 @@
+// web/assets/js/video.js
 import { authedFetch, requireAuth, logout, API_BASE } from "./api.js";
 
 const videoId = new URLSearchParams(location.search).get("id");
-if (!videoId) window.location.href = "dashboard.html";
+if (!videoId) window.location.href = "/dashboard";
 
 let pollTimer = null;
 let currentVideoTitle = "Study Notes";
@@ -252,7 +253,7 @@ function bindUIEvents() {
         console.error("AI Generation error:", err);
         if (err.message && (err.message.includes("402") || err.message.includes("subscription"))) {
           if (confirm("AI Note generation requires a 20 KES weekly download pass. Proceed to payment?")) {
-            window.location.href = "payments.html?plan=DOWNLOAD_PASS&redirect=" + encodeURIComponent(window.location.href);
+            window.location.href = "/payments?plan=DOWNLOAD_PASS&redirect=" + encodeURIComponent(window.location.href);
           }
         } else if (container) {
           container.innerHTML = `<div class="empty-state" style="color: var(--danger);">Failed to trigger AI generation. ${err.message || 'Check your connection.'}</div>`;
@@ -267,7 +268,7 @@ function bindUIEvents() {
       if (confirm("Are you sure you want to delete this session?")) {
         try {
           const res = await authedFetch(`/videos/${videoId}`, { method: "DELETE" });
-          if (res) window.location.href = "dashboard.html";
+          if (res) window.location.href = "/dashboard";
         } catch(e) {
           alert("Failed to delete session.");
         }
@@ -280,7 +281,7 @@ function bindUIEvents() {
     signOutBtn.addEventListener("click", async (e) => {
       e.preventDefault();
       await logout();
-      window.location.href = "login.html";
+      window.location.href = "/login";
     });
   }
 
@@ -391,7 +392,7 @@ async function secureDownload(endpoint, filename, mimeType) {
 
     if (response.status === 402) {
       if (confirm("Downloads and AI features require a 20 KES weekly download pass. Proceed to payment?")) {
-        window.location.href = `payments.html?plan=DOWNLOAD_PASS&redirect=${encodeURIComponent(window.location.href)}`;
+        window.location.href = `/payments?plan=DOWNLOAD_PASS&redirect=${encodeURIComponent(window.location.href)}`;
       }
       return;
     }

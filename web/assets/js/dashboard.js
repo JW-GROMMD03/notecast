@@ -1,4 +1,4 @@
-// web/dashboard.js
+// web/assets/js/dashboard.js
 import { authedFetch, requireAuth, logout, checkExtensionInstalled, CHROME_STORE_URL } from "./api.js";
 
 let user = null;
@@ -213,7 +213,7 @@ const escHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "
 window._books = {};
 
 function openBook(bookId) {
-  window.open(`reader.html?bookId=${encodeURIComponent(bookId)}`, "_blank");
+  window.open(`/reader?bookId=${encodeURIComponent(bookId)}`, "_blank");
 }
 
 window.afterPayment = () => {
@@ -240,7 +240,7 @@ async function loadOwnedBooks() {
     }
     box.innerHTML = books.map(b => `
       <div style="background: var(--bg-main); border: 1px solid var(--border-color); padding: 14px; border-radius: 8px; display: flex; gap: 12px;">
-        <img src="${b.cover_url || 'assets/icon.png'}" alt="" onerror="this.onerror=null;this.src='assets/icon.png'" style="width: 56px; height: 76px; object-fit: cover; border-radius: 6px; background: #1e293b;">
+        <img src="${b.cover_url || '/assets/icon.png'}" alt="" onerror="this.onerror=null;this.src='/assets/icon.png'" style="width: 56px; height: 76px; object-fit: cover; border-radius: 6px; background: #1e293b;">
         <div style="flex: 1;">
           <h4 style="margin: 0 0 4px 0; font-size: 0.95rem;">${escHtml(b.title)}</h4>
           <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0 0 10px 0;">${escHtml(b.course)} • ${escHtml(b.unit)}</p>
@@ -313,7 +313,7 @@ async function loadBookStoreCatalog(field = "", course = "", unit = "") {
     window._books = Object.fromEntries(books.map(b => [b.id, b]));
 
     grid.innerHTML = books.map(b => {
-      const cover = b.cover_url || "assets/icon.png";
+      const cover = b.cover_url || "/assets/icon.png";
       const mainBtn = b.owned
         ? `<button class="btn-action" data-act="read" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #10b981;">Read Now</button>`
         : `<button class="btn-action" data-act="pay" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #3b82f6;">Pay Now (KES ${b.price})</button>`;
@@ -325,7 +325,7 @@ async function loadBookStoreCatalog(field = "", course = "", unit = "") {
         <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-card, #1e293b); border: 1px solid #334155; border-radius: 12px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
           <div>
             <div style="width: 100%; height: 260px; background: #0f172a; border-radius: 8px; margin-bottom: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-              <img src="${cover}" loading="lazy" alt="Cover" onerror="this.onerror=null;this.src='assets/icon.png'" style="width: 100%; height: 100%; object-fit: cover;">
+              <img src="${cover}" loading="lazy" alt="Cover" onerror="this.onerror=null;this.src='/assets/icon.png'" style="width: 100%; height: 100%; object-fit: cover;">
             </div>
             <h4 style="margin: 0 0 8px 0; font-size: 1.05rem; color: var(--text-main); line-height: 1.3;">${escHtml(b.title)}</h4>
             <p style="font-size: 0.8rem; color: #94a3b8; margin: 0 0 10px 0; line-height: 1.4;">${escHtml(b.course)}<br>${escHtml(b.unit)}</p>
@@ -362,17 +362,15 @@ window.handleBookAction = async function(event, bookId, isOwned, price, title) {
     btn.disabled = true;
     
     setTimeout(() => {
-        window.open(`reader.html?bookId=${encodeURIComponent(bookId)}`, '_blank');
+        window.open(`/reader?bookId=${encodeURIComponent(bookId)}`, '_blank');
         btn.textContent = originalText;
         btn.disabled = false;
     }, 400);
   } else {
-    // Triggers M-Pesa STK Push modal for unowned books
     window.openPaymentModal(bookId, `KES ${price}`, price, title); 
   }
 };
 
-// Hook up filter button
 document.getElementById("filterBooksBtn")?.addEventListener("click", () => {
   const field = document.getElementById("storeFieldFilter").value;
   const course = document.getElementById("storeCourseFilter").value;
@@ -984,7 +982,6 @@ async function loadReferralPanel() {
     document.getElementById("refPendingAmount").textContent = `KES ${data.pending_balance.toFixed(2)}`;
     document.getElementById("refTotalAmount").textContent = `KES ${data.total_earned.toFixed(2)}`;
     
-    // Copy Code Button
     const copyCodeBtn = document.getElementById("copyRefBtn");
     copyCodeBtn.textContent = "Copy Code";
     copyCodeBtn.onclick = () => {
@@ -993,20 +990,18 @@ async function loadReferralPanel() {
       setTimeout(() => copyCodeBtn.textContent = "Copy Code", 2000);
     };
 
-    // Dynamically inject a "Copy Link" button right next to the code button so you don't have to edit HTML
     if (!document.getElementById("copyLinkBtn")) {
       const copyLinkBtn = document.createElement("button");
       copyLinkBtn.id = "copyLinkBtn";
       copyLinkBtn.className = copyCodeBtn.className || "btn-action";
       copyLinkBtn.style.cssText = copyCodeBtn.style.cssText;
       copyLinkBtn.style.marginLeft = "10px";
-      copyLinkBtn.style.background = "#10b981"; // Gives it a green color to stand out
+      copyLinkBtn.style.background = "#10b981";
       copyLinkBtn.textContent = "Copy Link";
       copyCodeBtn.parentNode.insertBefore(copyLinkBtn, copyCodeBtn.nextSibling);
 
       copyLinkBtn.onclick = () => {
-        // Construct the signup link using the current website domain
-        const referralLink = `${window.location.origin}/signup.html?ref=${data.referral_code}`;
+        const referralLink = `${window.location.origin}/signup?ref=${data.referral_code}`;
         navigator.clipboard.writeText(referralLink);
         copyLinkBtn.textContent = "Link Copied!";
         setTimeout(() => copyLinkBtn.textContent = "Copy Link", 2000);
@@ -1166,7 +1161,7 @@ async function init() {
         return;
       }
 
-      const simPath = `simulations/${faculty}/${course}/${moduleFile}`;
+      const simPath = `/simulations/${faculty}/${course}/${moduleFile}`;
       const simWindow = window.open("about:blank", "_blank");
       if (simWindow) {
         simWindow.document.write("<html><head><title>Loading NoteCast Simulation...</title></head><body style='background:#070a14;color:#f8fafc;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;'><h2>⚡ Loading Interactive Module...</h2></body></html>");
@@ -1228,7 +1223,7 @@ async function init() {
         }
 
         sessionStorage.setItem("active_sim_schema", JSON.stringify(schema));
-        window.location.href = `simulator.html?topic=${encodeURIComponent(topic)}`;
+        window.location.href = `/simulator?topic=${encodeURIComponent(topic)}`;
       } catch (err) {
         clearTimeout(timeoutId);
         console.error("Simulation Generation Error:", err);
@@ -1243,7 +1238,7 @@ async function init() {
   if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
       await logout();
-      window.location.href = "login.html";
+      window.location.href = "/login";
     });
   }
 
@@ -1269,7 +1264,7 @@ async function loadVideos() {
     
     list.innerHTML = videos.map(v => `
       <li>
-        <a class="video-row" style="color: var(--text-main);" href="video.html?id=${v.id}">
+        <a class="video-row" style="color: var(--text-main);" href="/video?id=${v.id}">
           <div>
             <div class="video-row-title">${v.title || 'Untitled Session'}</div>
             <div class="video-row-meta" style="color: var(--text-muted);">${new Date(v.created_at).toLocaleDateString()}</div>

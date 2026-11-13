@@ -1,4 +1,4 @@
-// web/payments.js
+// web/assets/js/payments.js
 import { authedFetch, requireAuth } from "./api.js";
 
 const el = (id) => document.getElementById(id);
@@ -46,7 +46,7 @@ if (el("planName")) el("planName").textContent = planInfo.name;
 if (el("planPrice")) el("planPrice").textContent = `${planInfo.amount} KES`;
 
 requireAuth().catch(() => {
-  window.location.href = `login.html?redirect=payments.html%3Fplan=${currentPlanId}`;
+  window.location.href = `/login?redirect=${encodeURIComponent('/payments?plan=' + currentPlanId)}`;
 });
 
 function cleanPhoneNumber(raw) {
@@ -131,7 +131,7 @@ function startFastPolling() {
           if (returnUrl) {
             window.location.href = decodeURIComponent(returnUrl);
           } else {
-            window.location.href = "dashboard.html";
+            window.location.href = "/dashboard";
           }
         }, 1500);
         return;
