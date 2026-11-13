@@ -240,7 +240,7 @@ async function loadOwnedBooks() {
     }
     box.innerHTML = books.map(b => `
       <div style="background: var(--bg-main); border: 1px solid var(--border-color); padding: 14px; border-radius: 8px; display: flex; gap: 12px;">
-        <img src="${b.cover_url || '/assets/icon.png'}" alt="" onerror="this.onerror=null;this.src='/assets/icon.png'" style="width: 56px; height: 76px; object-fit: cover; border-radius: 6px; background: #1e293b;">
+        <img src="${b.cover_url || '/assets/icon.png'}" loading="lazy" decoding="async" alt="" onerror="this.onerror=null;this.src='/assets/icon.png'" style="width: 56px; height: 76px; object-fit: cover; border-radius: 6px; background: #1e293b;">
         <div style="flex: 1;">
           <h4 style="margin: 0 0 4px 0; font-size: 0.95rem;">${escHtml(b.title)}</h4>
           <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0 0 10px 0;">${escHtml(b.course)} • ${escHtml(b.unit)}</p>
@@ -287,7 +287,7 @@ async function loadCustomerLibraryAndPurchases() {
   }
 }
 
-// --- BOOK STORE CATALOG LOADER ---
+// --- HIGH-PERFORMANCE DOM CHUNKING RENDERER FOR BOOK STORE CATALOG ---
 async function loadBookStoreCatalog(field = "", course = "", unit = "") {
   const grid = document.getElementById("bookStoreGrid");
   if (!grid) return;
@@ -310,35 +310,56 @@ async function loadBookStoreCatalog(field = "", course = "", unit = "") {
       grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">No books found in inventory.</p>`;
       return;
     }
+    
     window._books = Object.fromEntries(books.map(b => [b.id, b]));
+    grid.innerHTML = ""; // Clear loader
 
-    grid.innerHTML = books.map(b => {
-      const cover = b.cover_url || "/assets/icon.png";
-      const mainBtn = b.owned
-        ? `<button class="btn-action" data-act="read" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #10b981;">Read Now</button>`
-        : `<button class="btn-action" data-act="pay" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #3b82f6;">Pay Now (KES ${b.price})</button>`;
-      const adminLink = (!b.owned && b.admin_preview)
-        ? `<a href="#" data-act="read" data-id="${b.id}" style="display:block; margin-top: 8px; font-size: 0.75rem; color: #f59e0b; text-align: right;">Admin preview</a>`
-        : "";
+    // Optimization: Chunked rendering prevents UI freeze during massive catalog injection
+    const chunkSize = 15;
+    let currentIndex = 0;
 
-      return `
-        <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-card, #1e293b); border: 1px solid #334155; border-radius: 12px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-          <div>
-            <div style="width: 100%; height: 260px; background: #0f172a; border-radius: 8px; margin-bottom: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-              <img src="${cover}" loading="lazy" alt="Cover" onerror="this.onerror=null;this.src='/assets/icon.png'" style="width: 100%; height: 100%; object-fit: cover;">
-            </div>
-            <h4 style="margin: 0 0 8px 0; font-size: 1.05rem; color: var(--text-main); line-height: 1.3;">${escHtml(b.title)}</h4>
-            <p style="font-size: 0.8rem; color: #94a3b8; margin: 0 0 10px 0; line-height: 1.4;">${escHtml(b.course)}<br>${escHtml(b.unit)}</p>
-          </div>
-          <div style="margin-top: auto; padding-top: 14px; border-top: 1px solid #334155;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-weight: 800; color: ${b.owned ? '#10b981' : '#38bdf8'}; font-size: 1.05rem;">${b.owned ? "Owned ✓" : "KES " + b.price}</span>
-              ${mainBtn}
-            </div>
-            ${adminLink}
-          </div>
-        </div>`;
-    }).join("");
+    function renderChunk() {
+        const chunk = books.slice(currentIndex, currentIndex + chunkSize);
+        if (!chunk.length) return;
+
+        const fragmentHtml = chunk.map(b => {
+          const cover = b.cover_url || "/assets/icon.png";
+          const mainBtn = b.owned
+            ? `<button class="btn-action" data-act="read" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #10b981;">Read Now</button>`
+            : `<button class="btn-action" data-act="pay" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #3b82f6;">Pay Now (KES ${b.price})</button>`;
+          const adminLink = (!b.owned && b.admin_preview)
+            ? `<a href="#" data-act="read" data-id="${b.id}" style="display:block; margin-top: 8px; font-size: 0.75rem; color: #f59e0b; text-align: right;">Admin preview</a>`
+            : "";
+
+          return `
+            <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-card, #1e293b); border: 1px solid #334155; border-radius: 12px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+              <div>
+                <div style="width: 100%; height: 260px; background: #0f172a; border-radius: 8px; margin-bottom: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                  <img src="${cover}" loading="lazy" decoding="async" alt="Cover" onerror="this.onerror=null;this.src='/assets/icon.png'" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <h4 style="margin: 0 0 8px 0; font-size: 1.05rem; color: var(--text-main); line-height: 1.3;">${escHtml(b.title)}</h4>
+                <p style="font-size: 0.8rem; color: #94a3b8; margin: 0 0 10px 0; line-height: 1.4;">${escHtml(b.course)}<br>${escHtml(b.unit)}</p>
+              </div>
+              <div style="margin-top: auto; padding-top: 14px; border-top: 1px solid #334155;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-weight: 800; color: ${b.owned ? '#10b981' : '#38bdf8'}; font-size: 1.05rem;">${b.owned ? "Owned ✓" : "KES " + b.price}</span>
+                  ${mainBtn}
+                </div>
+                ${adminLink}
+              </div>
+            </div>`;
+        }).join("");
+        
+        grid.insertAdjacentHTML('beforeend', fragmentHtml);
+        currentIndex += chunkSize;
+
+        if (currentIndex < books.length) {
+            requestAnimationFrame(renderChunk);
+        }
+    }
+    
+    // Start chunked rendering pipeline
+    renderChunk();
 
     grid.onclick = (e) => {
       const t = e.target.closest("[data-act]");

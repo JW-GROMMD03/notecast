@@ -111,7 +111,7 @@ class Transaction(Base):
     amount = Column(Integer)
     plan_name = Column(String)
     status = Column(String, default="pending")
-    created_at = Column(DateTime, default=now)
+    created_at = Column(DateTime, default=now, index=True)
 
     user = relationship("User", back_populates="transactions")
 
@@ -191,7 +191,7 @@ class DailyUsage(Base):
     __tablename__ = "daily_usages"
     id = Column(String, primary_key=True, default=uid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    usage_date = Column(Date, default=dt.date.today, nullable=False)
+    usage_date = Column(Date, default=dt.date.today, nullable=False, index=True)
 
     youtube_seconds = Column(Integer, default=0)
     ai_notes_count = Column(Integer, default=0)
@@ -206,7 +206,7 @@ class ResourceNoteUsage(Base):
     __tablename__ = "resource_note_usages"
     id = Column(String, primary_key=True, default=uid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    resource_id = Column(String, nullable=False)
+    resource_id = Column(String, nullable=False, index=True)
     ai_gen_attempts = Column(Integer, default=0)
     summary_attempts = Column(Integer, default=0)
 
@@ -233,8 +233,8 @@ class PaymentTransaction(Base):
     purchase_type = Column(String, nullable=False)
     target_tier = Column(String, nullable=True)
     book_id = Column(String, nullable=True)
-    status = Column(String, default="PENDING")
-    created_at = Column(DateTime, default=now)
+    status = Column(String, default="PENDING", index=True)
+    created_at = Column(DateTime, default=now, index=True)
 
 
 # ==========================================
@@ -250,9 +250,9 @@ class Video(Base):
     title = Column(String, default="Untitled video")
     channel = Column(String, default="")
     duration_sec = Column(Integer, default=0)
-    status = Column(String, default="initializing")
+    status = Column(String, default="initializing", index=True)
     ai_notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=now)
+    created_at = Column(DateTime, default=now, index=True)
 
     user = relationship("User", back_populates="videos")
     sessions = relationship(
@@ -358,9 +358,9 @@ class Document(Base):
     title = Column(String, default="Untitled Document")
     filename = Column(String, nullable=False)
     storage_key = Column(String, nullable=False)
-    status = Column(String, default="processing")
+    status = Column(String, default="processing", index=True)
     ai_summary_md = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=now)
+    created_at = Column(DateTime, default=now, index=True)
 
     user = relationship("User", back_populates="documents")
     pages = relationship(
@@ -416,7 +416,7 @@ class Flashcard(Base):
     front_text = Column(Text, nullable=False)
     back_text = Column(Text, nullable=False)
 
-    next_review_at = Column(DateTime, default=now)
+    next_review_at = Column(DateTime, default=now, index=True)
     interval_days = Column(Integer, default=0)
     ease_factor = Column(Float, default=2.5)
     repetitions = Column(Integer, default=0)
@@ -466,7 +466,6 @@ class Book(Base):
     )  # Admin/Uploader reference
     title = Column(String, index=True, nullable=False)
     
-    # NEW Field category
     description = Column(Text, nullable=True, default="")
     field = Column(String, index=True, nullable=True)
     
@@ -475,13 +474,13 @@ class Book(Base):
     course_name = Column(String, index=True, nullable=True)
     
     # Unit variations
-    unit = Column(String, nullable=True, default="")
-    unit_module = Column(String, nullable=True)
+    unit = Column(String, nullable=True, default="", index=True)
+    unit_module = Column(String, nullable=True, index=True)
     
-    price = Column(Float, nullable=False, default=0.0)
+    price = Column(Float, nullable=False, default=0.0, index=True)
     
     # Inventory status tracking
-    status = Column(String, default="ACTIVE", nullable=False)
+    status = Column(String, default="ACTIVE", nullable=False, index=True)
 
     # File URL variations
     book_file_url = Column(String, nullable=True)
@@ -493,7 +492,7 @@ class Book(Base):
     cover_url = Column(String, nullable=True)
     cover = Column(String, nullable=True)
     
-    created_at = Column(DateTime, default=now)
+    created_at = Column(DateTime, default=now, index=True)
 
     user = relationship("User", back_populates="books")
 
@@ -505,8 +504,8 @@ class BookPurchase(Base):
     id = Column(String, primary_key=True, default=uid)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     book_id = Column(String, ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
-    status = Column(String, default="COMPLETED", nullable=False)
-    created_at = Column(DateTime, default=now)
+    status = Column(String, default="COMPLETED", nullable=False, index=True)
+    created_at = Column(DateTime, default=now, index=True)
 
 
 # ==========================================
@@ -595,5 +594,5 @@ class ReferralEarning(Base):
     referred_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
     transaction_amount = Column(Float, nullable=False)
     commission_amount = Column(Float, nullable=False)
-    status = Column(String, default="pending")
-    created_at = Column(DateTime, default=now)
+    status = Column(String, default="pending", index=True)
+    created_at = Column(DateTime, default=now, index=True)
