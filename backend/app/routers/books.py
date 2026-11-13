@@ -84,7 +84,7 @@ def _get_file_extension(filename: Optional[str]) -> str:
 
 
 def _is_storage_key(value: Optional[str]) -> bool:
-    return bool(value) and (value.startswith("books/") or "/" in value)
+    return bool(value) and value.startswith("books/")
 
 
 def _is_admin_user(user: models.User) -> bool:
@@ -367,7 +367,6 @@ def get_book_store_catalog(
             for b in books:
                 cover_key = getattr(b, "cover_url", None) or getattr(b, "cover_photo_url", None) or getattr(b, "cover", None)
                 
-                # DIRECT LIGHTNING CDN ROUTING
                 if _is_storage_key(cover_key):
                     cover_url = f"{R2_PUBLIC_DOMAIN}/{cover_key}" if R2_PUBLIC_DOMAIN else f"/api/books/{b.id}/cover"
                 else:
@@ -394,29 +393,51 @@ def get_book_store_catalog(
             logger.exception("Error loading book store inventory from database: %s", str(e))
             raise HTTPException(status_code=500, detail="Failed to load book store inventory.")
 
+    # "owned" means PURCHASED. Admin access is reported separately and never changes the paywall state.
     owned_book_ids = set()
     try:
-        purchases = (
-            db.query(models.BookPurchase.book_id)
-            .filter(
-                models.BookPurchase.user_id == user.id,
-                models.BookPurchase.status == "COMPLETED"
-            )
+        owned_book_ids = {
+            row.book_id
+            for row in db.query(models.BookPurchase.book_id)
+            .filter(models.BookPurchase.user_id == user.id, models.BookPurchase.status == "COMPLETED")
             .all()
-        )
-        owned_book_ids = {row.book_id for row in purchases}
-    except Exception as purchase_err:
-        logger.warning("Could not resolve book purchases for user: %s", str(purchase_err))
+        }
+    except Exception:
+        logger.exception("Could not resolve purchases for user %s; treating all books as unowned", user.id)
 
     is_admin = _is_admin_user(user)
-    
-    final_catalog = []
-    for b in public_catalog:
-        b_copy = b.copy()
-        b_copy["owned"] = is_admin or b_copy["id"] in owned_book_ids
-        final_catalog.append(b_copy)
+    return [
+        {**b, "owned": b["id"] in owned_book_ids, "admin_preview": is_admin and b["id"] not in owned_book_ids}
+        for b in public_catalog
+    ]
 
-    return final_catalog
+@router.get("/my-library")
+def get_my_library(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user),
+):
+    """Only books this user has actually paid for."""
+    rows = (
+        db.query(models.Book, models.BookPurchase.created_at)
+        .join(models.BookPurchase, models.BookPurchase.book_id == models.Book.id)
+        .filter(models.BookPurchase.user_id == user.id, models.BookPurchase.status == "COMPLETED")
+        .order_by(models.BookPurchase.created_at.desc())
+        .all()
+    )
+    out = []
+    for b, purchased_at in rows:
+        key = getattr(b, "cover_url", None) or getattr(b, "cover_photo_url", None) or getattr(b, "cover", None)
+        out.append({
+            "id": b.id,
+            "title": b.title,
+            "course": b.course or b.course_name or "General",
+            "unit": b.unit or b.unit_module or "General",
+            "price": b.price,
+            "owned": True,
+            "cover_url": (f"{R2_PUBLIC_DOMAIN}/{key}" if R2_PUBLIC_DOMAIN else f"/api/books/{b.id}/cover") if _is_storage_key(key) else None,
+            "purchased_at": purchased_at.isoformat() if purchased_at else None,
+        })
+    return out
 
 
 @router.get("/{book_id}/cover")

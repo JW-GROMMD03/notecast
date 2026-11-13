@@ -208,6 +208,180 @@ function showEntitlementModal({ featureName, recommendedTier = "STANDARD", price
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
+// --- BOOK HELPERS ---
+const escHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+window._books = {};
+
+function openBook(bookId) {
+  window.open(`reader.html?bookId=${encodeURIComponent(bookId)}`, "_blank");
+}
+
+window.afterPayment = () => {
+  document.getElementById("paymentModal")?.remove();
+  if (window._lastPayWasBook) {
+    loadBookStoreCatalog();
+    loadCustomerLibraryAndPurchases();
+  } else {
+    location.reload();
+  }
+};
+
+// --- CUSTOMER LIBRARY & PURCHASES LOADER ---
+async function loadOwnedBooks() {
+  const box = document.getElementById("customerLibraryModules");
+  if (!box) return;
+  box.innerHTML = `<p style="color: var(--text-muted);">Loading your books...</p>`;
+  try {
+    const res = await authedFetch("/books/my-library");
+    const books = res.json ? await res.json() : res;
+    if (!Array.isArray(books) || !books.length) {
+      box.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">You haven't bought any books yet. Open the Book Store to get started.</p>`;
+      return;
+    }
+    box.innerHTML = books.map(b => `
+      <div style="background: var(--bg-main); border: 1px solid var(--border-color); padding: 14px; border-radius: 8px; display: flex; gap: 12px;">
+        <img src="${b.cover_url || 'assets/icon.png'}" alt="" onerror="this.onerror=null;this.src='assets/icon.png'" style="width: 56px; height: 76px; object-fit: cover; border-radius: 6px; background: #1e293b;">
+        <div style="flex: 1;">
+          <h4 style="margin: 0 0 4px 0; font-size: 0.95rem;">${escHtml(b.title)}</h4>
+          <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0 0 10px 0;">${escHtml(b.course)} • ${escHtml(b.unit)}</p>
+          <button class="btn-action" data-read="${b.id}" style="padding: 6px 14px; font-size: 0.82rem; background: #10b981;">Read Now</button>
+        </div>
+      </div>`).join("");
+    box.onclick = (e) => {
+      const t = e.target.closest("[data-read]");
+      if (t) openBook(t.dataset.read);
+    };
+  } catch (err) {
+    box.innerHTML = `<p style="color: #ef4444; grid-column: 1 / -1;">Failed to load your books.</p>`;
+  }
+}
+
+async function loadCustomerLibraryAndPurchases() {
+  loadOwnedBooks();
+
+  const tbody = document.getElementById("customerPurchasesTableBody");
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading book purchase history...</td></tr>`;
+
+  try {
+    const res = await authedFetch("/payments/my-transactions");
+    let transactions = res;
+    if (res.json) transactions = await res.json();
+
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No book purchases found. Visit the Book Store to unlock textbooks.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = transactions.map(tx => `
+      <tr>
+        <td style="font-family: monospace; font-size: 0.82rem;">${escHtml(tx.id || tx.transaction_id)}</td>
+        <td><span style="font-weight: 500; color: var(--text-main);">${escHtml(tx.item_name)}</span></td>
+        <td style="font-weight: 600;">KES ${tx.amount}</td>
+        <td><span class="status-chip ${tx.status ? tx.status.toLowerCase() : 'completed'}">${tx.status || 'COMPLETED'}</span></td>
+        <td>${new Date(tx.created_at || Date.now()).toLocaleDateString()}</td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load book transactions.</td></tr>`;
+  }
+}
+
+// --- BOOK STORE CATALOG LOADER ---
+async function loadBookStoreCatalog(field = "", course = "", unit = "") {
+  const grid = document.getElementById("bookStoreGrid");
+  if (!grid) return;
+
+  grid.style.display = "grid";
+  grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(240px, 1fr))";
+  grid.style.gap = "24px";
+  grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">Loading book catalog...</p>`;
+
+  try {
+    const params = new URLSearchParams();
+    if (field) params.append("field", field);
+    if (course) params.append("course", course);
+    if (unit) params.append("unit", unit);
+
+    const res = await authedFetch("/books/store?" + params.toString());
+    const books = res.json ? await res.json() : res;
+
+    if (!Array.isArray(books) || books.length === 0) {
+      grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">No books found in inventory.</p>`;
+      return;
+    }
+    window._books = Object.fromEntries(books.map(b => [b.id, b]));
+
+    grid.innerHTML = books.map(b => {
+      const cover = b.cover_url || "assets/icon.png";
+      // Paywall state comes ONLY from b.owned (purchased). Admins see an extra preview link.
+      const mainBtn = b.owned
+        ? `<button class="btn-action" data-act="read" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #10b981;">Read Now</button>`
+        : `<button class="btn-action" data-act="pay" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #3b82f6;">Pay Now (KES ${b.price})</button>`;
+      const adminLink = (!b.owned && b.admin_preview)
+        ? `<a href="#" data-act="read" data-id="${b.id}" style="display:block; margin-top: 8px; font-size: 0.75rem; color: #f59e0b; text-align: right;">Admin preview</a>`
+        : "";
+
+      return `
+        <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-card, #1e293b); border: 1px solid #334155; border-radius: 12px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+          <div>
+            <div style="width: 100%; height: 260px; background: #0f172a; border-radius: 8px; margin-bottom: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+              <img src="${cover}" loading="lazy" alt="Cover" onerror="this.onerror=null;this.src='assets/icon.png'" style="width: 100%; height: 100%; object-fit: cover;">
+            </div>
+            <h4 style="margin: 0 0 8px 0; font-size: 1.05rem; color: var(--text-main); line-height: 1.3;">${escHtml(b.title)}</h4>
+            <p style="font-size: 0.8rem; color: #94a3b8; margin: 0 0 10px 0; line-height: 1.4;">${escHtml(b.course)}<br>${escHtml(b.unit)}</p>
+          </div>
+          <div style="margin-top: auto; padding-top: 14px; border-top: 1px solid #334155;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-weight: 800; color: ${b.owned ? '#10b981' : '#38bdf8'}; font-size: 1.05rem;">${b.owned ? "Owned ✓" : "KES " + b.price}</span>
+              ${mainBtn}
+            </div>
+            ${adminLink}
+          </div>
+        </div>`;
+    }).join("");
+
+    grid.onclick = (e) => {
+      const t = e.target.closest("[data-act]");
+      if (!t) return;
+      e.preventDefault();
+      const b = window._books[t.dataset.id];
+      if (!b) return;
+      if (t.dataset.act === "read") openBook(b.id);
+      else window.openPaymentModal(b.id, `KES ${b.price}`, b.price, b.title);
+    };
+  } catch (err) {
+    grid.innerHTML = `<p style="color: #ef4444; grid-column: 1 / -1;">Failed to load book store inventory.</p>`;
+  }
+}
+
+window.handleBookAction = async function(event, bookId, isOwned, price, title) {
+  if (isOwned) {
+    const btn = event.currentTarget;
+    const originalText = btn.textContent;
+    btn.textContent = "Opening Reader...";
+    btn.disabled = true;
+    
+    setTimeout(() => {
+        window.open(`reader.html?bookId=${encodeURIComponent(bookId)}`, '_blank');
+        btn.textContent = originalText;
+        btn.disabled = false;
+    }, 400);
+  } else {
+    // Triggers M-Pesa STK Push modal for unowned books
+    window.openPaymentModal(bookId, `KES ${price}`, price, title); 
+  }
+};
+
+// Hook up filter button
+document.getElementById("filterBooksBtn")?.addEventListener("click", () => {
+  const field = document.getElementById("storeFieldFilter").value;
+  const course = document.getElementById("storeCourseFilter").value;
+  const unit = document.getElementById("storeUnitFilter").value.trim();
+  loadBookStoreCatalog(field, course, unit);
+});
+
+
 // --- FACULTY & COURSE STATIC LIBRARY DATA ---
 const FACULTY_DATA = {
   Technology: [
@@ -665,7 +839,7 @@ window.openPaymentModal = function(itemCode, priceText, explicitAmount = null, e
               <span class="spinner" style="width:16px;height:16px;border:2px solid #38bdf8;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></span> Waiting for confirmation...
             </div>
             <div id="actionButtons" style="display:none;gap:10px;justify-content:center;">
-              <button onclick="document.getElementById('paymentModal').remove(); location.reload();" style="padding:0.5rem 1rem;background:#3b82f6;border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:600;">Done / Return</button>
+              <button onclick="window.afterPayment()" style="padding:0.5rem 1rem;background:#3b82f6;border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:600;">Done / Return</button>
             </div>
           </div>
         </div>
@@ -692,14 +866,15 @@ window.openPaymentModal = function(itemCode, priceText, explicitAmount = null, e
       payBtn.textContent = "Processing...";
 
       try {
+        const isBook = !PLANS_CATALOG[itemCode] && !!explicitName;
+        window._lastPayWasBook = isBook;
         const res = await authedFetch("/payments/stk-push", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone_number: phone,
-            plan_name: itemCode,
-            amount: planInfo.amount
-          })
+          // no amount: the server prices books from the database
+          body: JSON.stringify(isBook
+            ? { phone_number: phone, plan_name: "BOOK", purchase_type: "BOOK", book_id: itemCode }
+            : { phone_number: phone, plan_name: itemCode })
         });
         
         let data = res;
@@ -797,122 +972,6 @@ function verifyTabEligibility(tabName) {
   }
   return true;
 }
-
-// --- CUSTOMER LIBRARY & PURCHASES LOADER ---
-async function loadCustomerLibraryAndPurchases() {
-  const tbody = document.getElementById("customerPurchasesTableBody");
-  if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading book purchase history...</td></tr>`;
-
-  try {
-    const res = await authedFetch("/payments/my-transactions");
-    let transactions = res;
-    if (res.json) transactions = await res.json();
-
-    if (!Array.isArray(transactions) || transactions.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No book purchases found. Visit the Book Store to unlock textbooks.</td></tr>`;
-      return;
-    }
-
-    tbody.innerHTML = transactions.map(tx => `
-      <tr>
-        <td style="font-family: monospace; font-size: 0.82rem;">${tx.id || tx.transaction_id}</td>
-        <td><span style="font-weight: 500; color: var(--text-main);">${tx.item_name}</span></td>
-        <td style="font-weight: 600;">KES ${tx.amount}</td>
-        <td><span class="status-chip ${tx.status ? tx.status.toLowerCase() : 'completed'}">${tx.status || 'COMPLETED'}</span></td>
-        <td>${new Date(tx.created_at || Date.now()).toLocaleDateString()}</td>
-      </tr>
-    `).join("");
-  } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load book transactions.</td></tr>`;
-  }
-}
-
-
-// --- BOOK STORE CATALOG LOADER ---
-async function loadBookStoreCatalog(field = '', course = '', unit = '') {
-  const grid = document.getElementById("bookStoreGrid");
-  if (!grid) return;
-  
-  // Apply a responsive grid layout directly to the container so cards don't stretch full width
-  grid.style.display = "grid";
-  grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(240px, 1fr))";
-  grid.style.gap = "24px";
-  grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">Loading book catalog...</p>`;
-
-  try {
-    let url = "/books/store?";
-    const params = new URLSearchParams();
-    if (field) params.append("field", field);
-    if (course) params.append("course", course);
-    if (unit) params.append("unit", unit);
-    
-    const res = await authedFetch(url + params.toString());
-    let books = res;
-    if (res.json) books = await res.json();
-
-    if (!Array.isArray(books) || books.length === 0) {
-      grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">No books found in inventory.</p>`;
-      return;
-    }
-
-// Inside loadBookStoreCatalog() in web/dashboard.js:
-
-grid.innerHTML = books.map(b => {
-  const coverImg = b.cover_url ? b.cover_url : 'assets/icon.png';
-  
-  // STRICT PAYWALL BUTTON LOGIC: 
-  // If b.owned is false, show "Pay Now" with the price. If true, show "Read Now".
-  const actionText = b.owned ? "Read Now" : `Pay Now (KES ${b.price})`;
-  const actionColor = b.owned ? "background: #10b981;" : "background: #3b82f6;";
-
-  return `
-    <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-card, #1e293b); border: 1px solid #334155; border-radius: 12px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-      <div>
-        <div style="width: 100%; height: 260px; background: #0f172a; border-radius: 8px; margin-bottom: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-            <img src="${coverImg}" loading="lazy" alt="Cover" onerror="this.src='assets/icon.png'" style="width: 100%; height: 100%; object-fit: cover;">
-        </div>
-        <h4 style="margin: 0 0 8px 0; font-size: 1.05rem; color: var(--text-main); line-height: 1.3;">${b.title}</h4>
-        <p style="font-size: 0.8rem; color: #94a3b8; margin: 0 0 10px 0; line-height: 1.4;">${b.course}<br>${b.unit}</p>
-      </div>
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 14px; border-top: 1px solid #334155;">
-        <span style="font-weight: 800; color: #38bdf8; font-size: 1.1rem;">KES ${b.price}</span>
-        <button onclick="handleBookAction(event, '${b.id}', ${b.owned}, ${b.price}, ${JSON.stringify(b.title).replace(/"/g, '&quot;')})" class="btn-action" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; border: none; border-radius: 6px; color: white; cursor: pointer; transition: all 0.2s; ${actionColor}">${actionText}</button>
-      </div>
-    </div>
-  `;
-}).join("");
-  } catch (err) {
-    grid.innerHTML = `<p style="color: #ef4444; grid-column: 1 / -1;">Failed to load book store inventory.</p>`;
-  }
-}
-
-// --- SECURE DOWNLOAD & PURCHASE HANDLER ---
-window.handleBookAction = async function(event, bookId, isOwned, price, title) {
-  if (isOwned) {
-    const btn = event.currentTarget;
-    const originalText = btn.textContent;
-    btn.textContent = "Opening Reader...";
-    btn.disabled = true;
-    
-    setTimeout(() => {
-        window.open(`reader.html?bookId=${encodeURIComponent(bookId)}`, '_blank');
-        btn.textContent = originalText;
-        btn.disabled = false;
-    }, 400);
-  } else {
-    // Triggers M-Pesa STK Push modal for unowned books
-    window.openPaymentModal(bookId, `KES ${price}`, price, title); 
-  }
-};
-
-// Hook up filter button
-document.getElementById("filterBooksBtn")?.addEventListener("click", () => {
-  const field = document.getElementById("storeFieldFilter").value;
-  const course = document.getElementById("storeCourseFilter").value;
-  const unit = document.getElementById("storeUnitFilter").value.trim();
-  loadBookStoreCatalog(field, course, unit);
-});
 
 
 // --- REFERRALS LOGIC ---

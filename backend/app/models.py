@@ -156,7 +156,7 @@ class AdminActionLog(Base):
     target_pot_id = Column(
         String, ForeignKey("financial_pots.id"), nullable=True
     )
-    #description = Column(String, nullable=True)
+    description = Column(String, nullable=True)  # FIXED: Uncommented to prevent crash
     created_at = Column(DateTime, default=now)
 
 
@@ -505,7 +505,7 @@ class BookPurchase(Base):
     id = Column(String, primary_key=True, default=uid)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     book_id = Column(String, ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
-    status = Column(String, default="COMPLETED", nullable=False)  # FIXED: Missing status column added here
+    status = Column(String, default="COMPLETED", nullable=False)
     created_at = Column(DateTime, default=now)
 
 

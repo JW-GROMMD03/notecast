@@ -1,4 +1,5 @@
 # routers/payments.py
+import os
 import uuid
 import logging
 import time
@@ -7,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DbSession
+from sqlalchemy.exc import IntegrityError
 from .. import models, schemas, auth
 from ..database import get_db
 from ..services import mpesa_service
@@ -26,33 +28,20 @@ class STKPushRequest(BaseModel):
 
 # Comprehensive Pricing Catalog with automatic short-name to canonical mapping & pass durations
 PRICING_CATALOG = {
-    # Quick Pass / Quick Crash Pass
     "QUICK": {"amount": 50, "type": "PLAN_SUBSCRIPTION", "canonical": "QUICK_PASS", "duration_days": 1},
     "QUICK_PASS": {"amount": 50, "type": "PLAN_SUBSCRIPTION", "canonical": "QUICK_PASS", "duration_days": 1},
-    
-    # Lecture / Standard Lecture Pass
     "LECTURE": {"amount": 100, "type": "PLAN_SUBSCRIPTION", "canonical": "LECTURE_PASS", "duration_days": 7},
     "LECTURE_PASS": {"amount": 100, "type": "PLAN_SUBSCRIPTION", "canonical": "LECTURE_PASS", "duration_days": 7},
-    
-    # Master / Extended Master Pass
     "MASTER": {"amount": 250, "type": "PLAN_SUBSCRIPTION", "canonical": "MASTER_PASS", "duration_days": 30},
     "MASTER_PASS": {"amount": 250, "type": "PLAN_SUBSCRIPTION", "canonical": "MASTER_PASS", "duration_days": 30},
-    
-    # Weekly / Weekly Scholar Pass
     "WEEKLY": {"amount": 800, "type": "PLAN_SUBSCRIPTION", "canonical": "WEEKLY_SCHOLAR", "duration_days": 30},
     "WEEKLY_SCHOLAR": {"amount": 800, "type": "PLAN_SUBSCRIPTION", "canonical": "WEEKLY_SCHOLAR", "duration_days": 30},
-    
-    # Monthly / Monthly Pro Pass
     "MONTHLY": {"amount": 2500, "type": "PLAN_SUBSCRIPTION", "canonical": "MONTHLY_PRO", "duration_days": 30},
     "MONTHLY_PRO": {"amount": 2500, "type": "PLAN_SUBSCRIPTION", "canonical": "MONTHLY_PRO", "duration_days": 30},
-    
-    # Legacy compatibility aliases
     "STARTUP": {"amount": 100, "type": "PLAN_SUBSCRIPTION", "canonical": "LECTURE_PASS", "duration_days": 7},
     "BASIC": {"amount": 250, "type": "PLAN_SUBSCRIPTION", "canonical": "MASTER_PASS", "duration_days": 30},
     "STANDARD": {"amount": 800, "type": "PLAN_SUBSCRIPTION", "canonical": "WEEKLY_SCHOLAR", "duration_days": 30},
     "PREMIUM": {"amount": 2500, "type": "PLAN_SUBSCRIPTION", "canonical": "MONTHLY_PRO", "duration_days": 30},
-
-    # One-off credits & downloads
     "ECONOMY_NOTE": {"amount": 50, "type": "ECONOMY_NOTE"},
     "SINGLE_DOWNLOAD": {"amount": 20, "type": "SINGLE_DOWNLOAD"},
     "DOWNLOAD_PASS": {"amount": 20, "type": "DOWNLOAD_PASS"},
@@ -64,12 +53,14 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
     if txn.status != "PENDING":
         return
         
+    if result_code is None:
+        return
+        
     if int(result_code) == 0:
         txn.status = "COMPLETED"
         now_utc = datetime.now(timezone.utc)
         
         if txn.purchase_type == "BOOK" and txn.book_id:
-            # FIX: Direct DB insertion to avoid circular imports and instantly unlock the book in the user's library
             existing_purchase = db.query(models.BookPurchase).filter_by(
                 user_id=txn.user_id, book_id=txn.book_id, status="COMPLETED"
             ).first()
@@ -153,7 +144,10 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
                     referrer_acc.total_earned += commission_amount
         # -----------------------------------
         
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:       # callback and status-poll raced; the other one already granted it
+            db.rollback()
     else:
         logger.warning(f"Payment failed {txn.id}: {desc}")
         txn.status = "FAILED"
@@ -170,7 +164,6 @@ def initiate_payment(
     book_id_override = body.book_id
     raw_plan_name = (body.plan_name or "").strip()
     
-    # Auto-detect if this request is for a book purchase (explicitly or via book ID)
     possible_book_id = book_id_override
     if body.purchase_type == "BOOK":
         if not possible_book_id and raw_plan_name.startswith("BOOK:"):
@@ -180,7 +173,6 @@ def initiate_payment(
     elif raw_plan_name.startswith("BOOK:"):
         possible_book_id = raw_plan_name.split("BOOK:")[1]
     elif not possible_book_id:
-        # Check if plan_name is a raw Book UUID in the DB when missing from PRICING_CATALOG
         plan_key_upper = raw_plan_name.upper()
         if plan_key_upper not in PRICING_CATALOG:
             book_check = db.query(models.Book).filter(models.Book.id == raw_plan_name).first()
@@ -192,14 +184,13 @@ def initiate_payment(
         if not book:
             raise HTTPException(status_code=404, detail="Book not found")
             
-        # FIX: Direct DB check to strictly enforce paywall and avoid circular imports
         owned = db.query(models.BookPurchase).filter_by(
             user_id=user.id, book_id=book.id, status="COMPLETED"
         ).first()
         if owned:
             raise HTTPException(status_code=409, detail="You already own this book")
             
-        amount = float(book.price)  # Force server-side database price
+        amount = float(book.price)
         purchase_type = "BOOK"
         canonical_tier = None
         plan_key = "BOOK"
@@ -256,7 +247,6 @@ def generate_qr(
     body: STKPushRequest, 
     user: models.User = Depends(auth.get_current_user)
 ):
-    """Generates a Safaricom Dynamic QR Code for desktop users to scan."""
     plan_key = body.plan_name.strip().upper()
     if plan_key not in PRICING_CATALOG:
         raise HTTPException(status_code=400, detail="Invalid plan name.")
@@ -273,19 +263,37 @@ def generate_qr(
 
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: DbSession = Depends(get_db)):
-    """Automatic webhook invoked by Safaricom Daraja when payment completes or fails."""
+    """Webhook from Daraja. Fail-closed: a shared secret in the URL is required."""
+    expected = os.getenv("MPESA_CALLBACK_TOKEN")
+    if not expected or request.query_params.get("token") != expected:
+        logger.warning("Rejected callback with missing/invalid token from %s", request.client.host if request.client else "?")
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     payload = await request.json()
-    logger.info(f"CALLBACK RECEIVED: {payload}")
     cb = payload.get("Body", {}).get("stkCallback", {})
-    
+    code = cb.get("ResultCode")
+    if code is None:
+        return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
     txn = db.query(models.PaymentTransaction).filter(
         models.PaymentTransaction.checkout_request_id == cb.get("CheckoutRequestID")
     ).first()
-    
     if not txn:
-        return {"ResultCode": 1, "ResultDesc": "Transaction not found"}
-        
-    _apply_result(db, txn, cb.get("ResultCode"), cb.get("ResultDesc", ""))
+        return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+    if int(code) == 0:
+        items = {i.get("Name"): i.get("Value") for i in cb.get("CallbackMetadata", {}).get("Item", [])}
+        try:
+            paid = float(items.get("Amount") or 0)
+        except (TypeError, ValueError):
+            paid = 0.0
+        if paid < float(txn.amount):
+            logger.error("Underpaid callback for %s: paid=%s expected=%s", txn.id, paid, txn.amount)
+            txn.status = "FAILED"
+            db.commit()
+            return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+    _apply_result(db, txn, code, cb.get("ResultDesc", ""))
     return {"ResultCode": 0, "ResultDesc": "Accepted"}
 
 
@@ -295,7 +303,6 @@ def check_payment_status(
     db: DbSession = Depends(get_db), 
     user: models.User = Depends(auth.get_current_user)
 ):
-    """Frontend polling endpoint to verify transaction status."""
     tx = db.query(models.PaymentTransaction).filter(
         models.PaymentTransaction.id == transaction_id, 
         models.PaymentTransaction.user_id == user.id
@@ -325,7 +332,6 @@ def check_payment_status(
 
 @router.get("/my-transactions")
 def get_user_transactions(db: DbSession = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    """Fetches strictly book purchase transactions for the authenticated user's library catalog."""
     try:
         transactions = db.query(models.PaymentTransaction).filter(
             models.PaymentTransaction.user_id == user.id,
