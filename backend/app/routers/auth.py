@@ -116,7 +116,7 @@ def send_brevo_email(to_email: str, link_or_message: str, email_type: str, subje
     </html>
     """
 
-    sender_email = getattr(settings, "BREVO_SENDER_EMAIL", "destinymichael941@gmail.com")
+    sender_email = getattr(settings, "BREVO_SENDER_EMAIL", "no-reply@notecast.co.ke")
     payload = {
         "sender": {"name": "NoteCast", "email": sender_email}, 
         "to": [{"email": to_email}],
@@ -197,7 +197,7 @@ def send_brevo_otp_email(to_email: str, otp_code: str, email_type: str):
     </html>
     """
 
-    sender_email = getattr(settings, "BREVO_SENDER_EMAIL", "destinymichael941@gmail.com")
+    sender_email = getattr(settings, "BREVO_SENDER_EMAIL", "no-reply@notecast.co.ke")
     payload = {
         "sender": {"name": "NoteCast", "email": sender_email}, 
         "to": [{"email": to_email}],

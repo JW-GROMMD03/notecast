@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # Production Email Provider (Brevo API)
     # ---------------------------------------------------------------
     BREVO_API_KEY: str = ""
+    BREVO_SENDER_EMAIL: str = "no-reply@notecast.co.ke"
 
     # ---------------------------------------------------------------
     # Sessions / cookies and CORS
