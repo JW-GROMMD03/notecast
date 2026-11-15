@@ -2,17 +2,21 @@
 routers/books.py - Full Production Book Store, Admin Management & R2 Storage Router
 Note: R2 bucket remains PRIVATE for PDFs. DB columns file_url / cover_url store R2 object keys.
 """
+import io
 import logging
 import os
+import re
 import uuid
 import json
-from typing import Optional, List
+from typing import Optional
 
 import boto3
 from botocore.config import Config
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import Response, JSONResponse
-from pydantic import BaseModel, Field as PydanticField
+from fastapi.responses import Response
+from pydantic import BaseModel
+from pypdf import PdfReader, PdfWriter
+from reportlab.pdfgen import canvas
 from sqlalchemy.orm import Session
 
 from .. import models, auth
@@ -87,6 +91,12 @@ def _is_storage_key(value: Optional[str]) -> bool:
     return bool(value) and value.startswith("books/")
 
 
+def _sanitize_filename(title: str, ext: str = ".pdf") -> str:
+    clean = re.sub(r"[^A-Za-z0-9_\- ]+", "", title or "NoteCast_Book").strip()
+    clean = re.sub(r"\s+", "_", clean) or "NoteCast_Book"
+    return f"{clean[:80]}{ext}"
+
+
 def _is_admin_user(user: models.User) -> bool:
     """Strictly evaluates admin status to prevent string 'false' or DB quirks from bypassing purchases."""
     if not user:
@@ -103,7 +113,7 @@ def verify_book_access(db: Session, user: models.User, book_id: str) -> bool:
     """Returns True if the user is an admin or has an active purchase record for the book."""
     if _is_admin_user(user):
         return True
-    
+
     try:
         purchase = (
             db.query(models.BookPurchase)
@@ -118,6 +128,36 @@ def verify_book_access(db: Session, user: models.User, book_id: str) -> bool:
     except Exception as e:
         logger.error(f"Error evaluating book access: {e}")
         return False
+
+
+def _watermark_pdf_bytes(raw_pdf_bytes: bytes, watermark_text: str) -> bytes:
+    """Stamps a clean footer ownership watermark onto every page of a PDF."""
+    reader = PdfReader(io.BytesIO(raw_pdf_bytes))
+    writer = PdfWriter()
+
+    for page in reader.pages:
+        page_width = float(page.mediabox.width)
+        page_height = float(page.mediabox.height)
+
+        packet = io.BytesIO()
+        c = canvas.Canvas(packet, pagesize=(page_width, page_height))
+        c.setFont("Helvetica", 8)
+        c.setFillColorRGB(0.45, 0.48, 0.55)
+        c.drawCentredString(page_width / 2.0, 14, watermark_text)
+        c.save()
+
+        packet.seek(0)
+        watermark_pdf = PdfReader(packet)
+        page.merge_page(watermark_pdf.pages[0])
+        writer.add_page(page)
+
+    if reader.metadata:
+        writer.add_metadata(reader.metadata)
+
+    out_stream = io.BytesIO()
+    writer.write(out_stream)
+    out_stream.seek(0)
+    return out_stream.read()
 
 
 def _invalidate_catalog_cache():
@@ -193,7 +233,7 @@ def admin_upload_book(
         db.commit()
         db.refresh(new_book)
         _invalidate_catalog_cache()
-    except Exception as db_err:
+    except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Could not persist book record in database.")
 
@@ -212,11 +252,16 @@ def admin_update_book(
     if not book:
         raise HTTPException(status_code=404, detail="Book not found.")
 
-    if payload.title is not None: book.title = payload.title.strip()
-    if payload.field is not None: book.field = payload.field.strip()
-    if payload.course is not None: book.course = payload.course.strip()
-    if payload.unit is not None: book.unit = payload.unit.strip()
-    if payload.description is not None: book.description = payload.description.strip()
+    if payload.title is not None:
+        book.title = payload.title.strip()
+    if payload.field is not None:
+        book.field = payload.field.strip()
+    if payload.course is not None:
+        book.course = payload.course.strip()
+    if payload.unit is not None:
+        book.unit = payload.unit.strip()
+    if payload.description is not None:
+        book.description = payload.description.strip()
     if payload.price is not None:
         if payload.price < MIN_PRICE:
             raise HTTPException(status_code=400, detail=f"Minimum price is {MIN_PRICE} KES.")
@@ -315,10 +360,10 @@ def get_book_store_catalog(
     user: models.User = Depends(auth.get_current_user),
 ):
     from sqlalchemy import or_
-    
+
     cache_key = f"catalog:{field or 'ALL'}:{course or 'ALL'}:{unit or 'ALL'}:{search or ''}"
     public_catalog = None
-    
+
     if REDIS_AVAILABLE:
         try:
             cached = redis_client.get(cache_key)
@@ -326,7 +371,7 @@ def get_book_store_catalog(
                 public_catalog = json.loads(cached)
         except Exception as e:
             logger.warning("Redis read error: %s", str(e))
-            
+
     if not public_catalog:
         try:
             query = db.query(models.Book)
@@ -362,11 +407,11 @@ def get_book_store_catalog(
                 query = query.filter(or_(*search_filters))
 
             books = query.order_by(models.Book.created_at.desc()).all() if hasattr(models.Book, "created_at") else query.all()
-            
+
             public_catalog = []
             for b in books:
                 cover_key = getattr(b, "cover_url", None) or getattr(b, "cover_photo_url", None) or getattr(b, "cover", None)
-                
+
                 if _is_storage_key(cover_key):
                     cover_url = f"{R2_PUBLIC_DOMAIN}/{cover_key}" if R2_PUBLIC_DOMAIN else f"/api/books/{b.id}/cover"
                 else:
@@ -382,18 +427,17 @@ def get_book_store_catalog(
                     "description": getattr(b, "description", None) or "",
                     "cover_url": cover_url,
                 })
-            
+
             if REDIS_AVAILABLE:
                 try:
                     redis_client.setex(cache_key, 43200, json.dumps(public_catalog))
                 except Exception as e:
                     logger.warning("Redis write error: %s", str(e))
-                    
+
         except Exception as e:
             logger.exception("Error loading book store inventory from database: %s", str(e))
             raise HTTPException(status_code=500, detail="Failed to load book store inventory.")
 
-    # "owned" means PURCHASED. Admin access is reported separately and never changes the paywall state.
     owned_book_ids = set()
     try:
         owned_book_ids = {
@@ -410,6 +454,7 @@ def get_book_store_catalog(
         {**b, "owned": b["id"] in owned_book_ids, "admin_preview": is_admin and b["id"] not in owned_book_ids}
         for b in public_catalog
     ]
+
 
 @router.get("/my-library")
 def get_my_library(
@@ -445,7 +490,7 @@ def get_book_cover_image(book_id: str, db: Session = Depends(get_db)):
     """Fallback route for cover photos if public R2 CDN is not configured."""
     book = db.query(models.Book).filter(models.Book.id == book_id).first()
     cover_key = getattr(book, "cover_url", None) or getattr(book, "cover_photo_url", None) or getattr(book, "cover", None)
-    
+
     if not book or not _is_storage_key(cover_key):
         raise HTTPException(status_code=404, detail="Cover image not found.")
 
@@ -495,3 +540,61 @@ def get_secure_book_read_url(
         raise HTTPException(status_code=500, detail="Could not generate secure read link.")
 
     return {"status": "SUCCESS", "url": presigned_url}
+
+
+@router.get("/{book_id}/download")
+def download_purchased_book(
+    book_id: str,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user),
+):
+    """
+    Verifies book ownership, fetches the file privately from Cloudflare R2,
+    stamps the buyer's name/email watermark onto every page (for PDFs),
+    and returns a downloadable attachment so the student can keep it offline.
+    """
+    book = db.query(models.Book).filter(models.Book.id == book_id).first()
+    file_key = getattr(book, "file_url", None) or getattr(book, "book_file_url", None) or getattr(book, "file", None)
+
+    if not book or not _is_storage_key(file_key):
+        raise HTTPException(status_code=404, detail="Book document not found.")
+
+    if not verify_book_access(db, user, book_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. You must purchase this book before downloading."
+        )
+
+    try:
+        r2_object = s3.get_object(Bucket=R2_BUCKET, Key=file_key)
+        raw_bytes = r2_object["Body"].read()
+    except Exception as e:
+        logger.exception("Failed to fetch book from R2 for download: %s", str(e))
+        raise HTTPException(status_code=500, detail="Could not retrieve book file from storage.")
+
+    ext = _get_file_extension(file_key) or ".pdf"
+    safe_filename = _sanitize_filename(book.title, ext)
+    media_type = ALLOWED_DOC_TYPES.get(ext, "application/octet-stream")
+
+    # Apply buyer-specific footer watermark if document is a PDF
+    if ext == ".pdf":
+        buyer_name = (getattr(user, "display_name", "") or "").strip()
+        buyer_email = getattr(user, "email", "")
+        owner_label = f"{buyer_name} ({buyer_email})" if buyer_name else buyer_email
+        watermark_text = f"Licensed to {owner_label}  |  NoteCast (notecast.co.ke)"
+        try:
+            output_bytes = _watermark_pdf_bytes(raw_bytes, watermark_text)
+        except Exception as wm_err:
+            logger.warning("PDF watermarking failed for book %s, serving original: %s", book_id, str(wm_err))
+            output_bytes = raw_bytes
+    else:
+        output_bytes = raw_bytes
+
+    return Response(
+        content=output_bytes,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_filename}"',
+            "Cache-Control": "no-store",
+        },
+    )

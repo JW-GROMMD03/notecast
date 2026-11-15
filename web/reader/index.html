@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NoteCast Secure Book Reader</title>
+  <title>NoteCast Book Reader</title>
   <link rel="icon" type="image/png" href="/assets/icon.png">
   
   <style>
@@ -15,7 +15,6 @@
       flex-direction: column; 
       align-items: center; 
       overflow-y: auto; 
-      user-select: none; /* Prevents text highlighting */
     }
     
     #pdf-render-container { 
@@ -39,10 +38,13 @@
       top: 0; 
       background: #1e293b; 
       width: 100%; 
-      padding: 12px; 
+      padding: 12px 20px; 
+      box-sizing: border-box;
       display: flex; 
       justify-content: center; 
-      gap: 20px; 
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px; 
       z-index: 100; 
       color: #cbd5e1; 
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
@@ -59,7 +61,7 @@
       cursor: pointer; 
       font-weight: 600; 
       font-size: 0.9rem;
-      transition: background 0.2s;
+      transition: background 0.2s, transform 0.1s;
     }
     
     button:hover:not(:disabled) {
@@ -70,6 +72,17 @@
       background: #475569; 
       color: #94a3b8;
       cursor: not-allowed; 
+    }
+
+    .btn-download {
+      background: #10b981;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-download:hover:not(:disabled) {
+      background: #059669;
     }
     
     .page-info {
@@ -95,13 +108,13 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 </head>
 
-<!-- Disable right-click globally -->
-<body oncontextmenu="return false;">
+<body>
 
   <div class="toolbar">
     <button id="prev-page" disabled>← Previous</button>
     <span class="page-info">Page: <span id="page-num" style="color: #38bdf8; font-weight: 700;">-</span> / <span id="page-count">-</span></span>
     <button id="next-page" disabled>Next →</button>
+    <button id="download-book" class="btn-download" disabled>⬇ Download PDF</button>
   </div>
 
   <div id="pdf-render-container">
@@ -130,12 +143,12 @@
 
     const canvas = document.getElementById('pdf-render'),
           ctx = canvas.getContext('2d'),
-          spinner = document.getElementById('loading-spinner');
+          spinner = document.getElementById('loading-spinner'),
+          downloadBtn = document.getElementById('download-book');
 
     const renderPage = num => {
       pageIsRendering = true;
       pdfDoc.getPage(num).then(page => {
-        // High-res rendering scale
         const viewport = page.getViewport({ scale: 1.8 });
         canvas.height = viewport.height;
         canvas.width = viewport.width;
@@ -152,8 +165,6 @@
         });
         
         document.getElementById('page-num').textContent = num;
-        
-        // Update Button States
         document.getElementById('prev-page').disabled = (num <= 1);
         document.getElementById('next-page').disabled = (num >= pdfDoc.numPages);
       });
@@ -168,39 +179,78 @@
       if (pageNum <= 1) return;
       pageNum--;
       queueRenderPage(pageNum);
-      window.scrollTo(0, 0); // Reset scroll to top
+      window.scrollTo(0, 0);
     });
 
     document.getElementById('next-page').addEventListener('click', () => {
       if (pageNum >= pdfDoc.numPages) return;
       pageNum++;
       queueRenderPage(pageNum);
-      window.scrollTo(0, 0); // Reset scroll to top
+      window.scrollTo(0, 0);
     });
 
-    // Disable keyboard shortcuts used for saving and printing
-    document.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && (e.key === 'p' || e.key === 's')) {
-        e.preventDefault();
+    // Download watermarked PDF for offline keeping
+    downloadBtn.addEventListener('click', async () => {
+      const originalLabel = downloadBtn.textContent;
+      downloadBtn.disabled = true;
+      downloadBtn.textContent = "Preparing PDF...";
+
+      try {
+        const token = localStorage.getItem("access_token") || localStorage.getItem("token") || "";
+        const headers = token ? { "Authorization": `Bearer ${token}` } : {};
+
+        const response = await fetch(`/books/${bookId}/download`, {
+          method: "GET",
+          credentials: "include",
+          headers: headers
+        });
+
+        if (!response.ok) {
+          let errMsg = "Download failed.";
+          try {
+            const errJson = await response.json();
+            if (errJson.detail) errMsg = errJson.detail;
+          } catch (_) {}
+          throw new Error(errMsg);
+        }
+
+        // Extract filename from Content-Disposition header if available
+        const disposition = response.headers.get("Content-Disposition") || "";
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        const filename = match ? match[1] : `NoteCast_Book_${bookId}.pdf`;
+
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(blobUrl);
+      } catch (err) {
+        alert(err.message || "Could not download the book. Please try again.");
+      } finally {
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = originalLabel;
       }
     });
 
-    // Initialize the Secure Viewer
+    // Initialize the Viewer
     async function initReader() {
       try {
-        // Fetch the temporary Cloudflare R2 Presigned URL
         const res = await authedFetch(`/books/${bookId}/read-url`);
         const data = res.json ? await res.json() : res;
 
         if (!data.url) throw new Error("Could not retrieve secure URL.");
 
-        // Hand URL over to Mozilla PDF.js
         const loadingTask = pdfjsLib.getDocument(data.url);
         pdfDoc = await loadingTask.promise;
         
         document.getElementById('page-count').textContent = pdfDoc.numPages;
         spinner.style.display = "none";
         canvas.style.display = "block";
+        downloadBtn.disabled = false;
         
         renderPage(pageNum);
       } catch(err) {
