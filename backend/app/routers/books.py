@@ -31,7 +31,7 @@ R2_BUCKET = os.getenv("R2_BUCKET_NAME", "notecast-books")
 R2_PUBLIC_DOMAIN = os.getenv("R2_PUBLIC_DOMAIN", "").rstrip("/")
 MIN_PRICE = 150  # Minimum book price in KES
 
-CATALOG_CACHE_PREFIX = "books:catalog:"
+CATALOG_CACHE_PREFIX = "books:catalog:v2:"
 USER_OWNED_PREFIX = "books:owned:"
 
 # Initialize Cloudflare R2 / S3 Client
@@ -390,11 +390,14 @@ def _query_public_catalog(
     unit: Optional[str],
     search: Optional[str],
 ) -> list[dict]:
-    from sqlalchemy import or_
+    from sqlalchemy import func, or_
 
     query = db.query(models.Book)
     if hasattr(models.Book, "status"):
-        query = query.filter((models.Book.status == None) | (models.Book.status == "ACTIVE"))
+        query = query.filter(
+            (models.Book.status == None)
+            | (~func.upper(func.trim(models.Book.status)).in_(["SUSPENDED", "DELETED", "ARCHIVED", "DRAFT"]))
+        )
 
     if field and field.upper() != "ALL" and hasattr(models.Book, "field"):
         query = query.filter(models.Book.field.ilike(f"%{field}%"))

@@ -249,30 +249,29 @@ export class BookStoreEngine {
    * 2. Revalidates against /books/store using If-None-Match ETag in background
    * 3. Only triggers a second render if the server returns 200 OK with updated books
    */
-  async loadCatalog(userId, onUpdate) {
+async loadCatalog(userId, onUpdate) {
     const key = this._storageKey(userId);
 
-    // L1 Memory Hit (<1 ms)
-    if (this.l1Memory && Array.isArray(this.l1Memory.books)) {
+    // L1 Memory Hit (<1 ms) — only serve non-empty cached catalogs
+    if (this.l1Memory && Array.isArray(this.l1Memory.books) && this.l1Memory.books.length > 0) {
       this.index.build(this.l1Memory.books);
       onUpdate(this.l1Memory.books, { source: "l1-memory", revalidating: true });
     } else {
       // L2 IndexedDB Hit (<5 ms)
       const snapshot = await this.l2Db.get(key);
-      if (snapshot && Array.isArray(snapshot.books)) {
+      if (snapshot && Array.isArray(snapshot.books) && snapshot.books.length > 0) {
         this.l1Memory = snapshot;
         this.index.build(snapshot.books);
         onUpdate(snapshot.books, { source: "l2-indexeddb", revalidating: true });
       }
     }
 
-    // Deduplicate concurrent network revalidations
     if (this._inflight) return this._inflight;
 
     this._inflight = (async () => {
       try {
         const headers = {};
-        if (this.l1Memory?.etag) {
+        if (this.l1Memory?.etag && this.l1Memory.books?.length > 0) {
           headers["If-None-Match"] = this.l1Memory.etag;
         }
 
@@ -282,7 +281,6 @@ export class BookStoreEngine {
         });
 
         if (resp.status === 304 && this.l1Memory?.books) {
-          // Server confirmed catalog is identical — 0 bytes transferred, 0 DOM reflow
           return this.l1Memory.books;
         }
 
@@ -290,10 +288,15 @@ export class BookStoreEngine {
         const etag = resp.headers.get("ETag") || null;
 
         if (Array.isArray(books)) {
-          const snapshot = { etag, books, updatedAt: Date.now() };
-          this.l1Memory = snapshot;
-          this.index.build(books);
-          await this.l2Db.set(key, snapshot);
+          if (books.length > 0) {
+            const snapshot = { etag, books, updatedAt: Date.now() };
+            this.l1Memory = snapshot;
+            this.index.build(books);
+            await this.l2Db.set(key, snapshot);
+          } else {
+            this.l1Memory = null;
+            this.index.build([]);
+          }
           onUpdate(books, { source: "network", revalidating: false });
         }
         return books;
