@@ -1,9 +1,11 @@
+// web/assets/js/api.js
 export const API_BASE = "/api";
 export const EXTENSION_ID = "oflgnhoaebicbfnfoomfkfjgjldjbglg";
 export const CHROME_STORE_URL = "https://chromewebstore.google.com/detail/notecast/oflgnhoaebicbfnfoomfkfjgjldjbglg";
 
 function readCookie(name) {
-  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
   return match ? decodeURIComponent(match[1]) : null;
 }
 
@@ -13,7 +15,15 @@ function csrfHeaders() {
 }
 
 export function cacheUser(user) {
-  sessionStorage.setItem("notecast_user", JSON.stringify({ display_name: user.display_name, email: user.email }));
+  if (!user) return;
+  sessionStorage.setItem(
+    "notecast_user",
+    JSON.stringify({
+      display_name: user.display_name,
+      email: user.email,
+      plan: user.plan
+    })
+  );
 }
 
 export function cachedUser() {
@@ -32,7 +42,7 @@ export async function apiFetch(path, options = {}) {
   const { rawResponse = false, ...fetchOpts } = options;
   const method = (fetchOpts.method || "GET").toUpperCase();
   const needsCsrf = !["GET", "HEAD"].includes(method);
-  
+
   const headers = {
     ...(needsCsrf ? csrfHeaders() : {}),
     ...(fetchOpts.headers || {}),
@@ -57,19 +67,22 @@ export async function apiFetch(path, options = {}) {
       const body = await resp.json().catch(() => ({}));
       const err = new Error((body && body.detail) || `Request failed (${resp.status})`);
       err.status = resp.status;
+      err.data = body;
       throw err;
     }
     return resp;
   }
-  
+
   const ct = resp.headers.get("content-type") || "";
   const body = ct.includes("application/json") ? await resp.json().catch(() => ({})) : null;
-  
+
   if (!resp.ok) {
     const err = new Error((body && body.detail) || `Request failed (${resp.status})`);
     err.status = resp.status;
+    err.data = body;
     throw err;
   }
+
   return body ?? resp;
 }
 
@@ -77,7 +90,7 @@ export async function authedFetch(path, options = {}) {
   try {
     return await apiFetch(path, options);
   } catch (err) {
-    if (err.status !== 401) throw err;
+    if (err?.status !== 401) throw err;
     try {
       await apiFetch("/auth/refresh", { method: "POST", body: JSON.stringify({}) });
     } catch {
@@ -111,7 +124,11 @@ export async function logout() {
 
 export function checkExtensionInstalled() {
   return new Promise((resolve) => {
-    if (typeof window.chrome !== "undefined" && window.chrome.runtime && window.chrome.runtime.sendMessage) {
+    if (
+      typeof window.chrome !== "undefined" &&
+      window.chrome.runtime &&
+      typeof window.chrome.runtime.sendMessage === "function"
+    ) {
       window.chrome.runtime.sendMessage(EXTENSION_ID, { type: "PING" }, (response) => {
         if (window.chrome.runtime.lastError || !response || !response.installed) {
           resolve(false);

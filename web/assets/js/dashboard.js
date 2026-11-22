@@ -1,9 +1,10 @@
 // web/assets/js/dashboard.js
 import { authedFetch, requireAuth, logout, checkExtensionInstalled, CHROME_STORE_URL } from "./api.js?v=3";
-import { BookStoreEngine, generateBookCoverSvg } from "./book-store-cache.js?v=3";
+import { BookStoreEngine, generateBookCoverSvg } from "./book-store-cache.js?v=4";
 
 let user = null;
 const bookStoreEngine = new BookStoreEngine(authedFetch);
+let activeStoreCategory = "ALL";
 
 // --- CASCADING STORE CONFIGURATION ---
 const BOOK_CATEGORIES = {
@@ -47,14 +48,78 @@ const BOOK_CATEGORIES = {
   "Agriculture & Environmental": [
       "Agriculture", "Environmental Science", "Forestry", 
       "Veterinary Medicine", "Agribusiness", "Horticulture", "Marine Biology"
+  ],
+  "Literature & Fiction": [
+      "African Literature", "Contemporary Fiction", "Sci-Fi & Fantasy",
+      "Mystery & Thriller", "Biographies & Memoirs", "Classics", "Short Stories"
   ]
 };
 
+function ensureStoreCategoryTabs() {
+  const grid = document.getElementById("bookStoreGrid");
+  if (!grid || document.getElementById("storeCategoryTabsBar")) return;
+
+  const counts = bookStoreEngine.getCategoryCounts();
+  const tabs = [
+    { id: "ALL", label: `All Store (${counts.ALL})` },
+    { id: "BOOK", label: `📚 Textbooks (${counts.BOOK})` },
+    { id: "NOVEL", label: `📖 Novels • KES 100 (${counts.NOVEL})` },
+    { id: "PAST_PAPER", label: `📝 Past Papers • KES 10 (${counts.PAST_PAPER})` },
+    { id: "OTHER", label: `📁 Others & Folders (${counts.OTHER})` },
+  ];
+
+  const barHtml = `
+    <div id="storeCategoryTabsBar" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;">
+      ${tabs.map(t => `
+        <button type="button" data-store-cat="${t.id}" style="padding:8px 14px;border-radius:999px;border:1px solid ${activeStoreCategory === t.id ? '#3b82f6' : '#334155'};background:${activeStoreCategory === t.id ? '#3b82f6' : 'var(--bg-card, #1e293b)'};color:#fff;font-size:0.82rem;font-weight:700;cursor:pointer;transition:0.15s;">
+          ${t.label}
+        </button>
+      `).join("")}
+    </div>
+  `;
+  grid.insertAdjacentHTML("beforebegin", barHtml);
+
+  document.getElementById("storeCategoryTabsBar").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-store-cat]");
+    if (!btn) return;
+    activeStoreCategory = btn.dataset.storeCat;
+    updateStoreCategoryTabLabels();
+    applyLocalBookFilters();
+  });
+}
+
+function updateStoreCategoryTabLabels() {
+  const bar = document.getElementById("storeCategoryTabsBar");
+  if (!bar) return;
+  const counts = bookStoreEngine.getCategoryCounts();
+  const labels = {
+    ALL: `All Store (${counts.ALL})`,
+    BOOK: `📚 Textbooks (${counts.BOOK})`,
+    NOVEL: `📖 Novels • KES 100 (${counts.NOVEL})`,
+    PAST_PAPER: `📝 Past Papers • KES 10 (${counts.PAST_PAPER})`,
+    OTHER: `📁 Others & Folders (${counts.OTHER})`,
+  };
+  bar.querySelectorAll("[data-store-cat]").forEach(btn => {
+    const cat = btn.dataset.storeCat;
+    btn.textContent = labels[cat] || cat;
+    const isSelected = cat === activeStoreCategory;
+    btn.style.background = isSelected ? "#3b82f6" : "var(--bg-card, #1e293b)";
+    btn.style.borderColor = isSelected ? "#3b82f6" : "#334155";
+  });
+}
+
 function applyLocalBookFilters() {
+  ensureStoreCategoryTabs();
+  updateStoreCategoryTabLabels();
   const field = document.getElementById("storeFieldFilter")?.value || "";
   const course = document.getElementById("storeCourseFilter")?.value || "";
   const unit = document.getElementById("storeUnitFilter")?.value || "";
-  const filtered = bookStoreEngine.filterLocal({ field, course, unit });
+  const filtered = bookStoreEngine.filterLocal({
+    itemType: activeStoreCategory,
+    field,
+    course,
+    unit
+  });
   renderBookGrid(filtered);
 }
 
@@ -226,7 +291,7 @@ function showEntitlementModal({ featureName, recommendedTier = "STANDARD", price
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-// --- BOOK HELPERS ---
+// --- BOOK & STORE ITEM HELPERS ---
 const escHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 window._books = {};
 window._bookFallbackCover = (bookId) => {
@@ -234,7 +299,27 @@ window._bookFallbackCover = (bookId) => {
   return b ? generateBookCoverSvg(b) : "/assets/icon.png";
 };
 
+function getItemBadgeMarkup(b) {
+  const type = (b.item_type || "BOOK").toUpperCase();
+  const folderTag = b.is_folder ? ` • 📁 ${b.folder_file_count || ""} Files` : "";
+  if (type === "NOVEL") {
+    return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:0.68rem;font-weight:700;background:rgba(236,72,153,0.16);color:#f472b6;margin-bottom:6px;">NOVEL${folderTag}</span>`;
+  }
+  if (type === "PAST_PAPER") {
+    return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:0.68rem;font-weight:700;background:rgba(14,165,233,0.16);color:#38bdf8;margin-bottom:6px;">PAST PAPER${folderTag}</span>`;
+  }
+  if (type === "OTHER") {
+    return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:0.68rem;font-weight:700;background:rgba(245,158,11,0.16);color:#fbbf24;margin-bottom:6px;">${b.is_folder ? "📁 FOLDER BUNDLE" : "RESOURCE"}${folderTag}</span>`;
+  }
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:0.68rem;font-weight:700;background:rgba(99,102,241,0.16);color:#818cf8;margin-bottom:6px;">TEXTBOOK${folderTag}</span>`;
+}
+
 function openBook(bookId) {
+  const b = window._books[bookId];
+  if (b && b.is_folder) {
+    window.open(`/books/${encodeURIComponent(bookId)}/download`, "_blank");
+    return;
+  }
   window.open(`/reader?bookId=${encodeURIComponent(bookId)}`, "_blank");
 }
 
@@ -253,25 +338,26 @@ window.afterPayment = async () => {
 async function loadOwnedBooks() {
   const box = document.getElementById("customerLibraryModules");
   if (!box) return;
-  box.innerHTML = `<p style="color: var(--text-muted);">Loading your books...</p>`;
+  box.innerHTML = `<p style="color: var(--text-muted);">Loading your library items...</p>`;
   try {
     const res = await authedFetch("/books/my-library");
     const books = res.json ? await res.json() : res;
     if (!Array.isArray(books) || !books.length) {
-      box.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">You haven't bought any books yet. Open the Book Store to get started.</p>`;
+      box.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">You haven't bought any books, novels, past papers, or folders yet. Open the Store to get started.</p>`;
       return;
     }
     books.forEach(b => { window._books[b.id] = b; });
     box.innerHTML = books.map(b => {
-      const fallbackSvg = generateBookCoverSvg(b);
-      const coverSrc = b.cover_url || fallbackSvg;
+      const coverSrc = b.cover_url || generateBookCoverSvg(b);
+      const actionLabel = b.is_folder ? "Download Folder (.ZIP)" : "Read & Download";
       return `
       <div style="background: var(--bg-main); border: 1px solid var(--border-color); padding: 14px; border-radius: 8px; display: flex; gap: 12px;">
         <img src="${coverSrc}" loading="lazy" decoding="async" alt="" onerror="this.onerror=null;this.src=window._bookFallbackCover('${escHtml(b.id)}')" style="width: 56px; height: 76px; object-fit: cover; border-radius: 6px; background: #1e293b;">
         <div style="flex: 1;">
+          ${getItemBadgeMarkup(b)}
           <h4 style="margin: 0 0 4px 0; font-size: 0.95rem;">${escHtml(b.title)}</h4>
           <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0 0 10px 0;">${escHtml(b.course)} • ${escHtml(b.unit)}</p>
-          <button class="btn-action" data-read="${b.id}" style="padding: 6px 14px; font-size: 0.82rem; background: #10b981;">Read & Download</button>
+          <button class="btn-action" data-read="${b.id}" style="padding: 6px 14px; font-size: 0.82rem; background: #10b981;">${actionLabel}</button>
         </div>
       </div>`;
     }).join("");
@@ -280,7 +366,7 @@ async function loadOwnedBooks() {
       if (t) openBook(t.dataset.read);
     };
   } catch (err) {
-    box.innerHTML = `<p style="color: #ef4444; grid-column: 1 / -1;">Failed to load your books.</p>`;
+    box.innerHTML = `<p style="color: #ef4444; grid-column: 1 / -1;">Failed to load your library.</p>`;
   }
 }
 
@@ -289,7 +375,7 @@ async function loadCustomerLibraryAndPurchases() {
 
   const tbody = document.getElementById("customerPurchasesTableBody");
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading book purchase history...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading store purchase history...</td></tr>`;
 
   try {
     const res = await authedFetch("/payments/my-transactions");
@@ -297,7 +383,7 @@ async function loadCustomerLibraryAndPurchases() {
     if (res.json) transactions = await res.json();
 
     if (!Array.isArray(transactions) || transactions.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No book purchases found. Visit the Book Store to unlock textbooks.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No store purchases found. Visit the Store to unlock items.</td></tr>`;
       return;
     }
 
@@ -311,11 +397,11 @@ async function loadCustomerLibraryAndPurchases() {
       </tr>
     `).join("");
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load book transactions.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load transactions.</td></tr>`;
   }
 }
 
-// --- HIGH-PERFORMANCE SWR + INVERTED INDEX BOOK STORE RENDERER ---
+// --- ULTRA-FAST SWR + PRE-BUCKETED INDEX STORE RENDERER ---
 let _renderGeneration = 0;
 
 function renderBookGrid(books) {
@@ -327,7 +413,7 @@ function renderBookGrid(books) {
   grid.style.gap = "24px";
 
   if (!Array.isArray(books) || books.length === 0) {
-    grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">No books found matching your filter.</p>`;
+    grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">No items found matching your filter.</p>`;
     return;
   }
 
@@ -338,7 +424,7 @@ function renderBookGrid(books) {
   const generation = ++_renderGeneration;
   grid.innerHTML = "";
 
-  const chunkSize = 18;
+  const chunkSize = 24;
   let currentIndex = 0;
 
   function renderChunk() {
@@ -347,24 +433,26 @@ function renderBookGrid(books) {
     if (!chunk.length) return;
 
     const fragmentHtml = chunk.map(b => {
-      const cover = b.cover_url || generateBookCoverSvg(b);
+      const cover = b._resolvedCover || b.cover_url || generateBookCoverSvg(b);
+      const ownedLabel = b.is_folder ? "Download Folder" : "Read & Download";
       const mainBtn = b.owned
-        ? `<button class="btn-action" data-act="read" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #10b981;">Read & Download</button>`
+        ? `<button class="btn-action" data-act="read" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #10b981;">${ownedLabel}</button>`
         : `<button class="btn-action" data-act="pay" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #3b82f6;">Pay Now (KES ${b.price})</button>`;
       const adminLink = (!b.owned && b.admin_preview)
         ? `<a href="#" data-act="read" data-id="${b.id}" style="display:block; margin-top: 8px; font-size: 0.75rem; color: #f59e0b; text-align: right;">Admin preview</a>`
         : "";
 
       return `
-        <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-card, #1e293b); border: 1px solid #334155; border-radius: 12px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+        <div class="card" style="content-visibility: auto; contain-intrinsic-size: 240px 390px; display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-card, #1e293b); border: 1px solid #334155; border-radius: 12px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
           <div>
-            <div style="width: 100%; height: 260px; background: #0f172a; border-radius: 8px; margin-bottom: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 100%; height: 240px; background: #0f172a; border-radius: 8px; margin-bottom: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
               <img src="${cover}" loading="lazy" decoding="async" alt="${escHtml(b.title)}" onerror="this.onerror=null;this.src=window._bookFallbackCover('${escHtml(b.id)}')" style="width: 100%; height: 100%; object-fit: cover;">
             </div>
-            <h4 style="margin: 0 0 8px 0; font-size: 1.05rem; color: var(--text-main); line-height: 1.3;">${escHtml(b.title)}</h4>
+            ${getItemBadgeMarkup(b)}
+            <h4 style="margin: 0 0 6px 0; font-size: 1.02rem; color: var(--text-main); line-height: 1.3;">${escHtml(b.title)}</h4>
             <p style="font-size: 0.8rem; color: #94a3b8; margin: 0 0 10px 0; line-height: 1.4;">${escHtml(b.course)}<br>${escHtml(b.unit)}</p>
           </div>
-          <div style="margin-top: auto; padding-top: 14px; border-top: 1px solid #334155;">
+          <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid #334155;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <span style="font-weight: 800; color: ${b.owned ? '#10b981' : '#38bdf8'}; font-size: 1.05rem;">${b.owned ? "Owned ✓" : "KES " + b.price}</span>
               ${mainBtn}
@@ -400,7 +488,7 @@ async function loadBookStoreCatalog() {
   if (!grid) return;
 
   if (!grid.children.length) {
-    grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">Loading book catalog...</p>`;
+    grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">Loading store catalog...</p>`;
   }
 
   try {
@@ -408,8 +496,8 @@ async function loadBookStoreCatalog() {
       applyLocalBookFilters();
     });
   } catch (err) {
-    if (!grid.children.length || grid.textContent.includes("Loading book catalog")) {
-      grid.innerHTML = `<p style="color: #ef4444; grid-column: 1 / -1;">Failed to load book store inventory.</p>`;
+    if (!grid.children.length || grid.textContent.includes("Loading store catalog")) {
+      grid.innerHTML = `<p style="color: #ef4444; grid-column: 1 / -1;">Failed to load store inventory.</p>`;
     }
   }
 }
@@ -418,14 +506,14 @@ window.handleBookAction = async function(event, bookId, isOwned, price, title) {
   if (isOwned) {
     const btn = event.currentTarget;
     const originalText = btn.textContent;
-    btn.textContent = "Opening Reader...";
+    btn.textContent = "Opening...";
     btn.disabled = true;
     
     setTimeout(() => {
-        window.open(`/reader?bookId=${encodeURIComponent(bookId)}`, '_blank');
+        openBook(bookId);
         btn.textContent = originalText;
         btn.disabled = false;
-    }, 400);
+    }, 200);
   } else {
     window.openPaymentModal(bookId, `KES ${price}`, price, title); 
   }
@@ -869,7 +957,7 @@ window.openPaymentModal = function(itemCode, priceText, explicitAmount = null, e
         <div style="background:var(--bg-card, #1e293b);padding:2rem;border-radius:12px;max-width:420px;width:100%;color:#fff;box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
           <div id="paymentFormContainer">
             <h3 style="margin-top:0;font-size:1.25rem;">Secure M-Pesa Checkout</h3>
-            <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:1rem;">Item: <strong>${planInfo.name}</strong><br>Amount: <strong style="color:#38bdf8;">${planInfo.amount} KES</strong></p>
+            <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:1rem;">Item: <strong>${escHtml(planInfo.name)}</strong><br>Amount: <strong style="color:#38bdf8;">${planInfo.amount} KES</strong></p>
             
             <label style="display:block;margin:1rem 0 0.5rem;font-size:0.85rem;">Safaricom Phone Number:</label>
             <input type="text" id="mpesaPhone" value="0703250550" placeholder="0712345678 or 254712345678" style="width:100%;padding:0.75rem;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;margin-bottom:0.75rem;box-sizing:border-box;"/>
@@ -1102,7 +1190,7 @@ async function init() {
   
   initStoreFilters();
 
-  // Warm the Book Store SWR cache in the background right after dashboard login
+  // Warm the Store SWR cache immediately on login
   bookStoreEngine.loadCatalog(user?.id || user?.email, () => {}).catch(() => {});
 
   if(document.getElementById("userName")) document.getElementById("userName").textContent = user.display_name || user.email;

@@ -1,6 +1,7 @@
 import asyncio
 import datetime as dt
 import calendar
+import html
 from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
@@ -9,6 +10,7 @@ from sqlalchemy import func
 from pydantic import BaseModel
 
 from .. import models, auth
+from ..auth import send_brevo_email
 from ..database import get_db, SessionLocal
 from ..services import supabase_auth
 
@@ -17,9 +19,11 @@ direct_router = APIRouter(prefix="/api/admin", include_in_schema=False)
 
 active_ws_connections = []
 
+
 class AdminLoginReq(BaseModel):
     email: str
     password: str
+
 
 class FinanceActionReq(BaseModel):
     action_type: str
@@ -28,25 +32,30 @@ class FinanceActionReq(BaseModel):
     target_pot: str = None
     description: str = ""
 
+
 class UserActionReq(BaseModel):
-    action: str  
+    action: str
     user_id: str
+
 
 class AwardSubscriptionReq(BaseModel):
     user_id: str
-    tier: str  
+    tier: str
     duration_days: int
+
 
 class SendEmailReq(BaseModel):
     user_email: str
     subject: str
     message: str
 
+
 class ExpenseReq(BaseModel):
     name: str
     amount: float
     interval_days: int
     next_due: str
+
 
 class BulkEmailReq(BaseModel):
     tier: str
@@ -58,14 +67,39 @@ class BulkEmailReq(BaseModel):
     message: str
 
 
+def _format_admin_email_html(subject: str, message: str) -> str:
+    safe_subject = html.escape(subject.strip())
+    paragraphs = [
+        f"<p style='margin:0 0 14px 0;line-height:1.6;color:#1e293b;font-size:15px;'>{html.escape(line)}</p>"
+        for line in message.strip().splitlines()
+        if line.strip()
+    ]
+    body_html = "".join(paragraphs) or f"<p>{html.escape(message)}</p>"
+    return f"""
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#f8fafc;border-radius:12px;">
+      <div style="background:#4f46e5;color:#ffffff;padding:18px 24px;border-radius:10px 10px 0 0;">
+        <h2 style="margin:0;font-size:18px;">NoteCast</h2>
+      </div>
+      <div style="background:#ffffff;padding:24px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 10px 10px;">
+        <h3 style="margin:0 0 16px 0;color:#0f172a;font-size:17px;">{safe_subject}</h3>
+        {body_html}
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0 16px 0;">
+        <p style="margin:0;font-size:12px;color:#64748b;">
+          Sent by the NoteCast Team • <a href="https://www.notecast.co.ke" style="color:#4f46e5;text-decoration:none;">www.notecast.co.ke</a>
+        </p>
+      </div>
+    </div>
+    """
+
+
 def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
     ip = request.client.host
     attempts_left = auth.check_admin_rate_limit(db, req.email, ip)
 
     generic_error = JSONResponse(
-        status_code=401, 
+        status_code=401,
         content={
-            "detail": "Invalid administrator credentials.", 
+            "detail": "Invalid administrator credentials.",
             "attempts_left": (attempts_left - 1) if isinstance(attempts_left, int) else None
         }
     )
@@ -95,7 +129,7 @@ def handle_admin_login(req: AdminLoginReq, request: Request, db: Session):
 def get_summary_data(db: Session, admin: models.User, period: str = "all"):
     today = dt.datetime.utcnow()
     start_date = None
-    
+
     if period == "today":
         start_date = today.replace(hour=0, minute=0, second=0, microsecond=0)
     elif period == "this_week":
@@ -106,7 +140,7 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
 
     tx_query = db.query(models.PaymentTransaction).filter(models.PaymentTransaction.status == "COMPLETED")
     users_query = db.query(models.User)
-    
+
     if start_date:
         tx_query = tx_query.filter(models.PaymentTransaction.created_at >= start_date)
         users_query = users_query.filter(models.User.created_at >= start_date)
@@ -123,11 +157,18 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
         func.count(models.User.id).label('count')
     ).group_by(models.User.university).order_by(func.count(models.User.id).desc()).limit(5).all()
 
-    universities = [{"name": u.university or 'Unknown', "count": u.count, "percent": round((u.count / max(len(all_users), 1)) * 100, 1)} for u in uni_stats]
+    universities = [
+        {
+            "name": u.university or 'Unknown',
+            "count": u.count,
+            "percent": round((u.count / max(len(all_users), 1)) * 100, 1)
+        }
+        for u in uni_stats
+    ]
 
     subscriptions_records = db.query(models.UserSubscription).all()
     sub_map = {sub.user_id: sub for sub in subscriptions_records}
-    
+
     tier_revenue = defaultdict(float)
     for tx in transactions_completed:
         sub = sub_map.get(getattr(tx, 'user_id', None))
@@ -150,7 +191,7 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
     eom_alert = days_to_month_end <= 5
 
     expenses = db.query(models.RecurringExpense).order_by(models.RecurringExpense.next_due.asc()).all()
-    
+
     due_expenses_count = 0
     expense_list = []
     for ex in expenses:
@@ -162,7 +203,7 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
         else:
             days_left = 0
             due_iso = today.isoformat()
-            
+
         expense_list.append({
             "id": ex.id,
             "name": ex.name,
@@ -175,9 +216,9 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
 
     weekly_rev, monthly_rev, yearly_rev = defaultdict(float), defaultdict(float), defaultdict(float)
     all_completed_txs = db.query(models.PaymentTransaction).filter(models.PaymentTransaction.status == "COMPLETED").all()
-    
+
     for tx in all_completed_txs:
-        if not getattr(tx, 'created_at', None): 
+        if not getattr(tx, 'created_at', None):
             continue
         yw = tx.created_at.strftime("%Y-W%W")
         ym = tx.created_at.strftime("%Y-%m")
@@ -205,7 +246,7 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
         sub = sub_map.get(u.id)
         is_super_admin = u.email in ['destinymichael941@gmail.com'] or getattr(u, 'is_admin', False)
         display_plan = "SUPER ADMIN" if is_super_admin else (sub.tier if sub else "FREE")
-        
+
         user_list.append({
             "id": u.id,
             "name": getattr(u, 'display_name', '') or 'N/A',
@@ -223,9 +264,9 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
     for u in all_users:
         sub = sub_map.get(u.id)
         is_super_admin = u.email in ['destinymichael941@gmail.com'] or getattr(u, 'is_admin', False)
-        
+
         if sub:
-            manager_label = 'System / Admin' 
+            manager_label = 'System / Admin'
             tier_val = "SUPER ADMIN" if is_super_admin else sub.tier
             expires_val = sub.expires_at.isoformat() if getattr(sub, 'expires_at', None) else "Never"
         else:
@@ -259,7 +300,7 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
     return {
         "total_revenue": total_revenue,
         "total_subs": total_subs,
-        "total_regular_users": len(regular_users), 
+        "total_regular_users": len(regular_users),
         "total_users": len(all_users),
         "universities": universities,
         "plans": plans,
@@ -279,7 +320,15 @@ def get_summary_data(db: Session, admin: models.User, period: str = "all"):
         "subscriptions": subs_audit,
         "ledgers": ledgers,
         "expenses": expense_list,
-        "logs": [{"action": l.action_type, "amount": l.amount, "description": l.description, "date": l.created_at.isoformat() if getattr(l, 'created_at', None) else today.isoformat()} for l in logs_query]
+        "logs": [
+            {
+                "action": l.action_type,
+                "amount": l.amount,
+                "description": l.description,
+                "date": l.created_at.isoformat() if getattr(l, 'created_at', None) else today.isoformat()
+            }
+            for l in logs_query
+        ]
     }
 
 
@@ -307,8 +356,12 @@ def process_finance_action(req: FinanceActionReq, db: Session, admin: models.Use
         raise HTTPException(status_code=400, detail="Invalid action_type.")
 
     log = models.AdminActionLog(
-        admin_id=admin.id, action_type=req.action_type, amount=req.amount,
-        source_pot_id=req.source_pot, target_pot_id=req.target_pot, description=req.description
+        admin_id=admin.id,
+        action_type=req.action_type,
+        amount=req.amount,
+        source_pot_id=req.source_pot,
+        target_pot_id=req.target_pot,
+        description=req.description
     )
     db.add(log)
     db.commit()
@@ -343,19 +396,36 @@ def get_admin_library_audit(db: Session = Depends(get_db), admin: models.User = 
     )
     course_map = defaultdict(lambda: {"sold": 0, "revenue": 0.0})
     book_map, txs = {}, []
-    
+
     for tx, book, user in rows:
-        course = (book.course or "General").replace("_", " ")
+        res_type = getattr(book, "resource_type", None) or "Books"
+        course = (book.course or res_type or "General").replace("_", " ")
         amt = float(tx.amount)
         course_map[course]["sold"] += 1
         course_map[course]["revenue"] += amt
-        b = book_map.setdefault(book.id, {"title": book.title, "course": course, "unit": book.unit or "General",
-                                          "sold_count": 0, "total_revenue": 0.0})
+        b = book_map.setdefault(
+            book.id,
+            {
+                "title": book.title,
+                "resource_type": res_type,
+                "course": course,
+                "unit": book.unit or "General",
+                "sold_count": 0,
+                "total_revenue": 0.0
+            }
+        )
         b["sold_count"] += 1
         b["total_revenue"] += amt
-        txs.append({"id": tx.id, "user_email": user.email, "item_name": book.title, "amount": amt,
-                    "status": tx.status, "created_at": tx.created_at.isoformat() if getattr(tx, 'created_at', None) else dt.datetime.utcnow().isoformat()})
-                    
+        txs.append({
+            "id": tx.id,
+            "user_email": user.email,
+            "item_name": book.title,
+            "resource_type": res_type,
+            "amount": amt,
+            "status": tx.status,
+            "created_at": tx.created_at.isoformat() if getattr(tx, 'created_at', None) else dt.datetime.utcnow().isoformat()
+        })
+
     return {
         "course_summary": [{"course": k, "total_sold": v["sold"], "total_revenue": v["revenue"]} for k, v in course_map.items()],
         "book_summary": list(book_map.values()),
@@ -408,18 +478,18 @@ def manage_user_account(req: UserActionReq, db: Session = Depends(get_db), admin
     user = db.query(models.User).filter(models.User.id == req.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
-    
+
     is_super_admin = user.email in ['destinymichael941@gmail.com'] or getattr(user, 'is_admin', False)
     if is_super_admin and req.action in ("BLOCK", "DELETE"):
-         raise HTTPException(status_code=403, detail="Cannot block or delete an administrative account.")
-    
+        raise HTTPException(status_code=403, detail="Cannot block or delete an administrative account.")
+
     if req.action == "BLOCK":
         user.is_blocked = True
     elif req.action == "UNBLOCK":
         user.is_blocked = False
     elif req.action == "DELETE":
         db.delete(user)
-    
+
     db.commit()
     return {"message": f"User account successfully updated with action: {req.action}"}
 
@@ -430,17 +500,17 @@ def award_subscription(req: AwardSubscriptionReq, db: Session = Depends(get_db),
     user = db.query(models.User).filter(models.User.id == req.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
-    
+
     expires = dt.datetime.utcnow() + dt.timedelta(days=req.duration_days)
     sub = db.query(models.UserSubscription).filter(models.UserSubscription.user_id == req.user_id).first()
-    
+
     if sub:
         sub.tier = req.tier
         sub.expires_at = expires
     else:
         sub = models.UserSubscription(user_id=req.user_id, tier=req.tier, expires_at=expires)
         db.add(sub)
-    
+
     db.commit()
     return {"message": f"Successfully awarded {req.tier} subscription to {user.email}."}
 
@@ -448,12 +518,28 @@ def award_subscription(req: AwardSubscriptionReq, db: Session = Depends(get_db),
 @router.post("/notifications/send")
 @direct_router.post("/notifications/send")
 def send_notification(req: SendEmailReq, db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
-    from .auth import send_brevo_email
+    recipient = (req.user_email or "").strip()
+    subject = (req.subject or "").strip()
+    message = (req.message or "").strip()
+
+    if not recipient or not subject or not message:
+        raise HTTPException(status_code=400, detail="Recipient email, subject, and message are all required.")
+
     try:
-        send_brevo_email(req.user_email, req.message, "custom", req.subject)
-        return {"message": f"Notification successfully dispatched to {req.user_email}"}
+        html_body = _format_admin_email_html(subject, message)
+        send_brevo_email(recipient, html_body, "custom", subject)
+
+        log = models.AdminActionLog(
+            admin_id=admin.id,
+            action_type="DIRECT_EMAIL",
+            amount=0.0,
+            description=f"Direct email sent to {recipient}: {subject[:80]}"
+        )
+        db.add(log)
+        db.commit()
+        return {"message": f"Notification successfully dispatched to {recipient}"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to send email via Brevo: {str(e)}")
 
 
 @router.post("/expenses")
@@ -470,13 +556,19 @@ def add_expense(req: ExpenseReq, db: Session = Depends(get_db), admin: models.Us
 @direct_router.post("/expenses/{expense_id}/pay")
 def pay_expense(expense_id: str, db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
     expense = db.query(models.RecurringExpense).filter(models.RecurringExpense.id == expense_id).first()
-    if not expense: raise HTTPException(status_code=404, detail="Expense not found")
-    
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
     pot = db.query(models.FinancialPot).filter(models.FinancialPot.id == "maintenance").first()
     if pot:
         pot.balance = max(0.0, pot.balance - expense.amount)
-    
-    log = models.AdminActionLog(admin_id=admin.id, action_type="EXPENSE_PAID", amount=expense.amount, description=f"Paid recurring expense: {expense.name}")
+
+    log = models.AdminActionLog(
+        admin_id=admin.id,
+        action_type="EXPENSE_PAID",
+        amount=expense.amount,
+        description=f"Paid recurring expense: {expense.name}"
+    )
     db.add(log)
 
     expense.next_due = expense.next_due + dt.timedelta(days=expense.interval_days)
@@ -487,24 +579,24 @@ def pay_expense(expense_id: str, db: Session = Depends(get_db), admin: models.Us
 @router.post("/notifications/bulk")
 @direct_router.post("/notifications/bulk")
 def send_bulk_notifications(req: BulkEmailReq, db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
-    from .auth import send_brevo_email
     query = db.query(models.User)
-    
+
     if req.specific_email and req.specific_email.strip() != "":
         query = query.filter(models.User.email.ilike(f"%{req.specific_email.strip()}%"))
 
     if req.university and req.university != "ALL":
         query = query.filter(models.User.university == req.university)
-    
+
     if req.student_status == "STUDENT":
         query = query.filter(models.User.university != None, models.User.university != "Unknown")
 
     if req.course and req.course.strip() != "":
         query = query.filter(models.User.course.ilike(f"%{req.course.strip()}%"))
-    
+
     users = query.all()
     sent_count = 0
     sub_records = {sub.user_id: sub.tier for sub in db.query(models.UserSubscription).all()}
+    html_body = _format_admin_email_html(req.subject, req.message)
 
     for u in users:
         if req.tier and req.tier != "ALL":
@@ -513,12 +605,20 @@ def send_bulk_notifications(req: BulkEmailReq, db: Session = Depends(get_db), ad
             if user_tier.upper() != req.tier.upper():
                 continue
         try:
-            send_brevo_email(u.email, req.message, "custom", req.subject)
+            send_brevo_email(u.email, html_body, "custom", req.subject)
             sent_count += 1
         except Exception as e:
             print(f"Failed to send to {u.email}: {str(e)}")
-            pass
-            
+
+    log = models.AdminActionLog(
+        admin_id=admin.id,
+        action_type="BULK_EMAIL",
+        amount=float(sent_count),
+        description=f"Broadcast sent to {sent_count} users: {req.subject[:80]}"
+    )
+    db.add(log)
+    db.commit()
+
     return {"message": f"Broadcast successfully dispatched to {sent_count} matching users."}
 
 
@@ -526,8 +626,8 @@ def send_bulk_notifications(req: BulkEmailReq, db: Session = Depends(get_db), ad
 @direct_router.websocket("/ws/metrics")
 async def admin_metrics_ws(websocket: WebSocket, token: str):
     """Production WebSocket handler using an independent manual DB session to prevent crashes."""
-    await websocket.accept() 
-    
+    await websocket.accept()
+
     db = SessionLocal()
     try:
         admin = auth.get_current_user_ws(token, db)
@@ -539,7 +639,7 @@ async def admin_metrics_ws(websocket: WebSocket, token: str):
         while True:
             await websocket.send_json({"live_users_count": len(active_ws_connections) + 12})
             await asyncio.sleep(5)
-            
+
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -558,13 +658,18 @@ async def admin_metrics_ws(websocket: WebSocket, token: str):
 @router.get("/books/list")
 @direct_router.get("/books/list")
 def list_all_books_admin(db: Session = Depends(get_db), admin: models.User = Depends(auth.get_current_admin)):
-    """Provides the admin panel with a complete list of all uploaded books and their unique IDs."""
+    """Provides the admin panel with a complete list of all uploaded resources and their unique IDs."""
     books = db.query(models.Book).order_by(models.Book.created_at.desc()).all()
     return [{
         "id": b.id,
         "title": b.title,
+        "resource_type": getattr(b, "resource_type", None) or "Books",
+        "field": getattr(b, "field", None) or "General",
         "course": getattr(b, "course", "N/A") or "N/A",
         "unit": getattr(b, "unit", "N/A") or "N/A",
+        "university": getattr(b, "university", None),
+        "academic_year": getattr(b, "academic_year", None),
+        "semester": getattr(b, "semester", None),
         "price": b.price,
         "file_url": getattr(b, "file_url", getattr(b, "book_file_url", None)),
         "created_at": b.created_at.isoformat() if getattr(b, 'created_at', None) else None
@@ -575,8 +680,7 @@ def list_all_books_admin(db: Session = Depends(get_db), admin: models.User = Dep
 @direct_router.post("/books")
 async def proxy_admin_book_upload(request: Request):
     """Redirects legacy admin book POST requests to the new R2-backed books router."""
-    from fastapi.responses import RedirectResponse
     raise HTTPException(
-        status_code=400, 
+        status_code=400,
         detail="Please update your admin dashboard frontend to post to /api/books/admin/upload/"
     )
