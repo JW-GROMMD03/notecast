@@ -1,6 +1,6 @@
 // web/assets/js/dashboard.js
-import { authedFetch, requireAuth, logout, checkExtensionInstalled, CHROME_STORE_URL } from "./api.js";
-import { BookStoreEngine, generateBookCoverSvg } from "./book-store-cache.js";
+import { authedFetch, requireAuth, logout, checkExtensionInstalled, CHROME_STORE_URL } from "./api.js?v=3";
+import { BookStoreEngine, generateBookCoverSvg } from "./book-store-cache.js?v=3";
 
 let user = null;
 const bookStoreEngine = new BookStoreEngine(authedFetch);

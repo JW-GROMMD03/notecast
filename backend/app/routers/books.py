@@ -18,6 +18,7 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from .. import auth, models
@@ -390,8 +391,6 @@ def _query_public_catalog(
     unit: Optional[str],
     search: Optional[str],
 ) -> list[dict]:
-    from sqlalchemy import func, or_
-
     query = db.query(models.Book)
     if hasattr(models.Book, "status"):
         query = query.filter(
@@ -484,7 +483,7 @@ def get_book_store_catalog(
             status_code=status.HTTP_304_NOT_MODIFIED,
             headers={
                 "ETag": etag,
-                "Cache-Control": "private, max-age=30, must-revalidate",
+                "Cache-Control": "no-store",
             },
         )
 
@@ -501,7 +500,7 @@ def get_book_store_catalog(
 
     owned_book_ids = set(owned_list)
     response.headers["ETag"] = etag
-    response.headers["Cache-Control"] = "private, max-age=30, must-revalidate"
+    response.headers["Cache-Control"] = "no-store"
 
     return [
         {**b, "owned": b["id"] in owned_book_ids, "admin_preview": is_admin and b["id"] not in owned_book_ids}

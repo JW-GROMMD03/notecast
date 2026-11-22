@@ -29,23 +29,38 @@ export function clearCachedUser() {
 }
 
 export async function apiFetch(path, options = {}) {
-  const method = (options.method || "GET").toUpperCase();
+  const { rawResponse = false, ...fetchOpts } = options;
+  const method = (fetchOpts.method || "GET").toUpperCase();
   const needsCsrf = !["GET", "HEAD"].includes(method);
   
   const headers = {
     ...(needsCsrf ? csrfHeaders() : {}),
-    ...(options.headers || {}),
+    ...(fetchOpts.headers || {}),
   };
 
-  if (options.body && !(options.body instanceof FormData) && !headers["Content-Type"]) {
+  if (fetchOpts.body && !(fetchOpts.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
   const resp = await fetch(`${API_BASE}${path}`, {
-    ...options,
+    ...fetchOpts,
     credentials: "include",
     headers,
   });
+
+  if (resp.status === 304) {
+    return resp;
+  }
+
+  if (rawResponse) {
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      const err = new Error((body && body.detail) || `Request failed (${resp.status})`);
+      err.status = resp.status;
+      throw err;
+    }
+    return resp;
+  }
   
   const ct = resp.headers.get("content-type") || "";
   const body = ct.includes("application/json") ? await resp.json().catch(() => ({})) : null;
