@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from .. import models, schemas, auth
 from ..database import get_db
 from ..services import mpesa_service
+from .books import invalidate_user_book_cache
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 logger = logging.getLogger("notecast_payments")
@@ -76,6 +77,7 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
                     status="COMPLETED"
                 )
                 db.add(new_purchase)
+            invalidate_user_book_cache(txn.user_id)
             
         elif txn.purchase_type == "PLAN_SUBSCRIPTION":
             catalog_entry = PRICING_CATALOG.get(txn.target_tier, {})
@@ -132,7 +134,6 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
                 logger.info(f"Evaluating referral commission for transaction {txn.id} (Amount: {txn.amount})")
                 referral = db.query(models.Referral).filter(models.Referral.referred_user_id == txn.user_id).first()
                 if referral:
-                    # Apply 20% for Standard/Premium plans, 10% for basic transactions
                     commission_rate = 0.20 if txn.amount >= 800 else 0.10
                     commission_amount = txn.amount * commission_rate
                     
@@ -154,11 +155,12 @@ def _apply_result(db: DbSession, txn: models.PaymentTransaction, result_code, de
                         logger.warning(f"Referrer {referral.referrer_id} account missing, commission logged but not balanced.")
         except Exception as ref_err:
             logger.error(f"Failed to process referral commission for txn {txn.id}: {str(ref_err)}")
-        # -----------------------------------
         
         try:
             db.commit()
-        except IntegrityError:       # callback and status-poll raced; the other one already granted it
+            if txn.purchase_type == "BOOK":
+                invalidate_user_book_cache(txn.user_id)
+        except IntegrityError:
             db.rollback()
     else:
         logger.warning(f"Payment failed {txn.id}: {desc}")

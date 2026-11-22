@@ -1,9 +1,11 @@
 // web/assets/js/dashboard.js
 import { authedFetch, requireAuth, logout, checkExtensionInstalled, CHROME_STORE_URL } from "./api.js";
+import { BookStoreEngine, generateBookCoverSvg } from "./book-store-cache.js";
 
 let user = null;
+const bookStoreEngine = new BookStoreEngine(authedFetch);
 
-// --- CASCADING STORE CONFIGURATION (NEW) ---
+// --- CASCADING STORE CONFIGURATION ---
 const BOOK_CATEGORIES = {
   "Technology & Computing": [
       "Computer Science", "Software Engineering", "Data Engineering", "Cybersecurity", 
@@ -48,18 +50,34 @@ const BOOK_CATEGORIES = {
   ]
 };
 
+function applyLocalBookFilters() {
+  const field = document.getElementById("storeFieldFilter")?.value || "";
+  const course = document.getElementById("storeCourseFilter")?.value || "";
+  const unit = document.getElementById("storeUnitFilter")?.value || "";
+  const filtered = bookStoreEngine.filterLocal({ field, course, unit });
+  renderBookGrid(filtered);
+}
+
 function initStoreFilters() {
   const fieldSelect = document.getElementById('storeFieldFilter');
+  const courseSelect = document.getElementById('storeCourseFilter');
+  const unitInput = document.getElementById('storeUnitFilter');
   if (!fieldSelect) return;
+
   const fields = Object.keys(BOOK_CATEGORIES).sort();
-  
   let html = '<option value="">-- All Fields --</option>';
   fields.forEach(f => {
       html += `<option value="${f}">${f}</option>`;
   });
   fieldSelect.innerHTML = html;
   
-  fieldSelect.addEventListener('change', updateStoreCourses);
+  fieldSelect.addEventListener('change', () => {
+    updateStoreCourses();
+    applyLocalBookFilters();
+  });
+
+  courseSelect?.addEventListener('change', applyLocalBookFilters);
+  unitInput?.addEventListener('input', applyLocalBookFilters);
 }
 
 function updateStoreCourses() {
@@ -211,14 +229,19 @@ function showEntitlementModal({ featureName, recommendedTier = "STANDARD", price
 // --- BOOK HELPERS ---
 const escHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 window._books = {};
+window._bookFallbackCover = (bookId) => {
+  const b = window._books[bookId];
+  return b ? generateBookCoverSvg(b) : "/assets/icon.png";
+};
 
 function openBook(bookId) {
   window.open(`/reader?bookId=${encodeURIComponent(bookId)}`, "_blank");
 }
 
-window.afterPayment = () => {
+window.afterPayment = async () => {
   document.getElementById("paymentModal")?.remove();
   if (window._lastPayWasBook) {
+    await bookStoreEngine.invalidate();
     loadBookStoreCatalog();
     loadCustomerLibraryAndPurchases();
   } else {
@@ -238,15 +261,20 @@ async function loadOwnedBooks() {
       box.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">You haven't bought any books yet. Open the Book Store to get started.</p>`;
       return;
     }
-    box.innerHTML = books.map(b => `
+    books.forEach(b => { window._books[b.id] = b; });
+    box.innerHTML = books.map(b => {
+      const fallbackSvg = generateBookCoverSvg(b);
+      const coverSrc = b.cover_url || fallbackSvg;
+      return `
       <div style="background: var(--bg-main); border: 1px solid var(--border-color); padding: 14px; border-radius: 8px; display: flex; gap: 12px;">
-        <img src="${b.cover_url || '/assets/icon.png'}" loading="lazy" decoding="async" alt="" onerror="this.onerror=null;this.src='/assets/icon.png'" style="width: 56px; height: 76px; object-fit: cover; border-radius: 6px; background: #1e293b;">
+        <img src="${coverSrc}" loading="lazy" decoding="async" alt="" onerror="this.onerror=null;this.src=window._bookFallbackCover('${escHtml(b.id)}')" style="width: 56px; height: 76px; object-fit: cover; border-radius: 6px; background: #1e293b;">
         <div style="flex: 1;">
           <h4 style="margin: 0 0 4px 0; font-size: 0.95rem;">${escHtml(b.title)}</h4>
           <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0 0 10px 0;">${escHtml(b.course)} • ${escHtml(b.unit)}</p>
-          <button class="btn-action" data-read="${b.id}" style="padding: 6px 14px; font-size: 0.82rem; background: #10b981;">Read Now</button>
+          <button class="btn-action" data-read="${b.id}" style="padding: 6px 14px; font-size: 0.82rem; background: #10b981;">Read & Download</button>
         </div>
-      </div>`).join("");
+      </div>`;
+    }).join("");
     box.onclick = (e) => {
       const t = e.target.closest("[data-read]");
       if (t) openBook(t.dataset.read);
@@ -287,91 +315,102 @@ async function loadCustomerLibraryAndPurchases() {
   }
 }
 
-// --- HIGH-PERFORMANCE DOM CHUNKING RENDERER FOR BOOK STORE CATALOG ---
-async function loadBookStoreCatalog(field = "", course = "", unit = "") {
+// --- HIGH-PERFORMANCE SWR + INVERTED INDEX BOOK STORE RENDERER ---
+let _renderGeneration = 0;
+
+function renderBookGrid(books) {
   const grid = document.getElementById("bookStoreGrid");
   if (!grid) return;
 
   grid.style.display = "grid";
   grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(240px, 1fr))";
   grid.style.gap = "24px";
-  grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">Loading book catalog...</p>`;
+
+  if (!Array.isArray(books) || books.length === 0) {
+    grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">No books found matching your filter.</p>`;
+    return;
+  }
+
+  for (const b of books) {
+    window._books[b.id] = b;
+  }
+
+  const generation = ++_renderGeneration;
+  grid.innerHTML = "";
+
+  const chunkSize = 18;
+  let currentIndex = 0;
+
+  function renderChunk() {
+    if (generation !== _renderGeneration) return;
+    const chunk = books.slice(currentIndex, currentIndex + chunkSize);
+    if (!chunk.length) return;
+
+    const fragmentHtml = chunk.map(b => {
+      const cover = b.cover_url || generateBookCoverSvg(b);
+      const mainBtn = b.owned
+        ? `<button class="btn-action" data-act="read" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #10b981;">Read & Download</button>`
+        : `<button class="btn-action" data-act="pay" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #3b82f6;">Pay Now (KES ${b.price})</button>`;
+      const adminLink = (!b.owned && b.admin_preview)
+        ? `<a href="#" data-act="read" data-id="${b.id}" style="display:block; margin-top: 8px; font-size: 0.75rem; color: #f59e0b; text-align: right;">Admin preview</a>`
+        : "";
+
+      return `
+        <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-card, #1e293b); border: 1px solid #334155; border-radius: 12px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+          <div>
+            <div style="width: 100%; height: 260px; background: #0f172a; border-radius: 8px; margin-bottom: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+              <img src="${cover}" loading="lazy" decoding="async" alt="${escHtml(b.title)}" onerror="this.onerror=null;this.src=window._bookFallbackCover('${escHtml(b.id)}')" style="width: 100%; height: 100%; object-fit: cover;">
+            </div>
+            <h4 style="margin: 0 0 8px 0; font-size: 1.05rem; color: var(--text-main); line-height: 1.3;">${escHtml(b.title)}</h4>
+            <p style="font-size: 0.8rem; color: #94a3b8; margin: 0 0 10px 0; line-height: 1.4;">${escHtml(b.course)}<br>${escHtml(b.unit)}</p>
+          </div>
+          <div style="margin-top: auto; padding-top: 14px; border-top: 1px solid #334155;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-weight: 800; color: ${b.owned ? '#10b981' : '#38bdf8'}; font-size: 1.05rem;">${b.owned ? "Owned ✓" : "KES " + b.price}</span>
+              ${mainBtn}
+            </div>
+            ${adminLink}
+          </div>
+        </div>`;
+    }).join("");
+
+    grid.insertAdjacentHTML('beforeend', fragmentHtml);
+    currentIndex += chunkSize;
+
+    if (currentIndex < books.length) {
+      requestAnimationFrame(renderChunk);
+    }
+  }
+
+  renderChunk();
+
+  grid.onclick = (e) => {
+    const t = e.target.closest("[data-act]");
+    if (!t) return;
+    e.preventDefault();
+    const b = window._books[t.dataset.id];
+    if (!b) return;
+    if (t.dataset.act === "read") openBook(b.id);
+    else window.openPaymentModal(b.id, `KES ${b.price}`, b.price, b.title);
+  };
+}
+
+async function loadBookStoreCatalog() {
+  const grid = document.getElementById("bookStoreGrid");
+  if (!grid) return;
+
+  if (!grid.children.length) {
+    grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">Loading book catalog...</p>`;
+  }
 
   try {
-    const params = new URLSearchParams();
-    if (field) params.append("field", field);
-    if (course) params.append("course", course);
-    if (unit) params.append("unit", unit);
-
-    const res = await authedFetch("/books/store?" + params.toString());
-    const books = res.json ? await res.json() : res;
-
-    if (!Array.isArray(books) || books.length === 0) {
-      grid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1 / -1;">No books found in inventory.</p>`;
-      return;
-    }
-    
-    window._books = Object.fromEntries(books.map(b => [b.id, b]));
-    grid.innerHTML = ""; // Clear loader
-
-    // Optimization: Chunked rendering prevents UI freeze during massive catalog injection
-    const chunkSize = 15;
-    let currentIndex = 0;
-
-    function renderChunk() {
-        const chunk = books.slice(currentIndex, currentIndex + chunkSize);
-        if (!chunk.length) return;
-
-        const fragmentHtml = chunk.map(b => {
-          const cover = b.cover_url || "/assets/icon.png";
-          const mainBtn = b.owned
-            ? `<button class="btn-action" data-act="read" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #10b981;">Read Now</button>`
-            : `<button class="btn-action" data-act="pay" data-id="${b.id}" style="padding: 8px 16px; font-weight: 600; font-size: 0.85rem; background: #3b82f6;">Pay Now (KES ${b.price})</button>`;
-          const adminLink = (!b.owned && b.admin_preview)
-            ? `<a href="#" data-act="read" data-id="${b.id}" style="display:block; margin-top: 8px; font-size: 0.75rem; color: #f59e0b; text-align: right;">Admin preview</a>`
-            : "";
-
-          return `
-            <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-card, #1e293b); border: 1px solid #334155; border-radius: 12px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-              <div>
-                <div style="width: 100%; height: 260px; background: #0f172a; border-radius: 8px; margin-bottom: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-                  <img src="${cover}" loading="lazy" decoding="async" alt="Cover" onerror="this.onerror=null;this.src='/assets/icon.png'" style="width: 100%; height: 100%; object-fit: cover;">
-                </div>
-                <h4 style="margin: 0 0 8px 0; font-size: 1.05rem; color: var(--text-main); line-height: 1.3;">${escHtml(b.title)}</h4>
-                <p style="font-size: 0.8rem; color: #94a3b8; margin: 0 0 10px 0; line-height: 1.4;">${escHtml(b.course)}<br>${escHtml(b.unit)}</p>
-              </div>
-              <div style="margin-top: auto; padding-top: 14px; border-top: 1px solid #334155;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <span style="font-weight: 800; color: ${b.owned ? '#10b981' : '#38bdf8'}; font-size: 1.05rem;">${b.owned ? "Owned ✓" : "KES " + b.price}</span>
-                  ${mainBtn}
-                </div>
-                ${adminLink}
-              </div>
-            </div>`;
-        }).join("");
-        
-        grid.insertAdjacentHTML('beforeend', fragmentHtml);
-        currentIndex += chunkSize;
-
-        if (currentIndex < books.length) {
-            requestAnimationFrame(renderChunk);
-        }
-    }
-    
-    // Start chunked rendering pipeline
-    renderChunk();
-
-    grid.onclick = (e) => {
-      const t = e.target.closest("[data-act]");
-      if (!t) return;
-      e.preventDefault();
-      const b = window._books[t.dataset.id];
-      if (!b) return;
-      if (t.dataset.act === "read") openBook(b.id);
-      else window.openPaymentModal(b.id, `KES ${b.price}`, b.price, b.title);
-    };
+    await bookStoreEngine.loadCatalog(user?.id || user?.email, () => {
+      applyLocalBookFilters();
+    });
   } catch (err) {
-    grid.innerHTML = `<p style="color: #ef4444; grid-column: 1 / -1;">Failed to load book store inventory.</p>`;
+    if (!grid.children.length || grid.textContent.includes("Loading book catalog")) {
+      grid.innerHTML = `<p style="color: #ef4444; grid-column: 1 / -1;">Failed to load book store inventory.</p>`;
+    }
   }
 }
 
@@ -393,10 +432,7 @@ window.handleBookAction = async function(event, bookId, isOwned, price, title) {
 };
 
 document.getElementById("filterBooksBtn")?.addEventListener("click", () => {
-  const field = document.getElementById("storeFieldFilter").value;
-  const course = document.getElementById("storeCourseFilter").value;
-  const unit = document.getElementById("storeUnitFilter").value.trim();
-  loadBookStoreCatalog(field, course, unit);
+  applyLocalBookFilters();
 });
 
 
@@ -896,7 +932,7 @@ window.openPaymentModal = function(itemCode, priceText, explicitAmount = null, e
         let data = res;
         if (res.json) data = await res.json();
 
-        if (!res.ok) {
+        if (res.ok === false) {
           throw new Error(data.detail || data.message || "Payment initiation failed.");
         }
         
@@ -989,7 +1025,7 @@ function verifyTabEligibility(tabName) {
   return true;
 }
 
-// --- REFERRALS LOGIC (MODIFIED FOR BOTH LINK AND CODE) ---
+// --- REFERRALS LOGIC ---
 async function loadReferralPanel() {
   try {
     const res = await authedFetch("/referrals/me");
@@ -1065,6 +1101,9 @@ async function init() {
   user = await requireAuth();
   
   initStoreFilters();
+
+  // Warm the Book Store SWR cache in the background right after dashboard login
+  bookStoreEngine.loadCatalog(user?.id || user?.email, () => {}).catch(() => {});
 
   if(document.getElementById("userName")) document.getElementById("userName").textContent = user.display_name || user.email;
   if(document.getElementById("userPlanBadge")) document.getElementById("userPlanBadge").textContent = `Plan: ${user.plan || 'Free'}`;
@@ -1258,6 +1297,7 @@ async function init() {
   const logoutBtn = document.getElementById("logoutBtn");
   if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
+      await bookStoreEngine.invalidate();
       await logout();
       window.location.href = "/login";
     });

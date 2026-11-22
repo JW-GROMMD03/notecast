@@ -1,5 +1,6 @@
 """
-routers/books.py - Full Production Book Store, Admin Management & R2 Storage Router
+routers/books.py - High-Speed Cached Book Store, WebP Cover Pipeline,
+Admin Management & Watermarked Offline PDF Downloads.
 Note: R2 bucket remains PRIVATE for PDFs. DB columns file_url / cover_url store R2 object keys.
 """
 import io
@@ -7,19 +8,20 @@ import logging
 import os
 import re
 import uuid
-import json
 from typing import Optional
 
 import boto3
 from botocore.config import Config
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import RedirectResponse, Response
+from PIL import Image, ImageOps
 from pydantic import BaseModel
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from sqlalchemy.orm import Session
 
-from .. import models, auth
+from .. import auth, models
+from ..cache import app_cache, compute_etag
 from ..database import get_db
 
 router = APIRouter(prefix="/books", tags=["Books"])
@@ -29,19 +31,8 @@ R2_BUCKET = os.getenv("R2_BUCKET_NAME", "notecast-books")
 R2_PUBLIC_DOMAIN = os.getenv("R2_PUBLIC_DOMAIN", "").rstrip("/")
 MIN_PRICE = 150  # Minimum book price in KES
 
-# Initialize Redis (Speed Optimization)
-try:
-    import redis
-    REDIS_AVAILABLE = True
-    redis_client = redis.Redis(
-        host=os.getenv("REDIS_HOST", "localhost"),
-        port=int(os.getenv("REDIS_PORT", 6379)),
-        db=0,
-        decode_responses=True
-    )
-except ImportError:
-    REDIS_AVAILABLE = False
-    logger.warning("Redis not installed. Catalog caching disabled. Run: pip install redis")
+CATALOG_CACHE_PREFIX = "books:catalog:"
+USER_OWNED_PREFIX = "books:owned:"
 
 # Initialize Cloudflare R2 / S3 Client
 s3 = boto3.client(
@@ -109,25 +100,59 @@ def _is_admin_user(user: models.User) -> bool:
     return str(val).strip().lower() in ["true", "1", "t", "y", "yes"]
 
 
+def _optimize_cover_webp(upload: UploadFile) -> io.BytesIO:
+    """Resizes and compresses uploaded cover images into lightweight WebP (~25 KB)."""
+    raw = upload.file.read()
+    img = Image.open(io.BytesIO(raw))
+    img = ImageOps.exif_transpose(img)
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGB")
+    img.thumbnail((480, 640), Image.Resampling.LANCZOS)
+    out = io.BytesIO()
+    img.save(out, format="WEBP", quality=82, method=4)
+    out.seek(0)
+    return out
+
+
+def _invalidate_catalog_cache() -> None:
+    app_cache.delete_prefix(CATALOG_CACHE_PREFIX)
+    app_cache.bump_version("books_catalog")
+
+
+def invalidate_user_book_cache(user_id: str) -> None:
+    """Called immediately upon M-Pesa book purchase completion."""
+    if user_id:
+        app_cache.delete(f"{USER_OWNED_PREFIX}{user_id}")
+
+
+def _get_user_owned_book_ids(db: Session, user_id: str) -> list[str]:
+    """O(1) cached lookup of a user's completed book purchase IDs."""
+    cache_key = f"{USER_OWNED_PREFIX}{user_id}"
+
+    def _load() -> list[str]:
+        rows = (
+            db.query(models.BookPurchase.book_id)
+            .filter(
+                models.BookPurchase.user_id == user_id,
+                models.BookPurchase.status == "COMPLETED",
+            )
+            .all()
+        )
+        return sorted(row.book_id for row in rows)
+
+    try:
+        return app_cache.get_or_set(cache_key, _load, ttl=3600)
+    except Exception:
+        logger.exception("Could not resolve purchases for user %s; treating as unowned", user_id)
+        return []
+
+
 def verify_book_access(db: Session, user: models.User, book_id: str) -> bool:
     """Returns True if the user is an admin or has an active purchase record for the book."""
     if _is_admin_user(user):
         return True
-
-    try:
-        purchase = (
-            db.query(models.BookPurchase)
-            .filter(
-                models.BookPurchase.user_id == user.id,
-                models.BookPurchase.book_id == book_id,
-                models.BookPurchase.status == "COMPLETED"
-            )
-            .first()
-        )
-        return purchase is not None
-    except Exception as e:
-        logger.error(f"Error evaluating book access: {e}")
-        return False
+    owned_ids = _get_user_owned_book_ids(db, user.id)
+    return book_id in set(owned_ids)
 
 
 def _watermark_pdf_bytes(raw_pdf_bytes: bytes, watermark_text: str) -> bytes:
@@ -160,15 +185,6 @@ def _watermark_pdf_bytes(raw_pdf_bytes: bytes, watermark_text: str) -> bytes:
     return out_stream.read()
 
 
-def _invalidate_catalog_cache():
-    if REDIS_AVAILABLE:
-        try:
-            for key in redis_client.scan_iter("catalog:*"):
-                redis_client.delete(key)
-        except Exception as e:
-            logger.warning("Cache invalidation failed: %s", str(e))
-
-
 @router.post("/admin/upload/")
 @router.post("/api/books/admin/upload/")
 def admin_upload_book(
@@ -196,22 +212,40 @@ def admin_upload_book(
         raise HTTPException(status_code=400, detail="Invalid cover image format. Allowed: JPG, PNG, WEBP.")
 
     doc_storage_key = f"books/documents/{uuid.uuid4().hex}{doc_ext}"
-    cover_storage_key = f"books/covers/{uuid.uuid4().hex}{cover_ext}" if has_cover else None
+    cover_storage_key = f"books/covers/{uuid.uuid4().hex}.webp" if has_cover else None
 
     try:
         s3.upload_fileobj(
             book_file.file,
             R2_BUCKET,
             doc_storage_key,
-            ExtraArgs={"ContentType": ALLOWED_DOC_TYPES[doc_ext]}
+            ExtraArgs={"ContentType": ALLOWED_DOC_TYPES[doc_ext]},
         )
         if cover_storage_key and cover_photo:
-            s3.upload_fileobj(
-                cover_photo.file,
-                R2_BUCKET,
-                cover_storage_key,
-                ExtraArgs={"ContentType": ALLOWED_IMG_TYPES[cover_ext]}
-            )
+            try:
+                webp_stream = _optimize_cover_webp(cover_photo)
+                s3.upload_fileobj(
+                    webp_stream,
+                    R2_BUCKET,
+                    cover_storage_key,
+                    ExtraArgs={
+                        "ContentType": "image/webp",
+                        "CacheControl": "public, max-age=31536000, immutable",
+                    },
+                )
+            except Exception as img_err:
+                logger.warning("WebP conversion failed, uploading original image: %s", img_err)
+                cover_photo.file.seek(0)
+                cover_storage_key = f"books/covers/{uuid.uuid4().hex}{cover_ext}"
+                s3.upload_fileobj(
+                    cover_photo.file,
+                    R2_BUCKET,
+                    cover_storage_key,
+                    ExtraArgs={
+                        "ContentType": ALLOWED_IMG_TYPES[cover_ext],
+                        "CacheControl": "public, max-age=31536000, immutable",
+                    },
+                )
     except Exception as e:
         logger.exception("Cloudflare R2 upload error: %s", str(e))
         raise HTTPException(status_code=500, detail=f"Storage upload failed: {str(e)}")
@@ -227,7 +261,7 @@ def admin_upload_book(
             file_url=doc_storage_key,
             cover_url=cover_storage_key,
             user_id=admin.id,
-            status="ACTIVE"
+            status="ACTIVE",
         )
         db.add(new_book)
         db.commit()
@@ -349,9 +383,76 @@ def admin_toggle_book_status(
     return {"status": "SUCCESS", "book_id": book.id, "new_status": new_status}
 
 
+def _query_public_catalog(
+    db: Session,
+    field: Optional[str],
+    course: Optional[str],
+    unit: Optional[str],
+    search: Optional[str],
+) -> list[dict]:
+    from sqlalchemy import or_
+
+    query = db.query(models.Book)
+    if hasattr(models.Book, "status"):
+        query = query.filter((models.Book.status == None) | (models.Book.status == "ACTIVE"))
+
+    if field and field.upper() != "ALL" and hasattr(models.Book, "field"):
+        query = query.filter(models.Book.field.ilike(f"%{field}%"))
+
+    if course and course.upper() != "ALL" and hasattr(models.Book, "course"):
+        query = query.filter(
+            or_(
+                models.Book.course.ilike(f"%{course}%"),
+                models.Book.course_name.ilike(f"%{course}%") if hasattr(models.Book, "course_name") else False,
+            )
+        )
+
+    if unit and unit.upper() != "ALL" and hasattr(models.Book, "unit"):
+        query = query.filter(
+            or_(
+                models.Book.unit.ilike(f"%{unit}%"),
+                models.Book.unit_module.ilike(f"%{unit}%") if hasattr(models.Book, "unit_module") else False,
+            )
+        )
+
+    if search:
+        search_pattern = f"%{search}%"
+        search_filters = [models.Book.title.ilike(search_pattern)]
+        if hasattr(models.Book, "description"):
+            search_filters.append(models.Book.description.ilike(search_pattern))
+        if hasattr(models.Book, "course"):
+            search_filters.append(models.Book.course.ilike(search_pattern))
+        query = query.filter(or_(*search_filters))
+
+    books = query.order_by(models.Book.created_at.desc()).all() if hasattr(models.Book, "created_at") else query.all()
+
+    public_catalog = []
+    for b in books:
+        cover_key = getattr(b, "cover_url", None) or getattr(b, "cover_photo_url", None) or getattr(b, "cover", None)
+        if _is_storage_key(cover_key):
+            cover_url = f"{R2_PUBLIC_DOMAIN}/{cover_key}" if R2_PUBLIC_DOMAIN else f"/api/books/{b.id}/cover"
+        else:
+            cover_url = None
+
+        public_catalog.append({
+            "id": b.id,
+            "title": getattr(b, "title", "Untitled"),
+            "field": getattr(b, "field", None) or "Technology",
+            "course": getattr(b, "course", None) or getattr(b, "course_name", None) or "General",
+            "unit": getattr(b, "unit", None) or getattr(b, "unit_module", None) or "General",
+            "price": getattr(b, "price", 0.0),
+            "description": getattr(b, "description", None) or "",
+            "cover_url": cover_url,
+        })
+
+    return public_catalog
+
+
 @router.get("/store")
 @router.get("/")
 def get_book_store_catalog(
+    request: Request,
+    response: Response,
     field: Optional[str] = Query(None, description="Filter by Academic/Professional Field"),
     course: Optional[str] = Query(None, description="Filter by Specific Course"),
     unit: Optional[str] = Query(None, description="Filter by Unit / Module"),
@@ -359,97 +460,46 @@ def get_book_store_catalog(
     db: Session = Depends(get_db),
     user: models.User = Depends(auth.get_current_user),
 ):
-    from sqlalchemy import or_
-
-    cache_key = f"catalog:{field or 'ALL'}:{course or 'ALL'}:{unit or 'ALL'}:{search or ''}"
-    public_catalog = None
-
-    if REDIS_AVAILABLE:
-        try:
-            cached = redis_client.get(cache_key)
-            if cached:
-                public_catalog = json.loads(cached)
-        except Exception as e:
-            logger.warning("Redis read error: %s", str(e))
-
-    if not public_catalog:
-        try:
-            query = db.query(models.Book)
-            if hasattr(models.Book, "status"):
-                query = query.filter((models.Book.status == None) | (models.Book.status == "ACTIVE"))
-
-            if field and field.upper() != "ALL":
-                if hasattr(models.Book, "field"):
-                    query = query.filter(models.Book.field.ilike(f"%{field}%"))
-            if course and course.upper() != "ALL":
-                if hasattr(models.Book, "course"):
-                    query = query.filter(
-                        or_(
-                            models.Book.course.ilike(f"%{course}%"),
-                            models.Book.course_name.ilike(f"%{course}%") if hasattr(models.Book, "course_name") else False
-                        )
-                    )
-            if unit and unit.upper() != "ALL":
-                if hasattr(models.Book, "unit"):
-                    query = query.filter(
-                        or_(
-                            models.Book.unit.ilike(f"%{unit}%"),
-                            models.Book.unit_module.ilike(f"%{unit}%") if hasattr(models.Book, "unit_module") else False
-                        )
-                    )
-            if search:
-                search_pattern = f"%{search}%"
-                search_filters = [models.Book.title.ilike(search_pattern)]
-                if hasattr(models.Book, "description"):
-                    search_filters.append(models.Book.description.ilike(search_pattern))
-                if hasattr(models.Book, "course"):
-                    search_filters.append(models.Book.course.ilike(search_pattern))
-                query = query.filter(or_(*search_filters))
-
-            books = query.order_by(models.Book.created_at.desc()).all() if hasattr(models.Book, "created_at") else query.all()
-
-            public_catalog = []
-            for b in books:
-                cover_key = getattr(b, "cover_url", None) or getattr(b, "cover_photo_url", None) or getattr(b, "cover", None)
-
-                if _is_storage_key(cover_key):
-                    cover_url = f"{R2_PUBLIC_DOMAIN}/{cover_key}" if R2_PUBLIC_DOMAIN else f"/api/books/{b.id}/cover"
-                else:
-                    cover_url = None
-
-                public_catalog.append({
-                    "id": b.id,
-                    "title": getattr(b, "title", "Untitled"),
-                    "field": getattr(b, "field", None) or "Technology",
-                    "course": getattr(b, "course", None) or getattr(b, "course_name", None) or "General",
-                    "unit": getattr(b, "unit", None) or getattr(b, "unit_module", None) or "General",
-                    "price": getattr(b, "price", 0.0),
-                    "description": getattr(b, "description", None) or "",
-                    "cover_url": cover_url,
-                })
-
-            if REDIS_AVAILABLE:
-                try:
-                    redis_client.setex(cache_key, 43200, json.dumps(public_catalog))
-                except Exception as e:
-                    logger.warning("Redis write error: %s", str(e))
-
-        except Exception as e:
-            logger.exception("Error loading book store inventory from database: %s", str(e))
-            raise HTTPException(status_code=500, detail="Failed to load book store inventory.")
-
-    owned_book_ids = set()
-    try:
-        owned_book_ids = {
-            row.book_id
-            for row in db.query(models.BookPurchase.book_id)
-            .filter(models.BookPurchase.user_id == user.id, models.BookPurchase.status == "COMPLETED")
-            .all()
-        }
-    except Exception:
-        logger.exception("Could not resolve purchases for user %s; treating all books as unowned", user.id)
-
+    # O(1) ETag validation before touching book rows
+    catalog_ver = app_cache.get_version("books_catalog")
+    owned_list = _get_user_owned_book_ids(db, user.id)
     is_admin = _is_admin_user(user)
+
+    etag = compute_etag(
+        catalog_ver,
+        user.id,
+        is_admin,
+        ",".join(owned_list),
+        field or "ALL",
+        course or "ALL",
+        unit or "ALL",
+        search or "",
+    )
+
+    if request.headers.get("if-none-match") == etag:
+        return Response(
+            status_code=status.HTTP_304_NOT_MODIFIED,
+            headers={
+                "ETag": etag,
+                "Cache-Control": "private, max-age=30, must-revalidate",
+            },
+        )
+
+    cache_key = f"{CATALOG_CACHE_PREFIX}{catalog_ver}:{field or 'ALL'}:{course or 'ALL'}:{unit or 'ALL'}:{search or ''}"
+    try:
+        public_catalog = app_cache.get_or_set(
+            cache_key,
+            lambda: _query_public_catalog(db, field, course, unit, search),
+            ttl=43200,
+        )
+    except Exception as e:
+        logger.exception("Error loading book store inventory from database: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to load book store inventory.")
+
+    owned_book_ids = set(owned_list)
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = "private, max-age=30, must-revalidate"
+
     return [
         {**b, "owned": b["id"] in owned_book_ids, "admin_preview": is_admin and b["id"] not in owned_book_ids}
         for b in public_catalog
@@ -487,23 +537,52 @@ def get_my_library(
 
 @router.get("/{book_id}/cover")
 def get_book_cover_image(book_id: str, db: Session = Depends(get_db)):
-    """Fallback route for cover photos if public R2 CDN is not configured."""
+    """
+    Redirects browser directly to Cloudflare R2 Edge URL (cached 24h in L1/L2)
+    so Render never proxies raw cover image bytes through Python workers.
+    """
+    cover_cache_key = f"books:cover_redirect:{book_id}"
+    cached_url = app_cache.get(cover_cache_key)
+    if cached_url:
+        return RedirectResponse(
+            url=cached_url,
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
     book = db.query(models.Book).filter(models.Book.id == book_id).first()
     cover_key = getattr(book, "cover_url", None) or getattr(book, "cover_photo_url", None) or getattr(book, "cover", None)
 
     if not book or not _is_storage_key(cover_key):
         raise HTTPException(status_code=404, detail="Cover image not found.")
 
+    if R2_PUBLIC_DOMAIN:
+        target_url = f"{R2_PUBLIC_DOMAIN}/{cover_key}"
+        app_cache.set(cover_cache_key, target_url, ttl=86400)
+        return RedirectResponse(
+            url=target_url,
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
     try:
-        r2_object = s3.get_object(Bucket=R2_BUCKET, Key=cover_key)
+        presigned_cover_url = s3.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": R2_BUCKET,
+                "Key": cover_key,
+                "ResponseCacheControl": "public, max-age=604800, immutable",
+            },
+            ExpiresIn=86400,
+        )
+        app_cache.set(cover_cache_key, presigned_cover_url, ttl=82800)
+        return RedirectResponse(
+            url=presigned_cover_url,
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            headers={"Cache-Control": "public, max-age=82800"},
+        )
     except Exception:
         raise HTTPException(status_code=404, detail="Cover object missing in storage.")
-
-    return Response(
-        r2_object["Body"].read(),
-        media_type=r2_object.get("ContentType") or "image/jpeg",
-        headers={"Cache-Control": "public, max-age=86400"}
-    )
 
 
 @router.get("/{book_id}/read-url")
@@ -522,7 +601,7 @@ def get_secure_book_read_url(
     if not verify_book_access(db, user, book_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. You must purchase this book before reading."
+            detail="Access denied. You must purchase this book before reading.",
         )
 
     try:
@@ -531,9 +610,9 @@ def get_secure_book_read_url(
             Params={
                 "Bucket": R2_BUCKET,
                 "Key": file_key,
-                "ResponseContentDisposition": "inline"
+                "ResponseContentDisposition": "inline",
             },
-            ExpiresIn=300  # URL valid for 5 minutes
+            ExpiresIn=300,
         )
     except Exception as e:
         logger.exception("Failed to generate presigned read URL: %s", str(e))
@@ -562,7 +641,7 @@ def download_purchased_book(
     if not verify_book_access(db, user, book_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. You must purchase this book before downloading."
+            detail="Access denied. You must purchase this book before downloading.",
         )
 
     try:
@@ -576,7 +655,6 @@ def download_purchased_book(
     safe_filename = _sanitize_filename(book.title, ext)
     media_type = ALLOWED_DOC_TYPES.get(ext, "application/octet-stream")
 
-    # Apply buyer-specific footer watermark if document is a PDF
     if ext == ".pdf":
         buyer_name = (getattr(user, "display_name", "") or "").strip()
         buyer_email = getattr(user, "email", "")
