@@ -2,9 +2,11 @@
 Authentication dependencies and cookie/CSRF plumbing with TRACE LOGGING.
 Includes rigorous Admin RBAC and 3-attempt/30-minute lockout protection.
 """
+import os
 import secrets
 import datetime as dt
 import logging
+import requests
 from fastapi import Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session as DbSession
 
@@ -14,6 +16,7 @@ from . import models
 from .services import supabase_auth
 
 logger = logging.getLogger(__name__)
+
 
 def _extract_token(request: Request) -> str | None:
     auth_header = request.headers.get("Authorization", "")
@@ -26,15 +29,15 @@ def get_current_user(request: Request, db: DbSession = Depends(get_db)) -> model
     print("\n" + "="*50)
     print("🔍 AUTH TRACE: /auth/me called")
     print(f"-> All cookies received from browser: {request.cookies.keys()}")
-    
+
     token = _extract_token(request)
     if not token:
         print("❌ REJECTED: access token cookie is completely missing!")
         print("="*50 + "\n")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-        
+
     print(f"-> Access token extracted (starts with: {token[:15]}...)")
-    
+
     try:
         claims = supabase_auth.verify_access_token(token)
         print("-> Token cryptographic signature verified successfully.")
@@ -49,17 +52,17 @@ def get_current_user(request: Request, db: DbSession = Depends(get_db)) -> model
 
     user_id = claims.get("sub")
     token_email = claims.get("email", "")
-    
+
     if not user_id:
         print("❌ REJECTED: Token is valid but has no 'sub' (user_id) claim!")
         print("="*50 + "\n")
         raise HTTPException(status_code=401, detail="Invalid token structure")
 
     print(f"-> Looking up user in database: {user_id}")
-    
+
     # 1. Lookup by strict ID
     user = db.query(models.User).filter(models.User.id == user_id).first()
-    
+
     # 2. If not found by ID, catch OAuth split-brain by looking up via email
     if not user and token_email:
         user = db.query(models.User).filter(models.User.email == token_email).first()
@@ -68,13 +71,13 @@ def get_current_user(request: Request, db: DbSession = Depends(get_db)) -> model
             db.delete(user)
             db.commit()
             user = None  # Reset user to trigger creation below
-    
+
     # 3. Create cleanly if totally missing
     if not user:
         print("-> User not in local DB yet. Creating profile row...")
         user = models.User(
-            id=user_id, 
-            email=token_email, 
+            id=user_id,
+            email=token_email,
             display_name=claims.get("user_metadata", {}).get("display_name", ""),
             university="Unknown",
             is_admin=False
@@ -89,7 +92,7 @@ def get_current_user(request: Request, db: DbSession = Depends(get_db)) -> model
             db.rollback()
             print("="*50 + "\n")
             raise HTTPException(status_code=500, detail="Could not create local profile")
-            
+
     print("✅ AUTH SUCCESS: User granted access to dashboard!")
     print("="*50 + "\n")
     return user
@@ -105,6 +108,7 @@ def get_current_admin(user: models.User = Depends(get_current_user)) -> models.U
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied. Administrator privileges required.")
     return user
 
+
 def check_admin_rate_limit(db: DbSession, email: str, ip_address: str):
     """Enforces 3 attempts / 30 minutes lockout window for admin access."""
     cutoff = dt.datetime.utcnow() - dt.timedelta(minutes=30)
@@ -114,14 +118,15 @@ def check_admin_rate_limit(db: DbSession, email: str, ip_address: str):
         models.LoginAttempt.successful == False,
         models.LoginAttempt.attempt_time >= cutoff
     ).count()
-    
+
     if recent_failures >= 3:
         raise HTTPException(
-            status_code=429, 
+            status_code=429,
             detail="Account locked due to multiple failed attempts.",
             headers={"Retry-After": "1800"}
         )
     return 3 - recent_failures
+
 
 def log_admin_attempt(db: DbSession, email: str, ip_address: str, successful: bool):
     """Logs the admin login attempt for security tracking."""
@@ -132,6 +137,81 @@ def log_admin_attempt(db: DbSession, email: str, ip_address: str, successful: bo
     )
     db.add(attempt)
     db.commit()
+
+
+# ==============================================================
+# TRANSACTIONAL EMAIL SENDER (BREVO)
+# ==============================================================
+
+def _get_brevo_config() -> tuple[str, str, str]:
+    api_key = (
+        getattr(settings, "BREVO_API_KEY", None)
+        or os.getenv("BREVO_API_KEY")
+        or ""
+    ).strip()
+
+    sender_email = (
+        getattr(settings, "BREVO_SENDER_EMAIL", None)
+        or getattr(settings, "MAIL_FROM", None)
+        or os.getenv("BREVO_SENDER_EMAIL")
+        or os.getenv("MAIL_FROM")
+        or "destinymichael941@gmail.com"
+    ).strip()
+
+    sender_name = (
+        getattr(settings, "BREVO_SENDER_NAME", None)
+        or os.getenv("BREVO_SENDER_NAME")
+        or "NoteCast"
+    ).strip()
+
+    return api_key, sender_email, sender_name
+
+
+def send_brevo_email(
+    to_email: str,
+    html_content: str,
+    email_type: str = "custom",
+    subject: str = "NoteCast Notification",
+    text_content: str | None = None,
+) -> dict:
+    """Sends a transactional email via Brevo v3 API."""
+    recipient = (to_email or "").strip()
+    if not recipient:
+        raise ValueError("Recipient email address is required.")
+
+    api_key, sender_email, sender_name = _get_brevo_config()
+    if not api_key:
+        raise RuntimeError("BREVO_API_KEY is not configured.")
+    if not sender_email:
+        raise RuntimeError("Brevo sender email is not configured.")
+
+    payload = {
+        "sender": {
+            "name": sender_name,
+            "email": sender_email,
+        },
+        "to": [
+            {"email": recipient}
+        ],
+        "subject": (subject or "NoteCast Notification").strip(),
+        "htmlContent": html_content,
+        "tags": [email_type] if email_type else ["notecast"],
+    }
+    if text_content:
+        payload["textContent"] = text_content
+
+    response = requests.post(
+        "https://api.brevo.com/v3/smtp/email",
+        headers={
+            "api-key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        json=payload,
+        timeout=15,
+    )
+    response.raise_for_status()
+    return response.json() if response.content else {}
 
 
 # ==============================================================
@@ -147,7 +227,6 @@ def get_current_user_ws(token: str, db: DbSession) -> models.User | None:
             return None
         return db.query(models.User).filter(models.User.id == user_id).first()
     except Exception as e:
-        # Catch all exceptions (SupabaseAuthError, JWT decoding, etc.) to prevent 500 crashes
         logger.error(f"WebSocket auth failed: {e}")
         return None
 
@@ -168,20 +247,20 @@ def verify_csrf(request: Request) -> None:
 def set_session_cookies(response: Response, access_token: str, refresh_token: str, expires_in: int) -> None:
     common = dict(
         httponly=True,
-        secure=True,          
-        samesite="none",      
+        secure=True,
+        samesite="none",
         path="/",
     )
-    
+
     print("\n-> Setting fresh cookies on response")
     response.set_cookie(settings.ACCESS_COOKIE_NAME, access_token, max_age=expires_in, **common)
     response.set_cookie(settings.REFRESH_COOKIE_NAME, refresh_token, max_age=60 * 60 * 24 * 30, **common)
-    
+
     response.set_cookie(
         settings.CSRF_COOKIE_NAME, issue_csrf_token(),
         max_age=60 * 60 * 24 * 30, httponly=False,
-        secure=True,          
-        samesite="none",      
+        secure=True,
+        samesite="none",
         path="/",
     )
 
